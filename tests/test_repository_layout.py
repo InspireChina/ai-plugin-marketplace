@@ -297,7 +297,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("<repository-url>", text)
         for command in (
-            "codex plugin marketplace add ansonli-dev/ai-plugin-marketplace",
+            "codex plugin marketplace add InspireChina/ai-plugin-marketplace",
             "codex plugin add ai-sow@ai-plugin-marketplace",
             "codex plugin marketplace upgrade ai-plugin-marketplace",
             "codex plugin remove ai-sow@ai-plugin-marketplace",

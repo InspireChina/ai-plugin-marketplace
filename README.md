@@ -28,7 +28,7 @@ Prerequisites: Codex, Python 3.12, Git, and
 [uv](https://docs.astral.sh/uv/) 0.11.7 or a compatible release.
 
 ```text
-codex plugin marketplace add ansonli-dev/ai-plugin-marketplace
+codex plugin marketplace add InspireChina/ai-plugin-marketplace
 codex plugin add ai-sow@ai-plugin-marketplace
 codex plugin list
 ```
@@ -36,7 +36,7 @@ codex plugin list
 For local development, clone the repository and register the checkout instead:
 
 ```text
-git clone https://github.com/ansonli-dev/ai-plugin-marketplace.git
+git clone https://github.com/InspireChina/ai-plugin-marketplace.git
 codex plugin marketplace add /absolute/path/to/ai-plugin-marketplace
 codex plugin add ai-sow@ai-plugin-marketplace
 ```
