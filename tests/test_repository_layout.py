@@ -307,14 +307,14 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_readme_distinguishes_verified_and_provisional_platforms(self) -> None:
         text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("| macOS | Verified |", text)
-        self.assertIn("| Windows 11 | Provisional |", text)
+        self.assertIn("| macOS | 已验证（`Verified`） |", text)
+        self.assertIn("| Windows 11 | 临时支持（`Provisional`） |", text)
         self.assertIn(
-            "[Windows 11 validation status](docs/windows-11-validation.md)",
+            "[Windows 11 验证状态](docs/windows-11-validation.md)",
             text,
         )
         self.assertIn(
-            "CI and synthetic tests do not count as physical Windows 11 validation.",
+            "CI 和合成测试不能作为 Windows 11 实机验收结果。",
             text,
         )
 
@@ -324,30 +324,30 @@ class RepositoryLayoutTests(unittest.TestCase):
         text = plan_path.read_text(encoding="utf-8")
         for required in (
             "Provisional",
-            "physical Windows 11",
-            "NTFS junction",
-            "reparse point",
+            "Windows 11 实机",
+            "NTFS 目录联接",
+            "重解析点",
             "check/write/rename race",
-            "zero-byte",
-            "non-ASCII",
-            "long path",
+            "零字节",
+            "非 ASCII",
+            "长路径",
             ".cmd Git shim",
             "uv",
             "Codex marketplace",
-            "installed plugin directory",
+            "已安装插件目录",
             "pytest",
             "setup",
-            "five validators",
+            "五个 Owner validator",
             "generate-sow",
             "Microsoft Excel Desktop",
             "F9",
-            "cached formula values",
-            "formula errors",
-            "Developer Mode",
-            "symbolic-link permissions",
+            "公式缓存值",
+            "公式错误",
+            "开发者模式",
+            "符号链接权限",
             "GitHub Actions",
-            "evidence record",
-            "synthetic tests",
+            "证据记录",
+            "合成测试",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, text)
@@ -355,7 +355,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         architecture = (
             REPO_ROOT / "docs/architecture/ai-plugin-marketplace-design.md"
         ).read_text(encoding="utf-8")
-        self.assertIn("Windows 11 remains provisional", architecture)
+        self.assertIn("Windows 11 仍为临时支持（`Provisional`）", architecture)
 
     def test_public_docs_exclude_internal_execution_plans(self) -> None:
         self.assertFalse((REPO_ROOT / "docs/superpowers/plans").exists())

@@ -1,103 +1,86 @@
-# Windows 11 validation status
+# Windows 11 验证状态
 
-Windows 11 support is **Provisional** for AI Plugin Marketplace 0.1.0-beta.1. The
-repository has Windows CI and synthetic tests for selected portable branches,
-but it has not yet completed the checklist below on a physical Windows 11
-machine. CI and synthetic tests are useful regression signals; neither is an
-acceptance result for NTFS, Codex Desktop, or Microsoft Excel Desktop.
+AI Plugin Marketplace 0.1.0-beta.1 对 Windows 11 的支持状态为**临时支持
+（`Provisional`）**。仓库已经具备 Windows CI 和针对部分可移植分支的合成测试，但尚未
+在 Windows 11 实机上完成下方清单。CI 和合成测试是有价值的回归信号，但都不能作为
+NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
 
-This page is the public support boundary and the evidence plan for the first
-physical-machine run. A checked item needs an attached evidence record; editing
-the checkbox alone is not sufficient.
+本文档定义首次实机运行前的公开支持边界和证据计划。勾选检查项时必须附带证据记录；
+只修改复选框不足以证明完成验收。
 
-## What current automation proves
+## 当前自动化能够证明什么
 
-- GitHub Actions runs the root repository tests and the complete plugin pytest
-  suite on `windows-latest`.
-- Synthetic tests exercise Windows-specific decisions such as `PATH`
-  separation, `.cmd Git shim` discovery, the portable validation-report writer,
-  and reparse-point attribute rejection.
-- macOS tests exercise real POSIX symlinks and race substitutions. They do not
-  create an NTFS junction or native Windows reparse point.
+- GitHub Actions 在 `windows-latest` 上运行根仓库测试和完整插件 pytest 测试套件。
+- 合成测试覆盖 Windows 专属决策，包括 `PATH` 分隔、`.cmd Git shim` 发现、可移植
+  验证报告写入器和重解析点（reparse point）属性拒绝。
+- macOS 测试覆盖真实 POSIX 符号链接和竞态替换，但不会创建 NTFS 目录联接
+  （NTFS junction）或原生 Windows 重解析点。
 
-These tests validate branch logic under controlled inputs. They do not prove
-that the same branches interact correctly with Windows filesystem, process,
-permission, path, Codex installation, or Excel behavior.
+这些测试只验证受控输入下的分支逻辑，不能证明相同分支与 Windows 文件系统、进程、
+权限、路径、Codex 安装或 Excel 的实际交互正确。
 
-## Open risks and questions
+## 开放风险与问题
 
-| Area | Status before physical test | Required resolution |
+| 领域 | 实机测试前状态 | 必需结论 |
 | --- | --- | --- |
-| NTFS indirection | Unconfirmed | Create directory symlinks, an NTFS junction, and other accessible reparse point forms. Confirm that `.ai-sow/validation` and report targets outside the project are rejected without modifying the external target. |
-| Report-write race | Unconfirmed | Exercise a concurrent check/write/rename race against both the validation directory and report file. Confirm the report is either safely written or rejected, never redirected outside the project, and leaves no truncated or zero-byte prior report. |
-| Windows paths | Unconfirmed | Run from a project path containing non-ASCII characters and spaces. Separately exercise a long path and record whether Windows long-path support was enabled. |
-| Git discovery | Synthetic only | Confirm that a real Git for Windows installation and a controlled `.cmd Git shim` are both found and invoked with the expected optional-lock environment setting. |
-| Toolchain and installed plugin | Unconfirmed | Confirm Python 3.12, `uv`, Codex marketplace registration, plugin installation, installed plugin directory discovery, and pytest execution from the installed plugin rather than the source checkout. |
-| Codex workflow | Unconfirmed | Run setup, the five validators, and generate-sow from an empty project through the installed plugin directory; confirm all seven Skills resolve from that directory. |
-| Excel result | Unconfirmed | Open the generated workbook in Microsoft Excel Desktop, use F9 to calculate and then request a full calculation, save it, and inspect cached formula values and formula errors. |
-| Developer features | Unconfirmed | Repeat the filesystem cases with Developer Mode recorded and with ordinary symbolic-link permissions; document cases that require elevation or cannot be created. |
+| NTFS 间接引用 | 未确认 | 创建目录符号链接、NTFS 目录联接（NTFS junction）和其他可访问的重解析点形式。确认指向项目外部的 `.ai-sow/validation` 和报告目标会被拒绝，且外部目标保持不变。 |
+| 报告写入竞态 | 未确认 | 针对验证目录和报告文件运行并发的检查、写入、重命名竞态（`check/write/rename race`）。确认报告只会安全写入或被拒绝，不会重定向到项目外部，也不会截断原报告或留下零字节（zero-byte）文件。 |
+| Windows 路径 | 未确认 | 从包含非 ASCII 字符和空格的项目路径运行。另行测试长路径（long path），并记录是否启用 Windows 长路径支持。 |
+| Git 发现 | 仅合成测试 | 确认真正的 Git for Windows 和受控 `.cmd Git shim` 都能被发现，并使用预期的 optional-lock 环境设置调用。 |
+| 工具链与已安装插件 | 未确认 | 确认 Python 3.12、`uv`、Codex marketplace 注册、插件安装、已安装插件目录发现，以及从已安装插件而非源码 checkout 运行 `pytest`。 |
+| Codex 工作流 | 未确认 | 通过已安装插件目录，在空项目中依次运行 `setup`、五个 Owner validator 和 `generate-sow`；确认全部七个 Skill 都从该目录解析。 |
+| Excel 结果 | 未确认 | 在 Microsoft Excel Desktop 中打开生成的工作簿，使用 `F9` 计算，再执行完整计算，保存并检查公式缓存值和公式错误。 |
+| 开发者功能 | 未确认 | 在记录开发者模式（Developer Mode）和普通符号链接权限的情况下重复文件系统测试；记录需要提权或无法创建的场景。 |
 
-The report-write implementation includes defensive identity and reparse-point
-checks. Until the native NTFS and concurrency cases above run, those controls
-remain unverified on Windows rather than being advertised as resolved Windows
-compatibility.
+报告写入实现已经包含防御性的身份与重解析点检查。在上述原生 NTFS 和并发场景完成前，
+这些控制仍属于尚未在 Windows 上验证的防护，不能宣传为已解决的 Windows 兼容性。
 
-## Physical Windows 11 acceptance checklist
+## Windows 11 实机验收清单
 
-Use a disposable Windows user profile or VM snapshot. Do not reuse customer
-data. Store command transcripts and hashes in the evidence record.
+使用一次性 Windows 用户配置或 VM 快照，不复用客户数据。命令记录和哈希保存在证据
+记录中。
 
-- [ ] Record the Windows edition, build, architecture, filesystem, shell,
-  Python, `uv`, Git, Codex, and Excel versions; record Developer Mode,
-  long-path policy, and symbolic-link permissions.
-- [ ] Clone the repository to a normal path and run the root tests, repository
-  validator, locked dependency sync, and complete plugin pytest suite.
-- [ ] Repeat the root and plugin checks from a non-ASCII path containing spaces.
-- [ ] If long-path support is enabled, repeat from a path longer than 260
-  characters. If it is disabled, record the expected failure boundary instead
-  of changing policy silently.
-- [ ] Execute the real Git for Windows path and the controlled `.cmd Git shim`
-  path; capture the resolved executable and command result.
-- [ ] Create the supported directory symlink, NTFS junction, and reparse point
-  cases for `.ai-sow/validation` and each report target. Confirm all external
-  targets remain byte-identical.
-- [ ] Exercise a concurrent check/write/rename race for the validation directory
-  and existing report. Confirm no external write, no truncation, and no
-  zero-byte residue after rejection.
-- [ ] Register the checkout with `codex plugin marketplace add`, install AI SOW,
-  and record the registration command/output plus `codex plugin list` output.
-- [ ] Locate the installed plugin directory without using source paths; run locked pytest
-  and the repository-provided standalone-copy smoke checks against it.
-- [ ] In a fresh project, run setup, then the five validators in workflow order:
-  analyze-requirement, analyze-as-is, generate-design, generate-story, and
-  generate-task. Run generate-sow last. Confirm generated contracts, validation
-  reports, package manifest, and workbook exist at their documented paths.
-- [ ] Start a new Codex session and confirm all seven installed Skills are
-  discoverable and operate from the installed plugin directory.
-- [ ] Open the final workbook in Microsoft Excel Desktop, press F9 to exercise
-  ordinary calculation, then invoke Calculate Full (for example, Ctrl+Alt+F9),
-  save, reopen, and inspect cached formula values. Record the count and locations
-  of any formula errors.
-- [ ] Re-run the complete suites after Excel acceptance and archive the final
-  GitHub Actions run alongside the physical-machine evidence.
+- [ ] 记录 Windows 版本、build、架构、文件系统、shell、Python、`uv`、Git、Codex 和
+  Excel 版本，以及开发者模式、长路径策略和符号链接权限。
+- [ ] 把仓库克隆到普通路径，运行根测试、仓库验证器、锁定依赖同步和完整插件 pytest
+  测试套件。
+- [ ] 从包含非 ASCII 字符和空格的路径重复运行根测试和插件检查。
+- [ ] 如果已启用长路径支持，从超过 260 个字符的路径重复运行。如果未启用，则记录预期
+  失败边界，不静默修改系统策略。
+- [ ] 运行真实 Git for Windows 路径和受控 `.cmd Git shim` 路径；记录解析后的可执行
+  文件与命令结果。
+- [ ] 为 `.ai-sow/validation` 和每个报告目标创建受支持的目录符号链接、NTFS 目录联接
+  和重解析点场景。确认所有外部目标保持字节一致。
+- [ ] 针对验证目录和现有报告执行并发检查、写入、重命名竞态。确认没有外部写入、截断
+  或被拒绝后留下的零字节残留。
+- [ ] 使用 `codex plugin marketplace add` 注册 checkout、安装 AI SOW，并保存注册
+  命令及输出和 `codex plugin list` 输出。
+- [ ] 在不使用源码路径的情况下定位已安装插件目录；对该目录运行锁定 pytest 和仓库提供
+  的独立副本冒烟检查。
+- [ ] 在新项目中运行 `setup`，然后按工作流顺序运行五个 Owner validator：
+  `analyze-requirement`、`analyze-as-is`、`generate-design`、`generate-story` 和
+  `generate-task`，最后运行 `generate-sow`。确认生成的合同、验证报告、包 manifest
+  和工作簿位于文档规定路径。
+- [ ] 启动新的 Codex 会话，确认七个已安装 Skill 均可发现，并从已安装插件目录运行。
+- [ ] 在 Microsoft Excel Desktop 中打开最终工作簿，按 `F9` 执行普通计算，再执行
+  Calculate Full（例如 `Ctrl+Alt+F9`），保存、重新打开并检查公式缓存值。记录任何公式
+  错误的数量和位置。
+- [ ] Excel 验收完成后重新运行全部测试套件，并把最终 GitHub Actions 运行记录与实机
+  证据一起归档。
 
-## Evidence record
+## 证据记录
 
-Create one dated Markdown record under `docs/validation/windows-11/` when the
-physical run happens. It must include:
+实机运行时，在 `docs/validation/windows-11/` 下创建一份带日期的 Markdown 记录，
+内容必须包括：
 
-- commit SHA and clean-worktree status;
-- hardware or VM description and every version/policy value listed above;
-- exact commands, exit codes, test counts, and links to the matching GitHub
-  Actions run;
-- hashes for the three source templates, the installed-plugin template, and the
-  final workbook;
-- filesystem-case results, including the link or reparse type and whether
-  elevation was used;
-- Excel recalculation/save evidence and the cached formula-error scan;
-- each failed or skipped checklist item, its owner, and the follow-up issue.
+- commit SHA 和工作区清洁状态；
+- 硬件或 VM 说明，以及上方列出的全部版本与策略值；
+- 完整命令、退出码、测试数量和对应 GitHub Actions 运行链接；
+- 三份源模板、已安装插件模板和最终工作簿的哈希；
+- 文件系统场景结果，包括链接或重解析点类型，以及是否使用提权；
+- Excel 重新计算与保存证据，以及公式缓存错误扫描结果；
+- 每个失败或跳过的检查项、责任人和后续 Issue。
 
-Windows 11 can move from **Provisional** to **Verified** only after every
-applicable checklist item passes on a physical Windows 11 environment and the
-evidence record is reviewed. Any skipped item must remain visible as a support
-limitation.
+只有适用检查项全部在 Windows 11 实机环境通过且证据记录完成评审后，Windows 11 才能从
+**临时支持（`Provisional`）**变更为**已验证（`Verified`）**。任何跳过项都必须继续
+作为支持限制公开可见。

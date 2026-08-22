@@ -1,31 +1,24 @@
-# Code of Conduct
+# 行为准则
 
-## Our standard
+## 行为标准
 
-We welcome respectful, constructive participation. Be considerate, discuss
-ideas rather than people, acknowledge uncertainty, accept well-founded
-correction, and make room for contributors with different backgrounds and
-experience levels.
+我们欢迎尊重他人、具有建设性的参与。请体谅他人、就观点而非个人展开讨论、承认不确定性、
+接受有充分依据的纠正，并为拥有不同背景和经验水平的贡献者留出参与空间。
 
-## Unacceptable behavior
+## 不可接受的行为
 
-Harassment, threats, discrimination, sexualized attention, doxxing, deliberate
-disruption, publication of private information, and sustained bad-faith conduct
-are not acceptable in project spaces.
+项目空间不接受骚扰、威胁、歧视、带有性意味的关注、公开他人隐私信息、蓄意干扰、发布
+私密信息或持续的恶意行为。
 
-## Enforcement
+## 执行
 
-Repository maintainers may edit or remove contributions, lock discussions,
-issue warnings, or temporarily or permanently restrict participation when
-conduct violates this policy. Enforcement decisions should be proportionate,
-documented privately where practical, and focused on community safety.
+当行为违反本准则时，仓库维护者可以编辑或移除贡献、锁定讨论、发出警告，或临时、永久
+限制参与。执行决定应与行为严重程度相称，在实际可行时以私密方式记录，并以社区安全为
+核心。
 
-## Reporting
+## 报告
 
-Report conduct concerns through GitHub repository moderation and abuse-reporting
-tools. Do not publish sensitive details in a public issue. Maintainers will
-review reports in good faith, protect reporter privacy where possible, and
-avoid conflicts of interest in enforcement.
+请通过 GitHub 的仓库管理和滥用报告工具报告行为问题。不要在公共 Issue 中发布敏感细节。
+维护者会善意审查报告，在可能范围内保护报告者隐私，并避免执行过程中的利益冲突。
 
-This policy applies to all project-controlled spaces and to public conduct when
-someone is representing the project.
+本准则适用于项目控制的所有空间，也适用于个人代表本项目时的公开行为。

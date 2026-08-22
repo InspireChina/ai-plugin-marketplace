@@ -1,22 +1,16 @@
-# Security Policy
+# 安全策略
 
-## Supported version
+## 支持版本
 
-Security fixes are made for the latest released plugin version. Version
-0.1.0-beta.1 is currently supported.
+安全修复面向最新发布的插件版本。当前支持版本为 0.1.0-beta.1。
 
-## Report a vulnerability
+## 报告漏洞
 
-Use GitHub private vulnerability reporting for suspected security issues. Do
-not open a public issue containing exploit details, credentials, customer data,
-or private repository information. Include affected versions, impact, minimal
-reproduction steps, and any proposed mitigation.
+疑似安全问题请使用 GitHub 私密漏洞报告。公共 Issue 中不得包含漏洞利用细节、凭据、
+客户数据或私有仓库信息。报告应包括受影响版本、影响、最小复现步骤和建议的缓解措施。
 
-Use GitHub Issues for ordinary bugs that do not create a security or privacy
-risk. Maintainers will acknowledge a private report, investigate it, coordinate
-a fix and disclosure where appropriate, and credit reporters who want public
-recognition.
+不会造成安全或隐私风险的普通缺陷可以使用 GitHub Issues。维护者会确认私密报告、开展
+调查、在适当情况下协调修复与披露，并按报告者意愿公开致谢。
 
-The AI SOW workflow handles source-derived and customer-derived data. Review a
-project's `.gitignore` and sharing policy before use; never assume generated
-workbooks or `.ai-sow/` inputs are safe to publish.
+AI SOW 工作流会处理来自输入来源和客户环境的衍生数据。使用前请检查项目的
+`.gitignore` 和共享策略；不得假定生成的工作簿或 `.ai-sow/` 输入适合公开发布。
