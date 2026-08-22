@@ -159,6 +159,9 @@ def test_smoke_workbook_projects_chinese_business_text_and_preserves_machine_tok
     assert set(table_column_values(workbook_path, "TaskTable", "Integration ID")) == {
         None,
         "integration-profile-api",
+        "integration-erp-reservation",
+        "integration-payment-gateway",
+        "integration-einvoice",
     }
 
     workbook = openpyxl.load_workbook(workbook_path, data_only=False)

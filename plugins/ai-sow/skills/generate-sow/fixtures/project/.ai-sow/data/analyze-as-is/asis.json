@@ -14,67 +14,94 @@
       {
         "priorSowId": "sow-phase-one",
         "file": ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md",
-        "originalName": "sow-phase-one.md",
-        "sha256": "6aaa4f5427e455cde2603adb68209ac6ab5a75b32c02e0da866914a757ac93b8"
+        "originalName": "一期交付承诺摘录（仿真）.md",
+        "sha256": "a1ece6399230b553835765df654d40a08eaa0e71a988a0588cfef8e795280aea"
       }
     ],
-    "includedSystems": ["Customer Portal（客户门户）"],
-    "includedAreas": ["客户档案"],
-    "excludedAreas": ["旧版批量导出"]
+    "includedSystems": [
+      "星云会员门户",
+      "订单服务",
+      "门店工作台",
+      "会员主数据",
+      "ERP",
+      "支付网关",
+      "电子发票平台",
+      "统一监控平台"
+    ],
+    "includedAreas": [
+      "会员档案与等级",
+      "订单与履约",
+      "退货退款",
+      "支付对账与电子发票",
+      "数据迁移与生产切换",
+      "监控、交接与培训"
+    ],
+    "excludedAreas": [
+      "上线后驻场支持",
+      "旧系统退役",
+      "ERP 库存核算改造",
+      "总账系统改造"
+    ]
   },
   "topicAssessments": [
     {
       "topic": "SYSTEM_CONTEXT",
       "status": "ASSESSED",
-      "summary": "Customer Portal（客户门户）负责客户档案交互。",
+      "summary": "会员门户、门店工作台和订单服务承载渠道交易，ERP、支付与发票平台保持系统责任边界。",
       "uncertaintyIds": []
     },
     {
       "topic": "CAPABILITY",
       "status": "ASSESSED",
-      "summary": "基础客户档案采集已承诺但尚未实现。",
+      "summary": "客户档案、订单服务和通知具备基础能力，会员等级、退货退款、对账与开票需要补齐。",
       "uncertaintyIds": []
     },
     {
       "topic": "APPLICATION",
       "status": "ASSESSED",
-      "summary": "现有客户档案组件可以复用。",
+      "summary": "现有客户档案组件、订单服务和门店菜单入口可作为调整与续建起点。",
       "uncertaintyIds": []
     },
     {
       "topic": "INTEGRATION",
-      "status": "NOT_APPLICABLE",
-      "summary": "当前客户档案基线不包含集成。",
-      "uncertaintyIds": []
+      "status": "ASSESSED",
+      "summary": "ERP、支付网关和电子发票通道均已企业级接入，本项目承担租户内映射、适配和专项验证。",
+      "uncertaintyIds": [
+        "uncertainty-erp-window",
+        "uncertainty-payment-certification",
+        "uncertainty-invoice-quota"
+      ]
     },
     {
       "topic": "DATA",
       "status": "ASSESSED",
-      "summary": "客户档案数据由 Customer Portal（客户门户）存储。",
+      "summary": "会员主数据和订单库已有稳定结构，历史订单映射与对账指标需要新增。",
       "uncertaintyIds": []
     },
     {
       "topic": "PLATFORM",
       "status": "ASSESSED",
-      "summary": "保留当前部署平台。",
+      "summary": "保留 Kubernetes 生产环境与 CI/CD 流水线，新增应用配置和切换清单。",
       "uncertaintyIds": []
     },
     {
       "topic": "SECURITY_COMPLIANCE",
       "status": "ASSESSED",
-      "summary": "现有身份控制适用于客户档案访问。",
+      "summary": "统一身份控制与授权中心可复用，新增功能遵循最小权限和审计留痕要求。",
       "uncertaintyIds": []
     },
     {
       "topic": "OPERATIONS_QUALITY",
       "status": "INSUFFICIENT_EVIDENCE",
-      "summary": "生产告警的通知渠道仍未确认。",
-      "uncertaintyIds": ["uncertainty-profile-alert-channel"]
+      "summary": "统一监控和回归资产可复用，但生产告警最终通知渠道尚待上线前确认。",
+      "uncertaintyIds": [
+        "uncertainty-profile-alert-channel"
+      ]
     },
     {
       "topic": "DELIVERY_CONSTRAINTS",
       "status": "ASSESSED",
-      "summary": "旧版批量导出不属于本次交付范围。",
+      "summary": "数据迁移、生产切换、验证、交接和培训纳入本期；驻场支持与旧系统退役明确排除。",
       "uncertaintyIds": []
     }
   ],
@@ -84,7 +111,105 @@
       "topic": "APPLICATION",
       "itemType": "COMPONENT",
       "name": "客户档案组件",
-      "summary": "该组件提供可复用的客户档案框架。",
+      "summary": "会员门户已有客户档案页面、字段校验和服务框架。",
+      "repositoryIds": ["customer-portal"]
+    },
+    {
+      "asIsItemId": "asis-member-master",
+      "topic": "DATA",
+      "itemType": "DATA_ASSET",
+      "name": "会员主数据模型",
+      "summary": "会员主数据保存统一会员号、基础属性和当前等级，但没有等级历史表。",
+      "repositoryIds": ["customer-portal"]
+    },
+    {
+      "asIsItemId": "asis-order-service",
+      "topic": "APPLICATION",
+      "itemType": "COMPONENT",
+      "name": "订单服务与状态机",
+      "summary": "订单服务支持线上订单基础状态流转，尚未覆盖门店订单和完整退货退款。",
+      "repositoryIds": ["customer-portal"]
+    },
+    {
+      "asIsItemId": "asis-erp-interface",
+      "topic": "INTEGRATION",
+      "itemType": "INTEGRATION",
+      "name": "ERP 库存接口",
+      "summary": "企业服务总线已注册 ERP 库存查询和预占接口。",
+      "repositoryIds": ["customer-portal"],
+      "source": "订单服务",
+      "target": "ERP",
+      "trigger": "订单确认或取消",
+      "direction": "OUTBOUND",
+      "purpose": "库存预占与释放",
+      "owner": "企业应用团队"
+    },
+    {
+      "asIsItemId": "asis-payment-gateway",
+      "topic": "INTEGRATION",
+      "itemType": "INTEGRATION",
+      "name": "支付网关租户",
+      "summary": "企业支付网关已完成签约和生产租户开通。",
+      "repositoryIds": ["customer-portal"],
+      "source": "订单服务",
+      "target": "支付网关",
+      "trigger": "退款申请",
+      "direction": "OUTBOUND",
+      "purpose": "发起退款并查询结果",
+      "owner": "资金管理部"
+    },
+    {
+      "asIsItemId": "asis-invoice-gateway",
+      "topic": "INTEGRATION",
+      "itemType": "INTEGRATION",
+      "name": "电子发票通道",
+      "summary": "电子发票平台已签约并提供标准开票 API。",
+      "repositoryIds": ["customer-portal"],
+      "source": "订单服务",
+      "target": "电子发票平台",
+      "trigger": "订单完成后提交开票申请",
+      "direction": "OUTBOUND",
+      "purpose": "申请电子发票并查询开票状态",
+      "owner": "财务共享中心"
+    },
+    {
+      "asIsItemId": "asis-deployment-platform",
+      "topic": "PLATFORM",
+      "itemType": "INFRASTRUCTURE",
+      "name": "生产环境与发布流水线",
+      "summary": "现有 Kubernetes 集群、制品库和 CI/CD 流水线承载会员门户与订单服务。",
+      "repositoryIds": ["customer-portal"]
+    },
+    {
+      "asIsItemId": "asis-identity-control",
+      "topic": "SECURITY_COMPLIANCE",
+      "itemType": "CONTROL",
+      "name": "身份权限与会员授权中心",
+      "summary": "现有身份平台提供员工与门店角色控制，授权中心保存会员授权记录。",
+      "repositoryIds": ["customer-portal"]
+    },
+    {
+      "asIsItemId": "asis-notification-service",
+      "topic": "CAPABILITY",
+      "itemType": "CAPABILITY",
+      "name": "订单消息通知服务",
+      "summary": "消息中心已消费标准订单事件并通过短信、App Push 发送通知。",
+      "repositoryIds": ["customer-portal"]
+    },
+    {
+      "asIsItemId": "asis-monitoring-platform",
+      "topic": "OPERATIONS_QUALITY",
+      "itemType": "INFRASTRUCTURE",
+      "name": "统一监控平台",
+      "summary": "平台已采集应用日志、指标与链路，但缺少新订单指标和财务批处理告警。",
+      "repositoryIds": ["customer-portal"]
+    },
+    {
+      "asIsItemId": "asis-test-assets",
+      "topic": "OPERATIONS_QUALITY",
+      "itemType": "PROCESS",
+      "name": "回归测试资产",
+      "summary": "一期已有 API 自动化框架、订单基础用例和兼容矩阵。",
       "repositoryIds": ["customer-portal"]
     }
   ],
@@ -95,12 +220,51 @@
       "sourceReference": "sow-phase-one#Profile!A12",
       "topic": "CAPABILITY",
       "changeType": "ADD",
-      "name": "客户档案字段",
-      "summary": "延续尚未实现的客户档案字段。",
+      "name": "客户档案扩展字段",
+      "summary": "延续一期未实现的职业、地区和偏好字段。",
       "implementationStatus": "NOT_IMPLEMENTED",
       "treatment": "CARRY_FORWARD",
       "affectedItemIds": [],
       "relatedFeatureIds": ["feature-customer-profile"]
+    },
+    {
+      "commitmentId": "commitment-store-order",
+      "priorSowId": "sow-phase-one",
+      "sourceReference": "sow-phase-one#StoreOrder!B9",
+      "topic": "CAPABILITY",
+      "changeType": "ADD",
+      "name": "门店接单流程",
+      "summary": "一期仅保留菜单入口和权限点，完整接单流程顺延本期。",
+      "implementationStatus": "NOT_IMPLEMENTED",
+      "treatment": "CARRY_FORWARD",
+      "affectedItemIds": [],
+      "relatedFeatureIds": ["feature-store-order"]
+    },
+    {
+      "commitmentId": "commitment-consent-policy",
+      "priorSowId": "sow-phase-one",
+      "sourceReference": "sow-phase-one#Profile!A18",
+      "topic": "SECURITY_COMPLIANCE",
+      "changeType": "ADD",
+      "name": "会员授权中心沿用",
+      "summary": "授权主数据和撤回日志继续由现有授权中心负责。",
+      "implementationStatus": "IMPLEMENTED",
+      "treatment": "CURRENT_BASELINE",
+      "affectedItemIds": ["asis-identity-control"],
+      "relatedFeatureIds": ["feature-customer-consent"]
+    },
+    {
+      "commitmentId": "commitment-order-audit",
+      "priorSowId": "sow-phase-one",
+      "sourceReference": "sow-phase-one#Delivery-baseline",
+      "topic": "APPLICATION",
+      "changeType": "ADD",
+      "name": "订单状态审计字段",
+      "summary": "一期已实现订单状态、更新时间和操作来源记录。",
+      "implementationStatus": "IMPLEMENTED",
+      "treatment": "CURRENT_BASELINE",
+      "affectedItemIds": ["asis-order-service"],
+      "relatedFeatureIds": ["feature-order-orchestration"]
     }
   ],
   "effectiveStartItems": [
@@ -109,8 +273,98 @@
       "topic": "APPLICATION",
       "itemType": "COMPONENT",
       "name": "可复用的客户档案框架",
-      "summary": "从现有客户档案组件框架开始。",
+      "summary": "从现有客户档案页面、字段校验和服务框架开始。",
       "sourceItemIds": ["asis-customer-profile"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-member-master",
+      "topic": "DATA",
+      "itemType": "DATA_ASSET",
+      "name": "既有会员主数据模型",
+      "summary": "复用统一会员号与基础属性表，新增等级历史和规则版本。",
+      "sourceItemIds": ["asis-member-master"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-order-service",
+      "topic": "APPLICATION",
+      "itemType": "COMPONENT",
+      "name": "既有订单服务与状态机",
+      "summary": "调整线上订单服务，扩展门店、退货退款和财务状态。",
+      "sourceItemIds": ["asis-order-service"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-erp-interface",
+      "topic": "INTEGRATION",
+      "itemType": "INTEGRATION",
+      "name": "既有 ERP 库存接口",
+      "summary": "接口契约保持不变，本项目完成认证、映射、适配和专项验证。",
+      "sourceItemIds": ["asis-erp-interface"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-payment-gateway",
+      "topic": "INTEGRATION",
+      "itemType": "INTEGRATION",
+      "name": "既有支付网关租户",
+      "summary": "支付网关平台保持不变，本项目完成配置、认证、映射和专项验证。",
+      "sourceItemIds": ["asis-payment-gateway"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-invoice-gateway",
+      "topic": "INTEGRATION",
+      "itemType": "INTEGRATION",
+      "name": "既有电子发票通道",
+      "summary": "电子发票平台保持不变，本项目完成租户设置、认证、映射和适配。",
+      "sourceItemIds": ["asis-invoice-gateway"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-deployment-platform",
+      "topic": "PLATFORM",
+      "itemType": "INFRASTRUCTURE",
+      "name": "既有生产环境与发布流水线",
+      "summary": "在现有集群与流水线中增加应用配置、发布步骤、切换和回滚清单。",
+      "sourceItemIds": ["asis-deployment-platform"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-consent-center",
+      "topic": "SECURITY_COMPLIANCE",
+      "itemType": "CONTROL",
+      "name": "既有会员授权中心",
+      "summary": "现有授权、撤回、查询与审计能力已完整覆盖本期目标。",
+      "sourceItemIds": ["asis-identity-control"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-notification-service",
+      "topic": "CAPABILITY",
+      "itemType": "CAPABILITY",
+      "name": "既有订单消息通知服务",
+      "summary": "标准订单事件和现有通知通道已完整覆盖本期通知目标。",
+      "sourceItemIds": ["asis-notification-service"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-monitoring-platform",
+      "topic": "OPERATIONS_QUALITY",
+      "itemType": "INFRASTRUCTURE",
+      "name": "既有统一监控平台",
+      "summary": "复用日志、指标和链路平台，新增订单与财务作业监控。",
+      "sourceItemIds": ["asis-monitoring-platform"],
+      "commitmentIds": []
+    },
+    {
+      "effectiveStartItemId": "effective-start-test-assets",
+      "topic": "OPERATIONS_QUALITY",
+      "itemType": "PROCESS",
+      "name": "既有回归测试资产",
+      "summary": "调整既有测试框架、测试用例、测试脚本、兼容矩阵与负载模型。",
+      "sourceItemIds": ["asis-test-assets"],
       "commitmentIds": []
     }
   ],
@@ -121,19 +375,137 @@
       "effectiveStartItemIds": ["effective-start-customer-profile"],
       "commitmentIds": ["commitment-profile-fields"],
       "uncertaintyIds": ["uncertainty-profile-alert-channel"],
-      "rationale": "复用该框架并交付缺失的承诺字段。"
+      "rationale": "复用档案框架并补齐一期顺延字段、授权展示和审计要求。"
+    },
+    {
+      "featureId": "feature-member-tier",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-member-master"],
+      "commitmentIds": [],
+      "uncertaintyIds": [],
+      "rationale": "会员主数据可复用，但等级规则版本和历史记录缺失。"
+    },
+    {
+      "featureId": "feature-customer-consent",
+      "status": "COMPLETE",
+      "effectiveStartItemIds": ["effective-start-consent-center"],
+      "commitmentIds": ["commitment-consent-policy"],
+      "uncertaintyIds": [],
+      "rationale": "现有授权中心已完整提供授权、撤回、查询和审计能力。"
+    },
+    {
+      "featureId": "feature-order-orchestration",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "commitmentIds": ["commitment-order-audit"],
+      "uncertaintyIds": [],
+      "rationale": "沿用订单状态审计字段，扩展门店渠道和新状态流转。"
+    },
+    {
+      "featureId": "feature-inventory-reservation",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-erp-interface"],
+      "commitmentIds": [],
+      "uncertaintyIds": ["uncertainty-erp-window"],
+      "rationale": "接口已注册，仍需完成项目侧认证、映射、幂等和联调。"
+    },
+    {
+      "featureId": "feature-return-refund",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-order-service", "effective-start-payment-gateway"],
+      "commitmentIds": [],
+      "uncertaintyIds": ["uncertainty-payment-certification"],
+      "rationale": "复用订单服务和支付网关，新增退货审核、退款映射和结果回写。"
+    },
+    {
+      "featureId": "feature-store-order",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "commitmentIds": ["commitment-store-order"],
+      "uncertaintyIds": [],
+      "rationale": "已有菜单入口和订单服务，完整门店接单流程按一期承诺续建。"
+    },
+    {
+      "featureId": "feature-order-visibility",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "commitmentIds": [],
+      "uncertaintyIds": [],
+      "rationale": "订单状态可复用，仍需补齐履约轨迹与异常原因展示。"
+    },
+    {
+      "featureId": "feature-customer-notification",
+      "status": "COMPLETE",
+      "effectiveStartItemIds": ["effective-start-notification-service"],
+      "commitmentIds": [],
+      "uncertaintyIds": [],
+      "rationale": "标准订单事件和现有消息通道已完整满足本期节点通知需求。"
+    },
+    {
+      "featureId": "feature-payment-reconciliation",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-payment-gateway"],
+      "commitmentIds": [],
+      "uncertaintyIds": ["uncertainty-payment-certification"],
+      "rationale": "支付交易可查询，仍需新增日结作业、差异规则和财务视图。"
+    },
+    {
+      "featureId": "feature-einvoice",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-invoice-gateway"],
+      "commitmentIds": [],
+      "uncertaintyIds": ["uncertainty-invoice-quota"],
+      "rationale": "发票通道已开通，仍需完成租户配置、字段映射、幂等与状态回写。"
+    },
+    {
+      "featureId": "feature-finance-report",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "commitmentIds": [],
+      "uncertaintyIds": [],
+      "rationale": "订单交易明细可复用，但缺少统一财务指标模型和经营报表。"
     }
   ],
   "uncertainties": [
     {
       "uncertaintyId": "uncertainty-profile-alert-channel",
       "topic": "OPERATIONS_QUALITY",
-      "question": "生产告警通知由邮件还是工单接收？",
-      "impact": "影响上线后的通知渠道记录。",
+      "question": "生产告警最终由邮件、工单还是值班群接收？",
+      "impact": "不改变工作量，但影响运维手册中的通知路径和接收人。",
       "affectsEstimate": false,
-      "owner": "运维团队",
-      "recommendedHandling": "上线前确认",
+      "owner": "运维经理",
+      "recommendedHandling": "生产准备评审前登记最终渠道和接收人",
       "relatedFeatureIds": ["feature-customer-profile"]
+    },
+    {
+      "uncertaintyId": "uncertainty-erp-window",
+      "topic": "INTEGRATION",
+      "question": "ERP SIT 环境每日可用时间窗是否保持 09:00 至 18:00？",
+      "impact": "工作量按已提供的一个联调环境估算，时间窗变化只影响排期。",
+      "affectsEstimate": false,
+      "owner": "ERP 产品负责人",
+      "recommendedHandling": "SIT 排期基线确认时锁定窗口",
+      "relatedFeatureIds": ["feature-inventory-reservation"]
+    },
+    {
+      "uncertaintyId": "uncertainty-payment-certification",
+      "topic": "INTEGRATION",
+      "question": "支付网关退款认证能否在 SIT 第 2 周前完成？",
+      "impact": "范围与工作量不变，延迟会影响退款联调和生产验证顺序。",
+      "affectsEstimate": false,
+      "owner": "资金管理部",
+      "recommendedHandling": "项目启动后五个工作日内提交认证材料",
+      "relatedFeatureIds": ["feature-return-refund", "feature-payment-reconciliation"]
+    },
+    {
+      "uncertaintyId": "uncertainty-invoice-quota",
+      "topic": "INTEGRATION",
+      "question": "电子发票测试租户的每日开票配额是否为 500 张？",
+      "impact": "不改变接口实现估算，但配额不足会延长批量验证周期。",
+      "affectsEstimate": false,
+      "owner": "财务共享中心",
+      "recommendedHandling": "联调开始前确认配额并准备扩容申请",
+      "relatedFeatureIds": ["feature-einvoice"]
     }
   ],
   "evidence": [
@@ -141,12 +513,97 @@
       "evidenceId": "evidence-profile-component",
       "kind": "CODE",
       "reference": "customer-portal/src/profile.ts#L12",
-      "summary": "仓库中存在客户档案组件框架。",
+      "summary": "代码仓库存在客户档案页面、会员主数据映射与字段校验框架。",
       "supportsIds": [
         "asis-customer-profile",
-        "commitment-profile-fields",
+        "asis-member-master",
         "effective-start-customer-profile",
+        "effective-start-member-master",
+        "commitment-profile-fields",
         "feature-customer-profile",
+        "feature-member-tier"
+      ]
+    },
+    {
+      "evidenceId": "evidence-order-service",
+      "kind": "CODE",
+      "reference": "customer-portal/src/order/state-machine.ts#L20",
+      "summary": "订单服务已有状态机、审计字段和基础查询能力。",
+      "supportsIds": [
+        "asis-order-service",
+        "effective-start-order-service",
+        "commitment-order-audit",
+        "commitment-store-order",
+        "feature-order-orchestration",
+        "feature-store-order",
+        "feature-order-visibility",
+        "feature-finance-report"
+      ]
+    },
+    {
+      "evidenceId": "evidence-erp-contract",
+      "kind": "CONTRACT",
+      "reference": "customer-portal/contracts/erp-inventory-v2.yaml#reserve",
+      "summary": "ERP v2 契约包含库存查询、预占、释放和幂等键。",
+      "supportsIds": [
+        "asis-erp-interface",
+        "effective-start-erp-interface",
+        "feature-inventory-reservation",
+        "uncertainty-erp-window"
+      ]
+    },
+    {
+      "evidenceId": "evidence-payment-contract",
+      "kind": "CONTRACT",
+      "reference": "customer-portal/contracts/payment-refund-v1.yaml#refund",
+      "summary": "支付网关契约定义退款申请、查询和异步结果通知。",
+      "supportsIds": [
+        "asis-payment-gateway",
+        "effective-start-payment-gateway",
+        "feature-return-refund",
+        "feature-payment-reconciliation",
+        "uncertainty-payment-certification"
+      ]
+    },
+    {
+      "evidenceId": "evidence-invoice-contract",
+      "kind": "CONTRACT",
+      "reference": "customer-portal/contracts/einvoice-v1.yaml#issue",
+      "summary": "电子发票平台契约定义开票、状态查询和失败码。",
+      "supportsIds": [
+        "asis-invoice-gateway",
+        "effective-start-invoice-gateway",
+        "feature-einvoice",
+        "uncertainty-invoice-quota"
+      ]
+    },
+    {
+      "evidenceId": "evidence-platform-config",
+      "kind": "CONFIGURATION",
+      "reference": "customer-portal/deploy/production/values.yaml#application",
+      "summary": "生产环境、流水线、身份控制和消息事件订阅均已有配置基线。",
+      "supportsIds": [
+        "asis-deployment-platform",
+        "asis-identity-control",
+        "asis-notification-service",
+        "effective-start-deployment-platform",
+        "effective-start-consent-center",
+        "effective-start-notification-service",
+        "commitment-consent-policy",
+        "feature-customer-consent",
+        "feature-customer-notification"
+      ]
+    },
+    {
+      "evidenceId": "evidence-operations-assets",
+      "kind": "DOCUMENT",
+      "reference": "customer-portal/docs/operations-and-test-assets.md#baseline",
+      "summary": "运维文档列出统一监控接入方式、一期回归资产和现行告警渠道。",
+      "supportsIds": [
+        "asis-monitoring-platform",
+        "asis-test-assets",
+        "effective-start-monitoring-platform",
+        "effective-start-test-assets",
         "uncertainty-profile-alert-channel"
       ]
     }

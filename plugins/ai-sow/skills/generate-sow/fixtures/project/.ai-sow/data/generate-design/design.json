@@ -3,33 +3,363 @@
     {
       "designItemId": "design-customer-profile",
       "type": "COMPONENT",
-      "name": "客户档案组件",
-      "summary": "负责客户档案的创建和检索。"
+      "name": "会员档案服务",
+      "summary": "负责客户档案字段校验、授权过滤和统一 API。"
+    },
+    {
+      "designItemId": "design-membership-rules",
+      "type": "DATA",
+      "name": "会员等级规则与历史模型",
+      "summary": "保存等级规则版本、生效区间和会员等级变更历史。"
+    },
+    {
+      "designItemId": "design-order-domain",
+      "type": "COMPONENT",
+      "name": "全渠道订单域服务",
+      "summary": "统一订单受理、状态机、退货退款和履约轨迹。"
+    },
+    {
+      "designItemId": "design-integration-adapters",
+      "type": "INTEGRATION",
+      "name": "企业与外部平台适配层",
+      "summary": "隔离 ERP、支付网关和电子发票平台的认证、映射、适配与错误处理。"
+    },
+    {
+      "designItemId": "design-store-workbench",
+      "type": "FLOW",
+      "name": "门店接单工作台流程",
+      "summary": "提供门店订单队列、缺货替代、交接与权限校验。"
+    },
+    {
+      "designItemId": "design-finance-services",
+      "type": "DATA",
+      "name": "财务日结与指标模型",
+      "summary": "形成支付对账、差异处理、发票状态与经营指标的统一数据链路。"
+    },
+    {
+      "designItemId": "design-data-migration",
+      "type": "DATA",
+      "name": "会员与订单迁移流程",
+      "summary": "执行抽取、映射、加载、校验、补偿和审计留痕。"
+    },
+    {
+      "designItemId": "design-release-platform",
+      "type": "INFRASTRUCTURE",
+      "name": "生产发布与切换方案",
+      "summary": "管理环境配置、构建部署、功能开关、切换、回滚与生产验证。"
+    },
+    {
+      "designItemId": "design-observability",
+      "type": "QUALITY",
+      "name": "交易监控与运营赋能",
+      "summary": "提供交易指标、批处理告警、运维手册、交接演练和用户培训。"
+    },
+    {
+      "designItemId": "design-quality",
+      "type": "QUALITY",
+      "name": "多层质量验证体系",
+      "summary": "覆盖自动化回归、性能、安全、兼容性与生产烟测。"
     }
   ],
   "architectureDeltas": [
     {
       "architectureDeltaId": "delta-customer-profile",
-      "changeType": "NEW",
+      "changeType": "ADJUST",
       "designItemId": "design-customer-profile",
+      "effectiveStartItemIds": ["effective-start-customer-profile"],
+      "summary": "在既有档案框架中补齐扩展字段、授权过滤和统一 API。"
+    },
+    {
+      "architectureDeltaId": "delta-membership-rules",
+      "changeType": "ADJUST",
+      "designItemId": "design-membership-rules",
+      "effectiveStartItemIds": ["effective-start-member-master"],
+      "summary": "扩展会员主数据，增加等级规则版本和等级历史。"
+    },
+    {
+      "architectureDeltaId": "delta-order-domain",
+      "changeType": "ADJUST",
+      "designItemId": "design-order-domain",
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "summary": "扩展订单状态机，增加门店履约、退货退款和财务状态。"
+    },
+    {
+      "architectureDeltaId": "delta-integration-adapters",
+      "changeType": "ADOPT",
+      "designItemId": "design-integration-adapters",
+      "effectiveStartItemIds": [
+        "effective-start-erp-interface",
+        "effective-start-payment-gateway",
+        "effective-start-invoice-gateway"
+      ],
+      "summary": "复用企业级连接，在项目侧实现认证、映射、适配和验证。"
+    },
+    {
+      "architectureDeltaId": "delta-store-workbench",
+      "changeType": "NEW",
+      "designItemId": "design-store-workbench",
       "effectiveStartItemIds": [],
-      "summary": "新增客户档案组件。"
+      "summary": "新增门店接单工作台流程并接入订单服务。"
+    },
+    {
+      "architectureDeltaId": "delta-finance-services",
+      "changeType": "NEW",
+      "designItemId": "design-finance-services",
+      "effectiveStartItemIds": [],
+      "summary": "新增支付日结、差异处理、发票状态和经营指标模型。"
+    },
+    {
+      "architectureDeltaId": "delta-data-migration",
+      "changeType": "ADJUST",
+      "designItemId": "design-data-migration",
+      "effectiveStartItemIds": [
+        "effective-start-member-master",
+        "effective-start-order-service"
+      ],
+      "summary": "基于现有会员与订单数据结构设计迁移映射、校验和补偿。"
+    },
+    {
+      "architectureDeltaId": "delta-release-platform",
+      "changeType": "ADJUST",
+      "designItemId": "design-release-platform",
+      "effectiveStartItemIds": ["effective-start-deployment-platform"],
+      "summary": "扩展现有流水线和环境配置，增加切换、回滚与验证步骤。"
+    },
+    {
+      "architectureDeltaId": "delta-observability",
+      "changeType": "ADJUST",
+      "designItemId": "design-observability",
+      "effectiveStartItemIds": ["effective-start-monitoring-platform"],
+      "summary": "在统一监控平台新增交易和财务作业指标，并补齐交接培训。"
+    },
+    {
+      "architectureDeltaId": "delta-quality",
+      "changeType": "ADJUST",
+      "designItemId": "design-quality",
+      "effectiveStartItemIds": ["effective-start-test-assets"],
+      "summary": "调整既有回归资产，扩展性能、安全、兼容性和生产烟测。"
     }
   ],
   "decisions": [
     {
       "designDecisionId": "decision-profile-api",
       "title": "公开客户档案 API",
-      "decision": "使用专用 API 边界处理客户档案操作。",
-      "rationale": "UI 和未来渠道需要统一边界。",
+      "decision": "使用专用 API 边界处理档案写入、查询和授权过滤。",
+      "rationale": "会员门户与后续渠道需要统一边界，且会员主数据不能直接暴露。",
       "designItemIds": ["design-customer-profile"],
-      "effectiveStartItemIds": [],
+      "effectiveStartItemIds": ["effective-start-customer-profile"],
       "relatedFeatureIds": ["feature-customer-profile", "feature-profile-api"]
+    },
+    {
+      "designDecisionId": "decision-order-state-machine",
+      "title": "订单状态由领域服务统一编排",
+      "decision": "门店与线上订单共用一个幂等状态机，渠道只提交命令并读取轨迹。",
+      "rationale": "避免渠道各自维护状态导致履约、退款与财务口径分裂。",
+      "designItemIds": ["design-order-domain", "design-store-workbench"],
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "relatedFeatureIds": [
+        "feature-order-orchestration",
+        "feature-return-refund",
+        "feature-store-order",
+        "feature-order-visibility"
+      ]
+    },
+    {
+      "designDecisionId": "decision-integration-boundary",
+      "title": "复用企业级连接并隔离外部差异",
+      "decision": "ERP、支付和发票平台均通过项目适配层接入，外部契约不进入订单核心模型。",
+      "rationale": "便于独立认证、映射、错误补偿与供应商变更。",
+      "designItemIds": ["design-integration-adapters"],
+      "effectiveStartItemIds": [
+        "effective-start-erp-interface",
+        "effective-start-payment-gateway",
+        "effective-start-invoice-gateway"
+      ],
+      "relatedFeatureIds": [
+        "feature-inventory-reservation",
+        "feature-return-refund",
+        "feature-einvoice"
+      ]
+    },
+    {
+      "designDecisionId": "decision-finance-control",
+      "title": "财务指标与对账规则同源",
+      "decision": "日结差异、发票状态和经营指标由同一交易明细模型派生。",
+      "rationale": "避免报表与对账使用不同过滤条件，确保金额可以逐笔追溯。",
+      "designItemIds": ["design-finance-services"],
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "relatedFeatureIds": [
+        "feature-payment-reconciliation",
+        "feature-einvoice",
+        "feature-finance-report"
+      ]
+    },
+    {
+      "designDecisionId": "decision-production-release",
+      "title": "生产切换与业务功能解耦",
+      "decision": "使用功能开关、分步切流和可执行回滚清单控制上线。",
+      "rationale": "降低全渠道一次性切换风险并形成可签署的生产证据。",
+      "designItemIds": ["design-release-platform"],
+      "effectiveStartItemIds": ["effective-start-deployment-platform"],
+      "relatedFeatureIds": ["feature-production-scope"]
+    },
+    {
+      "designDecisionId": "decision-data-migration",
+      "title": "迁移与生产切换分别估算",
+      "decision": "迁移包含抽取、映射、加载和校验，切换仅负责执行窗口与回滚。",
+      "rationale": "防止数据工程工作被隐藏在发布任务中并便于财务核算。",
+      "designItemIds": ["design-data-migration"],
+      "effectiveStartItemIds": [
+        "effective-start-member-master",
+        "effective-start-order-service"
+      ],
+      "relatedFeatureIds": ["feature-data-migration"]
+    },
+    {
+      "designDecisionId": "decision-observability-ownership",
+      "title": "监控指标与责任人同时交付",
+      "decision": "每个核心指标都登记阈值、通知渠道、接收人和处置手册。",
+      "rationale": "只有指标没有责任边界无法形成可落地的运营能力。",
+      "designItemIds": ["design-observability"],
+      "effectiveStartItemIds": ["effective-start-monitoring-platform"],
+      "relatedFeatureIds": ["feature-observability-ops"]
+    },
+    {
+      "designDecisionId": "decision-quality-layers",
+      "title": "按风险分层验证",
+      "decision": "自动化回归、人工场景、性能、安全、兼容性和生产烟测分别建账。",
+      "rationale": "便于区分 UAT 分母、工程质量活动和生产验证工作量。",
+      "designItemIds": ["design-quality"],
+      "effectiveStartItemIds": ["effective-start-test-assets"],
+      "relatedFeatureIds": ["feature-test-quality", "feature-production-scope"]
     }
   ],
   "scopeDecisions": [
-    {"featureId": "feature-customer-profile", "decision": "IN_SCOPE", "rationale": "该能力尚不存在。", "designItemIds": ["design-customer-profile"], "effectiveStartItemIds": []},
-    {"featureId": "feature-profile-api", "decision": "IN_SCOPE", "rationale": "该设计需要 API 边界。", "designItemIds": ["design-customer-profile"], "effectiveStartItemIds": []},
-    {"featureId": "feature-production-scope", "decision": "OUT_OF_SCOPE", "rationale": "本示例仅估算产品能力开发，不包含生产部署、切换或运营移交。", "designItemIds": [], "effectiveStartItemIds": []}
+    {
+      "featureId": "feature-customer-profile",
+      "decision": "IN_SCOPE",
+      "rationale": "档案框架可复用，但扩展字段、授权过滤和统一 API 仍需交付。",
+      "designItemIds": ["design-customer-profile"],
+      "effectiveStartItemIds": ["effective-start-customer-profile"]
+    },
+    {
+      "featureId": "feature-profile-api",
+      "decision": "IN_SCOPE",
+      "rationale": "需要新的稳定 API 边界隔离渠道和会员主数据。",
+      "designItemIds": ["design-customer-profile"],
+      "effectiveStartItemIds": ["effective-start-customer-profile"]
+    },
+    {
+      "featureId": "feature-production-scope",
+      "decision": "IN_SCOPE",
+      "rationale": "环境、发布、切换、回滚和生产验证均纳入本期固定交付。",
+      "designItemIds": ["design-release-platform", "design-quality"],
+      "effectiveStartItemIds": ["effective-start-deployment-platform", "effective-start-test-assets"]
+    },
+    {
+      "featureId": "feature-member-tier",
+      "decision": "IN_SCOPE",
+      "rationale": "等级规则版本与历史模型在现状中缺失。",
+      "designItemIds": ["design-membership-rules"],
+      "effectiveStartItemIds": ["effective-start-member-master"]
+    },
+    {
+      "featureId": "feature-customer-consent",
+      "decision": "FULLY_COVERED",
+      "rationale": "既有会员授权中心已覆盖授权、撤回、查询与审计要求，本项目不复制或改造授权主数据。",
+      "designItemIds": [],
+      "effectiveStartItemIds": ["effective-start-consent-center"]
+    },
+    {
+      "featureId": "feature-order-orchestration",
+      "decision": "IN_SCOPE",
+      "rationale": "现有线上状态机需要扩展门店渠道和统一命令。",
+      "designItemIds": ["design-order-domain"],
+      "effectiveStartItemIds": ["effective-start-order-service"]
+    },
+    {
+      "featureId": "feature-inventory-reservation",
+      "decision": "IN_SCOPE",
+      "rationale": "ERP 接口可复用，项目仍需认证、映射、幂等和专项验证。",
+      "designItemIds": ["design-integration-adapters", "design-order-domain"],
+      "effectiveStartItemIds": ["effective-start-erp-interface"]
+    },
+    {
+      "featureId": "feature-return-refund",
+      "decision": "IN_SCOPE",
+      "rationale": "退货审核、支付退款和订单回写尚未形成闭环。",
+      "designItemIds": ["design-order-domain", "design-integration-adapters"],
+      "effectiveStartItemIds": ["effective-start-order-service", "effective-start-payment-gateway"]
+    },
+    {
+      "featureId": "feature-store-order",
+      "decision": "IN_SCOPE",
+      "rationale": "门店接单是一期顺延承诺，本期需完成可验收流程。",
+      "designItemIds": ["design-store-workbench", "design-order-domain"],
+      "effectiveStartItemIds": ["effective-start-order-service"]
+    },
+    {
+      "featureId": "feature-order-visibility",
+      "decision": "IN_SCOPE",
+      "rationale": "需要新增统一履约轨迹和异常原因展示。",
+      "designItemIds": ["design-order-domain"],
+      "effectiveStartItemIds": ["effective-start-order-service"]
+    },
+    {
+      "featureId": "feature-customer-notification",
+      "decision": "FULLY_COVERED",
+      "rationale": "既有订单消息通知服务已消费标准事件并覆盖短信与 App Push，本期无需新增通知能力。",
+      "designItemIds": [],
+      "effectiveStartItemIds": ["effective-start-notification-service"]
+    },
+    {
+      "featureId": "feature-payment-reconciliation",
+      "decision": "IN_SCOPE",
+      "rationale": "需要新增日结作业、差异规则和财务复核视图。",
+      "designItemIds": ["design-finance-services"],
+      "effectiveStartItemIds": ["effective-start-payment-gateway"]
+    },
+    {
+      "featureId": "feature-einvoice",
+      "decision": "IN_SCOPE",
+      "rationale": "发票平台可复用，但租户配置、映射、幂等和回写需交付。",
+      "designItemIds": ["design-finance-services", "design-integration-adapters"],
+      "effectiveStartItemIds": ["effective-start-invoice-gateway"]
+    },
+    {
+      "featureId": "feature-finance-report",
+      "decision": "IN_SCOPE",
+      "rationale": "财务指标模型和经营报表现状缺失。",
+      "designItemIds": ["design-finance-services"],
+      "effectiveStartItemIds": ["effective-start-order-service"]
+    },
+    {
+      "featureId": "feature-legacy-retirement",
+      "decision": "OUT_OF_SCOPE",
+      "rationale": "上线后驻场支持与旧系统退役需另行立项，不计入本期固定总价。",
+      "designItemIds": [],
+      "effectiveStartItemIds": []
+    },
+    {
+      "featureId": "feature-data-migration",
+      "decision": "IN_SCOPE",
+      "rationale": "会员扩展字段和两年历史订单需要独立迁移、校验与补偿。",
+      "designItemIds": ["design-data-migration"],
+      "effectiveStartItemIds": ["effective-start-member-master", "effective-start-order-service"]
+    },
+    {
+      "featureId": "feature-observability-ops",
+      "decision": "IN_SCOPE",
+      "rationale": "需补齐交易和财务作业监控、手册、交接演练与用户培训。",
+      "designItemIds": ["design-observability"],
+      "effectiveStartItemIds": ["effective-start-monitoring-platform"]
+    },
+    {
+      "featureId": "feature-test-quality",
+      "decision": "IN_SCOPE",
+      "rationale": "既有回归资产需按新订单状态机和财务口径扩展。",
+      "designItemIds": ["design-quality"],
+      "effectiveStartItemIds": ["effective-start-test-assets"]
+    }
   ]
 }

@@ -3,8 +3,25 @@
     {
       "epicId": "epic-platform",
       "type": "TECHNICAL",
-      "name": "平台边界",
-      "description": "明确客户档案能力所需的平台边界。",
+      "name": "平台与服务边界",
+      "description": "明确会员、订单与生产发布所需的稳定技术边界。",
+      "involvedSystemsData": "会员门户、订单服务、API 网关、生产平台",
+      "targetOutcome": "服务职责清晰、发布可回滚、生产范围可签署",
+      "commonConstraintsOutOfScope": "不替换企业级网关、Kubernetes 平台与 CI/CD 产品",
+      "source": {
+        "type": "SOURCE_INPUT",
+        "sourceDocumentIds": ["source-document-customer-profile"],
+        "sourceReferences": ["customer-profile.md#technical-platform"]
+      }
+    },
+    {
+      "epicId": "epic-delivery-assurance",
+      "type": "TECHNICAL",
+      "name": "上线与质量保障",
+      "description": "将数据迁移、监控运维、质量验证和责任边界纳入可估算交付。",
+      "involvedSystemsData": "迁移作业、统一监控平台、测试资产、运维知识库",
+      "targetOutcome": "上线过程可验证、可回退、可运维并可审计",
+      "commonConstraintsOutOfScope": "不包含上线后驻场支持和旧系统退役实施",
       "source": {
         "type": "SOURCE_INPUT",
         "sourceDocumentIds": ["source-document-customer-profile"],
@@ -17,20 +34,76 @@
       "featureId": "feature-profile-api",
       "epicId": "epic-platform",
       "name": "客户档案操作 API",
-      "description": "通过稳定的 API 创建和检索客户档案。",
+      "description": "通过稳定 API 创建、维护和检索客户档案，并隔离渠道与会员主数据。",
+      "involvedSystemsData": "会员门户、会员主数据 / customer-profile-api",
+      "constraintsNfr": "API P95 小于 300ms；写操作使用幂等键；敏感字段按权限返回",
       "source": {
         "type": "DESIGN_DERIVED",
         "designDecisionIds": ["decision-profile-api"],
         "effectiveStartItemIds": ["effective-start-customer-profile"],
         "relatedFeatureIds": ["feature-customer-profile"],
-        "rationale": "设计决策/Decision: decision-profile-api 使用专用 API 边界处理客户档案操作；产生原因/Cause: 客户档案操作 API 需要为 UI 与未来渠道提供统一操作边界；不交付影响/Non-delivery impact: 接口/API | Customer Portal -> 无法通过统一边界创建或检索客户档案"
+        "rationale": "设计决策/Decision: decision-profile-api 使用专用 API 边界处理客户档案操作；产生原因/Cause: 客户档案操作 API 需要为会员门户与未来渠道提供统一操作边界；不交付影响/Non-delivery impact: 接口/API | 星云会员门户 -> 无法通过统一边界创建或检索客户档案"
       }
     },
     {
       "featureId": "feature-production-scope",
       "epicId": "epic-platform",
-      "name": "生产上线范围",
-      "description": "明确客户档案能力的生产上线与运营移交责任边界。",
+      "name": "生产准备、切换与验证",
+      "description": "完成环境配置、发布清单、切换回滚和生产验证，并形成签署证据。",
+      "involvedSystemsData": "Kubernetes 生产环境、CI/CD、功能开关、发布清单",
+      "constraintsNfr": "业务中断不超过 15 分钟；回滚路径在切换前完成演练",
+      "source": {
+        "type": "SOURCE_INPUT",
+        "sourceDocumentIds": ["source-document-customer-profile"],
+        "sourceReferences": ["customer-profile.md#technical-platform"]
+      }
+    },
+    {
+      "featureId": "feature-legacy-retirement",
+      "epicId": "epic-platform",
+      "name": "上线后支持与旧系统退役边界",
+      "description": "明确上线后驻场支持和旧系统退役不在本期固定范围内。",
+      "involvedSystemsData": "旧会员门户、旧订单查询服务",
+      "constraintsNfr": "如需实施必须单独立项并重新确认基线",
+      "source": {
+        "type": "SOURCE_INPUT",
+        "sourceDocumentIds": ["source-document-customer-profile"],
+        "sourceReferences": ["customer-profile.md#technical-platform"]
+      }
+    },
+    {
+      "featureId": "feature-data-migration",
+      "epicId": "epic-delivery-assurance",
+      "name": "会员与订单数据迁移",
+      "description": "迁移会员扩展字段与两年内历史订单，执行校验、补偿与留痕。",
+      "involvedSystemsData": "会员主数据、订单库 / customer_profile、order、order_item",
+      "constraintsNfr": "迁移前后关键字段一致率 100%，业务主键重复为 0",
+      "source": {
+        "type": "SOURCE_INPUT",
+        "sourceDocumentIds": ["source-document-customer-profile"],
+        "sourceReferences": ["customer-profile.md#technical-platform"]
+      }
+    },
+    {
+      "featureId": "feature-observability-ops",
+      "epicId": "epic-delivery-assurance",
+      "name": "监控、运维交接与用户赋能",
+      "description": "建设关键指标和告警，完成运维手册、交接演练与业务用户培训。",
+      "involvedSystemsData": "统一监控平台、运维知识库、培训材料",
+      "constraintsNfr": "核心交易告警 5 分钟内触发；交接与培训均需签到和验收记录",
+      "source": {
+        "type": "SOURCE_INPUT",
+        "sourceDocumentIds": ["source-document-customer-profile"],
+        "sourceReferences": ["customer-profile.md#technical-platform"]
+      }
+    },
+    {
+      "featureId": "feature-test-quality",
+      "epicId": "epic-delivery-assurance",
+      "name": "自动化、性能与生产质量验证",
+      "description": "调整既有测试资产，覆盖回归、性能、安全、兼容性和生产烟测。",
+      "involvedSystemsData": "API 自动化框架、测试用例库、负载模型、兼容矩阵",
+      "constraintsNfr": "P0/P1 用例通过率 100%，核心查询峰值 500 TPS",
       "source": {
         "type": "SOURCE_INPUT",
         "sourceDocumentIds": ["source-document-customer-profile"],

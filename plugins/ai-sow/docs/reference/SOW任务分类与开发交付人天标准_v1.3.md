@@ -8,7 +8,7 @@
 
 SOW 标准版本：v1.3
 
-维护说明：本文件负责解释任务分类、拆分、填写、验收与估算规则；数值、公式和可选组合的计算依据是同版本的 [SOW 模板](../../skills/setup/assets/sow-template.xlsx)。参考生成结果见 [SOW 估算与生成示例](SOW估算与生成示例_v1.3.xlsx)。
+维护说明：本文件负责解释任务分类、拆分、填写、验收与估算规则；数值、公式和可选组合的计算依据是同版本的 [SOW 模板](../../skills/setup/assets/sow-template.xlsx)。面向 PMO 与财务评审的仿真 Brownfield 参考结果见 [SOW 估算与生成示例](SOW估算与生成示例_v1.3.xlsx)。
 
 ## 1. 背景与结论
 

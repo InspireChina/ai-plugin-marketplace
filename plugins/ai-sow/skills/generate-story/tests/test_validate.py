@@ -197,7 +197,7 @@ def test_skill_contract_covers_go_live_story_decomposition() -> None:
         assert required_rule in contract
 
 
-def test_committed_example_keeps_out_of_scope_production_out_of_delivery() -> None:
+def test_committed_example_delivers_production_and_excludes_legacy_retirement() -> None:
     project = SKILL_ROOT.parent / "generate-sow/fixtures/project/.ai-sow"
     design = json.loads(
         (project / "data/generate-design/design.json").read_text()
@@ -211,8 +211,17 @@ def test_committed_example_keeps_out_of_scope_production_out_of_delivery() -> No
         for scope in design["scopeDecisions"]
         if scope["featureId"] == "feature-production-scope"
     )
-    assert production_scope["decision"] == "OUT_OF_SCOPE"
-    assert "feature-production-scope" not in {
+    assert production_scope["decision"] == "IN_SCOPE"
+    assert "feature-production-scope" in {
+        gap["featureId"] for gap in delivery["gaps"]
+    }
+    legacy_scope = next(
+        scope
+        for scope in design["scopeDecisions"]
+        if scope["featureId"] == "feature-legacy-retirement"
+    )
+    assert legacy_scope["decision"] == "OUT_OF_SCOPE"
+    assert "feature-legacy-retirement" not in {
         gap["featureId"] for gap in delivery["gaps"]
     }
 

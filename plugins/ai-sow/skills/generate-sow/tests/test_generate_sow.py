@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
@@ -58,6 +59,98 @@ def run(root: Path) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
+
+
+def test_committed_fixture_explains_scope_delivery_and_estimate_to_pmo_and_finance(
+    tmp_path: Path,
+) -> None:
+    root = prepare(tmp_path)
+    data_root = root / ".ai-sow/data"
+    source_requirements = json.loads(
+        (data_root / "analyze-requirement/requirements.json").read_text()
+    )
+    asis = json.loads((data_root / "analyze-as-is/asis.json").read_text())
+    design = json.loads((data_root / "generate-design/design.json").read_text())
+    derived_requirements = json.loads(
+        (data_root / "generate-design/requirements.json").read_text()
+    )
+    delivery = json.loads((data_root / "generate-story/delivery.json").read_text())
+    estimate = json.loads((data_root / "generate-task/estimate.json").read_text())
+
+    assert len(source_requirements["epics"]) + len(derived_requirements["epics"]) >= 6
+    assert len(source_requirements["features"]) + len(derived_requirements["features"]) >= 18
+    assert len(delivery["stories"]) >= 20
+    assert len(delivery["acceptanceCriteria"]) >= len(delivery["stories"])
+    assert len(estimate["tasks"]) >= 40
+    assert len(delivery["integrations"]) >= 4
+    assert len(delivery["assumptions"]) >= 6
+    assert (
+        len(asis["items"])
+        + len(asis["commitments"])
+        + len(asis["effectiveStartItems"])
+        + len(asis["coverage"])
+        + len(asis["uncertainties"])
+        + len(asis["evidence"])
+        >= 20
+    )
+    assert {item["decision"] for item in design["scopeDecisions"]} == {
+        "IN_SCOPE",
+        "FULLY_COVERED",
+        "OUT_OF_SCOPE",
+    }
+    assert {task["workMode"] for task in estimate["tasks"]} == {
+        "新建",
+        "调整",
+        "接入复用",
+    }
+    assert {task["complexity"] for task in estimate["tasks"]} == {"S", "M", "L"}
+    assert {story["uatRelevant"] for story in delivery["stories"]} == {True, False}
+    assert {integration["owner"] for integration in delivery["integrations"]} == {
+        "INTERNAL",
+        "EXTERNAL",
+    }
+    assert {assumption["status"] for assumption in delivery["assumptions"]} == {
+        "已明确",
+        "待确认",
+    }
+    assumption_link_counts = Counter(
+        relation["assumptionId"] for relation in delivery["assumptionStories"]
+    )
+    pending_assumption_ids = {
+        assumption["assumptionId"]
+        for assumption in delivery["assumptions"]
+        if assumption["status"] == "待确认"
+    }
+    assert any(
+        assumption_link_counts[assumption_id] == 1
+        for assumption_id in pending_assumption_ids
+    )
+    assert any(count > 1 for count in assumption_link_counts.values())
+    assert {
+        "BU-UI-INTERACTION",
+        "BU-BUSINESS-SERVICE-API",
+        "BU-DATA-MODEL",
+        "BU-BACKGROUND-JOB",
+        "BU-INTERNAL-INTEGRATION",
+        "BU-EXTERNAL-INTEGRATION",
+        "BU-DATA-MIGRATION",
+        "BU-MANUAL-TESTING",
+        "BU-AUTOMATION-CASES",
+        "BU-RUNTIME-ENV",
+        "BU-RELEASE-CUTOVER",
+        "BU-OBSERVABILITY-AUDIT",
+        "BU-OPS-HANDOVER",
+        "BU-USER-TRAINING",
+    } <= {task["baseUnit"] for task in estimate["tasks"]}
+
+    result = run(root)
+
+    assert result.returncode == 0, result.stdout
+    workbook_path = Path(json.loads(result.stdout)["outputs"][0]) / "sow.xlsx"
+    assert len(table_values(workbook_path, "SOWStoryTable", "Story ID")) >= 20
+    assert len(table_values(workbook_path, "TaskTable", "Task ID")) >= 40
+    assert len(table_values(workbook_path, "IntegrationTable", "Integration ID")) >= 4
+    assert len(table_values(workbook_path, "AssumptionRiskTable", "假设ID")) >= 6
 
 
 def test_committed_brownfield_fixture_passes_as_is_validation(tmp_path: Path) -> None:
@@ -571,7 +664,7 @@ def test_packages_six_inputs_and_merges_requirements_only_in_workbook(tmp_path: 
     assert manifest["priorSows"] == [
         {
             "priorSowId": "sow-phase-one",
-            "sha256": "6aaa4f5427e455cde2603adb68209ac6ab5a75b32c02e0da866914a757ac93b8",
+            "sha256": "a1ece6399230b553835765df654d40a08eaa0e71a988a0588cfef8e795280aea",
         }
     ]
     assert "originalName" not in json.dumps(manifest)
@@ -579,19 +672,40 @@ def test_packages_six_inputs_and_merges_requirements_only_in_workbook(tmp_path: 
     workbook_path = output / "sow.xlsx"
     assert table_values(workbook_path, "EpicTable", "Epic ID") == [
         "epic-customer-management",
+        "epic-order-fulfillment",
+        "epic-omnichannel-operations",
+        "epic-finance-settlement",
         "epic-platform",
+        "epic-delivery-assurance",
     ]
     assert table_values(workbook_path, "FeatureTable", "Feature ID") == [
         "feature-customer-profile",
+        "feature-member-tier",
+        "feature-customer-consent",
+        "feature-order-orchestration",
+        "feature-inventory-reservation",
+        "feature-return-refund",
+        "feature-store-order",
+        "feature-order-visibility",
+        "feature-customer-notification",
+        "feature-payment-reconciliation",
+        "feature-einvoice",
+        "feature-finance-report",
         "feature-profile-api",
         "feature-production-scope",
+        "feature-legacy-retirement",
+        "feature-data-migration",
+        "feature-observability-ops",
+        "feature-test-quality",
     ]
-    assert table_values(workbook_path, "TaskTable", "Task ID") == [
+    task_ids = table_values(workbook_path, "TaskTable", "Task ID")
+    assert task_ids[:3] == [
         "task-customer-profile-page",
         "task-profile-api",
         "task-profile-integration",
     ]
-    assert table_values(workbook_path, "TaskTable", "系统现状匹配") == [
+    assert len(task_ids) == 46
+    assert table_values(workbook_path, "TaskTable", "系统现状匹配")[:3] == [
         "effective-start-customer-profile",
         "effective-start-customer-profile",
         "effective-start-customer-profile",
@@ -648,13 +762,13 @@ def test_projects_v13_entity_tables_and_optional_semantics(tmp_path: Path) -> No
         "来源类型",
         "推断理由",
     ]
-    assert table_values(workbook_path, "EpicTable", "涉及系统/数据") == [None, None]
-    assert table_values(workbook_path, "EpicTable", "目标结果") == [None, None]
-    assert table_values(workbook_path, "FeatureTable", "约束/NFR") == [
-        None,
-        None,
-        None,
-    ]
+    assert len(table_values(workbook_path, "EpicTable", "涉及系统/数据")) == 6
+    assert all(
+        table_values(workbook_path, "EpicTable", "涉及系统/数据")
+    )
+    assert all(table_values(workbook_path, "EpicTable", "目标结果"))
+    assert len(table_values(workbook_path, "FeatureTable", "约束/NFR")) == 18
+    assert all(table_values(workbook_path, "FeatureTable", "约束/NFR"))
     assert table_headers(workbook_path, "SOWStoryTable") == [
         "Story ID",
         "Story名称",
@@ -685,19 +799,24 @@ def test_projects_v13_entity_tables_and_optional_semantics(tmp_path: Path) -> No
         "复杂度倍率",
         "人天小计",
     ]
-    assert table_values(workbook_path, "TaskTable", "基础单元ID") == [
+    assert table_values(workbook_path, "TaskTable", "基础单元ID")[:3] == [
         "BU-UI-INTERACTION",
         "BU-BUSINESS-SERVICE-API",
         "BU-INTERNAL-INTEGRATION",
     ]
-    assert table_values(workbook_path, "TaskTable", "Integration ID") == [
+    assert table_values(workbook_path, "TaskTable", "Integration ID")[:3] == [
         None,
         None,
         "integration-profile-api",
     ]
-    assert table_values(workbook_path, "IntegrationTable", "集成Task ID") == [
-        "=IF(A5=\"\",\"\",IFERROR(INDEX(TaskTable[Task ID],MATCH(A5,TaskTable[Integration ID],0)),\"\"))"
-    ]
+    integration_task_formulas = table_values(
+        workbook_path, "IntegrationTable", "集成Task ID"
+    )
+    assert len(integration_task_formulas) == 4
+    assert integration_task_formulas[0] == (
+        "=IF(A5=\"\",\"\",IFERROR(INDEX(TaskTable[Task ID],"
+        "MATCH(A5,TaskTable[Integration ID],0)),\"\"))"
+    )
     for removed in ("类型", "专业域", "活动", "数量"):
         assert removed not in table_headers(workbook_path, "TaskTable")
     assert all("数量" not in formula for formula in calculated_formulas(workbook_path, "TaskTable"))
@@ -770,16 +889,23 @@ def test_projects_top_level_integrations_and_aggregates_assumption_story_ids(
     assert result.returncode == 0, result.stderr
     workbook_path = Path(json.loads(result.stdout)["outputs"][0]) / "sow.xlsx"
     assert table_values(workbook_path, "IntegrationTable", "Integration ID") == [
-        "integration-profile-api"
+        "integration-profile-api",
+        "integration-erp-reservation",
+        "integration-payment-gateway",
+        "integration-einvoice",
     ]
-    assert table_values(workbook_path, "IntegrationTable", "来源") == [
-        "Customer Portal（客户门户）"
-    ]
+    assert table_values(workbook_path, "IntegrationTable", "来源")[0] == (
+        "星云会员门户"
+    )
     assert table_values(workbook_path, "AssumptionRiskTable", "假设ID") == [
         "assumption-profile-api-availability",
         "assumption-risk-profile-alert-channel",
+        "assumption-erp-sit-window",
+        "assumption-risk-payment-certification",
+        "assumption-migration-freeze-window",
+        "assumption-risk-invoice-certificate",
     ]
-    assert table_values(workbook_path, "AssumptionRiskTable", "关联 Story ID") == [
+    assert table_values(workbook_path, "AssumptionRiskTable", "关联 Story ID")[:2] == [
         "story-profile-integration、story-customer-profile",
         "story-profile-integration",
     ]
@@ -826,7 +952,13 @@ def test_rejects_missing_or_duplicate_integration_task(tmp_path: Path) -> None:
     duplicate_root = prepare(tmp_path / "duplicate")
     duplicate_path = duplicate_root / ".ai-sow/data/generate-task/estimate.json"
     duplicate_estimate = json.loads(duplicate_path.read_text())
-    duplicate_task = dict(duplicate_estimate["tasks"][-1])
+    duplicate_task = dict(
+        next(
+            task
+            for task in duplicate_estimate["tasks"]
+            if task.get("integrationId") == "integration-profile-api"
+        )
+    )
     duplicate_task["taskId"] = "task-profile-integration-duplicate"
     duplicate_estimate["tasks"].append(duplicate_task)
     duplicate_path.write_text(json.dumps(duplicate_estimate))
@@ -843,7 +975,12 @@ def test_rejects_integration_owner_and_base_unit_mismatch(tmp_path: Path) -> Non
     root = prepare(tmp_path)
     estimate_path = root / ".ai-sow/data/generate-task/estimate.json"
     estimate = json.loads(estimate_path.read_text())
-    estimate["tasks"][-1]["baseUnit"] = "BU-EXTERNAL-INTEGRATION"
+    profile_integration_task = next(
+        task
+        for task in estimate["tasks"]
+        if task.get("integrationId") == "integration-profile-api"
+    )
+    profile_integration_task["baseUnit"] = "BU-EXTERNAL-INTEGRATION"
     estimate_path.write_text(json.dumps(estimate))
 
     result = run(root)
@@ -872,32 +1009,49 @@ def test_projects_as_is_topics_details_and_header(tmp_path: Path) -> None:
         "运维与质量",
         "交付与约束",
     ]
-    assert table_values(workbook_path, "AsIsDetailTable", "记录类型") == [
-        "CURRENT_FACT",
-        "COMMITMENT",
-        "EFFECTIVE_START",
-        "COVERAGE",
-        "UNCERTAINTY",
-        "EVIDENCE",
-    ]
+    record_types = table_values(workbook_path, "AsIsDetailTable", "记录类型")
+    assert Counter(record_types) == {
+        "CURRENT_FACT": 11,
+        "COMMITMENT": 4,
+        "EFFECTIVE_START": 11,
+        "COVERAGE": 12,
+        "UNCERTAINTY": 4,
+        "EVIDENCE": 7,
+    }
     assert "NOT_IMPLEMENTED / CARRY_FORWARD" in table_values(
         workbook_path, "AsIsDetailTable", "分类/状态"
     )
-    assert table_values(workbook_path, "AsIsDetailTable", "关联 ID")[3] == (
+    record_ids = table_values(workbook_path, "AsIsDetailTable", "记录 ID")
+    related_ids = dict(
+        zip(
+            record_ids,
+            table_values(workbook_path, "AsIsDetailTable", "关联 ID"),
+            strict=True,
+        )
+    )
+    assert related_ids["feature-customer-profile"] == (
         "effective-start-customer-profile、commitment-profile-fields、"
         "uncertainty-profile-alert-channel"
     )
-    assert table_values(workbook_path, "AsIsDetailTable", "证据引用")[0] == (
+    evidence_references = dict(
+        zip(
+            record_ids,
+            table_values(workbook_path, "AsIsDetailTable", "证据引用"),
+            strict=True,
+        )
+    )
+    assert evidence_references["asis-customer-profile"] == (
         "customer-portal/src/profile.ts#L12"
     )
     assert table_ref_and_filter(workbook_path, "AsIsTopicTable") == ("A4:G13", "A4:G13")
-    assert table_ref_and_filter(workbook_path, "AsIsDetailTable") == ("A17:I23", "A17:I23")
+    assert table_ref_and_filter(workbook_path, "AsIsDetailTable") == ("A17:I66", "A17:I66")
     topic_bounds = range_boundaries(table_ref(workbook_path, "AsIsTopicTable"))
     detail_bounds = range_boundaries(table_ref(workbook_path, "AsIsDetailTable"))
     assert topic_bounds[3] < detail_bounds[1]
     assert cell_value_and_type(workbook_path, "90-系统现状", "A2") == (
         "模式：BROWNFIELD | As-of：2026-08-19 | "
-        "Repo：customer-portal@0123456789ab | 排除范围：旧版批量导出",
+        "Repo：customer-portal@0123456789ab | "
+        "排除范围：上线后驻场支持、旧系统退役、ERP 库存核算改造、总账系统改造",
         "s",
     )
 
@@ -914,9 +1068,15 @@ def test_projects_runtime_evidence_outcome(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     workbook_path = Path(json.loads(result.stdout)["outputs"][0]) / "sow.xlsx"
-    assert table_values(workbook_path, "AsIsDetailTable", "分类/状态")[-1] == (
-        "RUNTIME / PASSED"
+    record_ids = table_values(workbook_path, "AsIsDetailTable", "记录 ID")
+    statuses = dict(
+        zip(
+            record_ids,
+            table_values(workbook_path, "AsIsDetailTable", "分类/状态"),
+            strict=True,
+        )
     )
+    assert statuses["evidence-profile-component"] == "RUNTIME / PASSED"
 
 
 def test_runtime_evidence_without_outcome_keeps_staging(tmp_path: Path) -> None:
@@ -1061,24 +1221,18 @@ def test_empty_projection_tables_remain_valid_excel_tables(tmp_path: Path) -> No
     root = prepare(tmp_path)
     delivery_path = root / ".ai-sow/data/generate-story/delivery.json"
     delivery = json.loads(delivery_path.read_text())
-    integration_story_ids = {
-        integration["storyId"] for integration in delivery["integrations"]
-    }
+    removed_story_ids = {"story-profile-integration"}
     delivery["stories"] = [
         story
         for story in delivery["stories"]
-        if story["storyId"] not in integration_story_ids
+        if story["storyId"] not in removed_story_ids
     ]
     delivery["acceptanceCriteria"] = [
         criterion
         for criterion in delivery["acceptanceCriteria"]
-        if criterion["storyId"] not in integration_story_ids
+        if criterion["storyId"] not in removed_story_ids
     ]
-    delivery["integrations"] = [
-        integration
-        for integration in delivery["integrations"]
-        if integration["storyId"] not in integration_story_ids
-    ]
+    delivery["integrations"] = []
     delivery["assumptions"] = []
     delivery["assumptionStories"] = []
     delivery_path.write_text(json.dumps(delivery))
@@ -1095,12 +1249,34 @@ def test_empty_projection_tables_remain_valid_excel_tables(tmp_path: Path) -> No
         asis[collection] = []
     asis["topicAssessments"][7]["uncertaintyIds"] = []
     asis_path.write_text(json.dumps(asis))
+    design_path = root / ".ai-sow/data/generate-design/design.json"
+    design = json.loads(design_path.read_text())
+    for delta in design["architectureDeltas"]:
+        delta["changeType"] = "NEW"
+        delta["effectiveStartItemIds"] = []
+    for decision in design["decisions"]:
+        decision["effectiveStartItemIds"] = []
+    for scope in design["scopeDecisions"]:
+        scope["effectiveStartItemIds"] = []
+        if scope["decision"] == "FULLY_COVERED":
+            scope["decision"] = "OUT_OF_SCOPE"
+    design_path.write_text(json.dumps(design))
+    derived_path = root / ".ai-sow/data/generate-design/requirements.json"
+    derived = json.loads(derived_path.read_text())
+    derived["features"][0]["source"] = {
+        "type": "SOURCE_INPUT",
+        "sourceDocumentIds": ["source-document-customer-profile"],
+        "sourceReferences": ["customer-profile.md#technical-platform"],
+    }
+    derived_path.write_text(json.dumps(derived))
     estimate_path = root / ".ai-sow/data/generate-task/estimate.json"
     estimate = json.loads(estimate_path.read_text())
     estimate["tasks"] = [
         task
         for task in estimate["tasks"]
-        if task["storyId"] not in integration_story_ids
+        if task["storyId"] not in removed_story_ids
+        and "integrationId" not in task
+        and task["baseUnit"] != "BU-DATA-MIGRATION"
     ]
     for task in estimate["tasks"]:
         task["matchedEffectiveStartItemIds"] = []
@@ -1192,14 +1368,14 @@ def test_generated_workbook_clears_styles_below_shrunk_integration_table(
     workbook = openpyxl.load_workbook(workbook_path, data_only=False)
     try:
         worksheet = workbook["06-集成点"]
-        assert worksheet.tables["IntegrationTable"].ref == "A4:M5"
-        assert [worksheet.row_dimensions[row].height for row in (6, 7)] == [
+        assert worksheet.tables["IntegrationTable"].ref == "A4:M8"
+        assert [worksheet.row_dimensions[row].height for row in (9, 10)] == [
             None,
             None,
         ]
         assert all(
             not worksheet.cell(row, column).has_style
-            for row in (6, 7)
+            for row in (9, 10)
             for column in range(1, 14)
         )
     finally:
@@ -1708,7 +1884,7 @@ def test_greenfield_header_uses_no_repository(tmp_path: Path) -> None:
     header, data_type = cell_value_and_type(workbook_path, "90-系统现状", "A2")
     assert header == (
         "模式：GREENFIELD | As-of：2026-08-19 | Repo：无 | "
-        "排除范围：旧版批量导出"
+        "排除范围：上线后驻场支持、旧系统退役、ERP 库存核算改造、总账系统改造"
     )
     assert data_type == "s"
 
