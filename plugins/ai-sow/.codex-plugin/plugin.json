@@ -1,0 +1,32 @@
+{
+  "name": "ai-sow",
+  "version": "0.1.0-beta.1",
+  "description": "根据需求和系统现状创建可评审、可追溯的 AI 辅助 SOW 工作簿。",
+  "author": {
+    "name": "Yuan Li"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "sow",
+    "requirements",
+    "estimation",
+    "delivery"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AI SOW",
+    "shortDescription": "分析范围并生成可评审的 SOW 工作簿。",
+    "longDescription": "七个相互隔离的 Skill 依次指导需求分析、现状调研、方案设计、交付拆分、任务估算，并确定性地生成 SOW 工作簿。",
+    "developerName": "Yuan Li",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "创建 AI SOW 项目，并指导我进入下一阶段。",
+      "分析当前系统，并核对往期 SOW 承诺。",
+      "根据已批准的交付数据生成可评审的 SOW 工作簿。"
+    ]
+  }
+}

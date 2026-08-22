@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible defect without sensitive customer data.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private source, or customer SOW content.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: 0.1.0-beta.1
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Provide a minimal, sanitized sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Codex, Python, and uv versions.
+    validations:
+      required: true
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Safety check
+      options:
+        - label: This report contains no secrets, customer data, or vulnerability details.
+          required: true

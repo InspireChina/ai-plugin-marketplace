@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate-story:delivery:0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gaps", "stories", "acceptanceCriteria", "integrations", "assumptions", "assumptionStories"],
+  "properties": {
+    "gaps": {"type": "array", "items": {"$ref": "#/$defs/gap"}},
+    "stories": {"type": "array", "items": {"$ref": "#/$defs/story"}},
+    "acceptanceCriteria": {"type": "array", "items": {"$ref": "#/$defs/acceptanceCriterion"}},
+    "integrations": {"type": "array", "items": {"$ref": "#/$defs/integration"}},
+    "assumptions": {"type": "array", "items": {"$ref": "#/$defs/assumption"}},
+    "assumptionStories": {"type": "array", "items": {"$ref": "#/$defs/assumptionStory"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
+    "gapId": {"type": "string", "pattern": "^gap-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "storyId": {"type": "string", "pattern": "^story-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "acceptanceCriterionId": {"type": "string", "pattern": "^ac-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "integrationId": {"type": "string", "pattern": "^integration-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "assumptionId": {"type": "string", "pattern": "^assumption-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "featureId": {"type": "string", "pattern": "^feature-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gapId", "featureId", "name", "description"],
+      "properties": {
+        "gapId": {"$ref": "#/$defs/gapId"},
+        "featureId": {"$ref": "#/$defs/featureId"},
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1}
+      }
+    },
+    "integration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["integrationId", "storyId", "source", "target", "trigger", "direction", "purpose", "owner"],
+      "properties": {
+        "integrationId": {"$ref": "#/$defs/integrationId"},
+        "storyId": {"$ref": "#/$defs/storyId"},
+        "source": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "trigger": {"type": "string", "minLength": 1},
+        "direction": {"type": "string", "enum": ["INBOUND", "OUTBOUND"]},
+        "purpose": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "enum": ["INTERNAL", "EXTERNAL"]}
+      }
+    },
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storyId", "gapId", "name", "description", "uatRelevant"],
+      "properties": {
+        "storyId": {"$ref": "#/$defs/storyId"},
+        "gapId": {"$ref": "#/$defs/gapId"},
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "uatRelevant": {"type": "boolean"}
+      }
+    },
+    "acceptanceCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["acceptanceCriterionId", "storyId", "sequence", "result"],
+      "properties": {
+        "acceptanceCriterionId": {"$ref": "#/$defs/acceptanceCriterionId"},
+        "storyId": {"$ref": "#/$defs/storyId"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "result": {"type": "string", "minLength": 1}
+      }
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assumptionId", "type", "name", "trigger", "responsibilityBoundary", "status", "handling"],
+      "properties": {
+        "assumptionId": {"$ref": "#/$defs/assumptionId"},
+        "type": {"type": "string", "enum": ["假设", "风险"]},
+        "name": {"type": "string", "minLength": 1},
+        "trigger": {"type": "string", "minLength": 1},
+        "responsibilityBoundary": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "enum": ["已明确", "待确认"]},
+        "handling": {"type": "string", "minLength": 1}
+      }
+    },
+    "assumptionStory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assumptionId", "storyId"],
+      "properties": {
+        "assumptionId": {"$ref": "#/$defs/assumptionId"},
+        "storyId": {"$ref": "#/$defs/storyId"}
+      }
+    }
+  }
+}

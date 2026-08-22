@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:analyze-requirement:source-requirements:0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sourceDocuments", "normalizedItems", "epics", "features"],
+  "properties": {
+    "sourceDocuments": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourceDocument"}},
+    "normalizedItems": {"type": "array", "items": {"$ref": "#/$defs/normalizedItem"}},
+    "epics": {"type": "array", "items": {"$ref": "#/$defs/epic"}},
+    "features": {"type": "array", "items": {"$ref": "#/$defs/feature"}}
+  },
+  "$defs": {
+    "sourceDocumentId": {"type": "string", "pattern": "^source-document-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "normalizedItemId": {"type": "string", "pattern": "^norm-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "epicId": {"type": "string", "pattern": "^epic-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "featureId": {"type": "string", "pattern": "^feature-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "projectRelativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)(?:\\.{1,2})(?:/|$))[^\\r\\n/]+(?:/[^\\r\\n/]+)*$"
+    },
+    "normalizedItemIdList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/normalizedItemId"}
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "normalizedItemIds"],
+      "properties": {
+        "type": {"const": "SOURCE_INPUT"},
+        "normalizedItemIds": {"$ref": "#/$defs/normalizedItemIdList"}
+      }
+    },
+    "sourceDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceDocumentId", "file", "originalName", "sha256"],
+      "properties": {
+        "sourceDocumentId": {"$ref": "#/$defs/sourceDocumentId"},
+        "file": {
+          "allOf": [
+            {"$ref": "#/$defs/projectRelativePath"},
+            {"pattern": "^\\.ai-sow/inputs/analyze-requirement/.+"}
+          ]
+        },
+        "originalName": {"$ref": "#/$defs/nonEmptyString"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "normalizedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalizedItemId", "sourceDocumentId", "title", "statement"],
+      "properties": {
+        "normalizedItemId": {"$ref": "#/$defs/normalizedItemId"},
+        "sourceDocumentId": {"$ref": "#/$defs/sourceDocumentId"},
+        "title": {"$ref": "#/$defs/nonEmptyString"},
+        "statement": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "epic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["epicId", "type", "name", "description", "source"],
+      "properties": {
+        "epicId": {"$ref": "#/$defs/epicId"},
+        "type": {"const": "BUSINESS"},
+        "name": {"$ref": "#/$defs/nonEmptyString"},
+        "description": {"$ref": "#/$defs/nonEmptyString"},
+        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString"},
+        "targetOutcome": {"$ref": "#/$defs/nonEmptyString"},
+        "commonConstraintsOutOfScope": {"$ref": "#/$defs/nonEmptyString"},
+        "source": {"$ref": "#/$defs/source"}
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["featureId", "epicId", "name", "description", "source"],
+      "properties": {
+        "featureId": {"$ref": "#/$defs/featureId"},
+        "epicId": {"$ref": "#/$defs/epicId"},
+        "name": {"$ref": "#/$defs/nonEmptyString"},
+        "description": {"$ref": "#/$defs/nonEmptyString"},
+        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString"},
+        "constraintsNfr": {"$ref": "#/$defs/nonEmptyString"},
+        "source": {"$ref": "#/$defs/source"}
+      }
+    }
+  }
+}

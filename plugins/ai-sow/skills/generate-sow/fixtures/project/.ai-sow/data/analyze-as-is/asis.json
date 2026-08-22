@@ -1,0 +1,154 @@
+{
+  "analysisScope": {
+    "mode": "BROWNFIELD",
+    "asOfDate": "2026-08-19",
+    "repositorySnapshots": [
+      {
+        "repoId": "customer-portal",
+        "path": "repositories/customer-portal",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "dirty": false
+      }
+    ],
+    "priorSowSnapshots": [
+      {
+        "priorSowId": "sow-phase-one",
+        "file": ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md",
+        "originalName": "sow-phase-one.md",
+        "sha256": "6aaa4f5427e455cde2603adb68209ac6ab5a75b32c02e0da866914a757ac93b8"
+      }
+    ],
+    "includedSystems": ["Customer Portal（客户门户）"],
+    "includedAreas": ["客户档案"],
+    "excludedAreas": ["旧版批量导出"]
+  },
+  "topicAssessments": [
+    {
+      "topic": "SYSTEM_CONTEXT",
+      "status": "ASSESSED",
+      "summary": "Customer Portal（客户门户）负责客户档案交互。",
+      "uncertaintyIds": []
+    },
+    {
+      "topic": "CAPABILITY",
+      "status": "ASSESSED",
+      "summary": "基础客户档案采集已承诺但尚未实现。",
+      "uncertaintyIds": []
+    },
+    {
+      "topic": "APPLICATION",
+      "status": "ASSESSED",
+      "summary": "现有客户档案组件可以复用。",
+      "uncertaintyIds": []
+    },
+    {
+      "topic": "INTEGRATION",
+      "status": "NOT_APPLICABLE",
+      "summary": "当前客户档案基线不包含集成。",
+      "uncertaintyIds": []
+    },
+    {
+      "topic": "DATA",
+      "status": "ASSESSED",
+      "summary": "客户档案数据由 Customer Portal（客户门户）存储。",
+      "uncertaintyIds": []
+    },
+    {
+      "topic": "PLATFORM",
+      "status": "ASSESSED",
+      "summary": "保留当前部署平台。",
+      "uncertaintyIds": []
+    },
+    {
+      "topic": "SECURITY_COMPLIANCE",
+      "status": "ASSESSED",
+      "summary": "现有身份控制适用于客户档案访问。",
+      "uncertaintyIds": []
+    },
+    {
+      "topic": "OPERATIONS_QUALITY",
+      "status": "INSUFFICIENT_EVIDENCE",
+      "summary": "生产告警的通知渠道仍未确认。",
+      "uncertaintyIds": ["uncertainty-profile-alert-channel"]
+    },
+    {
+      "topic": "DELIVERY_CONSTRAINTS",
+      "status": "ASSESSED",
+      "summary": "旧版批量导出不属于本次交付范围。",
+      "uncertaintyIds": []
+    }
+  ],
+  "items": [
+    {
+      "asIsItemId": "asis-customer-profile",
+      "topic": "APPLICATION",
+      "itemType": "COMPONENT",
+      "name": "客户档案组件",
+      "summary": "该组件提供可复用的客户档案框架。",
+      "repositoryIds": ["customer-portal"]
+    }
+  ],
+  "commitments": [
+    {
+      "commitmentId": "commitment-profile-fields",
+      "priorSowId": "sow-phase-one",
+      "sourceReference": "sow-phase-one#Profile!A12",
+      "topic": "CAPABILITY",
+      "changeType": "ADD",
+      "name": "客户档案字段",
+      "summary": "延续尚未实现的客户档案字段。",
+      "implementationStatus": "NOT_IMPLEMENTED",
+      "treatment": "CARRY_FORWARD",
+      "affectedItemIds": [],
+      "relatedFeatureIds": ["feature-customer-profile"]
+    }
+  ],
+  "effectiveStartItems": [
+    {
+      "effectiveStartItemId": "effective-start-customer-profile",
+      "topic": "APPLICATION",
+      "itemType": "COMPONENT",
+      "name": "可复用的客户档案框架",
+      "summary": "从现有客户档案组件框架开始。",
+      "sourceItemIds": ["asis-customer-profile"],
+      "commitmentIds": []
+    }
+  ],
+  "coverage": [
+    {
+      "featureId": "feature-customer-profile",
+      "status": "PARTIAL",
+      "effectiveStartItemIds": ["effective-start-customer-profile"],
+      "commitmentIds": ["commitment-profile-fields"],
+      "uncertaintyIds": ["uncertainty-profile-alert-channel"],
+      "rationale": "复用该框架并交付缺失的承诺字段。"
+    }
+  ],
+  "uncertainties": [
+    {
+      "uncertaintyId": "uncertainty-profile-alert-channel",
+      "topic": "OPERATIONS_QUALITY",
+      "question": "生产告警通知由邮件还是工单接收？",
+      "impact": "影响上线后的通知渠道记录。",
+      "affectsEstimate": false,
+      "owner": "运维团队",
+      "recommendedHandling": "上线前确认",
+      "relatedFeatureIds": ["feature-customer-profile"]
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "evidence-profile-component",
+      "kind": "CODE",
+      "reference": "customer-portal/src/profile.ts#L12",
+      "summary": "仓库中存在客户档案组件框架。",
+      "supportsIds": [
+        "asis-customer-profile",
+        "commitment-profile-fields",
+        "effective-start-customer-profile",
+        "feature-customer-profile",
+        "uncertainty-profile-alert-channel"
+      ]
+    }
+  ]
+}

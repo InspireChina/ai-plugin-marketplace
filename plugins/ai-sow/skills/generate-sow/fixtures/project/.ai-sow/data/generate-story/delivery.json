@@ -1,0 +1,27 @@
+{
+  "gaps": [
+    {"gapId": "gap-customer-profile", "featureId": "feature-customer-profile", "name": "缺少客户档案能力", "description": "产品无法创建或显示客户档案。"},
+    {"gapId": "gap-profile-api", "featureId": "feature-profile-api", "name": "缺少客户档案 API", "description": "产品没有稳定的客户档案操作边界。"}
+  ],
+  "stories": [
+    {"storyId": "story-customer-profile", "gapId": "gap-customer-profile", "name": "创建并查看客户档案", "description": "交付客户档案创建和查看流程。", "uatRelevant": true},
+    {"storyId": "story-profile-api", "gapId": "gap-profile-api", "name": "提供客户档案操作", "description": "交付客户档案流程使用的 API。", "uatRelevant": true},
+    {"storyId": "story-profile-integration", "gapId": "gap-profile-api", "name": "集成客户档案查询", "description": "将 Customer Portal（客户门户）与 Customer API（客户接口）集成，以查询客户档案。", "uatRelevant": true}
+  ],
+  "acceptanceCriteria": [
+    {"acceptanceCriterionId": "ac-profile-visible", "storyId": "story-customer-profile", "sequence": 1, "result": "可以查看已保存的客户档案。"},
+    {"acceptanceCriterionId": "ac-profile-api", "storyId": "story-profile-api", "sequence": 1, "result": "可以通过设计的 API 使用客户档案操作。"},
+    {"acceptanceCriterionId": "ac-profile-integration", "storyId": "story-profile-integration", "sequence": 1, "result": "Customer Portal（客户门户）可以通过 Customer API（客户接口）检索客户档案。"}
+  ],
+  "integrations": [
+    {"integrationId": "integration-profile-api", "storyId": "story-profile-integration", "source": "Customer Portal（客户门户）", "target": "Customer API（客户接口）", "trigger": "收到客户档案查看请求", "direction": "OUTBOUND", "purpose": "检索客户档案详细信息", "owner": "INTERNAL"}
+  ],
+  "assumptions": [
+    {"assumptionId": "assumption-profile-api-availability", "type": "假设", "name": "Customer API（客户接口）在联调期间可用", "trigger": "客户档案系统集成测试开始。", "responsibilityBoundary": "内部 API 团队负责提供可用的测试端点。", "status": "已明确", "handling": "按已确认的联调窗口执行系统集成测试。"},
+    {"assumptionId": "assumption-risk-profile-alert-channel", "type": "风险", "name": "生产告警通知渠道待确认", "trigger": "上线前尚未登记告警通知渠道。", "responsibilityBoundary": "运维团队负责确认邮件或工单渠道和接收人。", "status": "待确认", "handling": "上线前确认通知渠道并登记接收人。"}
+  ],
+  "assumptionStories": [
+    {"assumptionId": "assumption-profile-api-availability", "storyId": "story-profile-integration"},
+    {"assumptionId": "assumption-risk-profile-alert-channel", "storyId": "story-profile-integration"}
+  ]
+}

@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:analyze-as-is:asis:0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "analysisScope",
+    "topicAssessments",
+    "items",
+    "commitments",
+    "effectiveStartItems",
+    "coverage",
+    "uncertainties",
+    "evidence"
+  ],
+  "properties": {
+    "analysisScope": {"$ref": "#/$defs/analysisScope"},
+    "topicAssessments": {"type": "array", "items": {"$ref": "#/$defs/topicAssessment"}},
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+    "commitments": {"type": "array", "items": {"$ref": "#/$defs/commitment"}},
+    "effectiveStartItems": {"type": "array", "items": {"$ref": "#/$defs/effectiveStartItem"}},
+    "coverage": {"type": "array", "items": {"$ref": "#/$defs/coverage"}},
+    "uncertainties": {"type": "array", "items": {"$ref": "#/$defs/uncertainty"}},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
+    "asIsItemId": {"type": "string", "pattern": "^asis-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "commitmentId": {"type": "string", "pattern": "^commitment-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "effectiveStartItemId": {"type": "string", "pattern": "^effective-start-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "uncertaintyId": {"type": "string", "pattern": "^uncertainty-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "evidenceId": {"type": "string", "pattern": "^evidence-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "featureId": {"type": "string", "pattern": "^feature-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "projectRelativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)(?:\\.{1,2})(?:/|$))[^\\r\\n/]+(?:/[^\\r\\n/]+)*$"
+    },
+    "idArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/id"}
+    },
+    "asIsItemIdArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/asIsItemId"}
+    },
+    "commitmentIdArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/commitmentId"}
+    },
+    "effectiveStartItemIdArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/effectiveStartItemId"}
+    },
+    "uncertaintyIdArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/uncertaintyId"}
+    },
+    "featureIdArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/featureId"}
+    },
+    "supportedId": {
+      "anyOf": [
+        {"$ref": "#/$defs/asIsItemId"},
+        {"$ref": "#/$defs/commitmentId"},
+        {"$ref": "#/$defs/effectiveStartItemId"},
+        {"$ref": "#/$defs/uncertaintyId"},
+        {"$ref": "#/$defs/featureId"}
+      ]
+    },
+    "supportedIdArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/supportedId"}
+    },
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/nonEmptyString"}
+    },
+    "stableReference": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![\\s\\S]*[\\r\\n])(?![Ff][Ii][Ll][Ee]:)(?:[a-z][a-z0-9-]*:)?(?!\\.{1,2}(?:/|#|$))[A-Za-z0-9._-]+(?:/(?!\\.{1,2}(?:/|#|$))[A-Za-z0-9._-]+)*(?:#[A-Za-z0-9._~:/?@!$&'()*+,%=-]+)?$"
+    },
+    "topic": {
+      "type": "string",
+      "enum": [
+        "SYSTEM_CONTEXT",
+        "CAPABILITY",
+        "APPLICATION",
+        "INTEGRATION",
+        "DATA",
+        "PLATFORM",
+        "SECURITY_COMPLIANCE",
+        "OPERATIONS_QUALITY",
+        "DELIVERY_CONSTRAINTS"
+      ]
+    },
+    "itemType": {
+      "type": "string",
+      "enum": [
+        "CAPABILITY",
+        "COMPONENT",
+        "INTEGRATION",
+        "DATA_ASSET",
+        "INFRASTRUCTURE",
+        "CONTROL",
+        "PROCESS",
+        "CONSTRAINT"
+      ]
+    },
+    "repositorySnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repoId", "path", "revision", "dirty"],
+      "properties": {
+        "repoId": {"$ref": "#/$defs/id"},
+        "path": {
+          "anyOf": [
+            {"const": "."},
+            {"$ref": "#/$defs/projectRelativePath"}
+          ]
+        },
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dirty": {"type": "boolean"}
+      }
+    },
+    "priorSowSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priorSowId", "file", "originalName", "sha256"],
+      "properties": {
+        "priorSowId": {"$ref": "#/$defs/id"},
+        "file": {
+          "allOf": [
+            {"$ref": "#/$defs/projectRelativePath"},
+            {"pattern": "^\\.ai-sow/inputs/analyze-as-is/prior-sows/.+"}
+          ]
+        },
+        "originalName": {"$ref": "#/$defs/nonEmptyString"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "analysisScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "asOfDate", "repositorySnapshots", "priorSowSnapshots", "includedSystems", "includedAreas", "excludedAreas"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["GREENFIELD", "BROWNFIELD"]},
+        "asOfDate": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "repositorySnapshots": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/repositorySnapshot"}
+        },
+        "priorSowSnapshots": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/priorSowSnapshot"}
+        },
+        "includedSystems": {"$ref": "#/$defs/stringArray"},
+        "includedAreas": {"$ref": "#/$defs/stringArray"},
+        "excludedAreas": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "topicAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic", "status", "summary", "uncertaintyIds"],
+      "properties": {
+        "topic": {"$ref": "#/$defs/topic"},
+        "status": {
+          "type": "string",
+          "enum": ["ASSESSED", "NOT_APPLICABLE", "INSUFFICIENT_EVIDENCE"]
+        },
+        "summary": {"$ref": "#/$defs/nonEmptyString"},
+        "uncertaintyIds": {"$ref": "#/$defs/uncertaintyIdArray"}
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asIsItemId", "topic", "itemType", "name", "summary", "repositoryIds"],
+      "properties": {
+        "asIsItemId": {"$ref": "#/$defs/asIsItemId"},
+        "topic": {"$ref": "#/$defs/topic"},
+        "itemType": {"$ref": "#/$defs/itemType"},
+        "name": {"$ref": "#/$defs/nonEmptyString"},
+        "summary": {"$ref": "#/$defs/nonEmptyString"},
+        "repositoryIds": {"$ref": "#/$defs/idArray"},
+        "source": {"$ref": "#/$defs/nonEmptyString"},
+        "target": {"$ref": "#/$defs/nonEmptyString"},
+        "trigger": {"$ref": "#/$defs/nonEmptyString"},
+        "direction": {"type": "string", "enum": ["INBOUND", "OUTBOUND"]},
+        "purpose": {"$ref": "#/$defs/nonEmptyString"},
+        "owner": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "if": {
+        "properties": {"itemType": {"const": "INTEGRATION"}},
+        "required": ["itemType"]
+      },
+      "then": {"required": ["source", "target", "trigger", "direction", "purpose", "owner"]},
+      "else": {
+        "properties": {
+          "source": false,
+          "target": false,
+          "trigger": false,
+          "direction": false,
+          "purpose": false,
+          "owner": false
+        }
+      }
+    },
+    "commitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commitmentId",
+        "priorSowId",
+        "sourceReference",
+        "topic",
+        "changeType",
+        "name",
+        "summary",
+        "implementationStatus",
+        "treatment",
+        "affectedItemIds",
+        "relatedFeatureIds"
+      ],
+      "properties": {
+        "commitmentId": {"$ref": "#/$defs/commitmentId"},
+        "priorSowId": {"$ref": "#/$defs/id"},
+        "sourceReference": {"$ref": "#/$defs/stableReference"},
+        "topic": {"$ref": "#/$defs/topic"},
+        "changeType": {"type": "string", "enum": ["ADD", "REPLACE", "RETIRE"]},
+        "name": {"$ref": "#/$defs/nonEmptyString"},
+        "summary": {"$ref": "#/$defs/nonEmptyString"},
+        "implementationStatus": {
+          "type": "string",
+          "enum": ["IMPLEMENTED", "PARTIAL", "NOT_IMPLEMENTED", "UNVERIFIED", "SUPERSEDED"]
+        },
+        "treatment": {
+          "type": "string",
+          "enum": ["CURRENT_BASELINE", "EXPECTED_BEFORE_START", "CARRY_FORWARD", "EXCLUDE", "NEEDS_DECISION"]
+        },
+        "affectedItemIds": {"$ref": "#/$defs/asIsItemIdArray"},
+        "relatedFeatureIds": {"$ref": "#/$defs/featureIdArray"}
+      }
+    },
+    "effectiveStartItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effectiveStartItemId", "topic", "itemType", "name", "summary", "sourceItemIds", "commitmentIds"],
+      "properties": {
+        "effectiveStartItemId": {"$ref": "#/$defs/effectiveStartItemId"},
+        "topic": {"$ref": "#/$defs/topic"},
+        "itemType": {"$ref": "#/$defs/itemType"},
+        "name": {"$ref": "#/$defs/nonEmptyString"},
+        "summary": {"$ref": "#/$defs/nonEmptyString"},
+        "sourceItemIds": {"$ref": "#/$defs/asIsItemIdArray"},
+        "commitmentIds": {"$ref": "#/$defs/commitmentIdArray"}
+      },
+      "anyOf": [
+        {"properties": {"sourceItemIds": {"minItems": 1}}},
+        {"properties": {"commitmentIds": {"minItems": 1}}}
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["featureId", "status", "effectiveStartItemIds", "commitmentIds", "uncertaintyIds", "rationale"],
+      "properties": {
+        "featureId": {"$ref": "#/$defs/featureId"},
+        "status": {"type": "string", "enum": ["COMPLETE", "PARTIAL", "MISSING"]},
+        "effectiveStartItemIds": {"$ref": "#/$defs/effectiveStartItemIdArray"},
+        "commitmentIds": {"$ref": "#/$defs/commitmentIdArray"},
+        "uncertaintyIds": {"$ref": "#/$defs/uncertaintyIdArray"},
+        "rationale": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"enum": ["COMPLETE", "PARTIAL"]}},
+            "required": ["status"]
+          },
+          "then": {"properties": {"effectiveStartItemIds": {"minItems": 1}}}
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "MISSING"}},
+            "required": ["status"]
+          },
+          "then": {"properties": {"effectiveStartItemIds": {"maxItems": 0}}}
+        }
+      ]
+    },
+    "uncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uncertaintyId", "topic", "question", "impact", "affectsEstimate", "owner", "recommendedHandling", "relatedFeatureIds"],
+      "properties": {
+        "uncertaintyId": {"$ref": "#/$defs/uncertaintyId"},
+        "topic": {"$ref": "#/$defs/topic"},
+        "question": {"$ref": "#/$defs/nonEmptyString"},
+        "impact": {"$ref": "#/$defs/nonEmptyString"},
+        "affectsEstimate": {"type": "boolean"},
+        "owner": {"$ref": "#/$defs/nonEmptyString"},
+        "recommendedHandling": {"$ref": "#/$defs/nonEmptyString"},
+        "relatedFeatureIds": {"$ref": "#/$defs/featureIdArray"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceId", "kind", "reference", "summary", "supportsIds"],
+      "properties": {
+        "evidenceId": {"$ref": "#/$defs/evidenceId"},
+        "kind": {
+          "type": "string",
+          "enum": ["RUNTIME", "CONTRACT", "CONFIGURATION", "CODE", "DEPLOYMENT", "PRIOR_SOW", "QUESTIONNAIRE", "DOCUMENT"]
+        },
+        "runtimeOutcome": {
+          "type": "string",
+          "enum": ["PASSED", "FAILED", "BLOCKED"]
+        },
+        "reference": {"$ref": "#/$defs/stableReference"},
+        "summary": {"$ref": "#/$defs/nonEmptyString"},
+        "supportsIds": {"$ref": "#/$defs/supportedIdArray"}
+      },
+      "if": {
+        "properties": {"kind": {"const": "RUNTIME"}},
+        "required": ["kind"]
+      },
+      "then": {"required": ["runtimeOutcome"]},
+      "else": {"properties": {"runtimeOutcome": false}}
+    }
+  }
+}

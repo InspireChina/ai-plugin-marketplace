@@ -1,0 +1,46 @@
+{
+  "designItems": [
+    {
+      "designItemId": "design-customer-profile",
+      "type": "COMPONENT",
+      "name": "客户档案组件",
+      "summary": "负责客户档案的创建和检索。"
+    }
+  ],
+  "architectureDeltas": [
+    {
+      "architectureDeltaId": "delta-customer-profile",
+      "changeType": "ADJUST",
+      "designItemId": "design-customer-profile",
+      "effectiveStartItemIds": ["effective-start-customer-api"],
+      "summary": "调整生效起点的 Customer API（客户接口），以交付客户档案范围。"
+    }
+  ],
+  "decisions": [
+    {
+      "designDecisionId": "decision-profile-api",
+      "title": "公开客户档案 API",
+      "decision": "使用专用 API 边界处理客户档案操作。",
+      "rationale": "UI 和未来渠道需要统一边界。",
+      "designItemIds": ["design-customer-profile"],
+      "effectiveStartItemIds": ["effective-start-customer-api"],
+      "relatedFeatureIds": ["feature-customer-profile"]
+    }
+  ],
+  "scopeDecisions": [
+    {
+      "featureId": "feature-customer-profile",
+      "decision": "IN_SCOPE",
+      "rationale": "请求的能力尚不存在。",
+      "designItemIds": ["design-customer-profile"],
+      "effectiveStartItemIds": []
+    },
+    {
+      "featureId": "feature-profile-api",
+      "decision": "IN_SCOPE",
+      "rationale": "该设计需要 API 边界。",
+      "designItemIds": ["design-customer-profile"],
+      "effectiveStartItemIds": []
+    }
+  ]
+}

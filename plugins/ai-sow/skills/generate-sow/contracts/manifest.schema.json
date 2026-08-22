@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate-sow:manifest:0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["packageId", "projectId", "pluginVersion", "sowStandardVersion", "projectMode", "repositories", "priorSows", "inputs", "templatePath"],
+  "properties": {
+    "packageId": {
+      "type": "string",
+      "pattern": "^sow-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"
+    },
+    "pluginVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "sowStandardVersion": {"const": "1.3"},
+    "projectMode": {"enum": ["GREENFIELD", "BROWNFIELD"]},
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repoId", "setupRevision"],
+        "properties": {
+          "repoId": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+          "setupRevision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+        }
+      }
+    },
+    "priorSows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["priorSowId", "sha256"],
+        "properties": {
+          "priorSowId": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRequirements", "asis", "design", "derivedRequirements", "delivery", "estimate"],
+      "properties": {
+        "sourceRequirements": {"const": ".ai-sow/data/analyze-requirement/requirements.json"},
+        "asis": {"const": ".ai-sow/data/analyze-as-is/asis.json"},
+        "design": {"const": ".ai-sow/data/generate-design/design.json"},
+        "derivedRequirements": {"const": ".ai-sow/data/generate-design/requirements.json"},
+        "delivery": {"const": ".ai-sow/data/generate-story/delivery.json"},
+        "estimate": {"const": ".ai-sow/data/generate-task/estimate.json"}
+      }
+    },
+    "templatePath": {"const": ".ai-sow/templates/sow-template.xlsx"}
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "gaps": [
+    {"gapId": "gap-customer-profile", "featureId": "feature-customer-profile", "name": "客户档案交付差距", "description": "生效起点 API 缺少延续的忠诚度档案，且其托管决策尚未解决。"},
+    {"gapId": "gap-profile-api", "featureId": "feature-profile-api", "name": "缺少客户档案 API", "description": "产品没有稳定的客户档案操作边界。"}
+  ],
+  "stories": [
+    {"storyId": "story-customer-profile", "gapId": "gap-customer-profile", "name": "创建并查看客户档案", "description": "交付客户档案创建和查看流程。", "uatRelevant": true},
+    {"storyId": "story-profile-api", "gapId": "gap-profile-api", "name": "提供客户档案操作", "description": "交付客户档案流程使用的 API。", "uatRelevant": true},
+    {"storyId": "story-profile-hosting-discovery", "gapId": "gap-customer-profile", "name": "明确客户档案托管方案", "description": "在批准部署设计前确认托管边界。", "uatRelevant": false}
+  ],
+  "acceptanceCriteria": [
+    {"acceptanceCriterionId": "ac-profile-visible", "storyId": "story-customer-profile", "sequence": 1, "result": "可以查看已保存的客户档案。"},
+    {"acceptanceCriterionId": "ac-profile-api", "storyId": "story-profile-api", "sequence": 1, "result": "可以通过设计的 API 使用客户档案操作。"},
+    {"acceptanceCriterionId": "ac-profile-hosting-decision", "storyId": "story-profile-hosting-discovery", "sequence": 1, "result": "托管负责人和部署边界已记录并获批准。"}
+  ],
+  "integrations": [
+    {"integrationId": "integration-profile-api", "storyId": "story-profile-api", "source": "Customer Portal（客户门户）", "target": "Customer API（客户接口）", "trigger": "收到客户档案查看请求", "direction": "OUTBOUND", "purpose": "检索客户档案和忠诚度状态", "owner": "INTERNAL"}
+  ],
+  "assumptions": [
+    {"assumptionId": "assumption-profile-hosting", "type": "风险", "name": "客户档案托管方案尚未明确", "trigger": "实现开始前仍没有托管决策。", "responsibilityBoundary": "平台负责人确认获批准的托管环境。", "status": "待确认", "handling": "在部署设计批准前，通过关联的调研 Story 解决。"}
+  ],
+  "assumptionStories": [
+    {"assumptionId": "assumption-profile-hosting", "storyId": "story-profile-hosting-discovery"}
+  ]
+}

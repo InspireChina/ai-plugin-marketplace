@@ -1,0 +1,20 @@
+{
+  "name": "ai-plugin-marketplace",
+  "interface": {
+    "displayName": "AI Plugin Marketplace"
+  },
+  "plugins": [
+    {
+      "name": "ai-sow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ai-sow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "tasks": [
+    {
+      "taskId": "task-customer-profile-page",
+      "storyId": "story-customer-profile",
+      "name": "实现客户档案页面和状态",
+      "baseUnit": "BU-UI-INTERACTION",
+      "workMode": "新建",
+      "workModeRationale": "现状不存在客户档案入口，需要新建一个可独立验收的界面。",
+      "complexity": "S",
+      "complexityRationale": "仅一个界面和单一路径，使用成熟组件，无复杂权限或状态联动。",
+      "matchedEffectiveStartItemIds": [],
+      "rationale": "一个客户档案界面及其直接相关状态，符合界面与交互的单实例计数口径。"
+    },
+    {
+      "taskId": "task-profile-api-integration",
+      "storyId": "story-profile-api",
+      "name": "接入内部客户档案 API",
+      "baseUnit": "BU-INTERNAL-INTEGRATION",
+      "workMode": "接入复用",
+      "workModeRationale": "现有客户档案 API 与页面框架保持不变；本项目负责并交付：认证、映射、适配。",
+      "workModeEvidence": {
+        "effectiveStartItemId": "effective-start-customer-api",
+        "effectiveStartItemName": "现有客户档案 API 与页面框架",
+        "projectSideWorkTypes": ["AUTHENTICATE", "MAP", "ADAPT"],
+        "projectSideWorkCommitment": "本项目负责并交付：认证、映射、适配"
+      },
+      "complexity": "M",
+      "integrationId": "integration-profile-api",
+      "matchedEffectiveStartItemIds": ["effective-start-customer-api"],
+      "rationale": "实现已登记的单一内部 Integration 方向，不包含对端系统改造。"
+    }
+  ]
+}

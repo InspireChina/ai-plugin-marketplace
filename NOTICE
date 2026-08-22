@@ -1,0 +1,6 @@
+AI Plugin Marketplace
+Copyright 2026 Yuan Li
+
+AI SOW uses jsonschema and openpyxl at runtime and pytest for development.
+Those dependencies are resolved separately under their respective licenses;
+their source code is not bundled in this repository.

@@ -1,0 +1,36 @@
+{
+  "sourceDocuments": [
+    {
+      "sourceDocumentId": "source-document-customer-profile",
+      "file": ".ai-sow/inputs/analyze-requirement/customer-profile.md",
+      "originalName": "customer-profile.md",
+      "sha256": "6af8bb4cc0975128424d87ab04589dcc17d0d278cde516cf21ca4a8e87294914"
+    }
+  ],
+  "normalizedItems": [
+    {
+      "normalizedItemId": "norm-customer-profile",
+      "sourceDocumentId": "source-document-customer-profile",
+      "title": "创建客户档案",
+      "statement": "用户可以创建并查看客户档案。"
+    }
+  ],
+  "epics": [
+    {
+      "epicId": "epic-customer-management",
+      "type": "BUSINESS",
+      "name": "客户管理",
+      "description": "为新产品提供客户管理能力。",
+      "source": {"type": "SOURCE_INPUT", "normalizedItemIds": ["norm-customer-profile"]}
+    }
+  ],
+  "features": [
+    {
+      "featureId": "feature-customer-profile",
+      "epicId": "epic-customer-management",
+      "name": "创建并查看客户档案",
+      "description": "用户创建客户档案后，可以查看已保存的详细信息。",
+      "source": {"type": "SOURCE_INPUT", "normalizedItemIds": ["norm-customer-profile"]}
+    }
+  ]
+}

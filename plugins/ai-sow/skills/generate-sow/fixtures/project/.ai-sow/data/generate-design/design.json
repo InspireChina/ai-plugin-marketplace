@@ -1,0 +1,35 @@
+{
+  "designItems": [
+    {
+      "designItemId": "design-customer-profile",
+      "type": "COMPONENT",
+      "name": "客户档案组件",
+      "summary": "负责客户档案的创建和检索。"
+    }
+  ],
+  "architectureDeltas": [
+    {
+      "architectureDeltaId": "delta-customer-profile",
+      "changeType": "NEW",
+      "designItemId": "design-customer-profile",
+      "effectiveStartItemIds": [],
+      "summary": "新增客户档案组件。"
+    }
+  ],
+  "decisions": [
+    {
+      "designDecisionId": "decision-profile-api",
+      "title": "公开客户档案 API",
+      "decision": "使用专用 API 边界处理客户档案操作。",
+      "rationale": "UI 和未来渠道需要统一边界。",
+      "designItemIds": ["design-customer-profile"],
+      "effectiveStartItemIds": [],
+      "relatedFeatureIds": ["feature-customer-profile", "feature-profile-api"]
+    }
+  ],
+  "scopeDecisions": [
+    {"featureId": "feature-customer-profile", "decision": "IN_SCOPE", "rationale": "该能力尚不存在。", "designItemIds": ["design-customer-profile"], "effectiveStartItemIds": []},
+    {"featureId": "feature-profile-api", "decision": "IN_SCOPE", "rationale": "该设计需要 API 边界。", "designItemIds": ["design-customer-profile"], "effectiveStartItemIds": []},
+    {"featureId": "feature-production-scope", "decision": "OUT_OF_SCOPE", "rationale": "本示例仅估算产品能力开发，不包含生产部署、切换或运营移交。", "designItemIds": [], "effectiveStartItemIds": []}
+  ]
+}

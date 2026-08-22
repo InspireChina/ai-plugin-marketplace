@@ -1,0 +1,54 @@
+# OS and editor state
+.DS_Store
+**/.DS_Store
+**/.DS_Store.*
+**/*DS_Store*
+.obsidian/workspace.json
+.idea/
+.vscode/
+
+# Office lock files
+.~*
+**/.~*
+~$*
+**/~$*
+
+# Python, uv, test, and coverage state
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+.ruff_cache/
+**/.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local runtime, dependency, cache, and scratch directories
+.codex-work/
+.codex_spreadsheet_work/
+.prototype-worktrees/
+.research-worktrees/
+.worktrees/
+.superpowers/
+outputs/
+**/.codex-tmp/
+**/.codex_spreadsheet_work_*/
+**/.work/
+**/.work_*/
+**/fontcache/
+**/node_modules/
+**/node_modules
+
+# Generated AI SOW runtime can contain customer-derived material. This repository
+# ignores test-fixture runtime only; see the plugin README before choosing what a
+# user project should version.
+.ai-sow/runtime/
+
+# Local spreadsheet comparison candidates and diagnostics
+/SOW估算与生成模板_v1.3_Table版.xlsx
+/*.inspect.ndjson

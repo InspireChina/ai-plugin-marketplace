@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate-design:design:0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["designItems", "architectureDeltas", "decisions", "scopeDecisions"],
+  "properties": {
+    "designItems": {"type": "array", "items": {"$ref": "#/$defs/designItem"}},
+    "architectureDeltas": {"type": "array", "items": {"$ref": "#/$defs/architectureDelta"}},
+    "decisions": {"type": "array", "items": {"$ref": "#/$defs/decision"}},
+    "scopeDecisions": {"type": "array", "items": {"$ref": "#/$defs/scopeDecision"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
+    "idArray": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "nonEmptyIdArray": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "designItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["designItemId", "type", "name", "summary"],
+      "properties": {
+        "designItemId": {"$ref": "#/$defs/id"},
+        "type": {"type": "string", "enum": ["COMPONENT", "FLOW", "DATA", "INTEGRATION", "INFRASTRUCTURE", "QUALITY"]},
+        "name": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1}
+      }
+    },
+    "architectureDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["architectureDeltaId", "changeType", "designItemId", "effectiveStartItemIds", "summary"],
+      "properties": {
+        "architectureDeltaId": {"$ref": "#/$defs/id"},
+        "changeType": {"type": "string", "enum": ["NEW", "ADOPT", "ADJUST", "REPLACE", "RETIRE"]},
+        "designItemId": {"$ref": "#/$defs/id"},
+        "effectiveStartItemIds": {"$ref": "#/$defs/idArray"},
+        "summary": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"changeType": {"not": {"const": "NEW"}}}, "required": ["changeType"]},
+          "then": {"properties": {"effectiveStartItemIds": {"minItems": 1}}}
+        }
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["designDecisionId", "title", "decision", "rationale", "designItemIds", "effectiveStartItemIds", "relatedFeatureIds"],
+      "properties": {
+        "designDecisionId": {"$ref": "#/$defs/id"},
+        "title": {"type": "string", "minLength": 1},
+        "decision": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 1},
+        "designItemIds": {"$ref": "#/$defs/nonEmptyIdArray"},
+        "effectiveStartItemIds": {"$ref": "#/$defs/idArray"},
+        "relatedFeatureIds": {"$ref": "#/$defs/nonEmptyIdArray"}
+      }
+    },
+    "scopeDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["featureId", "decision", "rationale", "designItemIds", "effectiveStartItemIds"],
+      "properties": {
+        "featureId": {"type": "string", "pattern": "^feature-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "decision": {"type": "string", "enum": ["IN_SCOPE", "FULLY_COVERED", "OUT_OF_SCOPE"]},
+        "rationale": {"type": "string", "minLength": 1},
+        "designItemIds": {"$ref": "#/$defs/idArray"},
+        "effectiveStartItemIds": {"$ref": "#/$defs/idArray"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"decision": {"const": "IN_SCOPE"}}, "required": ["decision"]},
+          "then": {"properties": {"designItemIds": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"decision": {"const": "FULLY_COVERED"}}, "required": ["decision"]},
+          "then": {"properties": {"effectiveStartItemIds": {"minItems": 1}}}
+        }
+      ]
+    }
+  }
+}

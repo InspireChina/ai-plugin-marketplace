@@ -1,0 +1,30 @@
+{
+  "epics": [
+    {
+      "epicId": "epic-platform",
+      "type": "TECHNICAL",
+      "name": "平台边界",
+      "description": "明确来源中要求的技术平台边界。",
+      "source": {
+        "type": "SOURCE_INPUT",
+        "sourceDocumentIds": ["source-document-customer-profile"],
+        "sourceReferences": ["section:technical-platform"]
+      }
+    }
+  ],
+  "features": [
+    {
+      "featureId": "feature-profile-api",
+      "epicId": "epic-platform",
+      "name": "客户档案操作 API",
+      "description": "通过稳定的 API 创建和检索客户档案。",
+      "source": {
+        "type": "DESIGN_DERIVED",
+        "designDecisionIds": ["decision-profile-api"],
+        "effectiveStartItemIds": ["effective-start-customer-api"],
+        "relatedFeatureIds": ["feature-customer-profile"],
+        "rationale": "设计决策/Decision: decision-profile-api 使用专用 API 边界处理客户档案操作；产生原因/Cause: 客户档案操作 API 需要为 UI 与未来渠道提供统一操作边界；不交付影响/Non-delivery impact: 接口/API | Customer Portal -> 无法通过统一边界创建或检索客户档案"
+      }
+    }
+  ]
+}
