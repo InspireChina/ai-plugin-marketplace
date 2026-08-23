@@ -1018,6 +1018,12 @@ def test_projects_as_is_topics_details_and_header(tmp_path: Path) -> None:
         "UNCERTAINTY": 4,
         "EVIDENCE": 7,
     }
+    detail_topics = table_values(workbook_path, "AsIsDetailTable", "主题")
+    assert {
+        topic
+        for topic, record_type in zip(detail_topics, record_types, strict=True)
+        if record_type == "COVERAGE"
+    } == {"Feature覆盖"}
     assert "NOT_IMPLEMENTED / CARRY_FORWARD" in table_values(
         workbook_path, "AsIsDetailTable", "分类/状态"
     )

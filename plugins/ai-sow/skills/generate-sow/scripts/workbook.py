@@ -335,7 +335,7 @@ def build_asis_detail_rows(asis: dict[str, Any]) -> list[dict[str, object]]:
     for entry in asis["coverage"]:
         rows.append(
             {
-                "主题": "",
+                "主题": "Feature覆盖",
                 "记录类型": "COVERAGE",
                 "记录 ID": display_text(entry["featureId"]),
                 "分类/状态": display_text(entry["status"]),
