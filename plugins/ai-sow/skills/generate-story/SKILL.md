@@ -15,9 +15,14 @@ description: 当已评审的业务需求、技术需求、现状和目标设计�
 
 ## 工作流
 
-1. 分别读取 BUSINESS requirements 与 TECHNICAL requirements，并在内存中联合；不写合并文件。同时读取 As-Is、design、`.ai-sow/reviews/generate-design.md` 和需求评审中的 `Questionnaire` 声明。只有 HLD Coverage 与 Go-live Assessment 均精确为 `PASSED`、固定上线矩阵完整且与 design/As-Is 一致时才继续；否则返回 `BLOCKED`。声明为正式路径时读取可选 `.ai-sow/reviews/analyze-requirement-questionnaire.md`；声明为 `NOT_REQUIRED` 时确认该文件不存在。声明缺失、声明与文件状态冲突或应有文件缺失时返回 `BLOCKED`。
-2. 问卷存在时检查全部记录；出现 `OPEN`、`ANSWERED`、字段不完整或无法验证的处置时返回 `BLOCKED`。对每个同时具备 Question ID、用户 Answer、Decision date、Decision evidence、`Status: APPROVED_DEFAULT` 与 `Disposition: ASSUMPTION_CANDIDATE` 的记录恰好生成一个 Assumption 候选；其 `handling` 保留 `analyze-requirement-questionnaire#<Question-ID>` 来源锚点。`CLOSED / INCORPORATED_BUSINESS:<stable-id>` 必须能在获批 BUSINESS requirements 中找到对应 ID，并核对 Answer 已反映在该 Epic/Feature 中，且不再生成 Assumption；`CLOSED / NO_CHANGE` 也不生成。
+1. 当前 Stage Agent 是本 Skill 的唯一用户接口和专业执行者，不创建 Worker 或 Validator Agent。先运行 Owner-local context compiler；它用公共 matcher 验证 Requirement、As-Is 和 Design 三个 receipt，并只投影 ScopeDecision、Feature、Effective Start、问卷决定、固定 Go-live Concern 以及关联 Commitment/Evidence/Uncertainty。任一 handoff 为 missing、invalid、stale 或 unsupported 时，报告对应 Owner Skill 并停止。不得调用上游 validator，不得重新执行 Design 的 HLD/Go-live 门禁，也不得重诊断 Requirement 问卷终态或 As-Is 内部实体：
+
+   ```text
+   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/prepare_context.py" --project-root .
+   ```
+2. 当前 Stage Agent 先读 `.ai-sow/work/generate-story/context/manifest.json`，再只读取其中点名的四个 fragment、本 Skill Schema 和[评审模板](references/review-template.md)。BUSINESS 与 TECHNICAL requirements 仅在当前内存中联合，不写 merged requirements。对每个已批准的 `APPROVED_DEFAULT / ASSUMPTION_CANDIDATE` Question ID 恰好生成一个 Assumption，其 `handling` 保留 `analyze-requirement-questionnaire#<Question-ID>` 锚点并至少关联一个 Story。`CLOSED / INCORPORATED_BUSINESS:<stable-id>` 与 `CLOSED / NO_CHANGE` 不生成 Assumption。
 3. 对每个 `IN_SCOPE` Feature，用目标结果减去其 Coverage 所连接的 Effective Start，形成 Delivery Gap。把相关 `CARRY_FORWARD` Commitment 纳入差距，不能当作基线。`FULLY_COVERED` Feature 不生成 Gap 或 Story；其完整性已由设计门禁中的 Effective Start、Evidence 和理由证明。
+   已批准的 Story/AC 是业务交付合同。Task 可实施性反馈经 `generate-design` 细化实现机制、但未改变用户批准的交付结果时，保持 Delivery 原字节并走 `Impact: NO_CHANGE` rebind；不得为实现机制创建 Gap、Story 或 AC。只有上游 Owner 经用户明确批准改变可独立验收的交付结果后，才按 `Impact: CHANGED` 重新评审 Story/AC。
 4. 对每个 `IN_SCOPE` 生产上线 TECHNICAL Feature 形成完整 Delivery Gap，并优先拆成“上线准备”“发布切换”“生产验证与运维移交”三个结果型核心 Story；旧功能下线条件适用时单独生成 Story，不与发布切换合并。每个上线 Story 通常设置 `uatRelevant = false`，只有确实属于业务 UAT 分母且获得评审确认时才能设为 `true`。
 5. 对每个 `IN_SCOPE` 数据迁移 TECHNICAL Feature 单独生成 Gap 和迁移 Story。迁移 Feature、Gap 和 Story 不得归入生产上线 Feature；发布切换只能把已完成的迁移结果写成前置条件或 AC，不能吞并迁移交付范围。
 6. `POST_GO_LIVE_SUPPORT` 只能形成明确的合同边界、Assumption/Risk，或已经批准且可验收的具体交付工作；不得生成泛化“上线后支持”、驻场、待命容量或 24×7 支持 Story。若输入明确购买专职驻场、固定班次、待命容量或 24×7 支持，停止 Story 分解并返回 `generate-design`：由其登记 `affectsEstimate = true` 的 Uncertainty，转入独立服务容量模型或单独支持 SOW，在责任方带回获批容量估算或明确排除决定前保持 `BLOCKED`。UAT 缺陷责任、变更请求和支持边界写入 AC、Assumption/Risk 与责任边界，不生成开放式缺陷 Story。
@@ -25,13 +30,50 @@ description: 当已评审的业务需求、技术需求、现状和目标设计�
 8. 为每个 Story 编写有序 AC；每条 AC 是独立可观察、可通过或不通过的结果，不描述实现 Task。上线 AC 必须明确前置条件、成功判定、失败或回滚边界以及责任方；数据迁移 AC 与发布切换 AC 分开。
 9. 把有证据支持的 Integration 作为顶级权威实体写入 `integrations`。每条 Integration 有唯一 `integrationId`，并明确 `storyId`、source、target、trigger、direction、purpose 和 owner。Integration 不依赖 Story 类型，登记关系也不表示已经决定生成集成 Task；是否需要交付内部或外部系统对接工作由 `generate-task` 判断。
 10. 把每个 Assumption 或 Risk 作为 `assumptions` 中的一条独立记录。相同语义只保留一行，通过 `assumptionStories` 关联一个或多个 Story；不为每个 Story 复制同一假设。
-11. 在 `.ai-sow/work/generate-story/` 保存分解，在 `.ai-sow/reviews/generate-story.md` 评审差距、Story 边界、AC 可测性、Integration 责任、Assumption/Risk 及约束证据。评审必须逐项记录十个上线 Concern 的合同处置及 `Concern -> Feature -> Gap -> Story/Assumption/Risk` 映射，并确认上线准备、发布切换、生产验证与运维移交、条件适用的下线、独立数据迁移、UAT 分母和支持边界无遗漏或重复；自由文本无法可靠证明时保持 fail closed。问卷存在时，评审还必须逐项列出 `Question ID -> assumptionId -> storyIds`；批准前每个 `APPROVED_DEFAULT` 恰好出现一次，不得遗漏或重复消费。
-12. 获得用户批准后编译 `.ai-sow/data/generate-story/delivery.json`，再运行：
+11. 当前 Stage Agent 在 `.ai-sow/work/generate-story/delivery.candidate.json` 保存专业分解，再用确定性 renderer 整体生成 `.ai-sow/work/generate-story/review.candidate.md`；不得手写或局部修补投影。投影覆盖 Gap、Story、AC、Integration、Assumption/Risk、问卷消费和 `Concern -> Feature -> Gap -> Story/Assumption/Risk`，并确认上线准备、发布切换、生产验证与运维移交、条件适用的下线、独立数据迁移、UAT 分母和支持边界无遗漏或重复：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root .
+   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/render_review.py" --project-root . --candidate .ai-sow/work/generate-story/delivery.candidate.json --output .ai-sow/work/generate-story/review.candidate.md
    ```
+12. 直接运行审批前机械闭环。`review` 生成 `risk-summary.md` 与 canonical `review-packet.json`，固定算法为 `ai-sow-owner-review-packet-v1`，并绑定 inputs、context manifest/fragments、candidate、review 与 risk summary。批准前不得写正式 review、Delivery 或 receipt：
+
+   ```text
+   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
+   ```
+13. 只创建一个不继承当前完整聊天的 fresh-context Reviewer。Reviewer 只读 packet、candidate、review、risk summary、评审模板和 packet 点名的 fragment；不运行机械校验、不修改成果、不代替用户批准。finding 只允许当前 Stage Agent 完成一次整体修复，重新检查全部新增/变化 Gap、Story、AC、Integration、Assumption/Risk、问卷和十项上线映射，整体重跑 renderer/`review` 后交回同一 Reviewer 完整复审；第二次仍不通过则 `BLOCKED`。`PASS` 后写 canonical work-only sidecar：
+
+   ```json
+   {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"generate-story","packetSha256":"<packet-sha256>"}
+   ```
+14. 向用户展示完整 review、risk summary、Reviewer 结果、packet path 与 SHA-256。用户必须明确批准 Owner `generate-story` 和该 hash，再写 canonical `approval.json`；任一 candidate、review、risk、context、input 或 packet 字节变化都会使 Reviewer 与用户批准失效：
+
+   ```json
+   {"algorithm":"ai-sow-owner-approval-v1","decision":"APPROVED","owner":"generate-story","packetSha256":"<packet-sha256>"}
+   ```
+15. 精确绑定有效后只运行 `publish-approved`。它在任何正式写入前复算全部 hash，把 work-only review 和 Delivery candidate 原字节发布到正式路径，并让 receipt `0.3` 最后写入；批准后不得再修改专业成果或调用 Reviewer：
+
+   ```text
+   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
+   ```
+16. 直接上游 receipt 变化但专业结论不变时，review 记录 `Impact: NO_CHANGE`、发生变化的直接上游、旧/新 receipt hash 和点名全部稳定 ID 的影响理由。现有 `--mode rebind` 只保留为 reconciliation Adapter，并必须证明稳定 Delivery 原字节不变；普通调用按同一 packet-bound 审批闭包形成原字节 candidate 后发布。
+17. receipt 发布后报告完成，只推荐用户显式调用 `generate-task`，然后 STOP；不得自动启动下游 Skill。
 
 ## 完成条件
 
-每个范围内 Feature 恰有可追溯 Gap，每个 Gap 至少关联一个 Story，每个 Story 至少有一条 AC；范围内生产上线完整覆盖上线准备、发布切换、生产验证与运维移交，适用时单列旧功能下线；数据迁移使用独立 Feature、Gap 和 Story；上线 Story 的 UAT 分母、上线后支持边界及 UAT 缺陷/变更责任均有明确评审结论。每条有依据的 Integration 都作为独立记录关联一个 Story；每个 Assumption/Risk 只保存一次并用关系集合连接 Story。存在问卷时，每个 `APPROVED_DEFAULT` 都完整映射到一个稳定 Assumption 和至少一个 Story，且 `handling` 保留 Question ID 锚点；问卷本身仍是人类评审状态，不成为第七份稳定 JSON。validator 以 exit code 0 结束。
+每个范围内 Feature 恰有可追溯 Gap，每个 Gap 至少关联一个 Story，每个 Story 至少有一条 AC；范围内生产上线完整覆盖上线准备、发布切换、生产验证与运维移交，适用时单列旧功能下线；数据迁移使用独立 Feature、Gap 和 Story；上线 Story 的 UAT 分母、上线后支持边界及 UAT 缺陷/变更责任均有明确评审结论。每条有依据的 Integration 都作为独立记录关联一个 Story；每个 Assumption/Risk 只保存一次并用关系集合连接 Story。存在问卷时，每个 `APPROVED_DEFAULT` 都完整映射到一个稳定 Assumption 和至少一个 Story，且 `handling` 保留 Question ID 锚点；问卷本身仍是人类评审状态，不成为第七份稳定 JSON。Delivery 原字节发布并签发 receipt 后只推荐 `generate-task` 并停止。
+
+## Reconciliation Adapter
+
+仅当用户显式调用 `ai-sow:reconcile` 且提供 `Reconciliation Run ID`、整体 review SHA-256 与项目内
+staging root 时，本 Skill 作为 Story Owner Adapter 运行。它继续独占 Gap、Story、AC、Integration、
+Assumption、Risk、候选编译、`check/publish/rebind` 与写集合，但复用 reconciliation 的外层当前
+Stage、一个 Reviewer 和一次 hash-bound 用户批准；确定性 Owner 命令由外层当前 Stage 直接调用。技术实现或 Task 细化未改变业务交付结果
+时必须 `NO_CHANGE`，Delivery 原字节复用；只有整体 review 精确列出业务结果与 Story/AC diff，
+并由同一次用户批准覆盖时才可 `CHANGED`。Owner 结果返回外层当前 Stage，本内部模式不在本阶段
+STOP，也不调用 Task；普通独立调用保持原合同。
+
+候选校验可在 `--mode check` 中用 `--review-path <project-relative-posix-path>` 读取本次 reconciliation
+为 Story Owner 编译的 work-only review 投影；该路径同时作为 Story review 与上线映射诊断路径。
+上游 Owner review 仍使用各自固定路径。`publish` 与 `rebind` 禁止 review override，必须回到固定
+`REVIEW_PATH` 发布 Owner receipt。整体 review 本体只作为投影携带的批准 hash 绑定来源，不直接
+传给 Owner-local `validate.py`。

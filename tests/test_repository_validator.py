@@ -41,7 +41,7 @@ def write_plugin(root: Path, name: str, version: str) -> Path:
 
 
 def write_valid_ai_sow_release(root: Path) -> Path:
-    plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.1")
+    plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.2")
     for relative in (
         "tests/support/smoke_plugin.py",
         "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
@@ -55,17 +55,17 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         {
             "projectId": "validator-fixture",
             "name": "Validator Fixture",
-            "pluginVersion": "0.1.0-beta.1",
+            "pluginVersion": "0.1.0-beta.2",
             "sowStandardVersion": "1.3",
         },
     )
     (plugin_root / "pyproject.toml").write_text(
-        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
+        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b2"\n',
         encoding="utf-8",
     )
     (plugin_root / "uv.lock").write_text(
         'version = 1\nrevision = 3\n\n[[package]]\n'
-        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
+        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b2"\n',
         encoding="utf-8",
     )
     return plugin_root
@@ -137,7 +137,7 @@ class RepositoryValidatorTests(unittest.TestCase):
     def test_marketplace_reports_malformed_and_duplicate_sources(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            write_plugin(root, "ai-sow", "0.1.0-beta.1")
+            write_plugin(root, "ai-sow", "0.1.0-beta.2")
             write_json(
                 root / ".agents/plugins/marketplace.json",
                 {
@@ -227,7 +227,7 @@ class RepositoryValidatorTests(unittest.TestCase):
 
             self.assertEqual(validate_plugin_manifest(root, plugin_root), [])
             self.assertIn(
-                "AI SOW plugin version must be 0.1.0-beta.1",
+                "AI SOW plugin version must be 0.1.0-beta.2",
                 validate_ai_sow_release(root, plugin_root),
             )
 

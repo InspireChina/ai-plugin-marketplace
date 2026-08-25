@@ -9,8 +9,9 @@
 | 评审材料 | 各 Skill 在整理正式数据前形成的分析、设计或拆分结果，供用户阅读和确认；具体形式由该 Skill 决定。 |
 | 数据整理 | 用户确认后，把评审材料中的最终结论整理为本 Skill 规定的 Schema 数据。结构化数据不能代替分析和判断过程。 |
 | 正式交接数据 | 五个 Skill 产生的六份 JSON：来源需求、As-Is、设计、设计产生的技术需求、交付内容和估算输入。 |
-| 项目元数据 | 由 setup 维护的 `.ai-sow/project.json`；登记项目身份、mode、pluginVersion、Repo 与往期 SOW，不计入上述六份正式交接数据。 |
+| 项目元数据 | 由 setup 初始化的 `.ai-sow/project.json`；只登记 `projectId`、`name`、`pluginVersion`、`sowStandardVersion`，不计入上述六份正式交接数据。 |
 | 数据归属 | 每项正式数据只由一个 Skill 负责。后续 Skill 只读取 `.ai-sow/data/...`，不修改上一步的文件。 |
+| 影响集协调 | 已有完整下游产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；它不拥有稳定业务数据。 |
 | 固定 ID | 使用小写 kebab-case 和对象前缀，并且在项目数据中唯一，例如 `feature-order-status`。所指内容不变时沿用原 ID，内容发生实质变化时新建 ID。 |
 | 计算依据 | `.ai-sow/templates/sow-template.xlsx`。任务规则、基础人天、复杂度、系数、公式、取整和最终人天不在 Python 或 JSON 中重复保存。 |
 | 配套 Markdown | 与当前 SOW 标准版本一致的任务分类和开发交付人天说明，用于解释分类、填写、验收和估算规则，不另设一套计算口径。 |
@@ -40,7 +41,17 @@ setup
 
 `setup` 写入项目元数据并复制模板；`generate-sow` 生成待确认的交付文件。两者都不负责业务分析。
 
-每个 Skill 的固定工作顺序是：开展分析、设计或拆分 → 形成可读的评审材料 → 用户确认 → 整理为规定的数据格式 → 由当前 Skill 校验 → 保存正式交接数据。用户确认前不生成 JSON 草稿来代替评审。
+普通首次生成仍按七阶段顺序逐项完成。上游修正发生在已有完整产物之后时，用户可显式调用
+`reconcile`：Owner 仍分别拥有业务语义、稳定路径和确定性 validator，但不再要求用户逐阶段重启
+session。当前 Stage 在批准前按固定后缀完成各 Owner 的 `CHANGED/NO_CHANGE` staged pass、SOW
+package 复读及 canonical redo/diff/risk，并由完整 packet 绑定；一个 fresh-context Reviewer 与一次
+用户批准绑定同一 packet SHA-256，批准后只做 check/publish。六份稳定 JSON 集合保持不变。
+
+五个专业 Owner 都遵守 candidate-first 生命周期：由当前 Stage 开展分析、设计或拆分，并在 work 目录提前形成和机械校验结构化
+candidate，再确定性生成 review 投影、风险摘要和 hash-bound review packet。packet 绑定本 Owner
+的 named inputs、candidate、context manifest/fragments、review 与风险摘要，供唯一 fresh-context
+Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。用户批准精确 packet 后才按 candidate
+原字节发布稳定交接数据，任一绑定字节变化都必须重新整体评审和批准。
 
 ## 3. 需求
 
@@ -77,7 +88,7 @@ setup
 
 As-Is 不要求所有工具使用同一种中间数据格式，也不限定必须使用某种调查工具。调查顺序为：先看仓库和文档，再看接口约定、配置、部署和运行证据，最后通过定向问卷补充信息。完整调查过程保留在该 Skill 自己的 work 目录中；正式 `asis.json` 只保存后续步骤确实需要的结论。
 
-`.ai-sow/reviews/generate-design.md` 以精确 `PASSED` 声明和固定七列矩阵保存两个批准门禁。它不是第七份正式 JSON，但 `generate-story`、`generate-task` 和 `generate-sow` 必须使用同一语义复核；任一声明缺失、矩阵不完整、Feature/Scope 不一致或证明不足时都不能继续。
+`.ai-sow/reviews/generate-design.md` 以精确 `PASSED` 声明和固定七列矩阵保存两个批准门禁。它不是第七份正式 JSON；门禁语义只由 `generate-design` validator 判断并绑定到 receipt。`generate-story`、`generate-task` 和 `generate-sow` 只匹配当前 Design handoff，不复制或重放 HLD/Go-live 业务判断。
 
 ## 5. 交付 Story
 
@@ -90,7 +101,7 @@ As-Is 不要求所有工具使用同一种中间数据格式，也不限定必�
 | UAT 适用性 | Story 对业务 UAT 是否适用的明确判断；不从 Story 类型或 Task 任务族推导。 |
 | 假设/风险 | 保存类型、名称、触发条件、责任边界、`已明确 / 待确认` 状态和处理方式，并通过关系行关联 Story。 |
 
-每个 IN_SCOPE Feature 至少有一个 Gap，每个 Gap 至少有一个 Story，每个 Story 至少有一条 AC。Story 不保存类型，可以包含任意任务族的 Task。AC 与 Task 不要求一一对应，但合在一起必须能够说明这个 Story 要交付什么、如何验收。
+每个 IN_SCOPE Feature 至少有一个 Gap，每个 Gap 至少有一个 Story，每个 Story 至少有一条 AC。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 `NO_CHANGE` rebind；只有用户明确批准交付结果变化后才重新评审 Story/AC。
 
 ## 6. Task 与估算输入
 
@@ -126,21 +137,31 @@ Task 通过 `matchedEffectiveStartItemIds` 关联 Effective Start：“调整 / 
 
 ## 7. 项目文件、Skill 隔离与交付
 
-setup 只创建项目目录、项目元数据和模板，不接入 Repo 或往期 SOW。`analyze-as-is` 在开展现状调查时按需登记 Repo、往期 SOW、配置、部署材料及其他现状证据，并负责自己输入目录中的文件和元数据。没有 Repo 或往期 SOW 也可以正常开展调查，但必须说明实际检查了哪些现状材料。
+setup 由当前 Stage Agent 检查 uv、Python 3.12 与插件锁定依赖环境，再直接调用一次确定性 Module 创建项目目录、四字段项目元数据和模板，并在返回前复读 Project Schema 与模板。完整项目只读验证，合法的项目级模板定制按当前项目模板合同复读，不与 bundled template 强制比较字节；不完整、损坏或身份冲突项目 fail closed。setup 不 repair、不自动迁移，也不接入 Repo 或往期 SOW。`analyze-as-is` 在开展现状调查时按需登记 Repo、往期 SOW、配置、部署材料及其他现状证据，并负责自己输入目录中的文件和元数据。没有 Repo 或往期 SOW 也可以正常开展调查，但必须说明实际检查了哪些现状材料。
 
-`.ai-sow/project.json` 保存 `projectId`、项目名称、pluginVersion 和 templateVersion。每个 Skill 只写自己的 work、review、data、validation 或 output 目录。
+`.ai-sow/project.json` 保存 `projectId`、`name`、`pluginVersion` 和 `sowStandardVersion`。每个 Skill 只写自己的 work、review、data、validation 或 output 目录。
 
 Skill 之间：
 
 - 不跨 Skill 导入 Python 模块；
 - 不调用另一个 Skill 的脚本；
 - 不读取另一个 Skill 的 Schema、Fixture、测试或资源文件；
-- 只通过规定的正式数据路径、ID 和必要字段进行协作。
+- 只通过规定的正式数据路径、批准 review、validation report/receipt、ID 和必要字段进行协作；
+- 只允许调用插件级 `runtime/project_io.py` 与 `runtime/handoff.py` 的纯技术接口，HLD/Go-live 等领域规则保持 Owner Skill-local。
 
-`generate-sow` 读取六份正式数据和项目模板，先检查写入 XLSX 所需的字段和引用是否完整，再填充可扩展的 Table。`90-系统现状` 使用固定九行的 `AsIsTopicTable` 和按明细数量扩展的 `AsIsDetailTable` 写入完整 As-Is；Task 页的“系统现状匹配”显示 Task 对应的 Effective Start。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+`reconcile` 是唯一 Agent-level 协调例外：当前 Stage 可读取受影响 Owner 的 `SKILL.md` 并在批准前
+执行其公开命令；完整 staged closure 只创建一个 fresh-context Reviewer。批准后 Skill-local
+publisher 只验证 packet/hash 并前向发布。Skill Python 仍不跨 Skill import、读取 Schema/fixture
+或共享业务规则；Owner 只写自己的 review/candidate/output/receipt，Task 不能修改 Delivery、Story
+或 AC。
 
-生成结果先写入唯一的 `.ai-sow/outputs/.staging-*` 临时目录。全部文件重新读取并校验通过后，再把目录改名为 `.ai-sow/outputs/sow-<UUIDv4>/`。成功生成的目录包含 `sow.xlsx`、`manifest.json` 和六份分别保存的数据副本。生成失败时保留临时目录；下次运行另建目录。
+`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。`90-系统现状` 使用固定九行的 `AsIsTopicTable` 和按明细数量扩展的 `AsIsDetailTable` 写入完整 As-Is；Task 页的“系统现状匹配”显示 Task 对应的 Effective Start。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
 
-插件不提供统一 CLI，也不建设共享 Python 内核、项目锁、runId、事务处理、崩溃恢复、自动回滚、自动 Git commit、统一管理的 Python/uv 运行环境、公式执行、OOXML 全量基准或 XLSX 反向导入。允许重复安装依赖、重建环境、重新运行，以及人工删除生成失败的临时目录。
+生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
+
+插件不提供统一 CLI，也不建设共享业务 Python 内核、项目锁、不可变 revision store、活动指针、
+自动回滚、自动 Git commit、统一管理的 Python/uv 运行环境、公式执行、OOXML 全量基准或 XLSX
+反向导入。`reconcile` 仅使用 work-only run ID、显式 tombstone 和 canonical redo manifest 做单写者
+前向恢复；这些不是稳定业务合同或通用事务系统。
 
 Git 只用于普通的协作记录。需要调查本地 Repo 时，由 `analyze-as-is` 执行只读 Git 检查，确认工作树根目录并记录调查时的 `HEAD` revision 和 dirty 状态；它不 clone、不 fetch、不 pull，也不修改目标仓库。

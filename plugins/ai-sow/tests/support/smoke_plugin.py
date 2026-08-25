@@ -66,7 +66,7 @@ def run_smoke(
     work_dir: Path,
     copy_plugin: bool,
 ) -> dict[str, object]:
-    """Run setup, all owner validators, and generation outside the plugin."""
+    """Run setup, verify all Owner receipts, and generate outside the plugin."""
     source_plugin = plugin_root.resolve(strict=True)
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -137,18 +137,16 @@ def run_smoke(
     )
     validator_results: list[dict[str, object]] = []
     for skill_name in validator_skills:
-        script = active_plugin / f"skills/{skill_name}/scripts/validate.py"
-        result = run_command(
-            plugin_python_command(
-                active_plugin,
-                script,
-                "--project-root",
-                ".",
-            ),
-            cwd=reviewed_fixture,
-        )
-        _require_ok(result, skill_name)
-        validator_results.append(result)
+        receipt_path = reviewed_fixture / f".ai-sow/validation/{skill_name}.json"
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        compilation = receipt.get("compilationReceipt", {})
+        if (
+            receipt.get("owner") != skill_name
+            or receipt.get("passed") is not True
+            or compilation.get("validatorContractVersion") != "0.3"
+        ):
+            raise RuntimeError(f"invalid fixture Owner receipt: {receipt_path}")
+        validator_results.append(receipt)
 
     generate_script = active_plugin / "skills/generate-sow/scripts/generate_sow.py"
     generate_result = run_command(

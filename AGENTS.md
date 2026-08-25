@@ -23,7 +23,8 @@
 - 每个插件必须自包含于 `plugins/<plugin-name>/`，运行时不得读取 marketplace 根目录或其他插件的文件。
 - 插件的依赖、资产、运行时代码、文档和测试都放在插件目录内；独立复制后的插件必须仍可运行。
 - marketplace 条目、插件目录名和 `.codex-plugin/plugin.json` 中的名称保持一致。
-- AI SOW 脚本默认不跨 Skill import，也不读取其他 Skill 的 schema、fixture、test、asset 或 script。只有必须统一的 HLD/Go-live 门禁语义使用 `plugins/ai-sow/runtime/review_gates.py`。
+- AI SOW 脚本不跨 Skill import，也不读取其他 Skill 的 schema、fixture、test、asset、reference 或 script。插件级公共 runtime 最终只允许 `runtime/handoff.py` 与 `runtime/project_io.py` 两个纯技术 module；不得新增共享业务 Schema、业务编译器、通用 Owner runner 或配置驱动业务引擎。
+- HLD/Go-live 只由 `generate-design` 的 Skill-local `scripts/review_gates.py` 拥有并校验；下游只匹配 Design handoff receipt，不复制或重放该业务门禁。
 - Skill 命令从已加载 `SKILL.md` 的位置解析插件路径，不依赖源码 checkout 的绝对路径。
 
 ## AI SOW 工作流与数据所有权
@@ -40,8 +41,10 @@ setup
   -> generate-sow
 ```
 
-- Owner Skill 先完成专业工作并形成可读评审材料；用户明确批准后，才编译、验证和发布稳定 JSON。结构化草稿不能代替评审。
+- 五个专业 Owner Skill 都由当前 Stage 先完成专业工作，在 work 目录形成并机械校验 candidate、可读评审材料、风险摘要和 hash-bound review packet；一个 fresh-context Reviewer 通过后，用户必须批准精确 packet。稳定 JSON 只能在该批准后按 candidate 原字节发布。结构化草稿不能代替专业分析或独立人类评审。
 - 六份稳定交接数据各有唯一 Owner。下游只读 `.ai-sow/data/...`，发现上游事实需要变化时退回 Owner 修改。
+- 已有完整下游产物后的修正可由 `reconcile` 在单次整体评审中处理固定影响后缀；它复用各
+  Owner 的规则、Validator 和写集合，不拥有稳定业务 JSON，也不允许 Task 反向修改 Story/AC。
 - BUSINESS requirements 只由 `analyze-requirement` 维护；TECHNICAL requirements 只由 `generate-design` 维护。联合视图只存在于内存，不创建第三份 merged requirements。
 - `.ai-sow/reviews/generate-design.md` 是 HLD/Go-live 批准合同，不是第七份稳定 JSON；Story、Task 和最终生成必须使用相同门禁语义复核。
 - `setup` 只维护项目身份、目录和模板，`generate-sow` 只投影已批准数据；两者不承担业务分析。

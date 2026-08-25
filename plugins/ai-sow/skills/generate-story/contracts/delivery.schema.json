@@ -1,16 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:generate-story:delivery:0.1",
+  "$id": "urn:ai-sow:generate-story:delivery:0.2",
   "type": "object",
   "additionalProperties": false,
   "required": ["gaps", "stories", "acceptanceCriteria", "integrations", "assumptions", "assumptionStories"],
   "properties": {
-    "gaps": {"type": "array", "items": {"$ref": "#/$defs/gap"}},
-    "stories": {"type": "array", "items": {"$ref": "#/$defs/story"}},
-    "acceptanceCriteria": {"type": "array", "items": {"$ref": "#/$defs/acceptanceCriterion"}},
-    "integrations": {"type": "array", "items": {"$ref": "#/$defs/integration"}},
-    "assumptions": {"type": "array", "items": {"$ref": "#/$defs/assumption"}},
-    "assumptionStories": {"type": "array", "items": {"$ref": "#/$defs/assumptionStory"}}
+    "gaps": {"type": "array", "items": {"$ref": "#/$defs/gap"}, "description": "每个 IN_SCOPE Feature 相对 Effective Start 和待延续 Commitment 的可交付差距。"},
+    "stories": {"type": "array", "items": {"$ref": "#/$defs/story"}, "description": "把 Delivery Gap 拆成可独立交付、验收和结算的结果型 Story。"},
+    "acceptanceCriteria": {"type": "array", "items": {"$ref": "#/$defs/acceptanceCriterion"}, "description": "按 Story 有序列出的独立、可观察且可判定通过或不通过的验收结果。"},
+    "integrations": {"type": "array", "items": {"$ref": "#/$defs/integration"}, "description": "有证据支持并由 Story 交付的集成边界、方向、责任与设计决策关系。"},
+    "assumptions": {"type": "array", "items": {"$ref": "#/$defs/assumption"}, "description": "影响交付的独立 Assumption 或 Risk；相同语义只保存一条。"},
+    "assumptionStories": {"type": "array", "items": {"$ref": "#/$defs/assumptionStory"}, "description": "Assumption/Risk 与一个或多个受影响 Story 的去重关系。"}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
@@ -20,67 +20,86 @@
     "integrationId": {"type": "string", "pattern": "^integration-[a-z0-9]+(?:-[a-z0-9]+)*$"},
     "assumptionId": {"type": "string", "pattern": "^assumption-[a-z0-9]+(?:-[a-z0-9]+)*$"},
     "featureId": {"type": "string", "pattern": "^feature-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "commitmentId": {"type": "string", "pattern": "^commitment-[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "designDecisionId": {"type": "string", "pattern": "^decision-[a-z0-9]+(?:-[a-z0-9]+)*$"},
     "gap": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["gapId", "featureId", "name", "description"],
+      "required": ["gapId", "featureId", "name", "description", "commitmentIds"],
       "properties": {
-        "gapId": {"$ref": "#/$defs/gapId"},
-        "featureId": {"$ref": "#/$defs/featureId"},
-        "name": {"type": "string", "minLength": 1},
-        "description": {"type": "string", "minLength": 1}
+        "gapId": {"$ref": "#/$defs/gapId", "description": "由 Story Owner 维护并供 Story 引用的稳定 Delivery Gap ID。"},
+        "featureId": {"$ref": "#/$defs/featureId", "description": "产生该差距的 IN_SCOPE BUSINESS 或 TECHNICAL Feature ID。"},
+        "name": {"type": "string", "minLength": 1, "description": "概括目标结果与当前起点之间差距的名称。"},
+        "description": {"type": "string", "minLength": 1, "description": "结合 Effective Start、目标设计和责任边界说明仍需交付的结果。"},
+        "commitmentIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/commitmentId"}, "description": "必须纳入该差距继续交付的 As-Is CARRY_FORWARD Commitment ID。"}
       }
     },
     "integration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["integrationId", "storyId", "source", "target", "trigger", "direction", "purpose", "owner"],
+      "required": ["integrationId", "storyId", "source", "target", "trigger", "direction", "purpose", "owner", "deliveryBoundary", "targetKind", "decisionIds"],
       "properties": {
-        "integrationId": {"$ref": "#/$defs/integrationId"},
-        "storyId": {"$ref": "#/$defs/storyId"},
-        "source": {"type": "string", "minLength": 1},
-        "target": {"type": "string", "minLength": 1},
-        "trigger": {"type": "string", "minLength": 1},
-        "direction": {"type": "string", "enum": ["INBOUND", "OUTBOUND"]},
-        "purpose": {"type": "string", "minLength": 1},
-        "owner": {"type": "string", "enum": ["INTERNAL", "EXTERNAL"]}
+        "integrationId": {"$ref": "#/$defs/integrationId", "description": "由 Story Owner 维护并供后续 Integration Task 引用的稳定 ID。"},
+        "storyId": {"$ref": "#/$defs/storyId", "description": "交付该集成结果和责任边界的 Story ID。"},
+        "source": {"type": "string", "minLength": 1, "description": "集成交换的发送方系统、组件或参与者。"},
+        "target": {"type": "string", "minLength": 1, "description": "集成交换的接收端口、适配器、系统或提供方。"},
+        "trigger": {"type": "string", "minLength": 1, "description": "触发交换的事件、调用、计划或人工动作。"},
+        "direction": {"type": "string", "enum": ["INBOUND", "OUTBOUND"], "description": "相对于本项目范围内系统的集成方向。"},
+        "purpose": {"type": "string", "minLength": 1, "description": "该交换必须实现的业务或运营结果。"},
+        "owner": {"type": "string", "enum": ["INTERNAL", "EXTERNAL"], "description": "对目标边界、接入条件和运行结果负责的一方。"},
+        "deliveryBoundary": {"type": "string", "enum": ["PORT_ONLY", "END_TO_END"], "description": "Story 交付止于稳定端口还是覆盖到目标系统或提供方的端到端结果。"},
+        "targetKind": {"type": "string", "enum": ["PORT", "ADAPTER", "SYSTEM", "PROVIDER"], "description": "用于澄清交付目标是端口、适配器、完整系统还是外部提供方。"},
+        "decisionIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/designDecisionId"}, "description": "批准该集成边界或目标的 Design Decision ID。"}
       }
     },
     "story": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["storyId", "gapId", "name", "description", "uatRelevant"],
+      "required": ["storyId", "gapId", "name", "description", "uatRelevant", "requiredIntegrationBoundary"],
       "properties": {
-        "storyId": {"$ref": "#/$defs/storyId"},
-        "gapId": {"$ref": "#/$defs/gapId"},
-        "name": {"type": "string", "minLength": 1},
-        "description": {"type": "string", "minLength": 1},
-        "uatRelevant": {"type": "boolean"}
+        "storyId": {"$ref": "#/$defs/storyId", "description": "由 Story Owner 维护并供 AC、Integration、Assumption 和 Task 引用的稳定 ID。"},
+        "gapId": {"$ref": "#/$defs/gapId", "description": "该 Story 独立解决的 Delivery Gap ID。"},
+        "name": {"type": "string", "minLength": 1, "description": "以可交付业务或技术结果命名的 Story 标题。"},
+        "description": {"type": "string", "minLength": 1, "description": "说明完成后可观察的结果与责任边界，不描述实现 Task。"},
+        "uatRelevant": {"type": "boolean", "description": "该 Story 是否属于获批业务 UAT 分母；纯技术上线工作通常不属于。"},
+        "requiredIntegrationBoundary": {"type": "string", "enum": ["NONE", "PORT_ONLY", "END_TO_END"], "description": "该 Story 是否必须交付集成，以及止于端口还是端到端目标。"}
       }
     },
     "acceptanceCriterion": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["acceptanceCriterionId", "storyId", "sequence", "result"],
+      "required": ["acceptanceCriterionId", "storyId", "sequence", "result", "decisionGate", "approvalDecisionIds"],
       "properties": {
-        "acceptanceCriterionId": {"$ref": "#/$defs/acceptanceCriterionId"},
-        "storyId": {"$ref": "#/$defs/storyId"},
-        "sequence": {"type": "integer", "minimum": 1},
-        "result": {"type": "string", "minLength": 1}
-      }
+        "acceptanceCriterionId": {"$ref": "#/$defs/acceptanceCriterionId", "description": "由 Story Owner 维护并供 Task 覆盖引用的稳定 AC ID。"},
+        "storyId": {"$ref": "#/$defs/storyId", "description": "该验收结果所属的 Story ID。"},
+        "sequence": {"type": "integer", "minimum": 1, "description": "同一 Story 内评审和验收该结果的连续顺序。"},
+        "result": {"type": "string", "minLength": 1, "description": "可独立观察并明确判定通过或不通过的结果。"},
+        "decisionGate": {"type": "string", "enum": ["NOT_REQUIRED", "REQUIRED"], "description": "达成该结果是否必须先取得已列明 Design Decision 的批准。"},
+        "approvalDecisionIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/designDecisionId"}, "description": "该 AC 通过前必须获批的 Design Decision ID；无需决策时为空。"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"decisionGate": {"const": "NOT_REQUIRED"}}, "required": ["decisionGate"]},
+          "then": {"properties": {"approvalDecisionIds": {"maxItems": 0}}}
+        },
+        {
+          "if": {"properties": {"decisionGate": {"const": "REQUIRED"}}, "required": ["decisionGate"]},
+          "then": {"properties": {"approvalDecisionIds": {"minItems": 1}}}
+        }
+      ]
     },
     "assumption": {
       "type": "object",
       "additionalProperties": false,
       "required": ["assumptionId", "type", "name", "trigger", "responsibilityBoundary", "status", "handling"],
       "properties": {
-        "assumptionId": {"$ref": "#/$defs/assumptionId"},
-        "type": {"type": "string", "enum": ["假设", "风险"]},
-        "name": {"type": "string", "minLength": 1},
-        "trigger": {"type": "string", "minLength": 1},
-        "responsibilityBoundary": {"type": "string", "minLength": 1},
-        "status": {"type": "string", "enum": ["已明确", "待确认"]},
-        "handling": {"type": "string", "minLength": 1}
+        "assumptionId": {"$ref": "#/$defs/assumptionId", "description": "稳定识别一项不重复的交付 Assumption 或 Risk。"},
+        "type": {"type": "string", "enum": ["假设", "风险"], "description": "依据当前证据把该条件识别为计划假设或可能发生的风险。"},
+        "name": {"type": "string", "minLength": 1, "description": "清楚概括未知条件或风险事件的名称。"},
+        "trigger": {"type": "string", "minLength": 1, "description": "使该项需要处置的可观察条件、日期或事件。"},
+        "responsibilityBoundary": {"type": "string", "minLength": 1, "description": "明确由哪一方提供决定、证据、修复或范围变更。"},
+        "status": {"type": "string", "enum": ["已明确", "待确认"], "description": "该假设或风险的责任与处置是否已经确认。"},
+        "handling": {"type": "string", "minLength": 1, "description": "说明接受、缓解、升级或由 Story 解决的方式；消费问卷默认项时保留 Question ID 锚点。"}
       }
     },
     "assumptionStory": {
@@ -88,8 +107,8 @@
       "additionalProperties": false,
       "required": ["assumptionId", "storyId"],
       "properties": {
-        "assumptionId": {"$ref": "#/$defs/assumptionId"},
-        "storyId": {"$ref": "#/$defs/storyId"}
+        "assumptionId": {"$ref": "#/$defs/assumptionId", "description": "被关联且只保存一次的 Assumption/Risk ID。"},
+        "storyId": {"$ref": "#/$defs/storyId", "description": "受该 Assumption/Risk 影响或负责其处置的 Story ID。"}
       }
     }
   }

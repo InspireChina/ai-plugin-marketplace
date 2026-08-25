@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import math
+import os
 import re
+import tempfile
 import unicodedata
+import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -47,30 +51,8 @@ FORMULA_HEADERS = {
 }
 RISKY_TEXT = re.compile(r"^[=+\-@]")
 BARE_TEXTJOIN = re.compile(r"(?<![\w.])TEXTJOIN\(")
-CATALOG_HEADERS = {
-    "任务族ID",
-    "任务族名称",
-    "基础单元ID",
-    "基础单元名称",
-    "计数口径",
-    "包含内容",
-    "不包含内容",
-    "新建M档人天",
-    "调整M档人天",
-    "接入复用M档人天",
-    "S标准",
-    "M标准",
-    "L标准",
-    "X/拆分条件",
-}
-PARAMETER_HEADERS = {"参数代码", "名称", "值", "单位", "适用范围", "验证状态/说明"}
-MODE_EFFORT_HEADERS = {
-    "新建": "新建M档人天",
-    "调整": "调整M档人天",
-    "接入复用": "接入复用M档人天",
-}
-COMPLEXITIES = ("S", "M", "L")
-CALIBRATED_PARAMETER_STATUSES = {"固定规则", "已校准", "已批准"}
+DETERMINISTIC_TIME = dt.datetime(2000, 1, 1, 0, 0, 0)
+DETERMINISTIC_ZIP_TIME = (2000, 1, 1, 0, 0, 0)
 
 
 def safe_text(value: object) -> object:
@@ -98,119 +80,6 @@ def joined(values: list[object]) -> object:
 
 def topic_label(topic: object) -> object:
     return display_text(TOPIC_LABELS.get(str(topic), str(topic) if topic is not None else ""))
-
-
-def read_estimation_contract(template_path: Path) -> dict[str, Any]:
-    """Read the workbook-owned task choices needed for defensive SOW validation."""
-    workbook = openpyxl.load_workbook(template_path, data_only=False, read_only=False)
-    try:
-        index = table_index(workbook)
-
-        def rows_for(table_name: str) -> list[dict[str, Any]]:
-            if table_name not in index:
-                raise ValueError(f"template table is missing: {table_name}")
-            worksheet, table = index[table_name]
-            min_col, min_row, max_col, max_row = range_boundaries(table.ref)
-            headers = [
-                worksheet.cell(min_row, column).value
-                for column in range(min_col, max_col + 1)
-            ]
-            return [
-                {
-                    str(header): worksheet.cell(row, column).value
-                    for header, column in zip(
-                        headers,
-                        range(min_col, max_col + 1),
-                        strict=True,
-                    )
-                }
-                for row in range(min_row + 1, max_row + 1)
-            ]
-
-        catalog_rows = rows_for("BaseUnitCatalogTable")
-        parameter_rows = rows_for("ProjectParameterTable")
-        if not catalog_rows or set(catalog_rows[0]) != CATALOG_HEADERS:
-            raise ValueError("template BaseUnitCatalogTable headers are invalid")
-        if not parameter_rows or set(parameter_rows[0]) != PARAMETER_HEADERS:
-            raise ValueError("template ProjectParameterTable headers are invalid")
-
-        base_units: dict[str, dict[str, Any]] = {}
-        task_families: set[str] = set()
-        options: set[tuple[str, str]] = set()
-        text_headers = CATALOG_HEADERS - set(MODE_EFFORT_HEADERS.values())
-        for index, row in enumerate(catalog_rows, start=1):
-            required = [row.get(header) for header in text_headers]
-            if any(not isinstance(value, str) or not value.strip() for value in required):
-                raise ValueError("template base-unit catalog contains a blank definition")
-            base_unit_id = str(row["基础单元ID"])
-            if base_unit_id in base_units:
-                raise ValueError(f"template base-unit ID is duplicated: {base_unit_id}")
-            modes: list[str] = []
-            for work_mode, effort_header in MODE_EFFORT_HEADERS.items():
-                effort = row.get(effort_header)
-                if effort == "❌":
-                    continue
-                if (
-                    isinstance(effort, bool)
-                    or not isinstance(effort, (int, float))
-                    or effort <= 0
-                ):
-                    raise ValueError(
-                        "template base effort must be a positive number or ❌: "
-                        f"row {index}/{base_unit_id}/{effort_header}"
-                    )
-                modes.append(work_mode)
-                options.add((base_unit_id, work_mode))
-            if not modes:
-                raise ValueError(
-                    f"template must configure a work mode: {base_unit_id}"
-                )
-            base_units[base_unit_id] = {
-                "name": str(row["基础单元名称"]),
-                "taskFamily": str(row["任务族名称"]),
-                "allowedWorkModes": modes,
-                "complexityStandards": {
-                    level: str(row[f"{level}标准"])
-                    for level in COMPLEXITIES
-                },
-            }
-            task_families.add(str(row["任务族ID"]))
-        if len(base_units) != 37 or len(task_families) != 13:
-            raise ValueError("template must define 37 base units in 13 task families")
-
-        complexity_factors: dict[str, float] = {}
-        parameter_codes: set[str] = set()
-        for row in parameter_rows:
-            code = row.get("参数代码")
-            if not isinstance(code, str) or not code.strip():
-                raise ValueError("template project parameter code is blank")
-            if code in parameter_codes:
-                raise ValueError(f"template project parameter is duplicated: {code}")
-            parameter_codes.add(code)
-            if not code.startswith("K_COMPLEXITY_"):
-                continue
-            level = code.removeprefix("K_COMPLEXITY_")
-            if level not in COMPLEXITIES:
-                raise ValueError(f"template complexity parameter is invalid: {code}")
-            factor = row.get("值")
-            if isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor <= 0:
-                raise ValueError(f"template complexity factor is invalid: {level}")
-            status = row.get("验证状态/说明")
-            if status not in CALIBRATED_PARAMETER_STATUSES:
-                raise ValueError(f"complexity factor is not calibrated: {level}")
-            complexity_factors[level] = float(factor)
-        if set(complexity_factors) != set(COMPLEXITIES):
-            raise ValueError(
-                "template ProjectParameterTable must define "
-                "K_COMPLEXITY_S, K_COMPLEXITY_M and K_COMPLEXITY_L"
-            )
-        return {
-            "baseUnits": base_units,
-            "taskOptions": options,
-            "complexities": set(complexity_factors),
-        }
-    finally:
-        workbook.close()
 
 
 def build_asis_topic_rows(asis: dict[str, Any]) -> list[dict[str, object]]:
@@ -683,7 +552,73 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
         table.autoFilter.ref = table.ref
 
 
-def verify_workbook(path: Path, expected: dict[str, list[dict[str, object]]]) -> None:
+def projection_contract(workbook: Any) -> dict[str, dict[str, object]]:
+    contract: dict[str, dict[str, object]] = {}
+    for table_name, (worksheet, table) in table_index(workbook).items():
+        if table_name not in TABLES:
+            continue
+        min_col, min_row, max_col, _ = range_boundaries(table.ref)
+        headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+        if not all(isinstance(header, str) for header in headers):
+            raise ValueError(f"invalid table header: {table_name}")
+        formulas: dict[str, tuple[str, str]] = {}
+        styles: dict[str, tuple[object, ...]] = {}
+        for offset, header in enumerate(headers):
+            cell = worksheet.cell(min_row + 1, min_col + offset)
+            styles[str(header)] = style_signature(cell)
+            if cell.data_type == "f" and isinstance(cell.value, str):
+                formulas[str(header)] = (cell.coordinate, normalize_table_formula(cell.value))
+        contract[table_name] = {
+            "headers": headers,
+            "formulas": formulas,
+            "styles": styles,
+        }
+    return contract
+
+
+def style_signature(cell: Any) -> tuple[object, ...]:
+    return (
+        copy.copy(cell.font),
+        copy.copy(cell.fill),
+        copy.copy(cell.border),
+        copy.copy(cell.alignment),
+        cell.number_format,
+        copy.copy(cell.protection),
+    )
+
+
+def fill_input_hashes(workbook: Any, input_hashes: dict[str, str]) -> None:
+    expected = {
+        "sourceRequirements",
+        "asis",
+        "design",
+        "derivedRequirements",
+        "delivery",
+        "estimate",
+    }
+    if set(input_hashes) != expected:
+        raise ValueError("workbook input hash set is invalid")
+    worksheet = workbook["00-使用说明"]
+    slots = {
+        str(worksheet.cell(row, 1).value): worksheet.cell(row, 2)
+        for row in range(1, worksheet.max_row + 1)
+        if worksheet.cell(row, 1).value in expected
+    }
+    if set(slots) != expected:
+        raise ValueError("workbook input hash slots are missing")
+    for name, digest in input_hashes.items():
+        if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(f"workbook input hash is invalid: {name}")
+        slots[name].value = digest
+        slots[name].data_type = "s"
+
+
+def verify_workbook(
+    path: Path,
+    expected: dict[str, list[dict[str, object]]],
+    contract: dict[str, dict[str, object]],
+    input_hashes: dict[str, str],
+) -> None:
     workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
     try:
         index = table_index(workbook)
@@ -699,12 +634,34 @@ def verify_workbook(path: Path, expected: dict[str, list[dict[str, object]]]) ->
             if not rows and worksheet.cell(min_row + 1, min_col).value not in (None, ""):
                 raise ValueError(f"empty table placeholder is not blank: {table_name}")
             headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
-            for header in FORMULA_HEADERS.get(table_name, set()):
-                column = min_col + headers.index(header)
-                for row in range(min_row + 1, max_row + 1):
-                    value = worksheet.cell(row, column).value
-                    if not isinstance(value, str) or not value.startswith("="):
-                        raise ValueError(f"formula missing in {table_name}.{header}")
+            specification = contract[table_name]
+            if headers != specification["headers"]:
+                raise ValueError(f"table headers changed: {table_name}")
+            formulas = specification["formulas"]
+            styles = specification["styles"]
+            assert isinstance(formulas, dict) and isinstance(styles, dict)
+            physical_rows = rows if rows else [{}]
+            for row_offset, payload in enumerate(physical_rows, start=1):
+                for column_offset, header in enumerate(headers):
+                    cell = worksheet.cell(min_row + row_offset, min_col + column_offset)
+                    if style_signature(cell) != styles[header]:
+                        raise ValueError(f"prototype style changed in {table_name}.{header}")
+                    if header in formulas:
+                        origin, prototype = formulas[header]
+                        expected_formula = Translator(
+                            prototype,
+                            origin=origin,
+                        ).translate_formula(cell.coordinate)
+                        if cell.value != expected_formula or cell.data_type != "f":
+                            raise ValueError(f"formula mismatch in {table_name}.{header}")
+                    else:
+                        expected_value = None if not rows else safe_text(payload.get(header, ""))
+                        if expected_value == "":
+                            expected_value = None
+                        if cell.value != expected_value:
+                            raise ValueError(f"projected value mismatch in {table_name}.{header}")
+                        if isinstance(expected_value, str) and cell.data_type != "s":
+                            raise ValueError(f"projected text type mismatch in {table_name}.{header}")
             calculated_headers = {
                 column.name
                 for column in table.tableColumns
@@ -729,11 +686,61 @@ def verify_workbook(path: Path, expected: dict[str, list[dict[str, object]]]) ->
                 or detail_max_row < topic_min_row
             ):
                 raise ValueError("As-Is tables overlap")
+        worksheet = workbook["00-使用说明"]
+        actual_hashes = {
+            str(worksheet.cell(row, 1).value): worksheet.cell(row, 2).value
+            for row in range(1, worksheet.max_row + 1)
+            if worksheet.cell(row, 1).value in input_hashes
+        }
+        if actual_hashes != input_hashes:
+            raise ValueError("workbook input hash projection mismatch")
     finally:
         workbook.close()
 
 
-def write_workbook(template_path: Path, data: dict[str, dict[str, Any]], output_path: Path) -> None:
+def normalize_xlsx(path: Path) -> None:
+    """Normalize ZIP metadata so identical inputs produce identical XLSX bytes."""
+    with zipfile.ZipFile(path, "r") as source:
+        members = []
+        for entry in source.infolist():
+            payload = source.read(entry.filename)
+            if entry.filename == "docProps/core.xml":
+                payload = re.sub(
+                    rb"<dcterms:modified[^>]*>.*?</dcterms:modified>",
+                    b'<dcterms:modified xsi:type="dcterms:W3CDTF">2000-01-01T00:00:00Z</dcterms:modified>',
+                    payload,
+                )
+            members.append((entry.filename, payload, entry))
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as target:
+            for name, payload, original in sorted(members, key=lambda item: item[0]):
+                entry = zipfile.ZipInfo(name, DETERMINISTIC_ZIP_TIME)
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                entry.create_system = original.create_system
+                entry.external_attr = original.external_attr
+                entry.flag_bits = original.flag_bits
+                target.writestr(entry, payload)
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def write_workbook(
+    template_path: Path,
+    data: dict[str, dict[str, Any]],
+    output_path: Path,
+    input_hashes: dict[str, str],
+) -> None:
     workbook = openpyxl.load_workbook(template_path, data_only=False, read_only=False)
     if workbook.calculation is None:
         workbook.calculation = CalcProperties()
@@ -742,18 +749,23 @@ def write_workbook(template_path: Path, data: dict[str, dict[str, Any]], output_
         raise ValueError("AsIsTopicTable must contain exactly nine topics")
     try:
         table_index(workbook)
+        contract = projection_contract(workbook)
         clear_orphan_table_formulas(workbook)
         for worksheet in workbook.worksheets:
             if worksheet.title != "00-使用说明":
                 worksheet.freeze_panes = "A4"
         fill_asis_header(workbook, data["asis"])
+        fill_input_hashes(workbook, input_hashes)
         for table_name in TABLES:
             fill_table(workbook, table_name, rows[table_name])
         workbook.calculation.calcMode = "auto"
         workbook.calculation.calcOnSave = True
         workbook.calculation.forceFullCalc = True
         workbook.calculation.fullCalcOnLoad = True
+        workbook.properties.created = DETERMINISTIC_TIME
+        workbook.properties.modified = DETERMINISTIC_TIME
         workbook.save(output_path)
     finally:
         workbook.close()
-    verify_workbook(output_path, rows)
+    normalize_xlsx(output_path)
+    verify_workbook(output_path, rows, contract, input_hashes)

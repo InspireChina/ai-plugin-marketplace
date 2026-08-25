@@ -10,8 +10,8 @@ import sys
 import tomllib
 from pathlib import Path
 
-RELEASE_VERSION = "0.1.0-beta.1"
-PYTHON_RUNTIME_VERSION = "0.1.0b1"
+RELEASE_VERSION = "0.1.0-beta.2"
+PYTHON_RUNTIME_VERSION = "0.1.0b2"
 SOW_STANDARD_VERSION = "1.3"
 SEMVER = re.compile(
     r"^(0|[1-9]\d*)\."

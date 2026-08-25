@@ -1,1024 +1,1149 @@
 from __future__ import annotations
 
-import importlib.util
+import copy
 import json
 import shutil
-import stat
 import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
 
-import openpyxl
 import pytest
 
 
-SKILL_ROOT = Path(__file__).parents[1]
-VALIDATE = SKILL_ROOT / "scripts/validate.py"
-READ_TEMPLATE = SKILL_ROOT / "scripts/read_template.py"
-FIXTURE = SKILL_ROOT / "fixtures/estimate.valid.json"
-TEMPLATE = SKILL_ROOT / "fixtures/sow-template.xlsx"
-ESTIMATE_SCHEMA = SKILL_ROOT / "contracts/estimate.schema.json"
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = SKILL_ROOT.parents[1]
+SCRIPT = SKILL_ROOT / "scripts/validate.py"
+CONTEXT_SCRIPT = SKILL_ROOT / "scripts/prepare_context.py"
+RENDER_SCRIPT = SKILL_ROOT / "scripts/render_review.py"
+sys.path.insert(0, str(PLUGIN_ROOT))
+sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+
+from read_template import read_contract  # noqa: E402
+from prepare_context import asis_context, design_context  # noqa: E402
+from runtime.handoff import (  # noqa: E402
+    Artifact,
+    OwnerContract,
+    canonical_json_bytes,
+    publish_owner,
+    sha256_bytes,
+)
+from runtime.project_io import ProjectFiles  # noqa: E402
 
 
-def write_json(root: Path, relative: str, payload: object) -> None:
+PROJECT = {
+    "projectId": "project-task-tests",
+    "projectName": "Task validator tests",
+    "pluginVersion": "0.1.0-beta.2",
+    "sowStandardVersion": "1.3",
+}
+SOURCE_PATH = "sources/task-source.md"
+REQUIREMENTS = {
+    "sourceDocuments": [{"sourceDocumentId": "source-task", "file": SOURCE_PATH}],
+    "features": [],
+}
+ASIS = {
+    "analysisScope": {"repositorySnapshots": [], "priorSowSnapshots": []},
+    "evidence": [],
+    "commitments": [],
+    "effectiveStartItems": [
+        {
+            "effectiveStartItemId": "effective-start-customer-api",
+            "name": "生效起点的 Customer API（客户接口）",
+            "summary": "已运行的内部客户接口保持不变。",
+        },
+        {
+            "effectiveStartItemId": "effective-start-hosting-architecture",
+            "name": "现有客户档案托管架构方案",
+            "summary": "既有架构方案已定义主边界，待补充环境和部署责任。",
+        },
+    ],
+}
+DESIGN = {"decisions": [], "scopeDecisions": []}
+TECHNICAL = {"features": []}
+DELIVERY = {
+    "stories": [
+        {"storyId": "story-customer-profile"},
+        {"storyId": "story-profile-api"},
+        {"storyId": "story-profile-hosting-discovery"},
+    ],
+    "acceptanceCriteria": [
+        {"acceptanceCriterionId": "ac-profile-visible", "storyId": "story-customer-profile"},
+        {"acceptanceCriterionId": "ac-profile-api", "storyId": "story-profile-api"},
+        {
+            "acceptanceCriterionId": "ac-profile-hosting-decision",
+            "storyId": "story-profile-hosting-discovery",
+        },
+    ],
+    "integrations": [
+        {
+            "integrationId": "integration-profile-api",
+            "storyId": "story-profile-api",
+            "owner": "INTERNAL",
+        }
+    ],
+    "assumptions": [],
+}
+
+REQUIREMENT_CONTRACT = OwnerContract(
+    subject="analyze-requirement",
+    contract_ids=("urn:ai-sow:analyze-requirement:source-requirements:0.1",),
+    validation_path=".ai-sow/validation/analyze-requirement.json",
+    reviews=(("approvedReview", ".ai-sow/reviews/analyze-requirement.md"),),
+    outputs=(("requirements", ".ai-sow/data/analyze-requirement/requirements.json"),),
+)
+ASIS_CONTRACT = OwnerContract(
+    subject="analyze-as-is",
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    validation_path=".ai-sow/validation/analyze-as-is.json",
+    reviews=(("approvedReview", ".ai-sow/reviews/analyze-as-is.md"),),
+    outputs=(("asIs", ".ai-sow/data/analyze-as-is/asis.json"),),
+)
+DESIGN_CONTRACT = OwnerContract(
+    subject="generate-design",
+    contract_ids=(
+        "urn:ai-sow:generate-design:design:0.2",
+        "urn:ai-sow:generate-design:technical-requirements:0.2",
+    ),
+    validation_path=".ai-sow/validation/generate-design.json",
+    reviews=(("approvedReview", ".ai-sow/reviews/generate-design.md"),),
+    outputs=(
+        ("design", ".ai-sow/data/generate-design/design.json"),
+        ("technicalRequirements", ".ai-sow/data/generate-design/requirements.json"),
+    ),
+)
+STORY_CONTRACT = OwnerContract(
+    subject="generate-story",
+    contract_ids=("urn:ai-sow:generate-story:delivery:0.2",),
+    validation_path=".ai-sow/validation/generate-story.json",
+    reviews=(("approvedReview", ".ai-sow/reviews/generate-story.md"),),
+    outputs=(("delivery", ".ai-sow/data/generate-story/delivery.json"),),
+)
+
+
+def json_bytes(value: object) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode()
+
+
+def write_bytes(root: Path, relative: str, payload: bytes) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    path.write_bytes(payload)
 
 
-def prepare(root: Path) -> None:
-    write_json(
-        root,
-        ".ai-sow/data/generate-story/delivery.json",
+def fixture() -> dict[str, object]:
+    return json.loads((SKILL_ROOT / "fixtures/estimate.valid.json").read_text(encoding="utf-8"))
+
+
+def absent_questionnaire() -> Artifact:
+    return Artifact(
+        "questionnaire",
+        "QUESTIONNAIRE_PRESENCE",
+        "questionnaire:NOT_REQUIRED",
+        sha256_bytes(canonical_json_bytes({"declaration": "NOT_REQUIRED"})),
+    )
+
+
+def publish_requirements(root: Path) -> None:
+    files = ProjectFiles.open(root)
+    write_bytes(root, ".ai-sow/reviews/analyze-requirement.md", b"Questionnaire: NOT_REQUIRED\n")
+    publish_owner(
+        files,
+        REQUIREMENT_CONTRACT,
+        (
+            Artifact("project", "FILE", ".ai-sow/project.json", sha256_bytes(files.read_bytes(".ai-sow/project.json"))),
+            Artifact("source:source-task", "FILE", SOURCE_PATH, sha256_bytes(files.read_bytes(SOURCE_PATH))),
+            absent_questionnaire(),
+        ),
+        {"requirements": json_bytes(REQUIREMENTS)},
+    )
+
+
+def publish_asis(
+    root: Path,
+    value: dict[str, object] | None = None,
+    *,
+    output_payload: bytes | None = None,
+) -> None:
+    files = ProjectFiles.open(root)
+    write_bytes(root, ".ai-sow/reviews/analyze-as-is.md", b"Questionnaire: NOT_REQUIRED\n")
+    publish_owner(
+        files,
+        ASIS_CONTRACT,
+        (
+            Artifact("project", "FILE", ".ai-sow/project.json", sha256_bytes(files.read_bytes(".ai-sow/project.json"))),
+            Artifact("requirementsValidation", "FILE", ".ai-sow/validation/analyze-requirement.json", sha256_bytes(files.read_bytes(".ai-sow/validation/analyze-requirement.json"))),
+            Artifact("requirements", "FILE", ".ai-sow/data/analyze-requirement/requirements.json", sha256_bytes(files.read_bytes(".ai-sow/data/analyze-requirement/requirements.json"))),
+            absent_questionnaire(),
+        ),
+        {"asIs": output_payload if output_payload is not None else json_bytes(value or ASIS)},
+    )
+
+
+def publish_design(root: Path, value: dict[str, object] | None = None, *, review: bytes = b"Design approved.\n") -> None:
+    files = ProjectFiles.open(root)
+    write_bytes(root, ".ai-sow/reviews/generate-design.md", review)
+    publish_owner(
+        files,
+        DESIGN_CONTRACT,
+        tuple(
+            Artifact(name, "FILE", path, sha256_bytes(files.read_bytes(path)))
+            for name, path in (
+                ("project", ".ai-sow/project.json"),
+                ("requirementsValidation", ".ai-sow/validation/analyze-requirement.json"),
+                ("requirements", ".ai-sow/data/analyze-requirement/requirements.json"),
+                ("asIsValidation", ".ai-sow/validation/analyze-as-is.json"),
+                ("asIs", ".ai-sow/data/analyze-as-is/asis.json"),
+            )
+        ),
         {
-            "stories": [
-                {"storyId": "story-customer-profile"},
-                {"storyId": "story-profile-api"},
-            ],
-            "integrations": [
-                {
-                    "integrationId": "integration-profile-api",
-                    "storyId": "story-profile-api",
-                    "owner": "INTERNAL",
-                }
-            ],
+            "design": json_bytes(value or DESIGN),
+            "technicalRequirements": json_bytes(TECHNICAL),
         },
     )
-    write_json(root, ".ai-sow/data/analyze-as-is/asis.json", {
-        "items": [],
-        "effectiveStartItems": [
-            {
-                "effectiveStartItemId": "effective-start-customer-api",
-                "topic": "APPLICATION",
-                "itemType": "COMPONENT",
-                "name": "现有客户档案 API 与页面框架",
-                "summary": "当前客户档案接口和页面框架可作为本次交付的有效起点。",
-                "sourceItemIds": [],
-                "commitmentIds": [],
-            },
-        ],
-    })
-    write_json(root, ".ai-sow/data/generate-task/estimate.json", json.loads(FIXTURE.read_text()))
+
+
+def publish_story(
+    root: Path,
+    value: dict[str, object] | None = None,
+    *,
+    review: bytes = b"Story approved.\n",
+    output_payload: bytes | None = None,
+) -> None:
+    files = ProjectFiles.open(root)
+    write_bytes(root, ".ai-sow/reviews/generate-story.md", review)
+    publish_owner(
+        files,
+        STORY_CONTRACT,
+        tuple(
+            Artifact(name, "FILE", path, sha256_bytes(files.read_bytes(path)))
+            for name, path in (
+                ("project", ".ai-sow/project.json"),
+                ("requirementsValidation", ".ai-sow/validation/analyze-requirement.json"),
+                ("requirements", ".ai-sow/data/analyze-requirement/requirements.json"),
+                ("asIsValidation", ".ai-sow/validation/analyze-as-is.json"),
+                ("asIs", ".ai-sow/data/analyze-as-is/asis.json"),
+                ("designValidation", ".ai-sow/validation/generate-design.json"),
+                ("design", ".ai-sow/data/generate-design/design.json"),
+                ("technicalRequirements", ".ai-sow/data/generate-design/requirements.json"),
+            )
+        ),
+        {"delivery": output_payload if output_payload is not None else json_bytes(value or DELIVERY)},
+    )
+
+
+def stable_ids(estimate: dict[str, object]) -> list[str]:
+    return [task["taskId"] for task in estimate["tasks"]]  # type: ignore[index]
+
+
+def mapped_ids(estimate: dict[str, object], key: str, value: str) -> str:
+    groups: dict[str, list[str]] = {}
+    for task in estimate["tasks"]:  # type: ignore[index]
+        identifiers = task[key] if isinstance(task[key], list) else [task[key]]
+        for identifier in identifiers:
+            groups.setdefault(identifier, []).append(task[value])
+    return "; ".join(f"{identifier}={','.join(ids)}" for identifier, ids in groups.items())
+
+
+def task_review(
+    estimate: dict[str, object],
+    template_hash: str,
+    *,
+    rebind: dict[str, str] | None = None,
+) -> str:
+    tasks = estimate["tasks"]  # type: ignore[index]
+    integration_map = "; ".join(
+        f"{task['integrationId']}={task['taskId']}" for task in tasks if "integrationId" in task
+    )
+    effective_starts = sorted(
+        {identifier for task in tasks for identifier in task["matchedEffectiveStartItemIds"]}
+    )
+    impact = ""
+    if rebind:
+        impact = (
+            "\nImpact: NO_CHANGE\n"
+            "Upstream: generate-story\n"
+            f"Previous Receipt SHA-256: generate-story={rebind['old']}\n"
+            f"Current Receipt SHA-256: generate-story={rebind['new']}\n"
+            f"Impact Rationale: {'、'.join(stable_ids(estimate))} 均确认不受影响。\n"
+        )
+    return (
+        "# Task 拆分评审\n\n"
+        "## Story → Task\n\n"
+        f"Story Map: {mapped_ids(estimate, 'storyId', 'taskId')}\n"
+        f"AC Map: {mapped_ids(estimate, 'acceptanceCriterionIds', 'taskId')}\n"
+        f"Stable IDs: {', '.join(stable_ids(estimate))}\n\n"
+        "## 基础单元\n\n"
+        f"Base Units: {', '.join(sorted({task['baseUnit'] for task in tasks}))}\n\n"
+        "## 工作模式\n\n"
+        f"Work Modes: {', '.join(sorted({task['workMode'] for task in tasks}))}\n\n"
+        "## 复杂度\n\n"
+        f"Complexities: {', '.join(sorted({task['complexity'] for task in tasks}))}\n\n"
+        "## 现状依据\n\n"
+        f"Effective Start IDs: {', '.join(effective_starts) if effective_starts else 'NONE'}\n\n"
+        "## Integration 一对一\n\n"
+        f"Integration Map: {integration_map if integration_map else 'NONE'}\n\n"
+        "## 遗漏 / 重叠 / 排除理由\n\n"
+        "Scope Review: PASSED\n\n"
+        "## 估算前提\n\n"
+        f"Template SHA-256: {template_hash}\n\n"
+        "## 审查与批准\n\n"
+        "Reviewer: PASS\nUser Approval: APPROVED\n"
+        + impact
+    )
+
+
+def prepare(root: Path, *, delivery: dict[str, object] | None = None) -> bytes:
+    write_bytes(root, ".ai-sow/project.json", json_bytes(PROJECT))
+    write_bytes(root, SOURCE_PATH, b"Task source.\n")
     template = root / ".ai-sow/templates/sow-template.xlsx"
     template.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(TEMPLATE, template)
+    shutil.copyfile(SKILL_ROOT / "fixtures/sow-template.xlsx", template)
+    publish_requirements(root)
+    publish_asis(root)
+    publish_design(root)
+    publish_story(root, delivery)
+    estimate = fixture()
+    candidate = (json.dumps(estimate, ensure_ascii=False, indent=3) + "\n").encode()
+    write_bytes(root, ".ai-sow/work/generate-task/estimate.candidate.json", candidate)
+    write_bytes(
+        root,
+        ".ai-sow/reviews/generate-task.md",
+        task_review(estimate, sha256_bytes(template.read_bytes())).encode(),
+    )
+    return candidate
 
 
-def run(script: Path, root: Path) -> subprocess.CompletedProcess[str]:
+def run_validator(
+    root: Path,
+    mode: str = "check",
+    *,
+    review_path: str | None = None,
+    extra: tuple[str, ...] = (),
+) -> subprocess.CompletedProcess[str]:
+    command = [sys.executable, str(SCRIPT), "--project-root", str(root), "--mode", mode]
+    if review_path is not None:
+        command.extend(("--review-path", review_path))
+    command.extend(extra)
     return subprocess.run(
-        [sys.executable, str(script), "--project-root", str(root)],
+        command,
         capture_output=True,
         text=True,
         check=False,
     )
 
 
-def diagnostic_codes(result: subprocess.CompletedProcess[str]) -> set[str]:
-    return {
-        item["code"]
-        for item in json.loads(result.stdout)["diagnostics"]
-    }
-
-
-def test_reads_authoritative_task_options_from_project_template(tmp_path: Path) -> None:
-    prepare(tmp_path)
-
-    result = run(READ_TEMPLATE, tmp_path)
-
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
-    assert len(payload["baseUnits"]) == 37
-    assert len({entry["taskFamilyId"] for entry in payload["baseUnits"].values()}) == 13
-    assert len(payload["taskOptions"]) == 86
-    assert ["BU-UI-INTERACTION", "新建"] in payload["taskOptions"]
-    assert ["BU-UI-INTERACTION", "接入复用"] not in payload["taskOptions"]
-    assert payload["baseUnits"]["BU-UI-INTERACTION"] == {
-        "taskFamilyId": "TF-FRONTEND",
-        "taskFamily": "前端",
-        "name": "界面与交互",
-        "countRule": "一个可独立验收的界面，或一条紧密关联的交互流程",
-        "includes": "界面结构与交互、状态管理、权限呈现、加载、空白和异常状态及开发自测",
-        "excludes": "后端服务和另行开展的测试",
-        "allowedWorkModes": ["新建", "调整"],
-        "complexityStandards": {
-            "S": "1～2 种主要状态；标准组件；简单校验；单一角色",
-            "M": "3～5 种主要状态；条件联动；复杂表格、上传或多角色",
-            "L": "复杂状态机；实时或离线处理；跨界面状态恢复；严格无障碍或多终端适配",
-        },
-        "splitRule": "包含多条可独立验收的交互流程，或跨多个应用",
-    }
-    assert payload["baseUnits"]["BU-USER-TRAINING"] == {
-        "taskFamilyId": "TF-DELIVERY-HANDOVER",
-        "taskFamily": "交付与移交",
-        "name": "用户培训与使用材料",
-        "countRule": "一个明确用户群体针对一项连贯能力的培训和材料交付",
-        "includes": "培训需求确认、使用材料、演示或练习、培训实施、问答、出席记录及材料移交",
-        "excludes": "运维交接、技术架构培训、业务内容翻译和长期培训运营",
-        "allowedWorkModes": ["新建", "调整"],
-        "complexityStandards": {
-            "S": "单一角色；标准流程；一次短时讲解；无专门练习环境",
-            "M": "一个用户群体包含多个相关角色；需要演示、练习和问答",
-            "L": "多语言、Train-the-Trainer、专门练习环境或正式能力考核",
-        },
-        "splitRule": "多个独立用户群体或多个无关产品，必须拆分",
-    }
-    assert payload["complexities"] == ["S", "M", "L"]
-    assert payload["complexityFactors"] == {"S": 0.6, "M": 1.0, "L": 1.5}
-
-
-def test_rejects_invalid_inline_base_effort_value(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
-    workbook = openpyxl.load_workbook(template)
-    try:
-        worksheet = workbook["92-基础人天"]
-        worksheet["H5"] = "待校准"
-        workbook.save(template)
-    finally:
-        workbook.close()
-
-    result = run(READ_TEMPLATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "新建M档人天 must be a positive number or ❌" in json.loads(result.stdout)["summary"]
-
-
-def test_rejects_catalog_without_complete_complexity_standard(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
-    workbook = openpyxl.load_workbook(template)
-    try:
-        workbook["92-基础人天"]["L5"] = None
-        workbook.save(template)
-    finally:
-        workbook.close()
-
-    result = run(READ_TEMPLATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "M标准" in json.loads(result.stdout)["summary"]
-
-
-def test_rejects_missing_complexity_factor_project_parameter(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
-    workbook = openpyxl.load_workbook(template)
-    try:
-        workbook["91-项目参数"]["C5"] = None
-        workbook.save(template)
-    finally:
-        workbook.close()
-
-    result = run(READ_TEMPLATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "complexity factor must be positive: S" in json.loads(result.stdout)["summary"]
-
-
-def test_rejects_uncalibrated_complexity_factor_project_parameter(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
-    workbook = openpyxl.load_workbook(template)
-    try:
-        workbook["91-项目参数"]["F5"] = "待样本校准"
-        workbook.save(template)
-    finally:
-        workbook.close()
-
-    result = run(READ_TEMPLATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "complexity factor is not calibrated: S" in json.loads(result.stdout)["summary"]
-
-
-def test_estimate_schema_uses_0_4_contract_urn() -> None:
-    assert json.loads(ESTIMATE_SCHEMA.read_text())["$id"] == (
-        "urn:ai-sow:generate-task:estimate:0.1"
+def run_context(root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(CONTEXT_SCRIPT), "--project-root", str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
-@pytest.mark.parametrize(
-    "mutation",
-    [
-        lambda task: task.pop("workModeEvidence"),
-        lambda task: task["workModeEvidence"].update(
-            {"projectSideWorkTypes": []}
-        ),
-        lambda task: task["workModeEvidence"].pop("projectSideWorkCommitment"),
-    ],
-)
-def test_schema_requires_structured_reuse_evidence(
-    tmp_path: Path,
-    mutation: Any,
-) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    mutation(payload["tasks"][1])
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-def test_accepts_tasks_covering_all_stories(tmp_path: Path) -> None:
-    prepare(tmp_path)
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["outcome"] == "OK"
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("professionalDomain", "前端"),
-        ("activity", "实现"),
-        ("quantity", 1),
-    ],
-)
-def test_schema_forbids_removed_task_fields(
-    tmp_path: Path,
-    field: str,
-    value: object,
-) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0][field] = value
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "SCHEMA_INVALID" and field in item["message"]
-        for item in json.loads(result.stdout)["diagnostics"]
+def run_renderer(root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(RENDER_SCRIPT), "--project-root", str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
-def test_schema_forbids_removed_sit_estimates(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["sitEstimates"] = []
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "SCHEMA_INVALID" and "sitEstimates" in item["message"]
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-@pytest.mark.parametrize("work_mode", ["采用", "替换", "退役"])
-def test_schema_rejects_removed_task_work_modes(
-    tmp_path: Path,
-    work_mode: str,
-) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["workMode"] = work_mode
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "SCHEMA_INVALID" and work_mode in item["message"]
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
+def prepare_review_candidate(
+    root: Path,
+    *,
+    delivery: dict[str, object] | None = None,
+) -> tuple[bytes, bytes]:
+    candidate = prepare(root, delivery=delivery)
+    context = run_context(root)
+    assert context.returncode == 0, context.stdout
+    stable_review = root / ".ai-sow/reviews/generate-task.md"
+    stable_review.unlink()
+    rendered = run_renderer(root)
+    assert rendered.returncode == 0, rendered.stdout
+    review = (root / ".ai-sow/work/generate-task/review.candidate.md").read_bytes()
+    return candidate, review
 
 
-def test_schema_requires_complexity_rationale_for_s_or_l(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    del payload["tasks"][0]["complexityRationale"]
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "SCHEMA_INVALID"
-        and "complexityRationale" in item["message"]
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_schema_forbids_complexity_rationale_for_m(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][1]["complexityRationale"] = "M 档无需说明。"
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "SCHEMA_INVALID"
-        and "complexityRationale" in item["message"]
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_allows_one_or_three_concrete_tasks_per_story(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    write_json(
-        tmp_path,
-        ".ai-sow/data/generate-story/delivery.json",
-        {
-            "stories": [
-                {"storyId": "story-checkout"},
-                {"storyId": "story-reporting"},
-            ],
-            "integrations": [],
-        },
-    )
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    estimate = json.loads(path.read_text())
-    checkout = dict(estimate["tasks"][0])
-    checkout["storyId"] = "story-checkout"
-    checkout["taskId"] = "task-checkout-page"
-    checkout["name"] = "实现结账页面"
-    reporting = dict(checkout)
-    reporting["storyId"] = "story-reporting"
-    reporting["taskId"] = "task-reporting-export"
-    reporting["name"] = "实现报表导出"
-    second_checkout = dict(checkout)
-    second_checkout["taskId"] = "task-checkout-validation"
-    second_checkout["name"] = "实现结账校验"
-    third_checkout = dict(checkout)
-    third_checkout["taskId"] = "task-checkout-confirmation"
-    third_checkout["name"] = "实现结账确认"
-    estimate["tasks"] = [checkout, second_checkout, third_checkout, reporting]
-    path.write_text(json.dumps(estimate))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 0, result.stdout
-    assert "quantity" not in estimate["tasks"][0]
-    assert Counter(task["storyId"] for task in estimate["tasks"]) == {
-        "story-checkout": 3,
-        "story-reporting": 1,
-    }
-
-
-def test_rejects_story_without_a_task(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    estimate = json.loads(path.read_text())
-    estimate["tasks"] = estimate["tasks"][:1]
-    path.write_text(json.dumps(estimate))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "TASK_COVERAGE_MISSING"
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_rejects_normalized_duplicate_task_description_within_story(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    estimate = json.loads(path.read_text())
-    duplicate = dict(estimate["tasks"][0])
-    duplicate["taskId"] = "task-customer-profile-duplicate"
-    duplicate["name"] = "  实现客户档案页面和状态  "
-    estimate["tasks"].append(duplicate)
-    path.write_text(json.dumps(estimate))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "TASK_DESCRIPTION_DUPLICATE"
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_rejects_two_release_cutover_tasks_for_one_story(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    for suffix in ("primary", "secondary"):
-        payload["tasks"].append(
+def bind_review_packet(root: Path) -> str:
+    packet = (root / ".ai-sow/work/generate-task/review-packet.json").read_bytes()
+    digest = sha256_bytes(packet)
+    write_bytes(
+        root,
+        ".ai-sow/work/generate-task/reviewer.json",
+        canonical_json_bytes(
             {
-                "taskId": f"task-release-cutover-{suffix}",
-                "storyId": "story-customer-profile",
-                "name": f"制定并实施客户档案 {suffix} 发布与切换",
-                "baseUnit": "BU-RELEASE-CUTOVER",
-                "workMode": "新建",
-                "workModeRationale": "本次交付需要形成统一窗口、回滚方案并完成实际切换。",
-                "complexity": "M",
-                "matchedEffectiveStartItemIds": [],
-                "rationale": "该 Task 覆盖同一 Story 下的一次发布计划与实际切换。",
+                "algorithm": "ai-sow-owner-reviewer-v1",
+                "decision": "PASS",
+                "owner": "generate-task",
+                "packetSha256": digest,
             }
-        )
-    path.write_text(json.dumps(payload))
+        ),
+    )
+    write_bytes(
+        root,
+        ".ai-sow/work/generate-task/approval.json",
+        canonical_json_bytes(
+            {
+                "algorithm": "ai-sow-owner-approval-v1",
+                "decision": "APPROVED",
+                "owner": "generate-task",
+                "packetSha256": digest,
+            }
+        ),
+    )
+    return digest
 
-    result = run(VALIDATE, tmp_path)
 
-    assert result.returncode == 2
-    assert "RELEASE_CUTOVER_DUPLICATE" in diagnostic_codes(result)
+def payload(result: subprocess.CompletedProcess[str]) -> dict[str, object]:
+    return json.loads(result.stdout)
 
 
-def test_rejects_problem_diagnosis_and_remediation_for_same_story(
+def codes(result: subprocess.CompletedProcess[str]) -> set[str]:
+    return {diagnostic["code"] for diagnostic in payload(result)["diagnostics"]}  # type: ignore[index]
+
+
+def mutate_candidate(root: Path, change: object) -> None:
+    path = root / ".ai-sow/work/generate-task/estimate.candidate.json"
+    value = json.loads(path.read_text(encoding="utf-8"))
+    change(value)  # type: ignore[operator]
+    path.write_bytes(json_bytes(value))
+
+
+def test_template_reader_exposes_rules_without_copying_calculation_values() -> None:
+    contract = read_contract(SKILL_ROOT / "fixtures/sow-template.xlsx")
+
+    assert len(contract["baseUnits"]) == 37
+    assert len({unit["taskFamilyId"] for unit in contract["baseUnits"].values()}) == 13
+    assert set(contract) == {"baseUnits", "taskOptions", "complexities"}
+    serialized = json.dumps(contract, ensure_ascii=False)
+    assert "complexityFactors" not in serialized
+    assert "M档人天" not in serialized
+    assert "ROUND_STORY" not in serialized
+
+
+def test_fixture_covers_three_modes_three_complexities_and_integration() -> None:
+    estimate = fixture()
+
+    assert {task["workMode"] for task in estimate["tasks"]} == {"新建", "调整", "接入复用"}  # type: ignore[index]
+    assert {task["complexity"] for task in estimate["tasks"]} == {"S", "M", "L"}  # type: ignore[index]
+    assert [task["integrationId"] for task in estimate["tasks"] if "integrationId" in task] == ["integration-profile-api"]  # type: ignore[index]
+
+
+def test_check_accepts_story_task_ac_modes_complexity_and_integration(tmp_path: Path) -> None:
+    prepare(tmp_path)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    assert payload(result)["outcome"] == "OK"
+    assert not (tmp_path / ".ai-sow/validation/generate-task.json").exists()
+
+
+def test_prepare_context_writes_owner_local_reference_closure_without_calculation_values(
     tmp_path: Path,
 ) -> None:
     prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"].extend(
-        [
-            {
-                "taskId": "task-profile-problem-diagnosis",
-                "storyId": "story-customer-profile",
-                "name": "诊断并恢复客户档案读取故障",
-                "baseUnit": "BU-TECH-SUPPORT",
-                "workMode": "新建",
-                "workModeRationale": "已知故障仍需收集证据、诊断并形成恢复结论。",
-                "complexity": "M",
-                "matchedEffectiveStartItemIds": [],
-                "rationale": "一个具有统一问题描述和处理结论的明确问题。",
-            },
-            {
-                "taskId": "task-profile-root-cause-remediation",
-                "storyId": "story-customer-profile",
-                "name": "整改现有客户档案 API 与页面框架的已确认根因",
-                "baseUnit": "BU-ROOT-CAUSE-REMEDIATION",
-                "workMode": "新建",
-                "workModeRationale": "根因已经确认，需要修改受影响的现有代码并回归。",
-                "complexity": "M",
-                "matchedEffectiveStartItemIds": ["effective-start-customer-api"],
-                "rationale": "对同一已确认根因实施代码整改和针对性回归。",
-            },
-        ]
-    )
-    path.write_text(json.dumps(payload))
 
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "PROBLEM_TASK_OVERLAP" in diagnostic_codes(result)
-
-
-def test_schema_enforces_task_id_prefix(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    estimate = json.loads(path.read_text())
-    estimate["tasks"][0]["taskId"] = "wrong-task"
-    path.write_text(json.dumps(estimate))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "SCHEMA_INVALID" and "wrong-task" in item["message"]
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_rejects_task_combination_not_configured_in_template(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["baseUnit"] = "不存在的单位"
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "TASK_OPTION_NOT_CONFIGURED"
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_rejects_unknown_effective_start_reference(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["matchedEffectiveStartItemIds"] = ["effective-start-unknown"]
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "EFFECTIVE_START_REF_UNKNOWN"
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_requires_effective_start_for_non_new_work_mode(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["workMode"] = "调整"
-    payload["tasks"][0]["workModeEvidence"] = {
-        "effectiveStartItemId": "effective-start-customer-api",
-        "effectiveStartItemName": "现有客户档案 API 与页面框架",
-    }
-    payload["tasks"][0]["matchedEffectiveStartItemIds"] = []
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert any(
-        item["code"] == "EFFECTIVE_START_REQUIRED"
-        for item in json.loads(result.stdout)["diagnostics"]
-    )
-
-
-def test_rejects_irrelevant_effective_start_reference(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    asis_path = tmp_path / ".ai-sow/data/analyze-as-is/asis.json"
-    asis = json.loads(asis_path.read_text())
-    asis["effectiveStartItems"][0]["name"] = "客户财务结算批处理"
-    asis["effectiveStartItems"][0]["summary"] = "现有客户财务月结作业。"
-    asis_path.write_text(json.dumps(asis))
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["workMode"] = "调整"
-    payload["tasks"][0]["workModeRationale"] = (
-        "保留现有客户档案页面入口，只调整页面状态和校验规则。"
-    )
-    payload["tasks"][0]["workModeEvidence"] = {
-        "effectiveStartItemId": "effective-start-customer-api",
-        "effectiveStartItemName": "客户财务结算批处理",
-    }
-    payload["tasks"][0]["matchedEffectiveStartItemIds"] = [
-        "effective-start-customer-api"
-    ]
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "EFFECTIVE_START_IRRELEVANT" in diagnostic_codes(result)
-
-
-def test_rejects_adjusted_test_without_existing_test_asset(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0].update(
-        {
-            "name": "调整现有客户档案测试方案",
-            "baseUnit": "BU-MANUAL-TESTING",
-            "workMode": "调整",
-            "workModeRationale": (
-                "修改客户档案测试方案，但引用的 Effective Start 只有页面框架。"
-            ),
-            "workModeEvidence": {
-                "effectiveStartItemId": "effective-start-customer-api",
-                "effectiveStartItemName": "现有客户档案 API 与页面框架",
-            },
-            "matchedEffectiveStartItemIds": ["effective-start-customer-api"],
-        }
-    )
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "WORK_MODE_ADJUSTMENT_ASSET_UNSPECIFIED" in diagnostic_codes(result)
-
-
-def test_allows_adjustment_of_identified_existing_test_asset(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    asis_path = tmp_path / ".ai-sow/data/analyze-as-is/asis.json"
-    asis = json.loads(asis_path.read_text())
-    asis["effectiveStartItems"][0]["name"] = "既有客户档案回归测试方案"
-    asis["effectiveStartItems"][0]["summary"] = (
-        "包含客户档案页面的回归测试范围和测试用例。"
-    )
-    asis_path.write_text(json.dumps(asis))
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0].update(
-        {
-            "name": "调整既有客户档案回归测试方案",
-            "baseUnit": "BU-MANUAL-TESTING",
-            "workMode": "调整",
-            "workModeRationale": (
-                "保留既有客户档案回归测试方案，修改其中的测试范围和测试用例。"
-            ),
-            "workModeEvidence": {
-                "effectiveStartItemId": "effective-start-customer-api",
-                "effectiveStartItemName": "既有客户档案回归测试方案",
-            },
-            "matchedEffectiveStartItemIds": ["effective-start-customer-api"],
-        }
-    )
-    payload["tasks"][1]["workModeRationale"] = (
-        "既有客户档案回归测试方案保持不变；本项目负责并交付：认证、映射、适配。"
-    )
-    payload["tasks"][1]["workModeEvidence"]["effectiveStartItemName"] = (
-        "既有客户档案回归测试方案"
-    )
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
+    result = run_context(tmp_path)
 
     assert result.returncode == 0, result.stdout
+    report = payload(result)
+    assert report["outcome"] == "OK"
+    context_root = tmp_path / ".ai-sow/work/generate-task/context"
+    manifest = json.loads((context_root / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["algorithm"] == "ai-sow-generate-task-context-v1"
+    assert [entry["name"] for entry in manifest["inputArtifacts"]] == [
+        "project",
+        "asIsValidation",
+        "asIs",
+        "designValidation",
+        "design",
+        "technicalRequirements",
+        "deliveryValidation",
+        "delivery",
+        "template",
+    ]
+    assert [entry["path"] for entry in manifest["fragments"]] == [
+        ".ai-sow/work/generate-task/context/delivery.json",
+        ".ai-sow/work/generate-task/context/design.json",
+        ".ai-sow/work/generate-task/context/as-is.json",
+        ".ai-sow/work/generate-task/context/technical-requirements.json",
+        ".ai-sow/work/generate-task/context/template-catalog.json",
+    ]
+    assert manifest["selectedEffectiveStartItemIds"] == [
+        "effective-start-customer-api",
+        "effective-start-hosting-architecture",
+    ]
+    serialized = (context_root / "template-catalog.json").read_text(encoding="utf-8")
+    assert "M档人天" not in serialized
+    assert "complexityFactors" not in serialized
+    assert "ROUND_STORY" not in serialized
+
+
+def test_context_closure_includes_related_design_decision_and_evidence() -> None:
+    delivery = {
+        "gaps": [{"featureId": "feature-customer-profile"}],
+        "integrations": [{"decisionIds": ["decision-profile-api"]}],
+    }
+    design = {
+        "scopeDecisions": [
+            {
+                "featureId": "feature-customer-profile",
+                "designItemIds": ["design-customer-profile"],
+                "effectiveStartItemIds": ["effective-start-customer-api"],
+            }
+        ],
+        "designItems": [{"designItemId": "design-customer-profile"}],
+        "architectureDeltas": [
+            {
+                "designItemId": "design-customer-profile",
+                "effectiveStartItemIds": ["effective-start-customer-api"],
+            }
+        ],
+        "decisions": [
+            {
+                "designDecisionId": "decision-profile-api",
+                "designItemIds": ["design-customer-profile"],
+                "relatedFeatureIds": ["feature-customer-profile"],
+                "effectiveStartItemIds": ["effective-start-customer-api"],
+                "evidenceIds": ["evidence-customer-api"],
+            }
+        ],
+    }
+    technical = {
+        "features": [
+            {
+                "featureId": "feature-customer-profile",
+                "source": {
+                    "designDecisionIds": ["decision-profile-api"],
+                    "effectiveStartItemIds": ["effective-start-customer-api"],
+                },
+            }
+        ]
+    }
+    asis = {
+        "effectiveStartItems": [
+            {"effectiveStartItemId": "effective-start-customer-api"}
+        ],
+        "evidence": [
+            {
+                "evidenceId": "evidence-customer-api",
+                "supportsIds": ["feature-customer-profile"],
+            }
+        ],
+    }
+
+    selected_design, feature_ids, effective_start_ids, evidence_ids = design_context(
+        delivery, design, technical
+    )
+    selected_asis = asis_context(
+        delivery,
+        asis,
+        effective_start_ids,
+        feature_ids,
+        evidence_ids,
+    )
+
+    assert [item["designDecisionId"] for item in selected_design["decisions"]] == [
+        "decision-profile-api"
+    ]
+    assert [item["evidenceId"] for item in selected_asis["evidence"]] == [
+        "evidence-customer-api"
+    ]
+
+
+def test_review_mode_writes_hash_bound_packet_without_formal_publication(tmp_path: Path) -> None:
+    candidate, review = prepare_review_candidate(tmp_path)
+
+    result = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+
+    assert result.returncode == 0, result.stdout
+    report = payload(result)
+    assert report["outcome"] == "REVIEW_REQUIRED"
+    packet_path = tmp_path / ".ai-sow/work/generate-task/review-packet.json"
+    risk_path = tmp_path / ".ai-sow/work/generate-task/risk-summary.md"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    assert packet["algorithm"] == "ai-sow-owner-review-packet-v1"
+    assert packet["status"] == "READY_FOR_REVIEW"
+    assert packet["review"] == {
+        "path": ".ai-sow/work/generate-task/review.candidate.md",
+        "sha256": sha256_bytes(review),
+    }
+    assert packet["candidateOutputs"] == [
+        {
+            "name": "estimate",
+            "path": ".ai-sow/work/generate-task/estimate.candidate.json",
+            "sha256": sha256_bytes(candidate),
+            "targetPath": ".ai-sow/data/generate-task/estimate.json",
+        }
+    ]
+    assert packet["context"]["manifest"]["path"] == (
+        ".ai-sow/work/generate-task/context/manifest.json"
+    )
+    assert [entry["name"] for entry in packet["context"]["fragments"]] == [
+        "delivery",
+        "design",
+        "asIs",
+        "technicalRequirements",
+        "templateCatalog",
+    ]
+    assert packet["riskSummary"]["sha256"] == sha256_bytes(risk_path.read_bytes())
+    assert "Task Count: 3" in risk_path.read_text(encoding="utf-8")
+    assert not (tmp_path / ".ai-sow/reviews/generate-task.md").exists()
+    assert not (tmp_path / ".ai-sow/data/generate-task/estimate.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/generate-task.json").exists()
+
+
+def test_review_mode_projects_open_delivery_risks_into_bound_summary(tmp_path: Path) -> None:
+    delivery = copy.deepcopy(DELIVERY)
+    delivery["assumptions"] = [
+        {
+            "assumptionId": "assumption-profile-api-availability",
+            "handling": "按确认窗口执行联调",
+            "name": "会员主数据服务联调期间可用",
+            "responsibilityBoundary": "会员主数据团队提供测试端点",
+            "status": "已明确",
+            "trigger": "联调开始",
+            "type": "假设",
+        },
+        {
+            "assumptionId": "assumption-risk-payment-certification",
+            "handling": "延期时调整退款联调顺序",
+            "name": "支付网关退款认证可能延迟",
+            "responsibilityBoundary": "资金管理部提交企业材料",
+            "status": "待确认",
+            "trigger": "SIT 第 2 周仍未通过",
+            "type": "风险",
+        },
+    ]
+    prepare_review_candidate(tmp_path, delivery=delivery)
+
+    result = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+
+    assert result.returncode == 0, result.stdout
+    summary = (
+        tmp_path / ".ai-sow/work/generate-task/risk-summary.md"
+    ).read_text(encoding="utf-8")
+    assert "Open Delivery Risks: 1" in summary
+    assert (
+        "| assumption-risk-payment-certification | 支付网关退款认证可能延迟 | "
+        "SIT 第 2 周仍未通过 | 资金管理部提交企业材料 | 延期时调整退款联调顺序 |"
+    ) in summary
+    assert "assumption-profile-api-availability" not in summary
+
+
+def test_publish_approved_requires_reviewer_and_user_bindings_without_formal_writes(
+    tmp_path: Path,
+) -> None:
+    prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+
+    assert result.returncode == 2
+    assert {"REVIEWER_BINDING_MISSING", "APPROVAL_BINDING_MISSING"}.issubset(codes(result))
+    assert not (tmp_path / ".ai-sow/reviews/generate-task.md").exists()
+    assert not (tmp_path / ".ai-sow/data/generate-task/estimate.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/generate-task.json").exists()
+
+
+def test_publish_approved_preserves_exact_candidate_review_and_receipt_contract(
+    tmp_path: Path,
+) -> None:
+    candidate, review = prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    bind_review_packet(tmp_path)
+
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+
+    assert result.returncode == 0, result.stdout
+    assert (tmp_path / ".ai-sow/reviews/generate-task.md").read_bytes() == review
+    assert (tmp_path / ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
+    receipt = payload(result)["receipt"]
+    assert receipt["validatorContractVersion"] == "0.3"
+    assert receipt["reviews"][0]["sha256"] == sha256_bytes(review)
+    assert receipt["outputs"][0]["sha256"] == sha256_bytes(candidate)
+
+
+def test_publish_approved_rejects_packet_drift_before_formal_writes(tmp_path: Path) -> None:
+    prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    bind_review_packet(tmp_path)
+    mutate_candidate(tmp_path, lambda value: value["tasks"][0].update({"name": "漂移后的任务"}))
+
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+
+    assert result.returncode == 2
+    assert "REVIEW_PACKET_CANDIDATE_STALE" in codes(result)
+    assert not (tmp_path / ".ai-sow/reviews/generate-task.md").exists()
+    assert not (tmp_path / ".ai-sow/data/generate-task/estimate.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/generate-task.json").exists()
+
+
+def test_publish_approved_rejects_unknown_packet_fields(tmp_path: Path) -> None:
+    prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    packet_path = tmp_path / ".ai-sow/work/generate-task/review-packet.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    packet["unrecognized"] = True
+    packet_path.write_bytes(canonical_json_bytes(packet))
+    bind_review_packet(tmp_path)
+
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+
+    assert result.returncode == 2
+    assert "REVIEW_PACKET_INVALID" in codes(result)
+    assert not (tmp_path / ".ai-sow/reviews/generate-task.md").exists()
+    assert not (tmp_path / ".ai-sow/data/generate-task/estimate.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/generate-task.json").exists()
+
+
+def test_publish_approved_rejects_context_fragment_drift(tmp_path: Path) -> None:
+    prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    bind_review_packet(tmp_path)
+    write_bytes(
+        tmp_path,
+        ".ai-sow/work/generate-task/context/delivery.json",
+        canonical_json_bytes({"drifted": True}),
+    )
+
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_path=".ai-sow/work/generate-task/review.candidate.md",
+    )
+
+    assert result.returncode == 2
+    assert "CONTEXT_FRAGMENT_STALE" in codes(result)
+    assert not (tmp_path / ".ai-sow/reviews/generate-task.md").exists()
+    assert not (tmp_path / ".ai-sow/data/generate-task/estimate.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/generate-task.json").exists()
+
+
+def test_publish_preserves_candidate_bytes_and_exact_inputs(tmp_path: Path) -> None:
+    candidate = prepare(tmp_path)
+
+    result = run_validator(tmp_path, "publish")
+
+    assert result.returncode == 0, result.stdout
+    assert (tmp_path / ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
+    receipt = payload(result)["receipt"]
+    assert [entry["name"] for entry in receipt["outputs"]] == ["estimate"]  # type: ignore[index]
+    assert [entry["name"] for entry in receipt["inputs"]] == [  # type: ignore[index]
+        "project", "asIsValidation", "asIs", "designValidation", "design",
+        "technicalRequirements", "deliveryValidation", "delivery", "template",
+    ]
+
+
+@pytest.mark.parametrize("owner", ["analyze-as-is", "generate-design", "generate-story"])
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        ("missing", "UPSTREAM_HANDOFF_MISSING"),
+        ("invalid", "UPSTREAM_HANDOFF_INVALID"),
+        ("stale", "UPSTREAM_HANDOFF_STALE"),
+        ("unsupported", "UPSTREAM_CONTRACT_UNSUPPORTED"),
+    ],
+)
+def test_routes_three_owner_handoff_failures(tmp_path: Path, owner: str, failure: str, expected: str) -> None:
+    prepare(tmp_path)
+    validation = tmp_path / f".ai-sow/validation/{owner}.json"
+    output = tmp_path / {
+        "analyze-as-is": ".ai-sow/data/analyze-as-is/asis.json",
+        "generate-design": ".ai-sow/data/generate-design/design.json",
+        "generate-story": ".ai-sow/data/generate-story/delivery.json",
+    }[owner]
+    if failure == "missing":
+        validation.unlink()
+    elif failure == "stale":
+        output.write_bytes(output.read_bytes() + b" ")
+    else:
+        report = json.loads(validation.read_text(encoding="utf-8"))
+        if failure == "invalid":
+            report["passed"] = False
+        else:
+            report["compilationReceipt"]["validatorContractVersion"] = "99"
+        validation.write_bytes(json_bytes(report))
+    write_bytes(tmp_path, ".ai-sow/work/generate-task/estimate.candidate.json", b"not-json")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert codes(result) == {expected}
+    assert payload(result)["diagnostics"][0]["upstreamOwner"] == owner  # type: ignore[index]
+
+
+def test_does_not_replay_design_or_story_internal_business_rules(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    design = copy.deepcopy(DESIGN)
+    design["scopeDecisions"] = "not-an-array"
+    delivery = copy.deepcopy(DELIVERY)
+    delivery["assumptions"] = "not-an-array"
+    publish_design(tmp_path, design, review=b"HLD Coverage: BLOCKED\nGo-live Assessment: BLOCKED\n")
+    publish_story(tmp_path, delivery)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    assert not {code for code in codes(result) if code.startswith("HLD_") or code.startswith("GO_LIVE_")}
 
 
 @pytest.mark.parametrize(
-    ("rationale", "activity_types", "commitment"),
+    ("owner", "output_path"),
     [
-        (
-            "现有客户档案 API 与页面框架保持不变，本项目侧认证、映射和适配均不需要。",
-            ["AUTHENTICATE", "MAP", "ADAPT"],
-            "本项目负责并交付：认证、映射、适配",
-        ),
-        (
-            "现有客户档案 API 与页面框架保持不变，配置不是本项目工作。",
-            ["CONFIGURE"],
-            "本项目负责并交付：配置",
-        ),
-        (
-            "现有客户档案 API 与页面框架保持不变，本项目不会开展专项验证。",
-            ["SPECIALIZED_VERIFY"],
-            "本项目负责并交付：专项验证",
-        ),
-        (
-            "现有客户档案 API 与页面框架保持不变，本项目不负责配置，只直接调用。",
-            ["CONFIGURE"],
-            "本项目负责并交付：配置",
-        ),
-        (
-            "现有客户档案 API 与页面框架保持不变，认证、映射和适配全部由客户团队完成，本项目只直接调用。",
-            ["AUTHENTICATE", "MAP", "ADAPT"],
-            "本项目负责并交付：认证、映射、适配",
-        ),
-        (
-            "现有客户档案 API 与页面框架保持不变，配置没有必要，本项目只直接调用。",
-            ["CONFIGURE"],
-            "本项目负责并交付：配置",
-        ),
-        (
-            "现有客户档案 API 与页面框架保持不变，本项目既不配置，也不适配，只直接调用。",
-            ["CONFIGURE", "ADAPT"],
-            "本项目负责并交付：配置、适配",
-        ),
+        ("analyze-as-is", ".ai-sow/data/analyze-as-is/asis.json"),
+        ("generate-story", ".ai-sow/data/generate-story/delivery.json"),
     ],
 )
-def test_rejects_reuse_without_separately_estimable_integration_work(
+def test_attributes_unreadable_consumed_outputs_to_owner_and_path(
     tmp_path: Path,
-    rationale: str,
-    activity_types: list[str],
-    commitment: str,
+    owner: str,
+    output_path: str,
 ) -> None:
     prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][1]["workModeRationale"] = rationale
-    payload["tasks"][1]["workModeEvidence"]["projectSideWorkTypes"] = activity_types
-    payload["tasks"][1]["workModeEvidence"]["projectSideWorkCommitment"] = commitment
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "WORK_MODE_REUSE_NOT_ESTIMABLE" in diagnostic_codes(result)
-
-
-def test_allows_new_work_without_effective_start(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["workMode"] = "新建"
-    payload["tasks"][0]["matchedEffectiveStartItemIds"] = []
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 0, result.stdout
-
-
-def test_allows_new_work_with_effective_start(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["workMode"] = "新建"
-    payload["tasks"][0]["matchedEffectiveStartItemIds"] = [
-        "effective-start-customer-api",
-    ]
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 0, result.stdout
-
-
-def test_rejects_generic_work_mode_rationale(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["workModeRationale"] = "新建任务"
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "WORK_MODE_RATIONALE_GENERIC" in diagnostic_codes(result)
-
-
-def test_rejects_generic_or_copied_complexity_rationale(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["complexityRationale"] = (
-        "1～2 种主要状态；标准组件；简单校验；单一角色"
-    )
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "COMPLEXITY_RATIONALE_GENERIC" in diagnostic_codes(result)
-
-
-def test_allows_l_complexity_with_concrete_deviation_facts(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["complexity"] = "L"
-    payload["tasks"][0]["complexityRationale"] = (
-        "包含 8 种主要状态、跨界面恢复和无障碍键盘操作，均已在原型评审中确认。"
-    )
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 0, result.stdout
-
-
-def test_requires_effective_start_for_existing_object_new_work(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0].update(
-        {
-            "baseUnit": "BU-DATA-MIGRATION",
-            "workMode": "新建",
-            "workModeRationale": "为现有客户档案数据新做一次源到目标迁移。",
-            "complexity": "M",
-            "matchedEffectiveStartItemIds": [],
-        }
-    )
-    payload["tasks"][0].pop("complexityRationale")
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "EFFECTIVE_START_REQUIRED" in diagnostic_codes(result)
-
-
-def test_requires_integration_id_for_integration_task(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    del payload["tasks"][1]["integrationId"]
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "INTEGRATION_ID_REQUIRED" in diagnostic_codes(result)
-
-
-def test_forbids_integration_id_for_non_integration_task(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][0]["integrationId"] = "integration-profile-api"
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "INTEGRATION_ID_FORBIDDEN" in diagnostic_codes(result)
-
-
-def test_rejects_unknown_integration_reference(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][1]["integrationId"] = "integration-unknown"
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "INTEGRATION_REF_UNKNOWN" in diagnostic_codes(result)
-
-
-def test_rejects_integration_owner_and_base_unit_mismatch(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    payload["tasks"][1]["baseUnit"] = "BU-EXTERNAL-INTEGRATION"
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "INTEGRATION_OWNER_MISMATCH" in diagnostic_codes(result)
-
-
-def test_rejects_integration_story_mismatch(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-story/delivery.json"
-    payload = json.loads(path.read_text())
-    payload["integrations"][0]["storyId"] = "story-customer-profile"
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "INTEGRATION_STORY_MISMATCH" in diagnostic_codes(result)
-
-
-def test_rejects_integration_without_task_coverage(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-story/delivery.json"
-    payload = json.loads(path.read_text())
-    payload["integrations"].append(
-        {
-            "integrationId": "integration-audit-event",
-            "storyId": "story-profile-api",
-            "owner": "INTERNAL",
-        }
-    )
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "INTEGRATION_COVERAGE_MISSING" in diagnostic_codes(result)
-
-
-def test_rejects_duplicate_integration_task_coverage(tmp_path: Path) -> None:
-    prepare(tmp_path)
-    path = tmp_path / ".ai-sow/data/generate-task/estimate.json"
-    payload = json.loads(path.read_text())
-    duplicate = dict(payload["tasks"][1])
-    duplicate["taskId"] = "task-profile-api-integration-duplicate"
-    duplicate["name"] = "接入内部客户档案 API 的第二条重复任务"
-    payload["tasks"].append(duplicate)
-    path.write_text(json.dumps(payload))
-
-    result = run(VALIDATE, tmp_path)
-
-    assert result.returncode == 2
-    assert "INTEGRATION_COVERAGE_DUPLICATE" in diagnostic_codes(result)
-
-
-@pytest.mark.parametrize("symlink_kind", ["directory", "report"])
-def test_blocks_validation_output_symlink_escape(
-    tmp_path: Path,
-    symlink_kind: str,
-) -> None:
-    prepare(tmp_path)
-    validation_path = tmp_path / ".ai-sow/validation/generate-task.json"
-    outside = tmp_path.parent / f"{tmp_path.name}-outside-validation"
-    outside.mkdir()
-    if symlink_kind == "directory":
-        validation_path.parent.symlink_to(outside, target_is_directory=True)
+    if owner == "analyze-as-is":
+        publish_asis(tmp_path, output_payload=b"not-json")
+        publish_design(tmp_path)
+        publish_story(tmp_path)
     else:
-        validation_path.parent.mkdir(parents=True)
-        validation_path.symlink_to(outside / "escaped.json")
+        publish_story(tmp_path, output_payload=b"not-json")
 
-    result = run(VALIDATE, tmp_path)
+    result = run_validator(tmp_path)
 
     assert result.returncode == 2
-    payload = json.loads(result.stdout)
-    assert payload["outcome"] == "BLOCKED"
-    assert any(item["code"] == "OUTPUT_PATH_UNSAFE" for item in payload["diagnostics"])
-    assert list(outside.iterdir()) == []
+    diagnostic = payload(result)["diagnostics"][0]  # type: ignore[index]
+    assert diagnostic["code"] == "UPSTREAM_HANDOFF_INVALID"
+    assert diagnostic["upstreamOwner"] == owner
+    assert diagnostic["path"] == output_path
 
 
-def test_portable_directory_snapshot_rejects_windows_reparse_point(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.syspath_prepend(str(VALIDATE.parent))
-    spec = importlib.util.spec_from_file_location("generate_task_reparse", VALIDATE)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    snapshot = SimpleNamespace(
-        st_mode=stat.S_IFDIR | 0o755,
-        st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
+def test_rejects_story_without_task(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    mutate_candidate(tmp_path, lambda value: value["tasks"].pop())
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert "TASK_COVERAGE_MISSING" in codes(result)
+
+
+def test_rejects_missing_or_unknown_ac_coverage(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    mutate_candidate(tmp_path, lambda value: value["tasks"][0].update({"acceptanceCriterionIds": ["ac-unknown"]}))
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert {"AC_REF_UNKNOWN", "AC_COVERAGE_MISSING"} <= codes(result)
+
+
+def test_allows_multiple_tasks_to_contribute_to_same_ac(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    def add_contributing_task(value: dict[str, object]) -> None:
+        task = copy.deepcopy(value["tasks"][0])  # type: ignore[index]
+        task["taskId"] = "task-customer-profile-state-binding"
+        task["name"] = "实现客户档案状态绑定"
+        task["rationale"] = "客户档案状态绑定是独立的界面交互实例，并与页面共同满足同一业务验收条件。"
+        value["tasks"].append(task)  # type: ignore[index]
+
+    mutate_candidate(tmp_path, add_contributing_task)
+    candidate_path = tmp_path / ".ai-sow/work/generate-task/estimate.candidate.json"
+    estimate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    template_hash = sha256_bytes((tmp_path / ".ai-sow/templates/sow-template.xlsx").read_bytes())
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/generate-task.md",
+        task_review(estimate, template_hash).encode("utf-8"),
     )
-    path = SimpleNamespace(stat=lambda *, follow_symlinks: snapshot)
 
-    with pytest.raises(OSError, match="reparse point"):
-        module._safe_directory_snapshot(path)
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    assert payload(result)["outcome"] == "OK"
 
 
-def test_portable_report_write_rejects_windows_reparse_point(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    validation_path = tmp_path / ".ai-sow/validation/generate-task.json"
-    validation_path.parent.mkdir(parents=True)
-    validation_path.write_text("original\n", encoding="utf-8")
-    monkeypatch.syspath_prepend(str(VALIDATE.parent))
-    spec = importlib.util.spec_from_file_location("generate_task_report_reparse", VALIDATE)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    original_stat = Path.stat
+def test_rejects_unconfigured_base_unit_work_mode_pair(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    mutate_candidate(
+        tmp_path,
+        lambda value: value["tasks"][0].update(
+            {"workMode": "接入复用", "workModeEvidence": value["tasks"][1]["workModeEvidence"]}
+        ),
+    )
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert "TASK_OPTION_NOT_CONFIGURED" in codes(result)
 
-    def stat_with_reparse(path: Path, *, follow_symlinks: bool = True) -> object:
-        snapshot = original_stat(path, follow_symlinks=follow_symlinks)
-        if path == validation_path and not follow_symlinks:
-            return SimpleNamespace(
-                st_mode=snapshot.st_mode,
-                st_dev=snapshot.st_dev,
-                st_ino=snapshot.st_ino,
-                st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
-            )
-        return snapshot
 
-    monkeypatch.setattr(Path, "stat", stat_with_reparse)
+def test_rejects_unknown_effective_start_and_evidence_mismatch(tmp_path: Path) -> None:
+    prepare(tmp_path)
 
-    with pytest.raises(OSError, match="reparse point"):
-        module._write_validation_report_portable(
-            tmp_path,
-            validation_path,
-            "replacement\n",
+    def change(value: dict[str, object]) -> None:
+        task = value["tasks"][2]  # type: ignore[index]
+        task["matchedEffectiveStartItemIds"] = ["effective-start-unknown"]
+        task["workModeEvidence"]["effectiveStartItemId"] = "effective-start-unknown"
+
+    mutate_candidate(tmp_path, change)
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert "EFFECTIVE_START_REF_UNKNOWN" in codes(result)
+
+
+def test_rejects_noncanonical_reuse_commitment(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    mutate_candidate(tmp_path, lambda value: value["tasks"][1].update({"workModeRationale": "复用现有 API。"}))
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert "WORK_MODE_REUSE_NOT_ESTIMABLE" in codes(result)
+
+
+def test_rejects_reuse_work_types_out_of_contract_order(tmp_path: Path) -> None:
+    prepare(tmp_path)
+
+    def change(value: dict[str, object]) -> None:
+        task = value["tasks"][1]  # type: ignore[index]
+        evidence = task["workModeEvidence"]
+        evidence["projectSideWorkTypes"] = ["AUTHENTICATE", "MAP", "ADAPT"]
+        evidence["projectSideWorkCommitment"] = "本项目负责并交付：认证、映射、适配"
+        task["workModeRationale"] = (
+            "生效起点的 Customer API（客户接口）保持不变；本项目负责并交付：认证、映射、适配。"
         )
-    assert validation_path.read_text(encoding="utf-8") == "original\n"
+
+    mutate_candidate(tmp_path, change)
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert "WORK_MODE_REUSE_NOT_ESTIMABLE" in codes(result)
 
 
-@pytest.mark.parametrize("race_kind", ["directory", "report"])
-@pytest.mark.parametrize("writer_backend", ["native", "portable"])
-def test_blocks_validation_symlink_swap_after_safety_check(
+def test_rejects_catalog_copied_complexity_rationale(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    catalog = read_contract(SKILL_ROOT / "fixtures/sow-template.xlsx")
+    standard = catalog["baseUnits"]["BU-ARCHITECTURE-DESIGN"]["complexityStandards"]["L"]
+    mutate_candidate(tmp_path, lambda value: value["tasks"][2].update({"complexityRationale": standard}))
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert "COMPLEXITY_RATIONALE_GENERIC" in codes(result)
+
+
+def test_rejects_integration_without_integration_task(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    mutate_candidate(tmp_path, lambda value: value["tasks"][1].pop("integrationId"))
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert {"INTEGRATION_ID_REQUIRED", "INTEGRATION_COVERAGE_MISSING"} <= codes(result)
+
+
+def test_rejects_duplicate_integration_task(tmp_path: Path) -> None:
+    prepare(tmp_path)
+
+    def change(value: dict[str, object]) -> None:
+        duplicate = copy.deepcopy(value["tasks"][1])  # type: ignore[index]
+        duplicate["taskId"] = "task-profile-api-integration-duplicate"
+        duplicate["name"] = "重复接入内部客户档案 API"
+        value["tasks"].append(duplicate)  # type: ignore[index]
+
+    mutate_candidate(tmp_path, change)
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert "INTEGRATION_COVERAGE_DUPLICATE" in codes(result)
+
+
+def test_rejects_review_scope_or_template_hash_drift(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    review = tmp_path / ".ai-sow/reviews/generate-task.md"
+    review.write_text(
+        review.read_text(encoding="utf-8")
+        .replace("Scope Review: PASSED", "Scope Review: BLOCKED")
+        .replace("Template SHA-256: ", "Template SHA-256: 0000"),
+        encoding="utf-8",
+    )
+    result = run_validator(tmp_path)
+    assert result.returncode == 2
+    assert {"REVIEW_SCOPE_NOT_PASSED", "REVIEW_TEMPLATE_HASH_MISMATCH"} <= codes(result)
+
+
+def test_check_uses_work_only_review_path_override(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    review_path = ".ai-sow/work/reconcile/run-0123456789ab/generate-task.review.md"
+    override = tmp_path / review_path
+    override.parent.mkdir(parents=True)
+    override.write_bytes((tmp_path / ".ai-sow/reviews/generate-task.md").read_bytes())
+    (tmp_path / ".ai-sow/reviews/generate-task.md").write_text(
+        "default review must not be used\n",
+        encoding="utf-8",
+    )
+
+    result = run_validator(tmp_path, review_path=review_path)
+
+    assert result.returncode == 0, result.stdout
+    assert payload(result)["outcome"] == "OK"
+
+
+def test_review_override_diagnostics_name_actual_path(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    review_path = ".ai-sow/work/reconcile/run-0123456789ab/generate-task.review.md"
+    override = tmp_path / review_path
+    override.parent.mkdir(parents=True)
+    override.write_text("invalid candidate review\n", encoding="utf-8")
+
+    result = run_validator(tmp_path, review_path=review_path)
+
+    assert result.returncode == 2
+    assert payload(result)["diagnostics"]
+    assert {
+        diagnostic["path"]
+        for diagnostic in payload(result)["diagnostics"]  # type: ignore[index]
+    } == {review_path}
+
+
+@pytest.mark.parametrize("mode", ["publish", "rebind"])
+def test_review_path_override_is_rejected_by_legacy_write_modes(tmp_path: Path, mode: str) -> None:
+    prepare(tmp_path)
+    review_path = ".ai-sow/work/reconcile/run-0123456789ab/generate-task.review.md"
+    validation = tmp_path / ".ai-sow/validation/generate-task.json"
+    validation.write_bytes(b"baseline validation\n")
+
+    result = run_validator(tmp_path, mode, review_path=review_path)
+
+    assert result.returncode == 2
+    diagnostic = payload(result)["diagnostics"][0]  # type: ignore[index]
+    assert diagnostic == {
+        "code": "REVIEW_PATH_MODE_INVALID",
+        "message": "--review-path override is allowed only in check, review, or publish-approved mode",
+        "path": review_path,
+    }
+    assert not (tmp_path / ".ai-sow/data/generate-task/estimate.json").exists()
+    assert validation.read_bytes() == b"baseline validation\n"
+
+
+@pytest.mark.parametrize("review_path", ["/tmp/review.md", "../review.md", r"work\\review.md"])
+def test_check_rejects_non_project_relative_posix_review_path(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    race_kind: str,
-    writer_backend: str,
+    review_path: str,
 ) -> None:
     prepare(tmp_path)
-    validation_path = tmp_path / ".ai-sow/validation/generate-task.json"
-    validation_path.parent.mkdir(parents=True)
-    outside = tmp_path.parent / f"{tmp_path.name}-outside-race"
-    outside.mkdir()
-    original_validation_dir = validation_path.parent.with_name("validation-before-race")
-    monkeypatch.syspath_prepend(str(VALIDATE.parent))
-    spec = importlib.util.spec_from_file_location("generate_task_race", VALIDATE)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    if writer_backend == "portable":
-        monkeypatch.setattr(
-            module,
-            "write_validation_report",
-            module._write_validation_report_portable,
-        )
-    original_check = module.validation_output_diagnostic
 
-    def check_then_swap(project_root: Path, report_path: Path) -> dict[str, str] | None:
-        result = original_check(project_root, report_path)
-        assert result is None
-        if race_kind == "directory":
-            validation_path.parent.rename(original_validation_dir)
-            validation_path.parent.symlink_to(outside, target_is_directory=True)
-        else:
-            validation_path.symlink_to(outside / "escaped.json")
-        return result
+    result = run_validator(tmp_path, review_path=review_path)
 
-    monkeypatch.setattr(module, "validation_output_diagnostic", check_then_swap)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [str(VALIDATE), "--project-root", str(tmp_path)],
+    assert result.returncode == 2
+    diagnostic = payload(result)["diagnostics"][0]  # type: ignore[index]
+    assert diagnostic["code"] == "REVIEW_PATH_INVALID"
+    assert diagnostic["path"] == review_path
+
+
+def input_hash(report: dict[str, object], name: str) -> str:
+    entries = report["compilationReceipt"]["inputs"]  # type: ignore[index]
+    matches = [entry for entry in entries if entry["name"] == name]
+    assert len(matches) == 1
+    return matches[0]["sha256"]
+
+
+def test_rebind_changes_story_receipt_without_changing_estimate_bytes(tmp_path: Path) -> None:
+    candidate = prepare(tmp_path)
+    published = run_validator(tmp_path, "publish")
+    assert published.returncode == 0, published.stdout
+    old_report = json.loads((tmp_path / ".ai-sow/validation/generate-task.json").read_text(encoding="utf-8"))
+    old_story = input_hash(old_report, "deliveryValidation")
+    publish_story(tmp_path, review=b"Story approved after wording update.\n")
+    new_story = sha256_bytes((tmp_path / ".ai-sow/validation/generate-story.json").read_bytes())
+    estimate = fixture()
+    template_hash = sha256_bytes((tmp_path / ".ai-sow/templates/sow-template.xlsx").read_bytes())
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/generate-task.md",
+        task_review(estimate, template_hash, rebind={"old": old_story, "new": new_story}).encode(),
     )
+    result = run_validator(tmp_path, "rebind")
+    assert result.returncode == 0, result.stdout
+    assert (tmp_path / ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
+    rebound = json.loads((tmp_path / ".ai-sow/validation/generate-task.json").read_text(encoding="utf-8"))
+    assert input_hash(rebound, "deliveryValidation") == new_story
 
-    returncode = module.main()
-    payload = json.loads(capsys.readouterr().out)
 
-    assert returncode == 2
-    assert payload["outcome"] == "BLOCKED"
-    assert any(item["code"] == "OUTPUT_UNWRITABLE" for item in payload["diagnostics"])
-    assert list(outside.iterdir()) == []
+def test_schema_forbids_calculation_outputs() -> None:
+    schema = (SKILL_ROOT / "contracts/estimate.schema.json").read_text(encoding="utf-8")
+    for removed in ("professionalDomain", "activity", "quantity", "baseEffort", "taskEffort", "sitEstimates"):
+        assert f'"{removed}"' not in schema
+
+
+def test_skill_uses_review_candidate_publish_stop_and_local_template() -> None:
+    contract = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    for required in (
+        "Reviewer Agent", "render_review.py", "--mode review", "--mode publish-approved", "--mode rebind",
+        "estimate.candidate.json", "只推荐用户显式调用 `generate-sow`", "PM 补充项",
+        "然后 STOP", "fixtures/sow-template.xlsx", "不得重新诊断 Story 或 Design",
+        "review-packet.json", "approval.json", "不继承当前完整聊天",
+    ):
+        assert required in contract
+    assert "Validator Agent" not in contract
+    assert "Worker Agent" not in contract
+
+
+def test_review_template_documents_task_maps_and_rebind_declarations() -> None:
+    template = (SKILL_ROOT / "references/review-template.md").read_text(encoding="utf-8")
+    for required in (
+        "Story Map: story-example=task-example",
+        "AC Map: ac-example=task-example",
+        "Stable IDs: task-example",
+        "Integration Map: integration-example=task-example",
+        "Scope Review: PASSED",
+        "Template SHA-256: <64-lowercase-hex>",
+        "Impact: NO_CHANGE",
+        "Previous Receipt SHA-256: generate-story=<old-hash>",
+        "Current Receipt SHA-256: generate-story=<new-hash>",
+    ):
+        assert required in template
+
+
+def test_validator_has_no_cross_skill_or_review_gate_dependency() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "review_gates" not in text
+    assert "skills/generate-" not in text

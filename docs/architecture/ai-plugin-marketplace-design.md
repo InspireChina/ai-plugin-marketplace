@@ -4,7 +4,7 @@
 
 ## 目标
 
-发布 AI SOW `0.1.0-beta.1` / SOW `1.3` 首次公开 Beta 合同，形成一个可公开发布、可继续添加插件、可由 Codex 本地安装并从已安装插件目录独立运行的 marketplace 仓库。
+发布 AI SOW `0.1.0-beta.2` / SOW `1.3` 当前 Beta 合同，形成一个可公开发布、可继续添加插件、可由 Codex 本地安装并从已安装插件目录独立运行的 marketplace 仓库。
 
 ## 标识
 
@@ -14,7 +14,7 @@
 - 首个插件 ID 与目录名：`ai-sow`
 - 插件展示名：`AI SOW`
 - Publisher：`Yuan Li`
-- 目标预发布版本：`0.1.0-beta.1`；SOW 标准版本：`1.3`
+- 目标预发布版本：`0.1.0-beta.2`；SOW 标准版本：`1.3`
 - Marketplace 条目分类：`Productivity`
 - 安装策略：`AVAILABLE`
 - 鉴权策略：`ON_INSTALL`
@@ -72,7 +72,7 @@ AI SOW 的领域实现与参考资料全部位于 `plugins/ai-sow/`：
 
 内部实施计划、本机绝对路径、运行时生成文件和 `.DS_Store` 不进入仓库的正式源代码提交。
 
-插件 manifest 名为 `ai-sow`，本次预发布版本为 `0.1.0-beta.1`，配套 SOW 标准为 `1.3`，并提供 Apache-2.0、关键词和规范化的 install-surface 文案。未知的 GitHub URL、主页、隐私条款和服务条款不使用占位值；远程仓库建立后再增加真实 HTTPS 地址。`defaultPrompt` 使用最多三个短字符串组成的数组。
+插件 manifest 名为 `ai-sow`，本次预发布版本为 `0.1.0-beta.2`，配套 SOW 标准为 `1.3`，并提供 Apache-2.0、关键词和规范化的 install-surface 文案。未知的 GitHub URL、主页、隐私条款和服务条款不使用占位值；远程仓库建立后再增加真实 HTTPS 地址。`defaultPrompt` 使用最多三个短字符串组成的数组。
 
 ## 安装后运行模型
 
@@ -143,7 +143,7 @@ GitHub Actions 使用 Python 3.12 和固定 uv 版本。测试矩阵覆盖 Ubunt
 - 运行 AI SOW 全量 pytest。
 - 运行官方本地 plugin validator 和七个 skill quick validator。
 - 三份 SOW 模板副本保持字节一致。
-- `0.1.0-beta.1` manifest、schema、fixture 和 setup 常量与 SOW `1.3` 一致。
+- `0.1.0-beta.2` manifest、schema、fixture 和 setup 常量与 SOW `1.3` 一致。
 
 ### 3. 发布边界测试
 
@@ -151,7 +151,7 @@ GitHub Actions 使用 Python 3.12 和固定 uv 版本。测试矩阵覆盖 Ubunt
 
 - 使用复制后的 `pyproject.toml` 与 `uv.lock` 建立运行环境。
 - 执行 setup help 和 Greenfield setup。
-- 执行六份稳定数据的 validator。
+- 依次执行五位 Owner validator，发布六份稳定数据和 0.3 receipts。
 - 使用审核通过的 fixture 生成 SOW 包。
 
 这一层证明独立插件副本不依赖源码仓库布局。
@@ -171,7 +171,7 @@ codex plugin add ai-sow@ai-plugin-marketplace
 - `codex plugin list` 显示 `ai-sow` 已安装并启用。
 - 已安装目录中的 plugin manifest、skills、锁文件和模板完整。
 - 从已安装插件目录而非源码目录，在全新临时项目中完成 Greenfield setup。
-- 将六份已审核 fixture 作为 Owner Skill 编译结果，依次运行全部 validator，并生成最终 SOW。
+- 将六份已审核 fixture 作为 Owner Skill 编译结果，依次运行五位 Owner validator，并生成确定性 SOW 包。
 - 用 Microsoft Excel 打开临时输出、完整重算并保存；缓存值中公式错误数为零。
 - 检查 13 个工作表、动态 As-Is 表、Task → Effective Start 追溯和三份模板哈希。
 - 用全新的 Codex 进程确认安装后的 skill 可以被发现；当前任务不假设热重载。

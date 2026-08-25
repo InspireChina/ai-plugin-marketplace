@@ -1,6 +1,6 @@
 [project]
 name = "ai-sow-plugin-runtime"
-version = "0.1.0b1"
+version = "0.1.0b2"
 description = "Locked runtime dependencies for the AI SOW Codex plugin"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -15,6 +15,6 @@ dev = ["pytest==8.4.1"]
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["skills"]
+testpaths = ["skills", "tests"]
 python_files = ["test_*.py"]
 addopts = ["--import-mode=importlib"]

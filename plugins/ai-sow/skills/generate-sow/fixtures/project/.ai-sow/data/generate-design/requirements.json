@@ -37,6 +37,7 @@
       "description": "通过稳定 API 创建、维护和检索客户档案，并隔离渠道与会员主数据。",
       "involvedSystemsData": "会员门户、会员主数据 / customer-profile-api",
       "constraintsNfr": "API P95 小于 300ms；写操作使用幂等键；敏感字段按权限返回",
+      "relatedBusinessFeatureIds": ["feature-customer-profile"],
       "source": {
         "type": "DESIGN_DERIVED",
         "designDecisionIds": ["decision-profile-api"],
@@ -52,6 +53,18 @@
       "description": "完成环境配置、发布清单、切换回滚和生产验证，并形成签署证据。",
       "involvedSystemsData": "Kubernetes 生产环境、CI/CD、功能开关、发布清单",
       "constraintsNfr": "业务中断不超过 15 分钟；回滚路径在切换前完成演练",
+      "relatedBusinessFeatureIds": [
+        "feature-customer-profile",
+        "feature-member-tier",
+        "feature-order-orchestration",
+        "feature-inventory-reservation",
+        "feature-return-refund",
+        "feature-store-order",
+        "feature-order-visibility",
+        "feature-payment-reconciliation",
+        "feature-einvoice",
+        "feature-finance-report"
+      ],
       "source": {
         "type": "SOURCE_INPUT",
         "sourceDocumentIds": ["source-document-customer-profile"],
@@ -65,6 +78,10 @@
       "description": "明确上线后驻场支持和旧系统退役不在本期固定范围内。",
       "involvedSystemsData": "旧会员门户、旧订单查询服务",
       "constraintsNfr": "如需实施必须单独立项并重新确认基线",
+      "relatedBusinessFeatureIds": [
+        "feature-customer-profile",
+        "feature-order-visibility"
+      ],
       "source": {
         "type": "SOURCE_INPUT",
         "sourceDocumentIds": ["source-document-customer-profile"],
@@ -78,6 +95,10 @@
       "description": "迁移会员扩展字段与两年内历史订单，执行校验、补偿与留痕。",
       "involvedSystemsData": "会员主数据、订单库 / customer_profile、order、order_item",
       "constraintsNfr": "迁移前后关键字段一致率 100%，业务主键重复为 0",
+      "relatedBusinessFeatureIds": [
+        "feature-customer-profile",
+        "feature-order-orchestration"
+      ],
       "source": {
         "type": "SOURCE_INPUT",
         "sourceDocumentIds": ["source-document-customer-profile"],
@@ -91,6 +112,11 @@
       "description": "建设关键指标和告警，完成运维手册、交接演练与业务用户培训。",
       "involvedSystemsData": "统一监控平台、运维知识库、培训材料",
       "constraintsNfr": "核心交易告警 5 分钟内触发；交接与培训均需签到和验收记录",
+      "relatedBusinessFeatureIds": [
+        "feature-order-orchestration",
+        "feature-payment-reconciliation",
+        "feature-finance-report"
+      ],
       "source": {
         "type": "SOURCE_INPUT",
         "sourceDocumentIds": ["source-document-customer-profile"],
@@ -104,6 +130,18 @@
       "description": "调整既有测试资产，覆盖回归、性能、安全、兼容性和生产烟测。",
       "involvedSystemsData": "API 自动化框架、测试用例库、负载模型、兼容矩阵",
       "constraintsNfr": "P0/P1 用例通过率 100%，核心查询峰值 500 TPS",
+      "relatedBusinessFeatureIds": [
+        "feature-customer-profile",
+        "feature-member-tier",
+        "feature-order-orchestration",
+        "feature-inventory-reservation",
+        "feature-return-refund",
+        "feature-store-order",
+        "feature-order-visibility",
+        "feature-payment-reconciliation",
+        "feature-einvoice",
+        "feature-finance-report"
+      ],
       "source": {
         "type": "SOURCE_INPUT",
         "sourceDocumentIds": ["source-document-customer-profile"],

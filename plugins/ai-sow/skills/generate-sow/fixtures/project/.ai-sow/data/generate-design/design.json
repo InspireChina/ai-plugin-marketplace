@@ -148,7 +148,9 @@
       "rationale": "会员门户与后续渠道需要统一边界，且会员主数据不能直接暴露。",
       "designItemIds": ["design-customer-profile"],
       "effectiveStartItemIds": ["effective-start-customer-profile"],
-      "relatedFeatureIds": ["feature-customer-profile", "feature-profile-api"]
+      "relatedFeatureIds": ["feature-customer-profile", "feature-profile-api"],
+      "decisionKind": "INTEGRATION_BOUNDARY",
+      "evidenceIds": ["evidence-profile-component"]
     },
     {
       "designDecisionId": "decision-order-state-machine",
@@ -162,7 +164,9 @@
         "feature-return-refund",
         "feature-store-order",
         "feature-order-visibility"
-      ]
+      ],
+      "decisionKind": "OTHER",
+      "evidenceIds": []
     },
     {
       "designDecisionId": "decision-integration-boundary",
@@ -179,6 +183,12 @@
         "feature-inventory-reservation",
         "feature-return-refund",
         "feature-einvoice"
+      ],
+      "decisionKind": "INTEGRATION_BOUNDARY",
+      "evidenceIds": [
+        "evidence-erp-contract",
+        "evidence-payment-contract",
+        "evidence-invoice-contract"
       ]
     },
     {
@@ -192,7 +202,9 @@
         "feature-payment-reconciliation",
         "feature-einvoice",
         "feature-finance-report"
-      ]
+      ],
+      "decisionKind": "OTHER",
+      "evidenceIds": []
     },
     {
       "designDecisionId": "decision-production-release",
@@ -201,7 +213,9 @@
       "rationale": "降低全渠道一次性切换风险并形成可签署的生产证据。",
       "designItemIds": ["design-release-platform"],
       "effectiveStartItemIds": ["effective-start-deployment-platform"],
-      "relatedFeatureIds": ["feature-production-scope"]
+      "relatedFeatureIds": ["feature-production-scope"],
+      "decisionKind": "OTHER",
+      "evidenceIds": []
     },
     {
       "designDecisionId": "decision-data-migration",
@@ -213,7 +227,9 @@
         "effective-start-member-master",
         "effective-start-order-service"
       ],
-      "relatedFeatureIds": ["feature-data-migration"]
+      "relatedFeatureIds": ["feature-data-migration"],
+      "decisionKind": "OTHER",
+      "evidenceIds": []
     },
     {
       "designDecisionId": "decision-observability-ownership",
@@ -222,7 +238,9 @@
       "rationale": "只有指标没有责任边界无法形成可落地的运营能力。",
       "designItemIds": ["design-observability"],
       "effectiveStartItemIds": ["effective-start-monitoring-platform"],
-      "relatedFeatureIds": ["feature-observability-ops"]
+      "relatedFeatureIds": ["feature-observability-ops"],
+      "decisionKind": "OTHER",
+      "evidenceIds": []
     },
     {
       "designDecisionId": "decision-quality-layers",
@@ -231,7 +249,9 @@
       "rationale": "便于区分 UAT 分母、工程质量活动和生产验证工作量。",
       "designItemIds": ["design-quality"],
       "effectiveStartItemIds": ["effective-start-test-assets"],
-      "relatedFeatureIds": ["feature-test-quality", "feature-production-scope"]
+      "relatedFeatureIds": ["feature-test-quality", "feature-production-scope"],
+      "decisionKind": "OTHER",
+      "evidenceIds": []
     }
   ],
   "scopeDecisions": [
@@ -240,28 +260,36 @@
       "decision": "IN_SCOPE",
       "rationale": "档案框架可复用，但扩展字段、授权过滤和统一 API 仍需交付。",
       "designItemIds": ["design-customer-profile"],
-      "effectiveStartItemIds": ["effective-start-customer-profile"]
+      "effectiveStartItemIds": ["effective-start-customer-profile"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-profile-api",
       "decision": "IN_SCOPE",
       "rationale": "需要新的稳定 API 边界隔离渠道和会员主数据。",
       "designItemIds": ["design-customer-profile"],
-      "effectiveStartItemIds": ["effective-start-customer-profile"]
+      "effectiveStartItemIds": ["effective-start-customer-profile"],
+      "requiredIntegrationBoundary": "END_TO_END",
+      "requiredDecisionKinds": ["INTEGRATION_BOUNDARY"]
     },
     {
       "featureId": "feature-production-scope",
       "decision": "IN_SCOPE",
       "rationale": "环境、发布、切换、回滚和生产验证均纳入本期固定交付。",
       "designItemIds": ["design-release-platform", "design-quality"],
-      "effectiveStartItemIds": ["effective-start-deployment-platform", "effective-start-test-assets"]
+      "effectiveStartItemIds": ["effective-start-deployment-platform", "effective-start-test-assets"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-member-tier",
       "decision": "IN_SCOPE",
       "rationale": "等级规则版本与历史模型在现状中缺失。",
       "designItemIds": ["design-membership-rules"],
-      "effectiveStartItemIds": ["effective-start-member-master"]
+      "effectiveStartItemIds": ["effective-start-member-master"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-customer-consent",
@@ -275,35 +303,45 @@
       "decision": "IN_SCOPE",
       "rationale": "现有线上状态机需要扩展门店渠道和统一命令。",
       "designItemIds": ["design-order-domain"],
-      "effectiveStartItemIds": ["effective-start-order-service"]
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-inventory-reservation",
       "decision": "IN_SCOPE",
       "rationale": "ERP 接口可复用，项目仍需认证、映射、幂等和专项验证。",
       "designItemIds": ["design-integration-adapters", "design-order-domain"],
-      "effectiveStartItemIds": ["effective-start-erp-interface"]
+      "effectiveStartItemIds": ["effective-start-erp-interface"],
+      "requiredIntegrationBoundary": "END_TO_END",
+      "requiredDecisionKinds": ["INTEGRATION_BOUNDARY"]
     },
     {
       "featureId": "feature-return-refund",
       "decision": "IN_SCOPE",
       "rationale": "退货审核、支付退款和订单回写尚未形成闭环。",
       "designItemIds": ["design-order-domain", "design-integration-adapters"],
-      "effectiveStartItemIds": ["effective-start-order-service", "effective-start-payment-gateway"]
+      "effectiveStartItemIds": ["effective-start-order-service", "effective-start-payment-gateway"],
+      "requiredIntegrationBoundary": "END_TO_END",
+      "requiredDecisionKinds": ["INTEGRATION_BOUNDARY"]
     },
     {
       "featureId": "feature-store-order",
       "decision": "IN_SCOPE",
       "rationale": "门店接单是一期顺延承诺，本期需完成可验收流程。",
       "designItemIds": ["design-store-workbench", "design-order-domain"],
-      "effectiveStartItemIds": ["effective-start-order-service"]
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-order-visibility",
       "decision": "IN_SCOPE",
       "rationale": "需要新增统一履约轨迹和异常原因展示。",
       "designItemIds": ["design-order-domain"],
-      "effectiveStartItemIds": ["effective-start-order-service"]
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-customer-notification",
@@ -317,21 +355,27 @@
       "decision": "IN_SCOPE",
       "rationale": "需要新增日结作业、差异规则和财务复核视图。",
       "designItemIds": ["design-finance-services"],
-      "effectiveStartItemIds": ["effective-start-payment-gateway"]
+      "effectiveStartItemIds": ["effective-start-payment-gateway"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-einvoice",
       "decision": "IN_SCOPE",
       "rationale": "发票平台可复用，但租户配置、映射、幂等和回写需交付。",
       "designItemIds": ["design-finance-services", "design-integration-adapters"],
-      "effectiveStartItemIds": ["effective-start-invoice-gateway"]
+      "effectiveStartItemIds": ["effective-start-invoice-gateway"],
+      "requiredIntegrationBoundary": "END_TO_END",
+      "requiredDecisionKinds": ["INTEGRATION_BOUNDARY"]
     },
     {
       "featureId": "feature-finance-report",
       "decision": "IN_SCOPE",
       "rationale": "财务指标模型和经营报表现状缺失。",
       "designItemIds": ["design-finance-services"],
-      "effectiveStartItemIds": ["effective-start-order-service"]
+      "effectiveStartItemIds": ["effective-start-order-service"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-legacy-retirement",
@@ -345,21 +389,27 @@
       "decision": "IN_SCOPE",
       "rationale": "会员扩展字段和两年历史订单需要独立迁移、校验与补偿。",
       "designItemIds": ["design-data-migration"],
-      "effectiveStartItemIds": ["effective-start-member-master", "effective-start-order-service"]
+      "effectiveStartItemIds": ["effective-start-member-master", "effective-start-order-service"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-observability-ops",
       "decision": "IN_SCOPE",
       "rationale": "需补齐交易和财务作业监控、手册、交接演练与用户培训。",
       "designItemIds": ["design-observability"],
-      "effectiveStartItemIds": ["effective-start-monitoring-platform"]
+      "effectiveStartItemIds": ["effective-start-monitoring-platform"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-test-quality",
       "decision": "IN_SCOPE",
       "rationale": "既有回归资产需按新订单状态机和财务口径扩展。",
       "designItemIds": ["design-quality"],
-      "effectiveStartItemIds": ["effective-start-test-assets"]
+      "effectiveStartItemIds": ["effective-start-test-assets"],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     }
   ]
 }

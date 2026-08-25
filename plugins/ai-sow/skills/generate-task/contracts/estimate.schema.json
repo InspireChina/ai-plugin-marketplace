@@ -1,11 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:generate-task:estimate:0.1",
+  "$id": "urn:ai-sow:generate-task:estimate:0.2",
   "type": "object",
   "additionalProperties": false,
   "required": ["tasks"],
   "properties": {
-    "tasks": {"type": "array", "items": {"$ref": "#/$defs/task"}}
+    "tasks": {
+      "description": "按一个基础单元实例一行拆分的可估算 Task 清单。",
+      "type": "array",
+      "items": {"$ref": "#/$defs/task"}
+    }
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
@@ -17,9 +21,17 @@
       "additionalProperties": false,
       "required": ["effectiveStartItemId", "effectiveStartItemName"],
       "properties": {
-        "effectiveStartItemId": {"$ref": "#/$defs/id"},
-        "effectiveStartItemName": {"type": "string", "minLength": 1},
+        "effectiveStartItemId": {
+          "description": "支撑调整或接入复用判断的 Effective Start 稳定记录 ID。",
+          "$ref": "#/$defs/id"
+        },
+        "effectiveStartItemName": {
+          "description": "与 Effective Start 稳定记录完全一致的对象名称。",
+          "type": "string",
+          "minLength": 1
+        },
         "projectSideWorkTypes": {
+          "description": "接入复用时本项目侧可独立估算并承诺交付的工作类型。",
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
@@ -29,6 +41,7 @@
           }
         },
         "projectSideWorkCommitment": {
+          "description": "按工作类型枚举顺序生成的本项目侧交付承诺。",
           "type": "string",
           "pattern": "^本项目负责并交付：(?:注册|配置|封装|映射|适配|认证|租户设置|权限设置|专项验证)(?:、(?:注册|配置|封装|映射|适配|认证|租户设置|权限设置|专项验证))*$"
         }
@@ -37,23 +50,69 @@
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["taskId", "storyId", "name", "baseUnit", "workMode", "workModeRationale", "complexity", "matchedEffectiveStartItemIds", "rationale"],
+      "required": ["taskId", "storyId", "acceptanceCriterionIds", "name", "baseUnit", "workMode", "workModeRationale", "complexity", "matchedEffectiveStartItemIds", "rationale"],
       "properties": {
-        "taskId": {"$ref": "#/$defs/taskId"},
-        "storyId": {"$ref": "#/$defs/id"},
-        "name": {"type": "string", "minLength": 1},
-        "baseUnit": {"type": "string", "minLength": 1},
-        "workMode": {"type": "string", "enum": ["新建", "调整", "接入复用"]},
-        "workModeRationale": {"type": "string", "minLength": 1},
-        "workModeEvidence": {"$ref": "#/$defs/workModeEvidence"},
-        "complexity": {"$ref": "#/$defs/complexity"},
-        "complexityRationale": {"type": "string", "minLength": 1},
-        "integrationId": {"$ref": "#/$defs/id"},
+        "taskId": {
+          "description": "当前 Skill 创建且语义稳定的 Task ID。",
+          "$ref": "#/$defs/taskId"
+        },
+        "storyId": {
+          "description": "该 Task 所实现的上游 Story ID。",
+          "$ref": "#/$defs/id"
+        },
+        "acceptanceCriterionIds": {
+          "description": "该 Task 所支持的同 Story 验收条件 ID；AC 与 Task 允许多对多追溯。",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "name": {
+          "description": "明确交付对象和单个基础单元实例边界的 Task 名称。",
+          "type": "string",
+          "minLength": 1
+        },
+        "baseUnit": {
+          "description": "项目模板基础单元目录中的基础单元 ID。",
+          "type": "string",
+          "minLength": 1
+        },
+        "workMode": {
+          "description": "当前实例相对 Effective Start 的工作模式。",
+          "type": "string",
+          "enum": ["新建", "调整", "接入复用"]
+        },
+        "workModeRationale": {
+          "description": "结合当前实例和现状说明工作模式选择的具体理由。",
+          "type": "string",
+          "minLength": 1
+        },
+        "workModeEvidence": {
+          "description": "调整或接入复用所依赖的结构化现状证据。",
+          "$ref": "#/$defs/workModeEvidence"
+        },
+        "complexity": {
+          "description": "依据当前基础单元标准选择的 S、M 或 L 复杂度。",
+          "$ref": "#/$defs/complexity"
+        },
+        "complexityRationale": {
+          "description": "S 或 L 实例偏离 M 档标准的具体事实。",
+          "type": "string",
+          "minLength": 1
+        },
+        "integrationId": {
+          "description": "仅集成 Task 使用且与其一对一对应的上游 Integration ID。",
+          "$ref": "#/$defs/id"
+        },
         "matchedEffectiveStartItemIds": {
           "$ref": "#/$defs/idArray",
-          "description": "Stable Effective Start record IDs projected to 05-任务明细!K 系统现状匹配 and matched to 90-系统现状 EFFECTIVE_START 记录 ID rows."
+          "description": "投影到任务明细并与系统现状 EFFECTIVE_START 记录匹配的稳定 ID。"
         },
-        "rationale": {"type": "string", "minLength": 1}
+        "rationale": {
+          "description": "说明单实例计数边界、包含和排除范围的判断依据。",
+          "type": "string",
+          "minLength": 1
+        }
       },
       "allOf": [
         {

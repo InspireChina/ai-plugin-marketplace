@@ -1,211 +1,259 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
-import shutil
-import stat
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 
+PLUGIN_ROOT = Path(__file__).parents[3]
 SKILL_ROOT = Path(__file__).parents[1]
-SCRIPT = SKILL_ROOT / "scripts" / "validate.py"
-GREENFIELD_FIXTURE = SKILL_ROOT / "fixtures" / "asis.valid.json"
-BROWNFIELD_FIXTURE = SKILL_ROOT / "fixtures" / "asis.brownfield.valid.json"
-REVISION = "b" * 40
+SCRIPT = SKILL_ROOT / "scripts/validate.py"
+CONTEXT_SCRIPT = SKILL_ROOT / "scripts/prepare_context.py"
+RENDER_SCRIPT = SKILL_ROOT / "scripts/render_review.py"
+GREENFIELD_FIXTURE = SKILL_ROOT / "fixtures/asis.valid.json"
+BROWNFIELD_FIXTURE = SKILL_ROOT / "fixtures/asis.brownfield.valid.json"
+E2E_DESCRIPTOR = SKILL_ROOT / "fixtures/e2e-cases/explicit-architecture.json"
+SOURCE_BYTES = "客户需要统一创建、查询和维护客户档案。\n".encode()
 PRIOR_SOW_BYTES = b"Phase one prior SOW fixture.\n"
-SHA256 = hashlib.sha256(PRIOR_SOW_BYTES).hexdigest()
+
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
+
+from runtime.handoff import Artifact, OwnerContract, canonical_json_bytes, publish_owner, sha256_bytes
+from runtime.project_io import ProjectFiles
 
 
-def write_json(project_root: Path, relative: str, payload: object) -> None:
+REQUIREMENT_CONTRACT = OwnerContract(
+    subject="analyze-requirement",
+    contract_ids=("urn:ai-sow:analyze-requirement:source-requirements:0.1",),
+    validation_path=".ai-sow/validation/analyze-requirement.json",
+    reviews=(("approvedReview", ".ai-sow/reviews/analyze-requirement.md"),),
+    outputs=(("requirements", ".ai-sow/data/analyze-requirement/requirements.json"),),
+)
+
+
+def write_bytes(project_root: Path, relative: str, payload: bytes) -> None:
     path = project_root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    path.write_bytes(payload)
 
 
-def run_validator(project_root: Path) -> subprocess.CompletedProcess[str]:
+def write_json(project_root: Path, relative: str, payload: object) -> bytes:
+    content = json.dumps(payload, ensure_ascii=False, indent=2).encode() + b"\n"
+    write_bytes(project_root, relative, content)
+    return content
+
+
+def project_payload() -> dict[str, str]:
+    return {
+        "projectId": "customer-portal",
+        "name": "客户门户",
+        "pluginVersion": "0.1.0-beta.2",
+        "sowStandardVersion": "1.3",
+    }
+
+
+def requirements_payload() -> dict[str, Any]:
+    return {
+        "sourceDocuments": [
+            {
+                "sourceDocumentId": "source-document-customer-profile",
+                "file": ".ai-sow/inputs/analyze-requirement/customer-profile.txt",
+                "originalName": "customer-profile.txt",
+                "sha256": hashlib.sha256(SOURCE_BYTES).hexdigest(),
+            }
+        ],
+        "normalizedItems": [
+            {
+                "normalizedItemId": "norm-customer-profile",
+                "sourceDocumentId": "source-document-customer-profile",
+                "title": "客户档案",
+                "statement": "客户需要维护客户档案。",
+            }
+        ],
+        "epics": [
+            {
+                "epicId": "epic-customer-management",
+                "type": "BUSINESS",
+                "name": "客户管理",
+                "description": "统一维护客户信息。",
+                "source": {"type": "SOURCE_INPUT", "normalizedItemIds": ["norm-customer-profile"]},
+            }
+        ],
+        "features": [
+            {
+                "featureId": "feature-customer-profile",
+                "epicId": "epic-customer-management",
+                "name": "客户档案维护",
+                "description": "用户创建并查询客户档案。",
+                "source": {"type": "SOURCE_INPUT", "normalizedItemIds": ["norm-customer-profile"]},
+            }
+        ],
+    }
+
+
+def publish_requirement(
+    project_root: Path,
+    payload: dict[str, Any] | None = None,
+    *,
+    review_suffix: str = "",
+) -> None:
+    data = payload or requirements_payload()
+    project = write_json(project_root, ".ai-sow/project.json", project_payload())
+    write_bytes(
+        project_root,
+        ".ai-sow/inputs/analyze-requirement/customer-profile.txt",
+        SOURCE_BYTES,
+    )
+    write_bytes(
+        project_root,
+        ".ai-sow/reviews/analyze-requirement.md",
+        ("Questionnaire: NOT_REQUIRED\nReviewer: PASS\nUser Approval: APPROVED\n" + review_suffix).encode(),
+    )
+    files = ProjectFiles.open(project_root)
+    inputs = (
+        Artifact("project", "FILE", ".ai-sow/project.json", sha256_bytes(project)),
+        Artifact(
+            "source:source-document-customer-profile",
+            "FILE",
+            ".ai-sow/inputs/analyze-requirement/customer-profile.txt",
+            sha256_bytes(SOURCE_BYTES),
+        ),
+        Artifact(
+            "questionnaire",
+            "QUESTIONNAIRE_PRESENCE",
+            "questionnaire:NOT_REQUIRED",
+            sha256_bytes(canonical_json_bytes({"declaration": "NOT_REQUIRED"})),
+        ),
+    )
+    publish_owner(
+        files,
+        REQUIREMENT_CONTRACT,
+        inputs,
+        {"requirements": json.dumps(data, ensure_ascii=False, indent=2).encode() + b"\n"},
+    )
+
+
+def stable_ids(payload: dict[str, Any]) -> list[str]:
+    return [
+        *(entry["asIsItemId"] for entry in payload["items"]),
+        *(entry["commitmentId"] for entry in payload["commitments"]),
+        *(entry["effectiveStartItemId"] for entry in payload["effectiveStartItems"]),
+        *(entry["uncertaintyId"] for entry in payload["uncertainties"]),
+        *(entry["evidenceId"] for entry in payload["evidence"]),
+    ]
+
+
+def approved_review(
+    payload: dict[str, Any],
+    *,
+    questionnaire: str = "NOT_REQUIRED",
+    questionnaire_ids: str = "NONE",
+    questionnaire_records: str = "",
+    impact: str | None = None,
+    previous_receipt_sha256: str | None = None,
+    current_receipt_sha256: str | None = None,
+    impact_rationale: str | None = None,
+) -> str:
+    ids = stable_ids(payload)
+    impact_line = ""
+    if impact:
+        impact_line = (
+            "Upstream: analyze-requirement\n"
+            f"Previous Receipt SHA-256: {previous_receipt_sha256 or '0' * 64}\n"
+            f"Current Receipt SHA-256: {current_receipt_sha256 or '0' * 64}\n"
+            f"Impact: {impact}\n"
+            f"Impact Rationale: {impact_rationale or '确认不受影响的稳定 ID: ' + (', '.join(ids) if ids else 'NONE') + '。'}\n"
+        )
+    sections = (
+        ("调查范围", "本次调查范围与登记输入已确认。"),
+        ("九个 Topic", "九个 Topic 均已逐项评估。"),
+        ("Item", "当前 Item 结论已核对。"),
+        ("Commitment", "往期承诺与处置已核对。"),
+        ("Effective Start", "生效起点已确认。"),
+        ("Coverage", "每个 BUSINESS Feature 均有 Coverage。"),
+        ("Uncertainty", "不确定性及估算影响已记录。"),
+        ("Evidence", "结论均有证据或明确不确定性。"),
+        (
+            "问卷记录",
+            f"Questionnaire: {questionnaire}\nQuestionnaire IDs: {questionnaire_ids}"
+            + (f"\n\n{questionnaire_records.strip()}" if questionnaire_records else ""),
+        ),
+        (
+            "审查与批准",
+            f"Stable IDs: {', '.join(ids) if ids else 'NONE'}\n{impact_line}Reviewer: PASS\nUser Approval: APPROVED",
+        ),
+    )
+    return "# 现状评审\n\n" + "\n\n".join(
+        f"## {heading}\n\n{body}" for heading, body in sections
+    ) + "\n"
+
+
+def prepare_greenfield(project_root: Path) -> dict[str, Any]:
+    project_root.mkdir(parents=True, exist_ok=True)
+    publish_requirement(project_root)
+    payload = json.loads(GREENFIELD_FIXTURE.read_text(encoding="utf-8"))
+    write_json(project_root, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
+    write_bytes(project_root, ".ai-sow/reviews/analyze-as-is.md", approved_review(payload).encode())
+    return payload
+
+
+def prepare_brownfield(project_root: Path) -> dict[str, Any]:
+    project_root.mkdir(parents=True, exist_ok=True)
+    publish_requirement(project_root)
+    repository = project_root / "repositories/service-api"
+    (repository / "src/customer").mkdir(parents=True)
+    (repository / "src/customer/profile.py").write_text(
+        "class CustomerProfileReader:\n    pass\n",
+        encoding="utf-8",
+    )
+    write_bytes(
+        project_root,
+        ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md",
+        PRIOR_SOW_BYTES,
+    )
+    payload = json.loads(BROWNFIELD_FIXTURE.read_text(encoding="utf-8"))
+    write_json(project_root, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
+    write_bytes(project_root, ".ai-sow/reviews/analyze-as-is.md", approved_review(payload).encode())
+    return payload
+
+
+def run_validator(
+    project_root: Path,
+    mode: str,
+    *,
+    review_override: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(SCRIPT),
+        "--project-root",
+        str(project_root),
+        "--mode",
+        mode,
+        "--candidate",
+        ".ai-sow/work/analyze-as-is/asis.candidate.json",
+    ]
+    if review_override is not None:
+        command.extend(("--review-path", review_override))
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--project-root", str(project_root)],
+        command,
         capture_output=True,
         text=True,
         check=False,
     )
 
 
-def source_requirements() -> dict[str, object]:
-    return {"features": [{"featureId": "feature-customer-profile"}]}
-
-
-def prepare_project(project_root: Path) -> None:
-    write_json(
-        project_root,
-        ".ai-sow/project.json",
-        {
-            "projectId": "customer-portal",
-            "name": "Customer Portal",
-            "pluginVersion": "0.1.0-beta.1",
-            "sowStandardVersion": "1.3",
-        },
-    )
-    write_json(
-        project_root,
-        ".ai-sow/data/analyze-requirement/requirements.json",
-        source_requirements(),
-    )
-
-
-def prepare_greenfield(project_root: Path) -> dict[str, Any]:
-    prepare_project(project_root)
-    return json.loads(GREENFIELD_FIXTURE.read_text(encoding="utf-8"))
-
-
-def prepare_brownfield(project_root: Path) -> dict[str, Any]:
-    repository = project_root / "repositories/service-api"
-    repository.mkdir(parents=True)
-    prior_sow = project_root / ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md"
-    prior_sow.parent.mkdir(parents=True)
-    prior_sow.write_bytes(PRIOR_SOW_BYTES)
-    prepare_project(project_root)
-    return json.loads(BROWNFIELD_FIXTURE.read_text(encoding="utf-8"))
-
-
-def validate_payload(project_root: Path, payload: dict[str, Any]) -> subprocess.CompletedProcess[str]:
-    write_json(project_root, ".ai-sow/data/analyze-as-is/asis.json", payload)
-    return run_validator(project_root)
-
-
-def diagnostic_codes(result: subprocess.CompletedProcess[str]) -> set[str]:
-    return {entry["code"] for entry in json.loads(result.stdout)["diagnostics"]}
-
-
-def semantic_diagnostic_codes(
-    payload: dict[str, Any],
-    project: dict[str, Any],
-    source: dict[str, Any],
-) -> set[str]:
-    spec = importlib.util.spec_from_file_location("analyze_as_is_validate", SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return {
-        entry["code"]
-        for entry in module.validate_semantics(payload, project, source)
-    }
-
-
-def test_accepts_topic_complete_greenfield_baseline(tmp_path: Path) -> None:
-    result = validate_payload(tmp_path, prepare_greenfield(tmp_path))
-
-    assert result.returncode == 0, result.stdout
-    assert json.loads(result.stdout)["outcome"] == "OK"
-
-
-def test_accepts_evidence_backed_brownfield_baseline(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 0, result.stdout
-    assert json.loads(result.stdout)["outcome"] == "OK"
-    assert payload["items"][0]["asIsItemId"].startswith("asis-")
-    assert payload["commitments"][0]["commitmentId"].startswith("commitment-")
-    assert payload["effectiveStartItems"][0]["effectiveStartItemId"].startswith(
-        "effective-start-"
-    )
-    assert payload["uncertainties"][0]["uncertaintyId"].startswith("uncertainty-")
-    assert payload["evidence"][0]["evidenceId"].startswith("evidence-")
-
-
-def test_uncertainty_requires_explicit_estimate_impact_flag(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["uncertainties"][0].pop("affectsEstimate")
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-@pytest.mark.parametrize(
-    ("collection", "field", "wrong_id"),
-    [
-        ("items", "asIsItemId", "item-customer-api"),
-        ("commitments", "commitmentId", "commit-loyalty-profile"),
-        ("effectiveStartItems", "effectiveStartItemId", "start-customer-api"),
-        ("uncertainties", "uncertaintyId", "unc-data-retention"),
-        ("evidence", "evidenceId", "proof-customer-api-code"),
-    ],
-)
-def test_rejects_wrong_stable_as_is_entity_prefix(
-    tmp_path: Path,
-    collection: str,
-    field: str,
-    wrong_id: str,
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload[collection][0][field] = wrong_id
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-@pytest.mark.parametrize(
-    ("collection", "index", "field", "wrong_ids"),
-    [
-        ("topicAssessments", 4, "uncertaintyIds", ["unc-data-retention"]),
-        ("commitments", 0, "affectedItemIds", ["item-customer-api"]),
-        ("effectiveStartItems", 0, "sourceItemIds", ["item-customer-api"]),
-        ("effectiveStartItems", 0, "commitmentIds", ["commit-loyalty-profile"]),
-        ("coverage", 0, "effectiveStartItemIds", ["start-customer-api"]),
-        ("coverage", 0, "commitmentIds", ["commit-loyalty-profile"]),
-        ("coverage", 0, "uncertaintyIds", ["unc-data-retention"]),
-        ("evidence", 0, "supportsIds", ["item-customer-api"]),
-    ],
-)
-def test_rejects_wrong_stable_as_is_reference_prefix(
-    tmp_path: Path,
-    collection: str,
-    index: int,
-    field: str,
-    wrong_ids: list[str],
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload[collection][index][field] = wrong_ids
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-def test_accepts_project_root_repository_snapshot(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["analysisScope"]["repositorySnapshots"][0]["path"] = "."
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 0, result.stdout
-
-
-def test_validator_is_self_contained_without_setup_skill_tree(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    project_root.mkdir()
-    payload = prepare_greenfield(project_root)
-    write_json(project_root, ".ai-sow/data/analyze-as-is/asis.json", payload)
-    isolated_skill = tmp_path / "isolated/analyze-as-is"
-    shutil.copytree(SKILL_ROOT, isolated_skill)
-
-    result = subprocess.run(
+def run_context(project_root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [
             sys.executable,
-            str(isolated_skill / "scripts/validate.py"),
+            str(CONTEXT_SCRIPT),
             "--project-root",
             str(project_root),
         ],
@@ -214,613 +262,929 @@ def test_validator_is_self_contained_without_setup_skill_tree(tmp_path: Path) ->
         check=False,
     )
 
+
+def run_renderer(project_root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(RENDER_SCRIPT),
+            "--project-root",
+            str(project_root),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def prepare_review_candidate(project_root: Path) -> tuple[bytes, bytes]:
+    prepare_brownfield(project_root)
+    (project_root / ".ai-sow/reviews/analyze-as-is.md").unlink()
+    context = run_context(project_root)
+    assert context.returncode == 0, context.stdout + context.stderr
+    rendered = run_renderer(project_root)
+    assert rendered.returncode == 0, rendered.stdout + rendered.stderr
+    return (
+        (project_root / ".ai-sow/work/analyze-as-is/asis.candidate.json").read_bytes(),
+        (project_root / ".ai-sow/work/analyze-as-is/review.candidate.md").read_bytes(),
+    )
+
+
+def bind_review_packet(project_root: Path) -> str:
+    packet = (project_root / ".ai-sow/work/analyze-as-is/review-packet.json").read_bytes()
+    digest = sha256_bytes(packet)
+    for path, algorithm, decision in (
+        (
+            ".ai-sow/work/analyze-as-is/reviewer.json",
+            "ai-sow-owner-reviewer-v1",
+            "PASS",
+        ),
+        (
+            ".ai-sow/work/analyze-as-is/approval.json",
+            "ai-sow-owner-approval-v1",
+            "APPROVED",
+        ),
+    ):
+        write_bytes(
+            project_root,
+            path,
+            canonical_json_bytes(
+                {
+                    "algorithm": algorithm,
+                    "decision": decision,
+                    "owner": "analyze-as-is",
+                    "packetSha256": digest,
+                }
+            ),
+        )
+    return digest
+
+
+def write_candidate(project_root: Path, payload: dict[str, Any]) -> None:
+    write_json(project_root, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
+    write_bytes(project_root, ".ai-sow/reviews/analyze-as-is.md", approved_review(payload).encode())
+
+
+def codes(result: subprocess.CompletedProcess[str]) -> set[str]:
+    return {entry["code"] for entry in json.loads(result.stdout)["diagnostics"]}
+
+
+def validation_report(project_root: Path) -> dict[str, Any]:
+    return json.loads((project_root / ".ai-sow/validation/analyze-as-is.json").read_text())
+
+
+def test_review_template_has_complete_contract() -> None:
+    text = (SKILL_ROOT / "references/review-template.md").read_text(encoding="utf-8")
+    for section in (
+        "调查范围", "九个 Topic", "Item", "Commitment", "Effective Start",
+        "Coverage", "Uncertainty", "Evidence", "问卷记录", "审查与批准",
+    ):
+        assert f"## {section}" in text
+    for declaration in (
+        "Questionnaire:", "Questionnaire IDs:", "Stable IDs:",
+        "Reviewer: PASS", "User Approval: APPROVED",
+    ):
+        assert declaration in text
+
+
+@pytest.mark.parametrize("fixture", ["greenfield", "brownfield"])
+def test_check_accepts_canonical_fixture_without_writes(tmp_path: Path, fixture: str) -> None:
+    (prepare_greenfield if fixture == "greenfield" else prepare_brownfield)(tmp_path)
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/analyze-as-is.json").exists()
+
+
+def test_check_accepts_work_review_override_and_reports_its_path(tmp_path: Path) -> None:
+    payload = prepare_greenfield(tmp_path)
+    work_review = ".ai-sow/work/analyze-as-is/reconcile-review.md"
+    work_review_path = tmp_path / work_review
+    write_bytes(tmp_path, work_review, approved_review(payload).encode())
+    write_bytes(tmp_path, ".ai-sow/reviews/analyze-as-is.md", b"not the approved review")
+
+    result = run_validator(tmp_path, "check", review_override=work_review)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    write_bytes(
+        tmp_path,
+        work_review,
+        approved_review(payload).replace("Reviewer: PASS", "Reviewer: FINDINGS").encode(),
+    )
+    result = run_validator(tmp_path, "check", review_override=work_review)
+    finding = next(
+        item
+        for item in json.loads(result.stdout)["diagnostics"]
+        if item["code"] == "REVIEW_NOT_PASSED"
+    )
+    assert finding["path"] == work_review
+    assert work_review_path.exists()
+
+
+def test_check_without_override_still_reads_formal_review(tmp_path: Path) -> None:
+    prepare_greenfield(tmp_path)
+    write_bytes(
+        tmp_path,
+        ".ai-sow/work/analyze-as-is/reconcile-review.md",
+        b"not an approved review",
+    )
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("mode", ["publish", "rebind"])
+def test_non_default_review_path_is_rejected_by_legacy_write_modes(
+    tmp_path: Path, mode: str,
+) -> None:
+    payload = prepare_greenfield(tmp_path)
+    work_review = ".ai-sow/work/analyze-as-is/reconcile-review.md"
+    write_bytes(tmp_path, work_review, approved_review(payload).encode())
+    write_bytes(tmp_path, ".ai-sow/validation/analyze-as-is.json", b"baseline validation\n")
+
+    result = run_validator(tmp_path, mode, review_override=work_review)
+
+    assert result.returncode == 2
+    finding = next(
+        item
+        for item in json.loads(result.stdout)["diagnostics"]
+        if item["code"] == "REVIEW_PATH_MODE_INVALID"
+    )
+    assert finding["message"] == (
+        "--review-path override is allowed only in check, review, or publish-approved mode"
+    )
+    assert finding["path"] == work_review
+    assert (tmp_path / ".ai-sow/validation/analyze-as-is.json").read_bytes() == b"baseline validation\n"
+
+
+@pytest.mark.parametrize("unsafe", ["/tmp/review.md", "../review.md", r"work\review.md"])
+def test_check_rejects_unsafe_review_path(tmp_path: Path, unsafe: str) -> None:
+    prepare_greenfield(tmp_path)
+
+    result = run_validator(tmp_path, "check", review_override=unsafe)
+
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["diagnostics"] == [
+        {
+            "code": "REVIEW_PATH_INVALID",
+            "message": "--review-path must be a POSIX project-relative path without traversal",
+            "path": unsafe,
+        }
+    ]
+
+
+def test_publish_preserves_candidate_bytes_and_binds_named_inputs(tmp_path: Path) -> None:
+    prepare_brownfield(tmp_path)
+    candidate = (tmp_path / ".ai-sow/work/analyze-as-is/asis.candidate.json").read_bytes()
+
+    result = run_validator(tmp_path, "publish")
+
+    assert result.returncode == 0, result.stdout
+    assert (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").read_bytes() == candidate
+    receipt = validation_report(tmp_path)["compilationReceipt"]
+    assert receipt["validatorContractVersion"] == "0.3"
+    assert receipt["contractIds"] == ["urn:ai-sow:analyze-as-is:asis:0.1"]
+    assert {entry["name"] for entry in receipt["inputs"]} == {
+        "project", "requirementsValidation", "requirements",
+        "repository:service-api", "priorSow:sow-phase-one",
+        "evidence:evidence-customer-api-code", "questionnaire",
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    (
+        ("missing", "UPSTREAM_HANDOFF_MISSING"),
+        ("invalid", "UPSTREAM_HANDOFF_INVALID"),
+        ("stale", "UPSTREAM_HANDOFF_STALE"),
+        ("unsupported", "UPSTREAM_CONTRACT_UNSUPPORTED"),
+    ),
+)
+def test_requirement_handoff_reports_only_four_stable_errors(
+    tmp_path: Path, mutation: str, expected: str,
+) -> None:
+    prepare_greenfield(tmp_path)
+    report_path = tmp_path / ".ai-sow/validation/analyze-requirement.json"
+    if mutation == "missing":
+        report_path.unlink()
+    elif mutation == "invalid":
+        report_path.write_text('{"owner":"analyze-requirement"}\n', encoding="utf-8")
+    elif mutation == "stale":
+        requirements = tmp_path / ".ai-sow/data/analyze-requirement/requirements.json"
+        requirements.write_bytes(requirements.read_bytes() + b" ")
+    else:
+        report = json.loads(report_path.read_text())
+        report["compilationReceipt"]["validatorContractVersion"] = "0.2"
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert codes(result) == {expected}
+    diagnostic = json.loads(result.stdout)["diagnostics"][0]
+    assert diagnostic["upstreamOwner"] == "analyze-requirement"
+    assert not any(code.startswith(("SOURCE_", "EPIC_", "NORMALIZED_")) for code in codes(result))
+
+
+def test_requirement_handoff_rejects_tampered_empty_input_set(tmp_path: Path) -> None:
+    prepare_greenfield(tmp_path)
+    report_path = tmp_path / ".ai-sow/validation/analyze-requirement.json"
+    report = json.loads(report_path.read_text())
+    report["compilationReceipt"]["inputs"] = []
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert codes(result) == {"UPSTREAM_HANDOFF_INVALID"}
+
+
+def test_requirement_handoff_rejects_extra_missing_input_as_invalid(tmp_path: Path) -> None:
+    prepare_greenfield(tmp_path)
+    report_path = tmp_path / ".ai-sow/validation/analyze-requirement.json"
+    report = json.loads(report_path.read_text())
+    report["compilationReceipt"]["inputs"].append(
+        {
+            "name": "extra",
+            "kind": "FILE",
+            "path": ".ai-sow/missing-extra.txt",
+            "sha256": "0" * 64,
+        }
+    )
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert codes(result) == {"UPSTREAM_HANDOFF_INVALID"}
+
+
+def test_requirement_output_structure_change_is_stale(tmp_path: Path) -> None:
+    prepare_greenfield(tmp_path)
+    requirements_path = tmp_path / ".ai-sow/data/analyze-requirement/requirements.json"
+    requirements = json.loads(requirements_path.read_text())
+    requirements["sourceDocuments"].append(
+        {
+            "sourceDocumentId": "source-document-late",
+            "file": ".ai-sow/inputs/analyze-requirement/late.txt",
+            "originalName": "late.txt",
+            "sha256": "0" * 64,
+        }
+    )
+    requirements_path.write_text(json.dumps(requirements), encoding="utf-8")
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert codes(result) == {"UPSTREAM_HANDOFF_STALE"}
+
+
+def test_invalid_report_owner_precedes_changed_output(tmp_path: Path) -> None:
+    prepare_greenfield(tmp_path)
+    report_path = tmp_path / ".ai-sow/validation/analyze-requirement.json"
+    report = json.loads(report_path.read_text())
+    report["owner"] = "wrong-owner"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    requirements = tmp_path / ".ai-sow/data/analyze-requirement/requirements.json"
+    requirements.write_bytes(requirements.read_bytes() + b" ")
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert codes(result) == {"UPSTREAM_HANDOFF_INVALID"}
+
+
+def test_does_not_replay_requirement_business_diagnostics(tmp_path: Path) -> None:
+    requirements = requirements_payload()
+    requirements["normalizedItems"][0]["sourceDocumentId"] = "source-document-unknown"
+    publish_requirement(tmp_path, requirements)
+    payload = json.loads(GREENFIELD_FIXTURE.read_text(encoding="utf-8"))
+    write_json(tmp_path, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
+    write_bytes(tmp_path, ".ai-sow/reviews/analyze-as-is.md", approved_review(payload).encode())
+
+    result = run_validator(tmp_path, "check")
+
     assert result.returncode == 0, result.stdout
 
 
-def test_rejects_tampered_analysis_scope_prior_sow(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    (
+        ("topic", "TOPIC_ASSESSMENTS_INVALID"),
+        ("uncertainty", "TOPIC_UNCERTAINTY_REQUIRED"),
+        ("coverage", "COVERAGE_MISSING"),
+        ("effective-start", "EFFECTIVE_START_COMMITMENT_INELIGIBLE"),
+        ("commitment", "COMMITMENT_TREATMENT_INVALID"),
+        ("evidence", "EVIDENCE_REF_UNKNOWN"),
+    ),
+)
+def test_owner_local_relations_fail_closed(tmp_path: Path, mutation: str, expected: str) -> None:
     payload = prepare_brownfield(tmp_path)
-    (tmp_path / ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md").write_bytes(
-        b"tampered after setup\n"
-    )
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "PRIOR_SOW_HASH_MISMATCH" in diagnostic_codes(result)
-
-
-def test_rejects_analysis_scope_repository_path_escape(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    outside = tmp_path.parent / f"{tmp_path.name}-outside-repository"
-    payload["analysisScope"]["repositorySnapshots"][0]["path"] = f"../{outside.name}"
-    outside.mkdir()
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-def test_rejects_analysis_scope_repository_symlink_escape(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    repository = tmp_path / "repositories/service-api"
-    repository.rmdir()
-    outside = tmp_path.parent / f"{tmp_path.name}-outside-repository"
-    outside.mkdir()
-    repository.symlink_to(outside, target_is_directory=True)
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "REGISTERED_PATH_INVALID" in diagnostic_codes(result)
-
-
-def test_rejects_duplicate_analysis_scope_snapshot_ids(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["analysisScope"]["repositorySnapshots"].append(
-        payload["analysisScope"]["repositorySnapshots"][0].copy()
-    )
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "INTAKE_ID_DUPLICATE" in diagnostic_codes(result)
-
-
-def test_rejects_analysis_scope_prior_sow_hash_mismatch(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["analysisScope"]["priorSowSnapshots"][0]["sha256"] = "0" * 64
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "PRIOR_SOW_HASH_MISMATCH" in diagnostic_codes(result)
-
-
-def test_rejects_brownfield_scope_without_repository_or_prior_sow(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["analysisScope"]["repositorySnapshots"] = []
-    payload["analysisScope"]["priorSowSnapshots"] = []
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "BROWNFIELD_INPUT_REQUIRED" in diagnostic_codes(result)
-
-
-@pytest.mark.parametrize("symlink_kind", ["directory", "report"])
-def test_blocks_validation_output_symlink_escape(
-    tmp_path: Path,
-    symlink_kind: str,
-) -> None:
-    payload = prepare_greenfield(tmp_path)
-    write_json(tmp_path, ".ai-sow/data/analyze-as-is/asis.json", payload)
-    validation_path = tmp_path / ".ai-sow/validation/analyze-as-is.json"
-    outside = tmp_path.parent / f"{tmp_path.name}-outside-validation"
-    outside.mkdir()
-    if symlink_kind == "directory":
-        validation_path.parent.symlink_to(outside, target_is_directory=True)
+    if mutation == "topic":
+        payload["topicAssessments"].pop()
+    elif mutation == "uncertainty":
+        payload["topicAssessments"][4]["uncertaintyIds"] = []
+    elif mutation == "coverage":
+        payload["coverage"] = []
+    elif mutation == "effective-start":
+        payload["effectiveStartItems"][0]["commitmentIds"] = ["commitment-loyalty-profile"]
+    elif mutation == "commitment":
+        payload["commitments"][0]["implementationStatus"] = "IMPLEMENTED"
     else:
-        validation_path.parent.mkdir(parents=True)
-        validation_path.symlink_to(outside / "escaped.json")
+        payload["evidence"][0]["supportsIds"] = ["asis-unknown"]
+    write_candidate(tmp_path, payload)
 
-    result = run_validator(tmp_path)
+    result = run_validator(tmp_path, "check")
 
     assert result.returncode == 2
-    assert json.loads(result.stdout)["outcome"] == "BLOCKED"
-    assert "OUTPUT_PATH_UNSAFE" in diagnostic_codes(result)
-    assert list(outside.iterdir()) == []
+    assert expected in codes(result)
 
 
-def test_portable_directory_snapshot_rejects_windows_reparse_point() -> None:
-    spec = importlib.util.spec_from_file_location("analyze_as_is_reparse", SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    snapshot = SimpleNamespace(
-        st_mode=stat.S_IFDIR | 0o755,
-        st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
-    )
-    path = SimpleNamespace(stat=lambda *, follow_symlinks: snapshot)
+def test_registered_prior_sow_and_evidence_anchor_are_attested(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    prior = tmp_path / payload["analysisScope"]["priorSowSnapshots"][0]["file"]
+    prior.write_bytes(b"tampered\n")
+    (tmp_path / "repositories/service-api/src/customer/profile.py").unlink()
 
-    with pytest.raises(OSError, match="reparse point"):
-        module._safe_directory_snapshot(path)
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert {"PRIOR_SOW_HASH_MISMATCH", "ANCHOR_FILE_MISSING"}.issubset(codes(result))
 
 
-def test_portable_report_write_rejects_windows_reparse_point(
+@pytest.mark.parametrize(
+    ("kind", "reference", "expected"),
+    (
+        ("PRIOR_SOW", "prior-sow:sow-does-not-exist#section=scope", "PRIOR_SOW_EVIDENCE_REF_UNKNOWN"),
+        ("DOCUMENT", "requirements:feature-does-not-exist", "REQUIREMENT_EVIDENCE_REF_UNKNOWN"),
+    ),
+)
+def test_logical_evidence_references_are_closed(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    reference: str,
+    expected: str,
 ) -> None:
-    validation_path = tmp_path / ".ai-sow/validation/analyze-as-is.json"
-    validation_path.parent.mkdir(parents=True)
-    validation_path.write_text("original\n", encoding="utf-8")
-    spec = importlib.util.spec_from_file_location("analyze_as_is_report_reparse", SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    original_stat = Path.stat
+    payload = prepare_brownfield(tmp_path)
+    evidence = next(entry for entry in payload["evidence"] if entry["kind"] == kind)
+    evidence["reference"] = reference
+    write_candidate(tmp_path, payload)
 
-    def stat_with_reparse(path: Path, *, follow_symlinks: bool = True) -> object:
-        snapshot = original_stat(path, follow_symlinks=follow_symlinks)
-        if path == validation_path and not follow_symlinks:
-            return SimpleNamespace(
-                st_mode=snapshot.st_mode,
-                st_dev=snapshot.st_dev,
-                st_ino=snapshot.st_ino,
-                st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
-            )
-        return snapshot
+    result = run_validator(tmp_path, "check")
 
-    monkeypatch.setattr(Path, "stat", stat_with_reparse)
-
-    with pytest.raises(OSError, match="reparse point"):
-        module._write_validation_report_portable(
-            tmp_path,
-            validation_path,
-            "replacement\n",
-        )
-    assert validation_path.read_text(encoding="utf-8") == "original\n"
+    assert result.returncode == 2
+    assert expected in codes(result)
 
 
-@pytest.mark.parametrize("race_kind", ["directory", "report"])
-@pytest.mark.parametrize("writer_backend", ["native", "portable"])
-def test_blocks_validation_symlink_swap_after_safety_check(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    race_kind: str,
-    writer_backend: str,
-) -> None:
-    payload = prepare_greenfield(tmp_path)
-    write_json(tmp_path, ".ai-sow/data/analyze-as-is/asis.json", payload)
-    validation_path = tmp_path / ".ai-sow/validation/analyze-as-is.json"
-    validation_path.parent.mkdir(parents=True)
-    outside = tmp_path.parent / f"{tmp_path.name}-outside-race"
-    outside.mkdir()
-    original_validation_dir = validation_path.parent.with_name("validation-before-race")
-    spec = importlib.util.spec_from_file_location("analyze_as_is_race", SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    if writer_backend == "portable":
-        monkeypatch.setattr(
-            module,
-            "write_validation_report",
-            module._write_validation_report_portable,
-        )
-    original_check = module.validation_output_diagnostic
+def test_runtime_evidence_cannot_use_requirement_logical_reference(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    evidence = payload["evidence"][0]
+    evidence["kind"] = "RUNTIME"
+    evidence["runtimeOutcome"] = "PASSED"
+    evidence["reference"] = "requirements:feature-does-not-exist"
+    write_candidate(tmp_path, payload)
 
-    def check_then_swap(project_root: Path, report_path: Path) -> dict[str, str] | None:
-        result = original_check(project_root, report_path)
-        assert result is None
-        if race_kind == "directory":
-            validation_path.parent.rename(original_validation_dir)
-            validation_path.parent.symlink_to(outside, target_is_directory=True)
-        else:
-            validation_path.symlink_to(outside / "escaped.json")
-        return result
+    result = run_validator(tmp_path, "check")
 
-    monkeypatch.setattr(module, "validation_output_diagnostic", check_then_swap)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [str(SCRIPT), "--project-root", str(tmp_path)],
+    assert result.returncode == 2
+    assert "RUNTIME_EVIDENCE_PATH_INVALID" in codes(result)
+
+
+def test_runtime_evidence_requires_owned_runtime_record_path(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    evidence = payload["evidence"][0]
+    evidence["kind"] = "RUNTIME"
+    evidence["runtimeOutcome"] = "PASSED"
+    evidence["reference"] = ".ai-sow/project.json"
+    write_candidate(tmp_path, payload)
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert "RUNTIME_EVIDENCE_PATH_INVALID" in codes(result)
+
+
+def test_runtime_evidence_record_is_bound_as_receipt_input(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    evidence = payload["evidence"][0]
+    evidence["kind"] = "RUNTIME"
+    evidence["runtimeOutcome"] = "PASSED"
+    evidence["reference"] = ".ai-sow/work/analyze-as-is/runtime-profile-check.md#result"
+    write_bytes(
+        tmp_path,
+        ".ai-sow/work/analyze-as-is/runtime-profile-check.md",
+        b"Runtime verification result: PASSED\n",
     )
+    write_candidate(tmp_path, payload)
 
-    returncode = module.main()
-    payload = json.loads(capsys.readouterr().out)
+    result = run_validator(tmp_path, "publish")
 
-    assert returncode == 2
-    assert payload["outcome"] == "BLOCKED"
-    assert "OUTPUT_UNWRITABLE" in {item["code"] for item in payload["diagnostics"]}
-    assert list(outside.iterdir()) == []
-
-
-def test_rejects_missing_topic_assessment(tmp_path: Path) -> None:
-    payload = prepare_greenfield(tmp_path)
-    payload["topicAssessments"].pop()
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "TOPIC_ASSESSMENTS_INVALID" in diagnostic_codes(result)
+    assert result.returncode == 0, result.stdout
+    receipt = validation_report(tmp_path)["compilationReceipt"]
+    bound = next(entry for entry in receipt["inputs"] if entry["name"] == f"evidence:{evidence['evidenceId']}")
+    assert bound["path"] == ".ai-sow/work/analyze-as-is/runtime-profile-check.md"
 
 
-def test_rejects_insufficient_topic_without_uncertainty(tmp_path: Path) -> None:
-    payload = prepare_greenfield(tmp_path)
-    payload["topicAssessments"][4]["status"] = "INSUFFICIENT_EVIDENCE"
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "TOPIC_UNCERTAINTY_REQUIRED" in diagnostic_codes(result)
-
-
-def test_rejects_unknown_prior_sow_commitment(tmp_path: Path) -> None:
+def test_frozen_anchor_mutation_returns_anchor_missing(tmp_path: Path) -> None:
     payload = prepare_brownfield(tmp_path)
-    payload["commitments"][0]["priorSowId"] = "sow-unknown"
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "PRIOR_SOW_REF_UNKNOWN" in diagnostic_codes(result)
-
-
-def test_rejects_commitment_status_treatment_mismatch(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["commitments"][0]["implementationStatus"] = "IMPLEMENTED"
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "COMMITMENT_TREATMENT_INVALID" in diagnostic_codes(result)
-
-
-def test_rejects_effective_start_using_carry_forward_commitment(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["effectiveStartItems"][0]["commitmentIds"] = ["commitment-loyalty-profile"]
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "EFFECTIVE_START_COMMITMENT_INELIGIBLE" in diagnostic_codes(result)
-
-
-def test_rejects_source_less_effective_start_in_schema_and_semantics(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["effectiveStartItems"][0]["sourceItemIds"] = []
-    payload["effectiveStartItems"][0]["commitmentIds"] = []
-    project = json.loads((tmp_path / ".ai-sow/project.json").read_text())
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-    assert "EFFECTIVE_START_SOURCE_REQUIRED" in semantic_diagnostic_codes(
-        payload,
-        project,
-        source_requirements(),
+    descriptor = json.loads(E2E_DESCRIPTOR.read_text(encoding="utf-8"))
+    mutation = next(case for case in descriptor["negativeCases"] if case["caseId"] == "N10")
+    evidence_id = mutation["mutation"]["selector"]["evidenceId"]
+    payload["analysisScope"]["repositorySnapshots"].append(
+        {"repoId": "customer-portal", "path": "repositories/customer-portal", "revision": "c" * 40, "dirty": False}
     )
-
-
-def test_rejects_carry_forward_commitment_missing_from_coverage(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["coverage"][0]["commitmentIds"] = []
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "CARRY_FORWARD_COVERAGE_MISSING" in diagnostic_codes(result)
-
-
-def test_rejects_brownfield_item_without_evidence(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["evidence"][0]["supportsIds"] = ["feature-customer-profile"]
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "BROWNFIELD_ITEM_EVIDENCE_MISSING" in diagnostic_codes(result)
-
-
-def test_rejects_greenfield_item_without_document_or_questionnaire_evidence(
-    tmp_path: Path,
-) -> None:
-    payload = prepare_greenfield(tmp_path)
-    payload["items"] = [
+    (tmp_path / "repositories/customer-portal").mkdir()
+    payload["evidence"].append(
         {
-            "asIsItemId": "asis-enterprise-idp",
-            "topic": "APPLICATION",
-            "itemType": "COMPONENT",
-            "name": "Enterprise IdP",
-            "summary": "The shared enterprise IdP is a bounded dependency.",
-            "repositoryIds": [],
-        }
-    ]
-    payload["effectiveStartItems"] = [
-        {
-            "effectiveStartItemId": "effective-start-enterprise-idp",
-            "topic": "APPLICATION",
-            "itemType": "COMPONENT",
-            "name": "Enterprise IdP dependency",
-            "summary": "The registered shared service is required at Effective Start.",
-            "sourceItemIds": ["asis-enterprise-idp"],
-            "commitmentIds": [],
-        }
-    ]
-    payload["coverage"][0]["status"] = "PARTIAL"
-    payload["coverage"][0]["effectiveStartItemIds"] = [
-        "effective-start-enterprise-idp"
-    ]
-    payload["evidence"] = [
-        {
-            "evidenceId": "evidence-enterprise-idp-code",
+            "evidenceId": evidence_id,
             "kind": "CODE",
-            "reference": "requirements:feature-customer-profile",
-            "summary": "A code-like record must not establish a Greenfield current Item.",
-            "supportsIds": ["asis-enterprise-idp"],
+            "reference": mutation["mutation"]["value"],
+            "summary": "冻结描述符用于验证缺失代码 anchor 会被阻断。",
+            "supportsIds": ["asis-customer-api"],
         }
-    ]
+    )
+    write_candidate(tmp_path, payload)
 
-    result = validate_payload(tmp_path, payload)
+    result = run_validator(tmp_path, "check")
 
     assert result.returncode == 2
-    assert "GREENFIELD_ITEM_EVIDENCE_INVALID" in diagnostic_codes(result)
+    assert "ANCHOR_FILE_MISSING" in codes(result)
 
 
-def test_accepts_greenfield_item_with_document_evidence(tmp_path: Path) -> None:
+def questionnaire_record(
+    answer: str = "UNKNOWN",
+    *,
+    evidence_reference: str = "UNKNOWN",
+    effective_date: str = "UNKNOWN",
+) -> str:
+    return f"""# 现状证据问卷
+
+Question ID: data-03
+Answer: {answer}
+Owner: 数据治理团队
+Evidence reference: {evidence_reference}
+Effective date: {effective_date}
+"""
+
+
+def test_selected_questionnaire_unknown_requires_linked_uncertainty(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    questionnaire = ".ai-sow/work/analyze-as-is/questionnaire.md"
+    write_bytes(tmp_path, questionnaire, questionnaire_record().encode())
+    write_bytes(
+        tmp_path, ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(
+            payload,
+            questionnaire=questionnaire,
+            questionnaire_ids="data-03",
+            questionnaire_records=questionnaire_record(),
+        ).encode(),
+    )
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_selected_confirmed_questionnaire_compiles_to_evidence(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    payload["topicAssessments"][4]["status"] = "ASSESSED"
+    payload["topicAssessments"][4]["uncertaintyIds"] = []
+    payload["coverage"][0]["uncertaintyIds"] = []
+    payload["uncertainties"] = []
+    payload["evidence"].append(
+        {
+            "evidenceId": "evidence-retention-decision",
+            "kind": "QUESTIONNAIRE",
+            "reference": "questionnaire:data-03",
+            "summary": "数据治理团队确认客户档案保留三年，自 2026-08-25 生效。",
+            "supportsIds": ["feature-customer-profile"],
+        }
+    )
+    write_candidate(tmp_path, payload)
+    questionnaire = ".ai-sow/work/analyze-as-is/questionnaire.md"
+    write_bytes(
+        tmp_path,
+        questionnaire,
+        questionnaire_record(
+            "客户档案保留三年",
+            evidence_reference="policy:customer-retention-v1",
+            effective_date="2026-08-25",
+        ).encode(),
+    )
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(
+            payload,
+            questionnaire=questionnaire,
+            questionnaire_ids="data-03",
+            questionnaire_records=questionnaire_record(
+                "客户档案保留三年",
+                evidence_reference="policy:customer-retention-v1",
+                effective_date="2026-08-25",
+            ),
+        ).encode(),
+    )
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_questionnaire_rejects_unknown_catalog_id_and_review_record_mismatch(tmp_path: Path) -> None:
     payload = prepare_greenfield(tmp_path)
-    payload["items"] = [
+    payload["evidence"].append(
         {
-            "asIsItemId": "asis-enterprise-idp",
-            "topic": "APPLICATION",
-            "itemType": "COMPONENT",
-            "name": "Enterprise IdP",
-            "summary": "The shared enterprise IdP is a bounded dependency.",
-            "repositoryIds": [],
+            "evidenceId": "evidence-fake-question",
+            "kind": "QUESTIONNAIRE",
+            "reference": "questionnaire:fake-99",
+            "summary": "该记录故意使用不属于权威目录的问题 ID。",
+            "supportsIds": ["feature-customer-profile"],
         }
-    ]
-    payload["effectiveStartItems"] = [
+    )
+    write_candidate(tmp_path, payload)
+    questionnaire = ".ai-sow/work/analyze-as-is/questionnaire.md"
+    record = questionnaire_record(
+        "已确认",
+        evidence_reference="policy:fake",
+        effective_date="2026-08-25",
+    ).replace("data-03", "fake-99")
+    write_bytes(tmp_path, questionnaire, record.encode())
+    review_record = record.replace("Answer: 已确认", "Answer: 评审中被改写")
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(
+            payload,
+            questionnaire=questionnaire,
+            questionnaire_ids="fake-99",
+            questionnaire_records=review_record,
+        ).encode(),
+    )
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert {"QUESTIONNAIRE_ID_UNKNOWN", "REVIEW_QUESTIONNAIRE_RECORD_MISMATCH"}.issubset(codes(result))
+
+
+def test_questionnaire_presence_and_selected_id_set_fail_closed(tmp_path: Path) -> None:
+    payload = prepare_greenfield(tmp_path)
+    write_bytes(tmp_path, ".ai-sow/work/analyze-as-is/questionnaire.md", questionnaire_record().encode())
+    write_bytes(tmp_path, ".ai-sow/reviews/analyze-as-is.md", approved_review(payload).encode())
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert "QUESTIONNAIRE_PRESENCE_CONFLICT" in codes(result)
+
+
+def test_rebind_updates_inputs_without_changing_stable_bytes(tmp_path: Path) -> None:
+    payload = prepare_greenfield(tmp_path)
+    assert run_validator(tmp_path, "publish").returncode == 0
+    stable = tmp_path / ".ai-sow/data/analyze-as-is/asis.json"
+    before = stable.read_bytes()
+    requirement_validation = tmp_path / ".ai-sow/validation/analyze-requirement.json"
+    previous_hash = hashlib.sha256(requirement_validation.read_bytes()).hexdigest()
+    publish_requirement(tmp_path, review_suffix="Impact note: Requirement review metadata updated.\n")
+    current_hash = hashlib.sha256(requirement_validation.read_bytes()).hexdigest()
+    write_bytes(
+        tmp_path, ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(
+            payload,
+            impact="NO_CHANGE",
+            previous_receipt_sha256=previous_hash,
+            current_receipt_sha256=current_hash,
+        ).encode(),
+    )
+
+    result = run_validator(tmp_path, "rebind")
+
+    assert result.returncode == 0, result.stdout
+    assert stable.read_bytes() == before
+
+
+def test_rebind_rejects_unchanged_inputs(tmp_path: Path) -> None:
+    payload = prepare_greenfield(tmp_path)
+    assert run_validator(tmp_path, "publish").returncode == 0
+    current = hashlib.sha256(
+        (tmp_path / ".ai-sow/validation/analyze-requirement.json").read_bytes()
+    ).hexdigest()
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(
+            payload,
+            impact="NO_CHANGE",
+            previous_receipt_sha256=current,
+            current_receipt_sha256=current,
+        ).encode(),
+    )
+
+    result = run_validator(tmp_path, "rebind")
+
+    assert result.returncode == 2
+    assert "REBIND_INPUT_UNCHANGED" in codes(result)
+
+
+def test_rebind_rejects_rationale_without_owned_stable_ids(tmp_path: Path) -> None:
+    payload = prepare_greenfield(tmp_path)
+    assert run_validator(tmp_path, "publish").returncode == 0
+    validation = tmp_path / ".ai-sow/validation/analyze-requirement.json"
+    previous = hashlib.sha256(validation.read_bytes()).hexdigest()
+    publish_requirement(tmp_path, review_suffix="Impact note: changed.\n")
+    current = hashlib.sha256(validation.read_bytes()).hexdigest()
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(
+            payload,
+            impact="NO_CHANGE",
+            previous_receipt_sha256=previous,
+            current_receipt_sha256=current,
+            impact_rationale="x",
+        ).encode(),
+    )
+
+    result = run_validator(tmp_path, "rebind")
+
+    assert result.returncode == 2
+    assert "REVIEW_IMPACT_RATIONALE_INVALID" in codes(result)
+
+
+def test_rebind_requires_exact_stable_id_tokens(tmp_path: Path) -> None:
+    payload = prepare_greenfield(tmp_path)
+    payload["evidence"].append(
         {
-            "effectiveStartItemId": "effective-start-enterprise-idp",
-            "topic": "APPLICATION",
-            "itemType": "COMPONENT",
-            "name": "Enterprise IdP dependency",
-            "summary": "The registered shared service is required at Effective Start.",
-            "sourceItemIds": ["asis-enterprise-idp"],
-            "commitmentIds": [],
-        }
-    ]
-    payload["coverage"][0]["status"] = "PARTIAL"
-    payload["coverage"][0]["effectiveStartItemIds"] = [
-        "effective-start-enterprise-idp"
-    ]
-    payload["evidence"] = [
-        {
-            "evidenceId": "evidence-enterprise-idp-setup",
+            "evidenceId": "evidence-greenfield-requirement-extra",
             "kind": "DOCUMENT",
             "reference": "requirements:feature-customer-profile",
-            "summary": "The registered setup document confirms the shared dependency.",
-            "supportsIds": ["asis-enterprise-idp"],
+            "summary": "第二条证据用于验证稳定 ID 必须按完整 token 核对。",
+            "supportsIds": ["feature-customer-profile"],
+        }
+    )
+    write_candidate(tmp_path, payload)
+    assert run_validator(tmp_path, "publish").returncode == 0
+    validation = tmp_path / ".ai-sow/validation/analyze-requirement.json"
+    previous = hashlib.sha256(validation.read_bytes()).hexdigest()
+    publish_requirement(tmp_path, review_suffix="Impact note: changed.\n")
+    current = hashlib.sha256(validation.read_bytes()).hexdigest()
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(
+            payload,
+            impact="NO_CHANGE",
+            previous_receipt_sha256=previous,
+            current_receipt_sha256=current,
+            impact_rationale="确认不受影响的稳定 ID: evidence-greenfield-requirement-extra。",
+        ).encode(),
+    )
+
+    result = run_validator(tmp_path, "rebind")
+
+    assert result.returncode == 2
+    assert "REVIEW_IMPACT_RATIONALE_INVALID" in codes(result)
+
+
+def test_publish_rejects_no_change_and_failed_publish_preserves_stable(tmp_path: Path) -> None:
+    payload = prepare_greenfield(tmp_path)
+    assert run_validator(tmp_path, "publish").returncode == 0
+    stable = tmp_path / ".ai-sow/data/analyze-as-is/asis.json"
+    before = stable.read_bytes()
+    payload["coverage"] = []
+    write_candidate(tmp_path, payload)
+    write_bytes(
+        tmp_path, ".ai-sow/reviews/analyze-as-is.md",
+        approved_review(payload, impact="NO_CHANGE").encode(),
+    )
+
+    result = run_validator(tmp_path, "publish")
+
+    assert result.returncode == 2
+    assert stable.read_bytes() == before
+    report = validation_report(tmp_path)
+    assert report["passed"] is False
+    assert "compilationReceipt" not in report
+    assert "REVIEW_NO_CHANGE_MODE_INVALID" in codes(result)
+
+
+def test_prepare_context_writes_owner_local_evidence_closure(tmp_path: Path) -> None:
+    prepare_brownfield(tmp_path)
+
+    result = run_context(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    context_root = tmp_path / ".ai-sow/work/analyze-as-is/context"
+    manifest = json.loads((context_root / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["algorithm"] == "ai-sow-analyze-as-is-context-v1"
+    assert [entry["name"] for entry in manifest["fragments"]] == [
+        "requirements",
+        "investigationScope",
+        "evidenceInventory",
+    ]
+    assert manifest["selectedTopicIds"] == [
+        "SYSTEM_CONTEXT",
+        "CAPABILITY",
+        "APPLICATION",
+        "INTEGRATION",
+        "DATA",
+        "PLATFORM",
+        "SECURITY_COMPLIANCE",
+        "OPERATIONS_QUALITY",
+        "DELIVERY_CONSTRAINTS",
+    ]
+    serialized = "\n".join(
+        path.read_text(encoding="utf-8") for path in context_root.glob("*.json")
+    )
+    assert str(tmp_path) not in serialized
+    assert "class CustomerProfileReader" not in serialized
+    assert "Phase one prior SOW fixture" not in serialized
+
+
+def test_review_mode_writes_bound_packet_without_formal_publication(tmp_path: Path) -> None:
+    candidate, review = prepare_review_candidate(tmp_path)
+
+    result = run_validator(
+        tmp_path,
+        "review",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(result.stdout)
+    assert report["outcome"] == "REVIEW_REQUIRED"
+    packet_path = tmp_path / ".ai-sow/work/analyze-as-is/review-packet.json"
+    risk_path = tmp_path / ".ai-sow/work/analyze-as-is/risk-summary.md"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    assert packet["algorithm"] == "ai-sow-owner-review-packet-v1"
+    assert packet["candidateOutputs"] == [
+        {
+            "name": "asIs",
+            "path": ".ai-sow/work/analyze-as-is/asis.candidate.json",
+            "sha256": sha256_bytes(candidate),
+            "targetPath": ".ai-sow/data/analyze-as-is/asis.json",
         }
     ]
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 0, result.stdout
-
-
-def test_rejects_unknown_evidence_support_id(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["evidence"][0]["supportsIds"].append("asis-unknown")
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "EVIDENCE_REF_UNKNOWN" in diagnostic_codes(result)
+    assert packet["review"] == {
+        "path": ".ai-sow/work/analyze-as-is/review.candidate.md",
+        "sha256": sha256_bytes(review),
+    }
+    assert packet["riskSummary"]["sha256"] == sha256_bytes(risk_path.read_bytes())
+    assert "Estimate-affecting Uncertainties: 1" in risk_path.read_text(encoding="utf-8")
+    assert not (tmp_path / ".ai-sow/reviews/analyze-as-is.md").exists()
+    assert not (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/analyze-as-is.json").exists()
 
 
-def test_rejects_runtime_evidence_without_outcome(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["evidence"][0]["kind"] = "RUNTIME"
+def test_publish_approved_requires_both_sidecars_without_formal_writes(tmp_path: Path) -> None:
+    prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
 
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-def test_accepts_runtime_evidence_with_outcome(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["evidence"][0]["kind"] = "RUNTIME"
-    payload["evidence"][0]["runtimeOutcome"] = "PASSED"
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 0, result.stdout
-
-
-def test_rejects_runtime_outcome_on_non_runtime_evidence(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["evidence"][0]["runtimeOutcome"] = "PASSED"
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-@pytest.mark.parametrize(
-    ("collection", "index", "field", "reference"),
-    [
-        ("commitments", 0, "sourceReference", "prior-sow:sow-phase-one#section=customer-profile"),
-        ("commitments", 0, "sourceReference", "docs/prior-sow.md#section=customer-profile"),
-        ("evidence", 0, "reference", "service-api:src/customer/profile.py#CustomerProfileReader"),
-        ("evidence", 0, "reference", "service-api/src/customer/profile.py#CustomerProfileReader"),
-    ],
-)
-def test_accepts_logical_and_repo_relative_stable_references(
-    tmp_path: Path,
-    collection: str,
-    index: int,
-    field: str,
-    reference: str,
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload[collection][index][field] = reference
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 0, result.stdout
-
-
-def test_accepts_standard_code_line_range_anchor(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["evidence"][0]["reference"] = "service-api:src/file.py#L12-L20"
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 0, result.stdout
-
-
-@pytest.mark.parametrize(
-    ("collection", "index", "field", "reference"),
-    [
-        ("commitments", 0, "sourceReference", "/tmp/prior-sow.md"),
-        ("evidence", 0, "reference", "C:\\repo\\src\\customer.py"),
-        ("commitments", 0, "sourceReference", "\\\\server\\share\\prior-sow.md"),
-        ("evidence", 0, "reference", "//server/share/customer.py"),
-        ("commitments", 0, "sourceReference", "FILE://server/share/prior-sow.md"),
-        ("evidence", 0, "reference", "FiLe://server/share/customer.py"),
-        (
-            "commitments",
-            0,
-            "sourceReference",
-            "prior-sow:sow-phase-one\nfull source payload",
-        ),
-        (
-            "evidence",
-            0,
-            "reference",
-            "service-api:src/customer.py\nclass Customer: pass",
-        ),
-    ],
-)
-def test_rejects_absolute_or_multiline_stable_references(
-    tmp_path: Path,
-    collection: str,
-    index: int,
-    field: str,
-    reference: str,
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload[collection][index][field] = reference
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-@pytest.mark.parametrize(
-    "reference",
-    [
-        "service-api:src/../secret.py#L1",
-        "service-api:./src/file.py#L1",
-        "service-api/src/../secret.py#L1",
-        "./service-api/src/file.py#L1",
-        "prior-sow:../phase-one#section=scope",
-        "service-api:src/file.py#L12;src/other.py#L2",
-    ],
-)
-def test_rejects_traversal_or_multiple_stable_reference_anchors(
-    tmp_path: Path,
-    reference: str,
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["evidence"][0]["reference"] = reference
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "SCHEMA_INVALID" in diagnostic_codes(result)
-
-
-def test_rejects_wrong_feature_carry_forward_coverage(tmp_path: Path) -> None:
-    payload = prepare_brownfield(tmp_path)
-    source = source_requirements()
-    source["features"].append({"featureId": "feature-other-scope"})
-    write_json(tmp_path, ".ai-sow/data/analyze-requirement/requirements.json", source)
-    payload["coverage"][0]["commitmentIds"] = []
-    payload["coverage"].append(
-        {
-            "featureId": "feature-other-scope",
-            "status": "MISSING",
-            "effectiveStartItemIds": [],
-            "commitmentIds": ["commitment-loyalty-profile"],
-            "uncertaintyIds": [],
-            "rationale": "The unrelated scope must not absorb this commitment.",
-        }
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
     )
 
-    result = validate_payload(tmp_path, payload)
-
     assert result.returncode == 2
-    assert "COMMITMENT_COVERAGE_FEATURE_MISMATCH" in diagnostic_codes(result)
-    assert "COMMITMENT_COVERAGE_MISSING" in diagnostic_codes(result)
+    assert {"REVIEWER_BINDING_MISSING", "APPROVAL_BINDING_MISSING"}.issubset(codes(result))
+    assert not (tmp_path / ".ai-sow/reviews/analyze-as-is.md").exists()
+    assert not (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/analyze-as-is.json").exists()
 
 
-def test_rejects_commitment_related_feature_missing_reverse_coverage(
-    tmp_path: Path,
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    source = source_requirements()
-    source["features"].append({"featureId": "feature-other-scope"})
-    write_json(tmp_path, ".ai-sow/data/analyze-requirement/requirements.json", source)
-    payload["commitments"][0]["relatedFeatureIds"].append("feature-other-scope")
-    payload["coverage"].append(
-        {
-            "featureId": "feature-other-scope",
-            "status": "MISSING",
-            "effectiveStartItemIds": [],
-            "commitmentIds": [],
-            "uncertaintyIds": [],
-            "rationale": "The reverse commitment link is intentionally missing.",
-        }
+def test_publish_approved_preserves_candidate_review_and_receipt_contract(tmp_path: Path) -> None:
+    candidate, review = prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    bind_review_packet(tmp_path)
+
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
     )
 
-    result = validate_payload(tmp_path, payload)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / ".ai-sow/reviews/analyze-as-is.md").read_bytes() == review
+    assert (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").read_bytes() == candidate
+    receipt = json.loads(result.stdout)["receipt"]
+    assert receipt["validatorContractVersion"] == "0.3"
+    assert receipt["reviews"][0]["sha256"] == sha256_bytes(review)
+    assert receipt["outputs"][0]["sha256"] == sha256_bytes(candidate)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    (
+        ("candidate", "REVIEW_PACKET_CANDIDATE_STALE"),
+        ("context", "CONTEXT_FRAGMENT_STALE"),
+        ("input", "CONTEXT_INPUT_STALE"),
+        ("review", "REVIEW_PACKET_REVIEW_STALE"),
+        ("reviewer", "REVIEWER_BINDING_INVALID"),
+        ("approval", "APPROVAL_BINDING_INVALID"),
+    ),
+)
+def test_publish_approved_rejects_drift_before_formal_writes(
+    tmp_path: Path,
+    mutation: str,
+    expected: str,
+) -> None:
+    prepare_review_candidate(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    bind_review_packet(tmp_path)
+    if mutation == "candidate":
+        path = tmp_path / ".ai-sow/work/analyze-as-is/asis.candidate.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["coverage"][0]["rationale"] = "候选在批准后发生漂移。"
+        path.write_bytes(canonical_json_bytes(value))
+    elif mutation == "context":
+        write_bytes(
+            tmp_path,
+            ".ai-sow/work/analyze-as-is/context/evidence-inventory.json",
+            canonical_json_bytes({"drifted": True}),
+        )
+    elif mutation == "input":
+        anchor = tmp_path / "repositories/service-api/src/customer/profile.py"
+        anchor.write_bytes(anchor.read_bytes() + b"# drift\n")
+    elif mutation == "review":
+        path = tmp_path / ".ai-sow/work/analyze-as-is/review.candidate.md"
+        path.write_bytes(path.read_bytes().replace(b"Mode: BROWNFIELD", b"Mode: BROWNFIELD (drift)"))
+    else:
+        path = tmp_path / f".ai-sow/work/analyze-as-is/{mutation}.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["packetSha256"] = "0" * 64
+        path.write_bytes(canonical_json_bytes(value))
+
+    result = run_validator(
+        tmp_path,
+        "publish-approved",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
+    )
 
     assert result.returncode == 2
-    assert "COMMITMENT_COVERAGE_MISSING" in diagnostic_codes(result)
+    assert expected in codes(result)
+    assert not (tmp_path / ".ai-sow/reviews/analyze-as-is.md").exists()
+    assert not (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").exists()
+    assert not (tmp_path / ".ai-sow/validation/analyze-as-is.json").exists()
 
 
-def test_rejects_needs_decision_commitment_without_linked_uncertainty_coverage(
+def test_candidate_first_lifecycle_preserves_selected_questionnaire_records(
     tmp_path: Path,
 ) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["commitments"][0]["implementationStatus"] = "UNVERIFIED"
-    payload["commitments"][0]["treatment"] = "NEEDS_DECISION"
-    payload["coverage"][0]["uncertaintyIds"] = []
+    prepare_brownfield(tmp_path)
+    questionnaire = questionnaire_record()
+    write_bytes(
+        tmp_path,
+        ".ai-sow/work/analyze-as-is/questionnaire.md",
+        questionnaire.encode(),
+    )
+    (tmp_path / ".ai-sow/reviews/analyze-as-is.md").unlink()
+    context = run_context(tmp_path)
+    rendered = run_renderer(tmp_path)
 
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "COMMITMENT_DECISION_CHAIN_MISSING" in diagnostic_codes(result)
-
-
-def test_rejects_carry_forward_commitment_without_related_feature(
-    tmp_path: Path,
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["commitments"][0]["relatedFeatureIds"] = []
-    payload["coverage"][0]["commitmentIds"] = []
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "CARRY_FORWARD_FEATURE_REQUIRED" in diagnostic_codes(result)
-
-
-def test_rejects_decision_commitment_using_unrelated_uncertainty(
-    tmp_path: Path,
-) -> None:
-    payload = prepare_brownfield(tmp_path)
-    payload["commitments"][0]["implementationStatus"] = "UNVERIFIED"
-    payload["commitments"][0]["treatment"] = "NEEDS_DECISION"
-    payload["uncertainties"][0]["relatedFeatureIds"] = []
-
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "COMMITMENT_DECISION_CHAIN_MISSING" in diagnostic_codes(result)
+    assert context.returncode == 0, context.stdout + context.stderr
+    assert rendered.returncode == 0, rendered.stdout + rendered.stderr
+    review = (
+        tmp_path / ".ai-sow/work/analyze-as-is/review.candidate.md"
+    ).read_text(encoding="utf-8")
+    assert "Questionnaire IDs: data-03" in review
+    assert questionnaire.strip() in review
+    result = run_validator(
+        tmp_path,
+        "review",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_rejects_missing_source_feature_coverage(tmp_path: Path) -> None:
-    payload = prepare_greenfield(tmp_path)
-    payload["coverage"] = []
+def test_reviewer_contract_catches_professional_evidence_privacy_failure() -> None:
+    template = (SKILL_ROOT / "references/review-template.md").read_text(encoding="utf-8")
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
 
-    result = validate_payload(tmp_path, payload)
-
-    assert result.returncode == 2
-    assert "COVERAGE_MISSING" in diagnostic_codes(result)
+    assert "九个 Topic" in template
+    assert "源码或完整工具输出" in template
+    assert "本机绝对路径" in template
+    assert "Reviewer" in skill and "证据边界" in skill
+    assert "复用外层当前 Stage、一个 Reviewer 和一次 hash-bound 用户批准" in skill
+    assert "确定性 Owner 命令由外层 Stage 直接调用" in skill
+    assert "单一 Worker、Reviewer、Validator" not in skill

@@ -24,7 +24,10 @@
       "rationale": "UI 和未来渠道需要统一边界。",
       "designItemIds": ["design-customer-profile"],
       "effectiveStartItemIds": ["effective-start-customer-api"],
-      "relatedFeatureIds": ["feature-customer-profile"]
+      "relatedFeatureIds": ["feature-customer-profile", "feature-profile-api"],
+      "decisionKind": "INTEGRATION_BOUNDARY",
+      "evidenceIds": ["evidence-customer-api"],
+      "adapterCompletesDelivery": false
     }
   ],
   "scopeDecisions": [
@@ -33,14 +36,18 @@
       "decision": "IN_SCOPE",
       "rationale": "请求的能力尚不存在。",
       "designItemIds": ["design-customer-profile"],
-      "effectiveStartItemIds": []
+      "effectiveStartItemIds": [],
+      "requiredIntegrationBoundary": "NONE",
+      "requiredDecisionKinds": []
     },
     {
       "featureId": "feature-profile-api",
       "decision": "IN_SCOPE",
       "rationale": "该设计需要 API 边界。",
       "designItemIds": ["design-customer-profile"],
-      "effectiveStartItemIds": []
+      "effectiveStartItemIds": [],
+      "requiredIntegrationBoundary": "END_TO_END",
+      "requiredDecisionKinds": ["INTEGRATION_BOUNDARY"]
     }
   ]
 }

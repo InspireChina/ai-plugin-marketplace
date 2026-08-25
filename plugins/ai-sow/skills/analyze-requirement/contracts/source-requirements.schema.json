@@ -5,10 +5,27 @@
   "additionalProperties": false,
   "required": ["sourceDocuments", "normalizedItems", "epics", "features"],
   "properties": {
-    "sourceDocuments": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourceDocument"}},
-    "normalizedItems": {"type": "array", "items": {"$ref": "#/$defs/normalizedItem"}},
-    "epics": {"type": "array", "items": {"$ref": "#/$defs/epic"}},
-    "features": {"type": "array", "items": {"$ref": "#/$defs/feature"}}
+    "sourceDocuments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/sourceDocument"},
+      "description": "本次业务需求分析实际登记的来源文件；只保存项目相对定位与内容哈希，不复制来源原文。"
+    },
+    "normalizedItems": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/normalizedItem"},
+      "description": "从已登记来源中抽取、合并并去重的最小业务陈述，作为 Epic 与 Feature 的追溯起点。"
+    },
+    "epics": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/epic"},
+      "description": "围绕同一业务结果聚合的 BUSINESS Epic；不得混入技术方案或实现任务。"
+    },
+    "features": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/feature"},
+      "description": "可独立纳入、排除、延期和评审的 BUSINESS Feature，是后续范围判断的最小需求单元。"
+    }
   },
   "$defs": {
     "sourceDocumentId": {"type": "string", "pattern": "^source-document-[a-z0-9]+(?:-[a-z0-9]+)*$"},
@@ -31,8 +48,14 @@
       "additionalProperties": false,
       "required": ["type", "normalizedItemIds"],
       "properties": {
-        "type": {"const": "SOURCE_INPUT"},
-        "normalizedItemIds": {"$ref": "#/$defs/normalizedItemIdList"}
+        "type": {
+          "const": "SOURCE_INPUT",
+          "description": "声明本业务结论来自用户提供的来源材料，而不是设计阶段派生。"
+        },
+        "normalizedItemIds": {
+          "$ref": "#/$defs/normalizedItemIdList",
+          "description": "直接支撑当前 Epic 或 Feature 的归一化业务条目 ID；不得引用技术设计结论。"
+        }
       }
     },
     "sourceDocument": {
@@ -40,15 +63,26 @@
       "additionalProperties": false,
       "required": ["sourceDocumentId", "file", "originalName", "sha256"],
       "properties": {
-        "sourceDocumentId": {"$ref": "#/$defs/sourceDocumentId"},
+        "sourceDocumentId": {
+          "$ref": "#/$defs/sourceDocumentId",
+          "description": "来源文件的稳定 ID；同一内容与语义保持不变时复用。"
+        },
         "file": {
           "allOf": [
             {"$ref": "#/$defs/projectRelativePath"},
             {"pattern": "^\\.ai-sow/inputs/analyze-requirement/.+"}
-          ]
+          ],
+          "description": "已登记来源在项目中的相对路径，只能位于本 Skill 的输入目录。"
         },
-        "originalName": {"$ref": "#/$defs/nonEmptyString"},
-        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "originalName": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "用户提供时的原文件名，用于评审识别；不改写专有名称。"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "来源文件原字节的 SHA-256，用于证明评审与发布消费的是同一输入。"
+        }
       }
     },
     "normalizedItem": {
@@ -56,10 +90,22 @@
       "additionalProperties": false,
       "required": ["normalizedItemId", "sourceDocumentId", "title", "statement"],
       "properties": {
-        "normalizedItemId": {"$ref": "#/$defs/normalizedItemId"},
-        "sourceDocumentId": {"$ref": "#/$defs/sourceDocumentId"},
-        "title": {"$ref": "#/$defs/nonEmptyString"},
-        "statement": {"$ref": "#/$defs/nonEmptyString"}
+        "normalizedItemId": {
+          "$ref": "#/$defs/normalizedItemId",
+          "description": "归一化业务条目的稳定 ID，用于 Epic 与 Feature 的来源追溯。"
+        },
+        "sourceDocumentId": {
+          "$ref": "#/$defs/sourceDocumentId",
+          "description": "产生当前条目的已登记来源文件 ID。"
+        },
+        "title": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "便于评审定位的简短业务主题，不写技术实现名称。"
+        },
+        "statement": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "去重后的具体业务陈述，保留来源明确表达的参与者、规则或结果。"
+        }
       }
     },
     "epic": {
@@ -67,14 +113,38 @@
       "additionalProperties": false,
       "required": ["epicId", "type", "name", "description", "source"],
       "properties": {
-        "epicId": {"$ref": "#/$defs/epicId"},
-        "type": {"const": "BUSINESS"},
-        "name": {"$ref": "#/$defs/nonEmptyString"},
-        "description": {"$ref": "#/$defs/nonEmptyString"},
-        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString"},
-        "targetOutcome": {"$ref": "#/$defs/nonEmptyString"},
-        "commonConstraintsOutOfScope": {"$ref": "#/$defs/nonEmptyString"},
-        "source": {"$ref": "#/$defs/source"}
+        "epicId": {
+          "$ref": "#/$defs/epicId",
+          "description": "BUSINESS Epic 的稳定 ID；业务结果发生实质变化时创建新 ID。"
+        },
+        "type": {
+          "const": "BUSINESS",
+          "description": "声明当前 Epic 只承载业务需求，不承载技术需求。"
+        },
+        "name": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "围绕同一业务结果的 Epic 名称，使用用户可理解的业务语言。"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "说明 Epic 的业务背景、能力范围和参与者，不混入目标指标、技术方案或 Task。"
+        },
+        "involvedSystemsData": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "来源明确点名且影响业务边界的系统或数据；证据不足时省略。"
+        },
+        "targetOutcome": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "来源明确给出的业务结果或衡量意图；不能用实现完成代替业务结果。"
+        },
+        "commonConstraintsOutOfScope": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "适用于 Epic 内多个 Feature 的业务约束或共同排除项；只影响单项时写入对应 Feature。"
+        },
+        "source": {
+          "$ref": "#/$defs/source",
+          "description": "支撑当前 Epic 的 SOURCE_INPUT 归一化条目集合。"
+        }
       }
     },
     "feature": {
@@ -82,13 +152,34 @@
       "additionalProperties": false,
       "required": ["featureId", "epicId", "name", "description", "source"],
       "properties": {
-        "featureId": {"$ref": "#/$defs/featureId"},
-        "epicId": {"$ref": "#/$defs/epicId"},
-        "name": {"$ref": "#/$defs/nonEmptyString"},
-        "description": {"$ref": "#/$defs/nonEmptyString"},
-        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString"},
-        "constraintsNfr": {"$ref": "#/$defs/nonEmptyString"},
-        "source": {"$ref": "#/$defs/source"}
+        "featureId": {
+          "$ref": "#/$defs/featureId",
+          "description": "BUSINESS Feature 的稳定 ID，是后续独立纳入、排除和评审的最小范围标识。"
+        },
+        "epicId": {
+          "$ref": "#/$defs/epicId",
+          "description": "当前 Feature 所属且已在本文件声明的 BUSINESS Epic ID。"
+        },
+        "name": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "清晰表达独立业务能力的 Feature 名称，不写实现层组件或 Task。"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "说明业务参与者可获得的能力、规则和可观察结果，足以支持后续范围判断。"
+        },
+        "involvedSystemsData": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "来源明确且只适用于当前 Feature 的系统或业务数据边界；无具体内容时省略。"
+        },
+        "constraintsNfr": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "来源明确且影响当前 Feature 验收意图的业务约束；技术实现约束留给 generate-design。"
+        },
+        "source": {
+          "$ref": "#/$defs/source",
+          "description": "直接支撑当前 Feature 的 SOURCE_INPUT 归一化条目集合。"
+        }
       }
     }
   }

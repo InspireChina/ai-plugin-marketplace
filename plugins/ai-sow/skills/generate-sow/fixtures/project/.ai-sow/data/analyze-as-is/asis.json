@@ -512,7 +512,7 @@
     {
       "evidenceId": "evidence-profile-component",
       "kind": "CODE",
-      "reference": "customer-portal/src/profile.ts#L12",
+      "reference": "customer-portal:src/profile.ts#L12",
       "summary": "代码仓库存在客户档案页面、会员主数据映射与字段校验框架。",
       "supportsIds": [
         "asis-customer-profile",
@@ -527,7 +527,7 @@
     {
       "evidenceId": "evidence-order-service",
       "kind": "CODE",
-      "reference": "customer-portal/src/order/state-machine.ts#L20",
+      "reference": "customer-portal:src/order/state-machine.ts#L20",
       "summary": "订单服务已有状态机、审计字段和基础查询能力。",
       "supportsIds": [
         "asis-order-service",
@@ -543,7 +543,7 @@
     {
       "evidenceId": "evidence-erp-contract",
       "kind": "CONTRACT",
-      "reference": "customer-portal/contracts/erp-inventory-v2.yaml#reserve",
+      "reference": "customer-portal:contracts/erp-inventory-v2.yaml#reserve",
       "summary": "ERP v2 契约包含库存查询、预占、释放和幂等键。",
       "supportsIds": [
         "asis-erp-interface",
@@ -555,7 +555,7 @@
     {
       "evidenceId": "evidence-payment-contract",
       "kind": "CONTRACT",
-      "reference": "customer-portal/contracts/payment-refund-v1.yaml#refund",
+      "reference": "customer-portal:contracts/payment-refund-v1.yaml#refund",
       "summary": "支付网关契约定义退款申请、查询和异步结果通知。",
       "supportsIds": [
         "asis-payment-gateway",
@@ -568,7 +568,7 @@
     {
       "evidenceId": "evidence-invoice-contract",
       "kind": "CONTRACT",
-      "reference": "customer-portal/contracts/einvoice-v1.yaml#issue",
+      "reference": "customer-portal:contracts/einvoice-v1.yaml#issue",
       "summary": "电子发票平台契约定义开票、状态查询和失败码。",
       "supportsIds": [
         "asis-invoice-gateway",
@@ -580,7 +580,7 @@
     {
       "evidenceId": "evidence-platform-config",
       "kind": "CONFIGURATION",
-      "reference": "customer-portal/deploy/production/values.yaml#application",
+      "reference": "customer-portal:deploy/production/values.yaml#application",
       "summary": "生产环境、流水线、身份控制和消息事件订阅均已有配置基线。",
       "supportsIds": [
         "asis-deployment-platform",
@@ -597,7 +597,7 @@
     {
       "evidenceId": "evidence-operations-assets",
       "kind": "DOCUMENT",
-      "reference": "customer-portal/docs/operations-and-test-assets.md#baseline",
+      "reference": "repositories/customer-portal/docs/operations-and-test-assets.md#baseline",
       "summary": "运维文档列出统一监控接入方式、一期回归资产和现行告警渠道。",
       "supportsIds": [
         "asis-monitoring-platform",

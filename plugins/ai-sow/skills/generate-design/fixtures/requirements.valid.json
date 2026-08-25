@@ -18,6 +18,7 @@
       "epicId": "epic-platform",
       "name": "客户档案操作 API",
       "description": "通过稳定的 API 创建和检索客户档案。",
+      "relatedBusinessFeatureIds": ["feature-customer-profile"],
       "source": {
         "type": "DESIGN_DERIVED",
         "designDecisionIds": ["decision-profile-api"],

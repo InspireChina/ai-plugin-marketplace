@@ -1,7 +1,7 @@
 {
   "analysisScope": {
     "mode": "GREENFIELD",
-    "asOfDate": "2026-08-19",
+    "asOfDate": "2026-08-25",
     "repositorySnapshots": [],
     "priorSowSnapshots": [],
     "includedSystems": ["Customer Portal（客户门户）"],
@@ -33,5 +33,13 @@
     }
   ],
   "uncertainties": [],
-  "evidence": []
+  "evidence": [
+    {
+      "evidenceId": "evidence-greenfield-requirement",
+      "kind": "DOCUMENT",
+      "reference": "requirements:feature-customer-profile",
+      "summary": "获批业务需求确认客户档案属于新建范围，当前没有可复用产品能力。",
+      "supportsIds": ["feature-customer-profile"]
+    }
+  ]
 }

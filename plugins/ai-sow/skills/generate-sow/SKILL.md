@@ -1,21 +1,36 @@
 ---
 name: generate-sow
-description: 当六份已评审的 AI SOW 稳定交接文件全部有效，并需要生成可离线评审、审计、估算或签署的权威 XLSX 交付包时使用。
+description: 当五位 Owner 的 0.3 收据、六份稳定 JSON、五份批准评审和项目模板均有效，并需要生成可离线评审、审计、估算或签署的确定性 XLSX 交付包时使用。
 ---
 
 # 生成 SOW 工作簿
 
-将已批准数据确定性地投影到项目模板。本 Skill 只拥有 `.ai-sow/outputs/` 及其暂存目录。
+把已批准的稳定交接数据投影到项目模板。此 Skill 只写 `.ai-sow/outputs/`，不修改任何 Owner 输入，也不替用户重新决定需求、现状、设计、Story 或 Task。
 
-执行前读取并遵守[输出语言合同](../../references/output-language.md)。模板和 machine token 保持原值；已评审自由文本按原文投影。
+执行前读取并遵守[输出语言合同](../../references/output-language.md)。自由文本保持简体中文；machine token、字段、枚举、ID、路径、hash、Sheet、Table 和公式保持合同原值。
 
-## 路径
+## 路径与执行边界
 
-将包含当前 `SKILL.md` 的目录解析为 `<skill-root>`，将其上两级目录解析为 `<plugin-root>`。保持项目根目录为当前工作目录，并在执行前把命令中的路径占位符替换为绝对路径。
+将包含当前 `SKILL.md` 的目录解析为 `<skill-root>`，将其上两级目录解析为 `<plugin-root>`。项目根目录保持为当前工作目录，命令中的占位符必须替换为绝对路径。
 
-## 输入与联合视图
+当前 Stage Agent 是本 Skill 的唯一用户接口，直接运行确定性生成器并原样报告结构化结果；不派发
+叶子 Agent。生成器本身承担 receipt matcher、投影、工作簿复读、manifest 校验和原子发布，不调用
+其他 Skill 的 validator。普通生成不产生新的专业判断；可见布局的额外人工检查属于发布认证或用户
+显式要求，不是每次生成的默认门禁。
 
-读取项目元数据、项目模板和六份稳定数据：
+## 固定输入
+
+生成前必须存在并逐字节匹配五位 Owner 的 validator contract `0.3` 收据：
+
+- `.ai-sow/validation/analyze-requirement.json`
+- `.ai-sow/validation/analyze-as-is.json`
+- `.ai-sow/validation/generate-design.json`
+- `.ai-sow/validation/generate-story.json`
+- `.ai-sow/validation/generate-task.json`
+
+收据分别绑定五份批准评审、六份稳定 JSON 及各 Owner 的直接输入。生成器通过公共 handoff matcher 重建预期 input 并检查当前 review/output 字节；只报告 missing、invalid、stale、unsupported，不重放上游业务规则、HLD/Go-live、Uncertainty、AC→Task、工作模式、复杂度或 Integration 语义。
+
+投影输入固定为：
 
 - `.ai-sow/data/analyze-requirement/requirements.json`
 - `.ai-sow/data/analyze-as-is/asis.json`
@@ -23,10 +38,9 @@ description: 当六份已评审的 AI SOW 稳定交接文件全部有效，并�
 - `.ai-sow/data/generate-design/requirements.json`
 - `.ai-sow/data/generate-story/delivery.json`
 - `.ai-sow/data/generate-task/estimate.json`
+- `.ai-sow/templates/sow-template.xlsx`
 
-同时读取设计批准合同 `.ai-sow/reviews/generate-design.md`。它不成为第七份稳定 JSON，也不进入 manifest 的六输入集合，但 HLD Coverage、Go-live Assessment 和固定十项上线矩阵必须全部通过，最终生成才能继续。
-
-仅在内存中联合 BUSINESS 与 TECHNICAL requirements，保持各自顺序和所有权，不生成或打包第三份合并 JSON。
+五份批准评审全部进入交付包；`generate-design.md` 仍是批准合同而不是第七份稳定 JSON。
 
 ## 运行
 
@@ -36,21 +50,35 @@ description: 当六份已评审的 AI SOW 稳定交接文件全部有效，并�
 uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/generate_sow.py" --project-root .
 ```
 
-脚本验证投影所需字段、引用和覆盖；接入复用 Task 的项目侧工作类型、标准正向交付承诺和工作模式理由必须严格互相匹配，不从自由文本猜测责任边界。验证通过后写入：
+工作簿投影到 `01-需求`、`02-子需求`、`03-SOW主表`、`04-验收条件`、`05-任务明细`、`06-集成点`、`07-假设清单` 和 `90-系统现状`。动态 Table、样式、筛选、行高与跨 Sheet 引用来自模板；公式只能来自模板原型，Python 不保存基础人天、倍率、公式或取整规则，也不执行 Excel 公式。以 `=`、`+`、`-` 或 `@` 开头的普通文本按文本安全写入。
 
-- `01-需求`：EPIC；
-- `02-子需求`：FEATURE；
-- `03-SOW主表`：STORY；
-- `04-验收条件`：AC；
-- `05-任务明细`：TASK；
-- `06-集成点`：INTEGRATION，以顶级 `integrations` 为权威；
-- `07-假设清单`：ASSUMPTION/RISK，每个顶级实体一行并投影 Story 关系；
-- `90-系统现状`：ASIS。
+## 发布与完成条件
 
-选填字段缺失时对应单元格合法留空。Task 明细逐行投影原子工作；公式仅来自模板，插件不执行公式或维护并行人天模型。
+生成器在 `.ai-sow/outputs/` 内创建临时 staging 目录，完成工作簿复读和 manifest 校验后，以同文件系统 rename 发布：
 
-生成前脚本会从项目模板的单张配置表复读 37 项基础单元、13 个任务族及三个工作模式人天列，并从项目参数复读状态为固定规则、已校准或已批准的 S/M/L 系数，然后防御性复核 Task 的工作模式、结构化 `workModeEvidence`、调整资产、可估算复用工作、S/L 复杂度理由、Integration 一对一关系、每 Story 一个发布切换实例，以及问题诊断与根因整改不重叠。任何门禁失败或 `affectsEstimate = true` 的未关闭 Uncertainty 都会阻止生成；该结构化标志是唯一不确定性门禁依据，不从 `impact` 自由文本猜测。Story 不保存类型；Task 不保存任务族、活动、数量、基础人天、倍率或人天。Task 表由公式带出任务族并计算人天；Integration 表从关联的集成 Task 带出工作模式和复杂度，由此触发 SIT。UAT 只读取 Story 的 `uatRelevant`。
+```text
+.ai-sow/outputs/sow-sha256-<generationFingerprint>/
+├── sow.xlsx
+├── manifest.json
+├── sources/data/...
+├── sources/reviews/...
+├── sources/templates/sow-template.xlsx
+└── validation/...
+```
 
-## 完成条件
+相同输入必须产生相同 `packageId` 和逐字节相同的完整包树；已有相同包返回 `REUSED`，已有不同内容返回 `PACKAGE_CONTENT_MISMATCH`，绝不覆盖。不支持原子发布的文件系统返回 `PACKAGE_PUBLICATION_UNSUPPORTED`。失败 staging 由本次运行清理，不实现跨设备 copy、项目锁或对抗同权限竞态的文件系统协议。
 
-成功结果是新的 UUID 输出目录，包含 `sow.xlsx`、`manifest.json` 和六份稳定输入副本。输出完成复读并通过跨文件引用检查后才从唯一 staging 目录发布；失败时保留 staging 路径和简明诊断。脚本不读取其他 Skill 的 schema、fixture、test、asset 或 script，也不修改任何输入。
+成功结果必须已经由生成器确认：五份收据与五份评审均在 manifest 和包树中；六份稳定 JSON 的
+hash 一致；工作簿 Table 行数、公式原型、引用、样式和文本安全复读通过；交付包不含 repository、
+往期 SOW、问卷或 Evidence 原文。当前 Stage Agent 报告 outcome、package ID、项目相对路径、
+receipt/input match 与复读摘要，然后向用户交付包路径并 STOP；不得再次解释上游业务语义。
+
+## Reconciliation Adapter
+
+仅当用户显式调用 `ai-sow:reconcile` 且提供 `Reconciliation Run ID`、整体 review SHA-256 与项目内
+staging root 时，本 Skill 作为最终投影 Adapter 运行。生成器使用同名 staging view 读取已完成的
+五份 staged receipt、六份稳定 JSON、五份 review 与模板，并把内容寻址 package 写入 staging；
+manifest 与 workbook 的 hash 必须来自 staged bytes，而不是 base。它仍只做 receipt-only 投影、
+复读和 package 校验，不重放任何 Owner 业务规则。package 验证结果返回 reconciliation 的外层当前
+Stage，由 batch publisher 先发布不可变 package，再发布 Owner 成果。普通独立调用和 STOP
+行为保持不变。

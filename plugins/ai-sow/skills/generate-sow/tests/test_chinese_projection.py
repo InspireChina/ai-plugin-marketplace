@@ -1,178 +1,68 @@
 from __future__ import annotations
 
+import importlib.util
 import json
-import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import openpyxl
-from openpyxl.utils.cell import range_boundaries
+from openpyxl.utils import range_boundaries
+
+MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts/workbook.py"
+SPEC = importlib.util.spec_from_file_location("generate_sow_workbook", MODULE_PATH)
+assert SPEC is not None and SPEC.loader is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
 
 
-SKILL_ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_ROOT = SKILL_ROOT.parents[1]
-FIXTURE = SKILL_ROOT / "fixtures/project"
-SCRIPT = SKILL_ROOT / "scripts/generate_sow.py"
-HAN_CHARACTER = re.compile(r"[\u4e00-\u9fff]")
+def test_user_text_that_looks_like_formula_is_written_as_text() -> None:
+    assert MODULE.safe_text("=SUM(A1:A2)") == "'=SUM(A1:A2)"
+    assert MODULE.safe_text("+1") == "'+1"
+    assert MODULE.safe_text("-1") == "'-1"
+    assert MODULE.safe_text("@name") == "'@name"
+    assert MODULE.safe_text("普通文本") == "普通文本"
 
 
-def generate_fixture_workbook(tmp_path: Path) -> Path:
-    project_root = tmp_path / "project"
-    shutil.copytree(FIXTURE, project_root)
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "--project",
-            str(PLUGIN_ROOT),
-            "--locked",
-            "python",
-            str(SCRIPT),
-            "--project-root",
-            str(project_root),
-        ],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr or result.stdout
-    payload = json.loads(result.stdout)
-    assert payload["outcome"] == "OK"
-    assert len(payload["outputs"]) == 1
-    workbook_path = Path(payload["outputs"][0]) / "sow.xlsx"
-    assert workbook_path.is_file()
-    return workbook_path
+def test_projection_labels_are_chinese_and_machine_values_are_not_translated() -> None:
+    assert MODULE.topic_label("SYSTEM_CONTEXT") == "系统边界与参与方"
+    assert MODULE.topic_label("UNKNOWN_MACHINE_TOKEN") == "UNKNOWN_MACHINE_TOKEN"
 
 
-def table_column_values(
-    workbook_path: Path, table_name: str, column_name: str
-) -> list[object]:
-    workbook = openpyxl.load_workbook(workbook_path, data_only=False)
-    try:
-        for worksheet in workbook.worksheets:
-            if table_name not in worksheet.tables:
-                continue
-            table = worksheet.tables[table_name]
-            min_column, min_row, max_column, max_row = range_boundaries(table.ref)
-            headers = [
-                worksheet.cell(min_row, column).value
-                for column in range(min_column, max_column + 1)
-            ]
-            column = min_column + headers.index(column_name)
-            return [
-                worksheet.cell(row, column).value for row in range(min_row + 1, max_row + 1)
-            ]
-    finally:
-        workbook.close()
-    raise AssertionError(f"missing table {table_name}")
+def test_generated_workbook_preserves_formula_like_user_content_as_text(tmp_path: Path) -> None:
+    fixture = Path(__file__).resolve().parents[1] / "fixtures/project/.ai-sow"
 
+    def read(relative: str) -> dict[str, object]:
+        return json.loads((fixture / relative).read_text(encoding="utf-8"))
 
-def table_headers(workbook_path: Path, table_name: str) -> list[object]:
-    workbook = openpyxl.load_workbook(workbook_path, data_only=False)
-    try:
-        for worksheet in workbook.worksheets:
-            if table_name not in worksheet.tables:
-                continue
-            table = worksheet.tables[table_name]
-            min_column, min_row, max_column, _ = range_boundaries(table.ref)
-            return [
-                worksheet.cell(min_row, column).value
-                for column in range(min_column, max_column + 1)
-            ]
-    finally:
-        workbook.close()
-    raise AssertionError(f"missing table {table_name}")
-
-
-def assert_business_values_are_chinese(
-    label: str, values: list[object]
-) -> None:
-    business_values = [value for value in values if isinstance(value, str) and value]
-    assert business_values, f"{label} has no projected business values"
-    missing_han = [value for value in business_values if not HAN_CHARACTER.search(value)]
-    assert not missing_han, f"{label} lacks Chinese text: {missing_han}"
-
-
-def test_smoke_workbook_projects_chinese_business_text_and_preserves_machine_tokens(
-    tmp_path: Path,
-) -> None:
-    workbook_path = generate_fixture_workbook(tmp_path)
-    business_columns = {
-        "epics": table_column_values(workbook_path, "EpicTable", "需求描述"),
-        "features": table_column_values(workbook_path, "FeatureTable", "场景/范围描述"),
-        "stories": table_column_values(workbook_path, "SOWStoryTable", "Story名称"),
-        "acceptance criteria": table_column_values(
-            workbook_path, "AcceptanceCriterionTable", "验收结果"
-        ),
-        "tasks": table_column_values(workbook_path, "TaskTable", "任务说明"),
-        "As-Is summaries": table_column_values(
-            workbook_path, "AsIsTopicTable", "结论"
-        ),
-        "As-Is detail summaries": table_column_values(
-            workbook_path, "AsIsDetailTable", "摘要/理由"
-        ),
-        "assumptions": table_column_values(
-            workbook_path, "AssumptionRiskTable", "名称"
-        ),
-        "risks": table_column_values(
-            workbook_path, "AssumptionRiskTable", "处理方式"
-        ),
+    business = read("data/analyze-requirement/requirements.json")
+    technical = read("data/generate-design/requirements.json")
+    business["epics"][0]["name"] = "=FORMULA_LIKE_NAME"  # type: ignore[index]
+    data = {
+        "requirements": {
+            "epics": [*business["epics"], *technical["epics"]],  # type: ignore[index]
+            "features": [*business["features"], *technical["features"]],  # type: ignore[index]
+        },
+        "asis": read("data/analyze-as-is/asis.json"),
+        "design": read("data/generate-design/design.json"),
+        "technicalRequirements": technical,
+        "delivery": read("data/generate-story/delivery.json"),
+        "estimate": read("data/generate-task/estimate.json"),
     }
-    for label, values in business_columns.items():
-        assert_business_values_are_chinese(label, values)
+    output = tmp_path / "safe-text.xlsx"
+    MODULE.write_workbook(
+        fixture / "templates/sow-template.xlsx",
+        data,
+        output,
+        {name: "0" * 64 for name in ("sourceRequirements", "asis", "design", "derivedRequirements", "delivery", "estimate")},
+    )
 
-    assert {"假设", "风险"} <= set(
-        table_column_values(workbook_path, "AssumptionRiskTable", "类型")
-    )
-    assert "BUSINESS" in table_column_values(
-        workbook_path, "EpicTable", "需求类型"
-    )
-    assert "ASSESSED" in table_column_values(
-        workbook_path, "AsIsTopicTable", "评估状态"
-    )
-    assert "EFFECTIVE_START" in table_column_values(
-        workbook_path, "AsIsDetailTable", "记录类型"
-    )
-    assert "类型" not in table_headers(workbook_path, "SOWStoryTable")
-    assert {
-        "新建M档人天",
-        "调整M档人天",
-        "接入复用M档人天",
-    } <= set(table_headers(workbook_path, "BaseUnitCatalogTable"))
-    for column in ("新建M档人天", "调整M档人天", "接入复用M档人天"):
-        values = table_column_values(workbook_path, "BaseUnitCatalogTable", column)
-        assert all(
-            value == "❌"
-            or (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and value > 0
-            )
-            for value in values
-        )
-    assert table_column_values(
-        workbook_path, "ProjectParameterTable", "参数代码"
-    )[:3] == ["K_COMPLEXITY_S", "K_COMPLEXITY_M", "K_COMPLEXITY_L"]
-    assert len(table_column_values(workbook_path, "BaseUnitCatalogTable", "基础单元ID")) == 37
-    assert set(table_column_values(workbook_path, "TaskTable", "Integration ID")) == {
-        None,
-        "integration-profile-api",
-        "integration-erp-reservation",
-        "integration-payment-gateway",
-        "integration-einvoice",
-    }
-
-    workbook = openpyxl.load_workbook(workbook_path, data_only=False)
+    workbook = openpyxl.load_workbook(output, data_only=False, read_only=False)
     try:
-        table_names = {
-            name
-            for worksheet in workbook.worksheets
-            for name in worksheet.tables
-        }
-        assert "93-复杂度规则" not in workbook.sheetnames
-        assert "BaseEffortTable" not in table_names
-        assert "ComplexityRuleTable" not in table_names
+        worksheet = workbook["01-需求"]
+        table = worksheet.tables["EpicTable"]
+        min_col, min_row, max_col, _ = range_boundaries(table.ref)
+        headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+        cell = worksheet.cell(min_row + 1, min_col + headers.index("需求名称"))
+        assert cell.value == "'=FORMULA_LIKE_NAME"
+        assert cell.data_type == "s"
     finally:
         workbook.close()

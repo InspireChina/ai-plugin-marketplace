@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:generate-design:technical-requirements:0.1",
+  "$id": "urn:ai-sow:generate-design:technical-requirements:0.2",
   "type": "object",
   "additionalProperties": false,
   "required": ["epics", "features"],
   "properties": {
-    "epics": {"type": "array", "items": {"$ref": "#/$defs/epic"}},
-    "features": {"type": "array", "items": {"$ref": "#/$defs/feature"}}
+    "epics": {"type": "array", "items": {"$ref": "#/$defs/epic"}, "description": "按技术目标组织的 TECHNICAL Epic，只包含来源明示或设计派生的技术范围。"},
+    "features": {"type": "array", "items": {"$ref": "#/$defs/feature"}, "description": "可由下游 Story 交付的 TECHNICAL Feature，并保留来源或设计派生关系。"}
   },
   "$defs": {
     "sourceDocumentId": {"type": "string", "pattern": "^source-document-[a-z0-9]+(?:-[a-z0-9]+)*$"},
@@ -53,14 +53,20 @@
       "uniqueItems": true,
       "items": {"$ref": "#/$defs/featureId"}
     },
+    "nonEmptyFeatureIdList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/featureId"}
+    },
     "sourceInput": {
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "sourceDocumentIds", "sourceReferences"],
       "properties": {
-        "type": {"const": "SOURCE_INPUT"},
-        "sourceDocumentIds": {"$ref": "#/$defs/sourceDocumentIdList"},
-        "sourceReferences": {"$ref": "#/$defs/stableReferenceList"}
+        "type": {"const": "SOURCE_INPUT", "description": "说明该技术需求直接来自已登记的原始来源。"},
+        "sourceDocumentIds": {"$ref": "#/$defs/sourceDocumentIdList", "description": "直接提出该技术需求的已登记 Source Document ID。"},
+        "sourceReferences": {"$ref": "#/$defs/stableReferenceList", "description": "在原始来源内定位该技术要求的稳定章节、条款或锚点。"}
       }
     },
     "designDerived": {
@@ -68,11 +74,11 @@
       "additionalProperties": false,
       "required": ["type", "designDecisionIds", "effectiveStartItemIds", "rationale"],
       "properties": {
-        "type": {"const": "DESIGN_DERIVED"},
-        "designDecisionIds": {"$ref": "#/$defs/designDecisionIdList"},
-        "effectiveStartItemIds": {"$ref": "#/$defs/effectiveStartItemIdList"},
-        "relatedFeatureIds": {"$ref": "#/$defs/featureIdList"},
-        "rationale": {"$ref": "#/$defs/nonEmptyString"}
+        "type": {"const": "DESIGN_DERIVED", "description": "说明该技术需求由获批目标设计产生而非原始来源直接提出。"},
+        "designDecisionIds": {"$ref": "#/$defs/designDecisionIdList", "description": "产生该技术需求的 Design Decision ID。"},
+        "effectiveStartItemIds": {"$ref": "#/$defs/effectiveStartItemIdList", "description": "该派生需求采用、改变或约束的 As-Is Effective Start ID。"},
+        "relatedFeatureIds": {"$ref": "#/$defs/featureIdList", "description": "解释该派生需求与既有 BUSINESS 或 TECHNICAL Feature 的关系；没有直接关系时省略。"},
+        "rationale": {"$ref": "#/$defs/nonEmptyString", "description": "按专项合同依次说明设计决策、产生原因以及对具体目标的不交付影响。"}
       }
     },
     "source": {"oneOf": [{"$ref": "#/$defs/sourceInput"}, {"$ref": "#/$defs/designDerived"}]},
@@ -97,28 +103,29 @@
       "additionalProperties": false,
       "required": ["epicId", "type", "name", "description", "source"],
       "properties": {
-        "epicId": {"$ref": "#/$defs/epicId"},
-        "type": {"const": "TECHNICAL"},
-        "name": {"$ref": "#/$defs/nonEmptyString"},
-        "description": {"$ref": "#/$defs/nonEmptyString"},
-        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString"},
-        "targetOutcome": {"$ref": "#/$defs/nonEmptyString"},
-        "commonConstraintsOutOfScope": {"$ref": "#/$defs/nonEmptyString"},
-        "source": {"$ref": "#/$defs/source"}
+        "epicId": {"$ref": "#/$defs/epicId", "description": "由 Design Owner 维护的 TECHNICAL Epic 稳定 ID。"},
+        "type": {"const": "TECHNICAL", "description": "标识该 Epic 属于 Design Owner 的技术需求域。"},
+        "name": {"$ref": "#/$defs/nonEmptyString", "description": "便于业务与技术评审识别的技术主题名称。"},
+        "description": {"$ref": "#/$defs/nonEmptyString", "description": "说明该技术主题的背景、边界和需要具备的能力。"},
+        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString", "description": "仅在有具体分析价值时说明涉及的系统、接口和数据边界。"},
+        "targetOutcome": {"$ref": "#/$defs/nonEmptyString", "description": "仅在可具体表达时说明技术范围完成后的可观察结果。"},
+        "commonConstraintsOutOfScope": {"$ref": "#/$defs/nonEmptyString", "description": "仅在已评审时说明跨该 Epic 的共同约束与明确排除项。"},
+        "source": {"$ref": "#/$defs/source", "description": "该 TECHNICAL Epic 的 SOURCE_INPUT 或 DESIGN_DERIVED 来源合同。"}
       }
     },
     "feature": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["featureId", "epicId", "name", "description", "source"],
+      "required": ["featureId", "epicId", "name", "description", "relatedBusinessFeatureIds", "source"],
       "properties": {
-        "featureId": {"$ref": "#/$defs/featureId"},
-        "epicId": {"$ref": "#/$defs/epicId"},
-        "name": {"$ref": "#/$defs/nonEmptyString"},
-        "description": {"$ref": "#/$defs/nonEmptyString"},
-        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString"},
-        "constraintsNfr": {"$ref": "#/$defs/nonEmptyString"},
-        "source": {"$ref": "#/$defs/featureSource"}
+        "featureId": {"$ref": "#/$defs/featureId", "description": "由 Design Owner 维护并供 Scope、Story 和后续交付引用的 TECHNICAL Feature 稳定 ID。"},
+        "epicId": {"$ref": "#/$defs/epicId", "description": "组织该 Feature 的 TECHNICAL Epic ID。"},
+        "name": {"$ref": "#/$defs/nonEmptyString", "description": "清楚表达可交付技术能力的 Feature 名称。"},
+        "description": {"$ref": "#/$defs/nonEmptyString", "description": "说明该 Feature 的技术行为、边界和交付结果，不混入验收步骤。"},
+        "involvedSystemsData": {"$ref": "#/$defs/nonEmptyString", "description": "仅在有证据时说明该 Feature 涉及的系统、接口和数据。"},
+        "constraintsNfr": {"$ref": "#/$defs/nonEmptyString", "description": "仅在具体且可评审时记录该 Feature 的质量属性或技术约束。"},
+        "relatedBusinessFeatureIds": {"$ref": "#/$defs/nonEmptyFeatureIdList", "description": "该技术能力直接支撑的获批 BUSINESS Feature ID。"},
+        "source": {"$ref": "#/$defs/featureSource", "description": "该 Feature 的直接来源或由设计决策产生的完整追溯关系。"}
       }
     }
   }

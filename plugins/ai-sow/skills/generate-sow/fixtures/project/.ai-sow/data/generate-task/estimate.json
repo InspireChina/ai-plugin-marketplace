@@ -3,6 +3,7 @@
     {
       "taskId": "task-customer-profile-page",
       "storyId": "story-customer-profile",
+      "acceptanceCriterionIds": ["ac-profile-visible"],
       "name": "调整客户档案页面和状态",
       "baseUnit": "BU-UI-INTERACTION",
       "workMode": "调整",
@@ -19,6 +20,7 @@
     {
       "taskId": "task-profile-api",
       "storyId": "story-profile-api",
+      "acceptanceCriterionIds": ["ac-profile-api"],
       "name": "调整客户档案业务服务与接口",
       "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "调整",
@@ -34,6 +36,7 @@
     {
       "taskId": "task-profile-integration",
       "storyId": "story-profile-integration",
+      "acceptanceCriterionIds": ["ac-profile-integration"],
       "name": "接入内部客户档案 API",
       "baseUnit": "BU-INTERNAL-INTEGRATION",
       "workMode": "接入复用",
@@ -53,6 +56,7 @@
     {
       "taskId": "task-customer-profile-model",
       "storyId": "story-customer-profile",
+      "acceptanceCriterionIds": ["ac-profile-audit"],
       "name": "调整可复用的客户档案框架字段模型",
       "baseUnit": "BU-DATA-MODEL",
       "workMode": "调整",
@@ -68,6 +72,7 @@
     {
       "taskId": "task-profile-identity",
       "storyId": "story-profile-api",
+      "acceptanceCriterionIds": ["ac-profile-api-security"],
       "name": "建立档案 API 身份与字段权限",
       "baseUnit": "BU-IDENTITY-ACCESS",
       "workMode": "新建",
@@ -79,6 +84,7 @@
     {
       "taskId": "task-member-tier-service",
       "storyId": "story-member-tier",
+      "acceptanceCriterionIds": ["ac-member-tier"],
       "name": "调整既有会员主数据模型的等级计算服务",
       "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "调整",
@@ -94,6 +100,7 @@
     {
       "taskId": "task-member-tier-model",
       "storyId": "story-member-tier",
+      "acceptanceCriterionIds": ["ac-member-tier-history"],
       "name": "调整既有会员主数据模型的等级历史",
       "baseUnit": "BU-DATA-MODEL",
       "workMode": "调整",
@@ -110,6 +117,7 @@
     {
       "taskId": "task-order-create-page",
       "storyId": "story-order-create",
+      "acceptanceCriterionIds": ["ac-order-create"],
       "name": "新建全渠道订单创建交互",
       "baseUnit": "BU-UI-INTERACTION",
       "workMode": "新建",
@@ -121,6 +129,7 @@
     {
       "taskId": "task-order-create-service",
       "storyId": "story-order-create",
+      "acceptanceCriterionIds": ["ac-order-create", "ac-order-idempotency"],
       "name": "新建全渠道订单创建服务",
       "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "新建",
@@ -133,6 +142,7 @@
     {
       "taskId": "task-order-state-service",
       "storyId": "story-order-state",
+      "acceptanceCriterionIds": ["ac-order-state"],
       "name": "调整既有订单服务与状态机",
       "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "调整",
@@ -148,6 +158,7 @@
     {
       "taskId": "task-order-state-events",
       "storyId": "story-order-state",
+      "acceptanceCriterionIds": ["ac-order-state"],
       "name": "新建订单状态事件处理",
       "baseUnit": "BU-EVENT-MESSAGE",
       "workMode": "新建",
@@ -160,6 +171,7 @@
     {
       "taskId": "task-erp-reservation-integration",
       "storyId": "story-inventory-reservation",
+      "acceptanceCriterionIds": ["ac-inventory-reservation"],
       "name": "接入既有 ERP 库存接口",
       "baseUnit": "BU-INTERNAL-INTEGRATION",
       "workMode": "接入复用",
@@ -178,6 +190,7 @@
     {
       "taskId": "task-inventory-sit",
       "storyId": "story-inventory-reservation",
+      "acceptanceCriterionIds": ["ac-inventory-retry"],
       "name": "验证库存预占幂等与补偿",
       "baseUnit": "BU-MANUAL-TESTING",
       "workMode": "新建",
@@ -190,6 +203,7 @@
     {
       "taskId": "task-return-page",
       "storyId": "story-return-request",
+      "acceptanceCriterionIds": ["ac-return-request"],
       "name": "新建退货申请与审核交互",
       "baseUnit": "BU-UI-INTERACTION",
       "workMode": "新建",
@@ -201,6 +215,7 @@
     {
       "taskId": "task-return-service",
       "storyId": "story-return-request",
+      "acceptanceCriterionIds": ["ac-return-request"],
       "name": "调整既有订单服务与状态机的退货规则",
       "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "调整",
@@ -216,6 +231,7 @@
     {
       "taskId": "task-payment-refund-integration",
       "storyId": "story-refund-payment",
+      "acceptanceCriterionIds": ["ac-refund-payment"],
       "name": "接入既有支付网关租户",
       "baseUnit": "BU-EXTERNAL-INTEGRATION",
       "workMode": "接入复用",
@@ -235,6 +251,7 @@
     {
       "taskId": "task-refund-security",
       "storyId": "story-refund-payment",
+      "acceptanceCriterionIds": ["ac-refund-payment"],
       "name": "验证退款签名与隐私保护",
       "baseUnit": "BU-SECURITY-PRIVACY-TESTING",
       "workMode": "新建",
@@ -246,6 +263,7 @@
     {
       "taskId": "task-store-order-page",
       "storyId": "story-store-order",
+      "acceptanceCriterionIds": ["ac-store-order"],
       "name": "新建门店订单队列与交接界面",
       "baseUnit": "BU-UI-INTERACTION",
       "workMode": "新建",
@@ -257,6 +275,7 @@
     {
       "taskId": "task-store-order-service",
       "storyId": "story-store-order",
+      "acceptanceCriterionIds": ["ac-store-order"],
       "name": "新建门店接单与交接服务",
       "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "新建",
@@ -269,6 +288,7 @@
     {
       "taskId": "task-order-timeline-page",
       "storyId": "story-order-visibility",
+      "acceptanceCriterionIds": ["ac-order-visibility"],
       "name": "新建统一订单履约轨迹",
       "baseUnit": "BU-UI-INTERACTION",
       "workMode": "新建",
@@ -281,6 +301,7 @@
     {
       "taskId": "task-order-timeline-events",
       "storyId": "story-order-visibility",
+      "acceptanceCriterionIds": ["ac-order-visibility"],
       "name": "新建履约轨迹事件投影",
       "baseUnit": "BU-EVENT-MESSAGE",
       "workMode": "新建",
@@ -292,6 +313,7 @@
     {
       "taskId": "task-reconciliation-job",
       "storyId": "story-payment-reconciliation",
+      "acceptanceCriterionIds": ["ac-payment-reconciliation"],
       "name": "新建支付退款日结作业",
       "baseUnit": "BU-BACKGROUND-JOB",
       "workMode": "新建",
@@ -303,6 +325,7 @@
     {
       "taskId": "task-reconciliation-report",
       "storyId": "story-payment-reconciliation",
+      "acceptanceCriterionIds": ["ac-payment-trace"],
       "name": "新建支付差异复核视图",
       "baseUnit": "BU-REPORT-METRIC",
       "workMode": "新建",
@@ -314,6 +337,7 @@
     {
       "taskId": "task-einvoice-integration",
       "storyId": "story-einvoice",
+      "acceptanceCriterionIds": ["ac-einvoice"],
       "name": "接入既有电子发票通道",
       "baseUnit": "BU-EXTERNAL-INTEGRATION",
       "workMode": "接入复用",
@@ -332,6 +356,7 @@
     {
       "taskId": "task-einvoice-status-job",
       "storyId": "story-einvoice",
+      "acceptanceCriterionIds": ["ac-einvoice-idempotency"],
       "name": "新建发票状态补偿作业",
       "baseUnit": "BU-BACKGROUND-JOB",
       "workMode": "新建",
@@ -343,6 +368,7 @@
     {
       "taskId": "task-finance-report",
       "storyId": "story-finance-report",
+      "acceptanceCriterionIds": ["ac-finance-report"],
       "name": "新建财务经营日报",
       "baseUnit": "BU-REPORT-METRIC",
       "workMode": "新建",
@@ -355,6 +381,7 @@
     {
       "taskId": "task-finance-pipeline",
       "storyId": "story-finance-report",
+      "acceptanceCriterionIds": ["ac-finance-drilldown"],
       "name": "新建财务指标处理流程",
       "baseUnit": "BU-DATA-PIPELINE",
       "workMode": "新建",
@@ -366,6 +393,7 @@
     {
       "taskId": "task-production-env",
       "storyId": "story-production-preparation",
+      "acceptanceCriterionIds": ["ac-production-preparation"],
       "name": "调整既有生产环境与发布流水线的运行配置",
       "baseUnit": "BU-RUNTIME-ENV",
       "workMode": "调整",
@@ -381,6 +409,7 @@
     {
       "taskId": "task-production-pipeline",
       "storyId": "story-production-preparation",
+      "acceptanceCriterionIds": ["ac-production-preparation"],
       "name": "调整既有生产环境与发布流水线的部署步骤",
       "baseUnit": "BU-BUILD-DEPLOY-PIPELINE",
       "workMode": "调整",
@@ -396,6 +425,7 @@
     {
       "taskId": "task-production-feature-flag",
       "storyId": "story-production-preparation",
+      "acceptanceCriterionIds": ["ac-production-preparation"],
       "name": "调整既有生产环境与发布流水线的功能开关",
       "baseUnit": "BU-CONFIG-FEATURE-FLAG",
       "workMode": "调整",
@@ -412,6 +442,7 @@
     {
       "taskId": "task-production-cutover",
       "storyId": "story-production-cutover",
+      "acceptanceCriterionIds": ["ac-production-cutover"],
       "name": "执行生产切换与回滚",
       "baseUnit": "BU-RELEASE-CUTOVER",
       "workMode": "新建",
@@ -424,6 +455,7 @@
     {
       "taskId": "task-cutover-checklist-test",
       "storyId": "story-production-cutover",
+      "acceptanceCriterionIds": ["ac-production-cutover"],
       "name": "验证切换与回滚检查清单",
       "baseUnit": "BU-MANUAL-TESTING",
       "workMode": "新建",
@@ -436,6 +468,7 @@
     {
       "taskId": "task-production-performance",
       "storyId": "story-production-validation",
+      "acceptanceCriterionIds": ["ac-production-validation"],
       "name": "执行核心查询性能验证",
       "baseUnit": "BU-PERFORMANCE-TESTING",
       "workMode": "新建",
@@ -448,6 +481,7 @@
     {
       "taskId": "task-production-security",
       "storyId": "story-production-validation",
+      "acceptanceCriterionIds": ["ac-production-validation"],
       "name": "执行生产权限与证书验证",
       "baseUnit": "BU-SECURITY-PRIVACY-TESTING",
       "workMode": "新建",
@@ -459,6 +493,7 @@
     {
       "taskId": "task-production-smoke",
       "storyId": "story-production-validation",
+      "acceptanceCriterionIds": ["ac-production-validation"],
       "name": "执行五条生产业务烟测",
       "baseUnit": "BU-MANUAL-TESTING",
       "workMode": "新建",
@@ -470,6 +505,7 @@
     {
       "taskId": "task-data-migration",
       "storyId": "story-data-migration",
+      "acceptanceCriterionIds": ["ac-data-migration"],
       "name": "迁移会员与两年历史订单",
       "baseUnit": "BU-DATA-MIGRATION",
       "workMode": "新建",
@@ -482,6 +518,7 @@
     {
       "taskId": "task-migration-pipeline",
       "storyId": "story-data-migration",
+      "acceptanceCriterionIds": ["ac-data-migration"],
       "name": "新建迁移抽取转换流程",
       "baseUnit": "BU-DATA-PIPELINE",
       "workMode": "新建",
@@ -494,6 +531,7 @@
     {
       "taskId": "task-migration-reconciliation",
       "storyId": "story-data-migration",
+      "acceptanceCriterionIds": ["ac-data-migration"],
       "name": "验证迁移数量与关键字段",
       "baseUnit": "BU-MANUAL-TESTING",
       "workMode": "新建",
@@ -505,6 +543,7 @@
     {
       "taskId": "task-observability-dashboard",
       "storyId": "story-observability",
+      "acceptanceCriterionIds": ["ac-observability"],
       "name": "调整既有统一监控平台的交易与财务看板",
       "baseUnit": "BU-OBSERVABILITY-AUDIT",
       "workMode": "调整",
@@ -520,6 +559,7 @@
     {
       "taskId": "task-reliability-controls",
       "storyId": "story-observability",
+      "acceptanceCriterionIds": ["ac-observability"],
       "name": "新建关键链路稳定性控制",
       "baseUnit": "BU-PERFORMANCE-RELIABILITY",
       "workMode": "新建",
@@ -531,6 +571,7 @@
     {
       "taskId": "task-ops-handover",
       "storyId": "story-ops-handover",
+      "acceptanceCriterionIds": ["ac-ops-handover"],
       "name": "调整既有统一监控平台的运维手册与交接",
       "baseUnit": "BU-OPS-HANDOVER",
       "workMode": "调整",
@@ -546,6 +587,7 @@
     {
       "taskId": "task-user-training",
       "storyId": "story-user-training",
+      "acceptanceCriterionIds": ["ac-user-training"],
       "name": "交付门店客服财务培训",
       "baseUnit": "BU-USER-TRAINING",
       "workMode": "新建",
@@ -557,6 +599,7 @@
     {
       "taskId": "task-test-framework",
       "storyId": "story-test-automation",
+      "acceptanceCriterionIds": ["ac-test-automation"],
       "name": "调整既有回归测试资产的自动化框架",
       "baseUnit": "BU-AUTOMATION-FRAMEWORK",
       "workMode": "调整",
@@ -572,6 +615,7 @@
     {
       "taskId": "task-test-cases",
       "storyId": "story-test-automation",
+      "acceptanceCriterionIds": ["ac-test-automation"],
       "name": "调整既有回归测试资产的核心自动化用例",
       "baseUnit": "BU-AUTOMATION-CASES",
       "workMode": "调整",
@@ -588,6 +632,7 @@
     {
       "taskId": "task-compatibility-matrix",
       "storyId": "story-test-non-uat",
+      "acceptanceCriterionIds": ["ac-test-non-uat"],
       "name": "调整既有回归测试资产的兼容矩阵",
       "baseUnit": "BU-COMPATIBILITY-ACCESSIBILITY-TESTING",
       "workMode": "调整",
@@ -604,6 +649,7 @@
     {
       "taskId": "task-engineering-regression",
       "storyId": "story-test-non-uat",
+      "acceptanceCriterionIds": ["ac-test-non-uat"],
       "name": "调整既有回归测试资产的工程回归范围",
       "baseUnit": "BU-MANUAL-TESTING",
       "workMode": "调整",

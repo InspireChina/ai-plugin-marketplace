@@ -1,1 +1,1 @@
-"""Shared runtime contracts for independently invoked AI SOW skills."""
+"""Shared technical runtime for independently invoked AI SOW skills."""

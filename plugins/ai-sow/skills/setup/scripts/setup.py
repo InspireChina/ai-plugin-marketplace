@@ -1,25 +1,36 @@
 from __future__ import annotations
 
 import argparse
-import errno
-import hashlib
 import json
-import os
-import shutil
 import sys
-import tempfile
-import uuid
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 
-PLUGIN_VERSION = "0.1.0-beta.1"
+PLUGIN_VERSION = "0.1.0-beta.2"
 SOW_STANDARD_VERSION = "1.3"
+MANAGED_DIRECTORIES = (
+    ".ai-sow/templates",
+    ".ai-sow/inputs",
+    ".ai-sow/work",
+    ".ai-sow/reviews",
+    ".ai-sow/data",
+    ".ai-sow/validation",
+    ".ai-sow/outputs",
+)
+PROJECT_PATH = ".ai-sow/project.json"
+TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
+
+from runtime.project_io import ProjectFiles, ProjectIOError
 
 
 class BlockedError(ValueError):
-    """A fail-closed setup condition that the caller must resolve."""
+    """A setup condition that requires user or environment action."""
 
 
 def emit(outcome: str, summary: str, **details: Any) -> None:
@@ -31,274 +42,90 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--name", required=True)
-    parser.add_argument("--repair", action="store_true")
     return parser.parse_args()
 
 
-def reject_symlink_chain(project_root: Path, target: Path) -> None:
+def project_bytes(project: dict[str, object]) -> bytes:
+    return (json.dumps(project, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def verify_template_round_trip(payload: bytes, openpyxl: Any) -> None:
+    workbook = openpyxl.load_workbook(BytesIO(payload), data_only=False)
     try:
-        relative = target.relative_to(project_root)
-    except ValueError as error:
-        raise BlockedError(f"managed path is outside project root: {target}") from error
-    current = project_root
-    for segment in relative.parts:
-        current /= segment
-        if current.is_symlink():
-            raise BlockedError(f"managed write path contains a symlink: {current}")
-
-
-def install_project_shell(
-    project_root: Path,
-    project: dict[str, Any],
-    template_bytes: bytes,
-    *,
-    publish_manifest: bool,
-) -> Path:
-    ai_sow = project_root / ".ai-sow"
-    project_path = ai_sow / "project.json"
-    template_path = ai_sow / "templates" / "sow-template.xlsx"
-    directories = (
-        ai_sow / "templates",
-        ai_sow / "work",
-        ai_sow / "data",
-        ai_sow / "reviews",
-        ai_sow / "validation",
-        ai_sow / "outputs",
-        ai_sow / "inputs",
-        ai_sow / "runtime" / "setup",
-    )
-    for path in (ai_sow, project_path, template_path, *directories):
-        reject_symlink_chain(project_root, path)
-
-    if os.name == "posix" and hasattr(os, "O_DIRECTORY") and hasattr(os, "O_NOFOLLOW"):
-        return install_project_shell_posix(
-            project_root,
-            project,
-            template_bytes,
-            publish_manifest=publish_manifest,
-        )
-
-    if template_path.exists() and template_path.read_bytes() != template_bytes:
-        raise BlockedError(f"existing setup-owned template has conflicting content: {template_path}")
-
-    ai_sow.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=".setup-staging-", dir=ai_sow))
-    try:
-        staged_template = staging / "sow-template.xlsx"
-        staged_template.write_bytes(template_bytes)
-        if hashlib.sha256(staged_template.read_bytes()).digest() != hashlib.sha256(
-            template_bytes
-        ).digest():
-            raise OSError("staged template hash verification failed")
-
-        for directory in directories:
-            directory.mkdir(parents=True, exist_ok=True)
-        if not template_path.exists():
-            staged_template.replace(template_path)
-        if publish_manifest:
-            staged_project = staging / "project.json"
-            staged_project.write_text(
-                json.dumps(project, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            staged_project.replace(project_path)
-        return template_path
+        tables = {
+            name: worksheet.tables[name]
+            for worksheet in workbook.worksheets
+            for name in worksheet.tables
+        }
+        required_tables = {"BaseUnitCatalogTable", "ProjectParameterTable"}
+        if not required_tables.issubset(tables):
+            raise BlockedError("项目模板缺少基础单元或项目参数 Table")
+        catalog = tables["BaseUnitCatalogTable"]
+        _, min_row, _, max_row = openpyxl.utils.range_boundaries(catalog.ref)
+        if max_row - min_row != 37:
+            raise BlockedError("项目模板的基础单元目录必须包含 37 项")
+        saved = BytesIO()
+        workbook.save(saved)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        workbook.close()
+    reopened = openpyxl.load_workbook(BytesIO(saved.getvalue()), data_only=False)
+    reopened.close()
 
 
-def open_directory_at(parent_fd: int, name: str, *, create: bool = False) -> int:
-    if create:
+def validate_project(project: object, validator: Any) -> dict[str, object]:
+    errors = sorted(validator.iter_errors(project), key=lambda item: list(item.path))
+    if errors:
+        raise BlockedError(
+            "项目元数据不符合 Project Schema："
+            + "；".join(error.message for error in errors)
+        )
+    assert isinstance(project, dict)
+    return project
+
+
+def verify_existing_project(
+    files: ProjectFiles,
+    requested: dict[str, object],
+    validator: Any,
+    openpyxl: Any,
+) -> None:
+    existing = validate_project(files.read_json(PROJECT_PATH), validator)
+    if existing != requested:
+        raise BlockedError("已登记项目身份或版本与本次请求不一致")
+    for relative_path in MANAGED_DIRECTORIES:
         try:
-            os.mkdir(name, mode=0o755, dir_fd=parent_fd)
-        except FileExistsError:
-            pass
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    return os.open(name, flags, dir_fd=parent_fd)
-
-
-def open_directory_chain(parent_fd: int, parts: tuple[str, ...], *, create: bool) -> int:
-    current_fd = os.dup(parent_fd)
+            files.resolve(relative_path, expect="dir")
+        except ProjectIOError as error:
+            raise BlockedError(f"现有 AI SOW 项目不完整：{relative_path}") from error
     try:
-        for part in parts:
-            next_fd = open_directory_at(current_fd, part, create=create)
-            os.close(current_fd)
-            current_fd = next_fd
-        return current_fd
-    except Exception:
-        os.close(current_fd)
+        current_template = files.read_bytes(TEMPLATE_PATH)
+    except ProjectIOError as error:
+        raise BlockedError(f"现有 AI SOW 项目不完整：{TEMPLATE_PATH}") from error
+    try:
+        verify_template_round_trip(current_template, openpyxl)
+    except BlockedError:
         raise
+    except Exception as error:
+        raise BlockedError("现有项目模板无法完成 XLSX round-trip") from error
 
 
-def read_file_at(parent_fd: int, name: str) -> bytes | None:
-    flags = os.O_RDONLY | os.O_NOFOLLOW
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    try:
-        file_fd = os.open(name, flags, dir_fd=parent_fd)
-    except FileNotFoundError:
-        return None
-    try:
-        with os.fdopen(file_fd, "rb") as stream:
-            file_fd = -1
-            return stream.read()
-    finally:
-        if file_fd >= 0:
-            os.close(file_fd)
-
-
-def publish_file_at(parent_fd: int, name: str, payload: bytes, *, label: str) -> bool:
-    existing = read_file_at(parent_fd, name)
-    if existing is not None:
-        if existing != payload:
-            raise BlockedError(f"existing {label} has conflicting content: {name}")
-        return False
-
-    temporary = f".setup-{uuid.uuid4().hex}.tmp"
-    published = False
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    file_fd = os.open(temporary, flags, 0o600, dir_fd=parent_fd)
-    try:
-        with os.fdopen(file_fd, "wb") as stream:
-            file_fd = -1
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        try:
-            os.link(
-                temporary,
-                name,
-                src_dir_fd=parent_fd,
-                dst_dir_fd=parent_fd,
-                follow_symlinks=False,
-            )
-            published = True
-        except FileExistsError:
-            raced = read_file_at(parent_fd, name)
-            if raced != payload:
-                raise BlockedError(f"existing {label} has conflicting content: {name}")
-    finally:
-        if file_fd >= 0:
-            os.close(file_fd)
-        try:
-            os.unlink(temporary, dir_fd=parent_fd)
-        except FileNotFoundError:
-            pass
-    return published
-
-
-def same_directory_at(parent_fd: int, name: str, anchored_fd: int) -> bool:
-    try:
-        current_fd = open_directory_at(parent_fd, name)
-    except OSError:
-        return False
-    try:
-        current = os.fstat(current_fd)
-        anchored = os.fstat(anchored_fd)
-        return (current.st_dev, current.st_ino) == (anchored.st_dev, anchored.st_ino)
-    finally:
-        os.close(current_fd)
-
-
-def same_directory_chain_at(
-    parent_fd: int,
-    parts: tuple[str, ...],
-    anchored_fd: int,
-) -> bool:
-    try:
-        current_fd = open_directory_chain(parent_fd, parts, create=False)
-    except OSError:
-        return False
-    try:
-        current = os.fstat(current_fd)
-        anchored = os.fstat(anchored_fd)
-        return (current.st_dev, current.st_ino) == (anchored.st_dev, anchored.st_ino)
-    finally:
-        os.close(current_fd)
-
-
-def install_project_shell_posix(
-    project_root: Path,
-    project: dict[str, Any],
+def initialize_fresh_project(
+    files: ProjectFiles,
+    project: dict[str, object],
     template_bytes: bytes,
-    *,
-    publish_manifest: bool,
-) -> Path:
-    """Publish setup-owned files relative to no-follow directory handles."""
-    root_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    if hasattr(os, "O_CLOEXEC"):
-        root_flags |= os.O_CLOEXEC
-    root_fd = os.open(project_root, root_flags)
-    ai_sow_fd = -1
-    templates_fd = -1
-    manifest_published = False
+) -> None:
     try:
-        ai_sow_fd = open_directory_at(root_fd, ".ai-sow", create=True)
-        directory_parts = (
-            ("templates",),
-            ("work",),
-            ("data",),
-            ("reviews",),
-            ("validation",),
-            ("outputs",),
-            ("inputs",),
-            ("runtime", "setup"),
-        )
-        for parts in directory_parts:
-            directory_fd = open_directory_chain(ai_sow_fd, parts, create=True)
-            os.close(directory_fd)
+        files.resolve(".ai-sow", expect="any")
+    except ProjectIOError as error:
+        if error.code != "PROJECT_PATH_MISSING":
+            raise
+    else:
+        raise BlockedError("目标包含未登记或不完整的 .ai-sow 受管内容")
 
-        templates_fd = open_directory_chain(ai_sow_fd, ("templates",), create=False)
-        publish_file_at(
-            templates_fd,
-            "sow-template.xlsx",
-            template_bytes,
-            label="setup-owned template",
-        )
-
-        def managed_directories_are_current() -> bool:
-            return (
-                same_directory_at(root_fd, ".ai-sow", ai_sow_fd)
-                and same_directory_chain_at(
-                    ai_sow_fd,
-                    ("templates",),
-                    templates_fd,
-                )
-            )
-
-        if not managed_directories_are_current():
-            raise BlockedError("managed setup directory changed during setup")
-
-        if publish_manifest:
-            manifest_published = publish_file_at(
-                ai_sow_fd,
-                "project.json",
-                (json.dumps(project, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
-                label="project manifest",
-            )
-
-        if not managed_directories_are_current():
-            if manifest_published:
-                try:
-                    os.unlink("project.json", dir_fd=ai_sow_fd)
-                except FileNotFoundError:
-                    pass
-            raise BlockedError("managed setup directory changed during setup")
-        return project_root / ".ai-sow/templates/sow-template.xlsx"
-    except OSError as error:
-        if error.errno in {errno.ELOOP, errno.ENOTDIR}:
-            raise BlockedError("managed setup path changed to a symlink") from error
-        raise
-    finally:
-        if templates_fd >= 0:
-            os.close(templates_fd)
-        if ai_sow_fd >= 0:
-            os.close(ai_sow_fd)
-        os.close(root_fd)
+    for relative_path in MANAGED_DIRECTORIES:
+        files.ensure_dir(relative_path)
+    files.publish_new(TEMPLATE_PATH, template_bytes)
+    files.publish_new(PROJECT_PATH, project_bytes(project))
 
 
 def main() -> int:
@@ -309,8 +136,8 @@ def main() -> int:
     except ImportError as error:
         emit(
             "NEEDS_INPUT",
-            f"missing Python dependency: {error.name}",
-            nextStep="Run `uv sync --locked` from the plugin repository, then rerun setup.",
+            f"缺少 Python 依赖：{error.name}",
+            nextStep="运行 `uv sync --project <plugin-root> --locked` 后重新执行 setup。",
         )
         return 2
 
@@ -319,75 +146,36 @@ def main() -> int:
     schema_path = skill_root / "contracts" / "project.schema.json"
     try:
         template_bytes = asset_path.read_bytes()
-        workbook = openpyxl.load_workbook(BytesIO(template_bytes), data_only=False)
-        try:
-            checked = BytesIO()
-            workbook.save(checked)
-        finally:
-            workbook.close()
-
+        verify_template_round_trip(template_bytes, openpyxl)
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         validator = Draft202012Validator(schema)
-        project_root = args.project_root.resolve(strict=True)
-        ai_sow = project_root / ".ai-sow"
-        project_path = ai_sow / "project.json"
-        reject_symlink_chain(project_root, ai_sow)
-        reject_symlink_chain(project_root, project_path)
-        is_existing_project = project_path.exists()
-        if is_existing_project and not args.repair:
-            emit("BLOCKED", "project already exists", outputs=[str(project_path)])
-            return 2
-
-        if is_existing_project:
-            try:
-                existing = json.loads(project_path.read_text(encoding="utf-8"))
-                validator.validate(existing)
-            except Exception as error:
-                raise BlockedError(f"registered project manifest is invalid: {error}") from error
-            identity = (args.project_id, args.name)
-            registered_identity = (
-                existing["projectId"],
-                existing["name"],
-            )
-            if identity != registered_identity:
-                emit("BLOCKED", "repair identity does not match registered project")
-                return 2
-            template_path = install_project_shell(
-                project_root,
-                existing,
-                template_bytes,
-                publish_manifest=False,
-            )
-        else:
-            requested = {
+        requested = validate_project(
+            {
                 "projectId": args.project_id,
                 "name": args.name,
                 "pluginVersion": PLUGIN_VERSION,
                 "sowStandardVersion": SOW_STANDARD_VERSION,
-            }
-            errors = sorted(validator.iter_errors(requested), key=lambda item: list(item.path))
-            if errors:
-                emit(
-                    "BLOCKED",
-                    "project metadata is invalid",
-                    diagnostics=[error.message for error in errors],
-                )
-                return 2
-            template_path = install_project_shell(
-                project_root,
-                requested,
-                template_bytes,
-                publish_manifest=True,
-            )
+            },
+            validator,
+        )
+        files = ProjectFiles.open(args.project_root)
+        try:
+            files.resolve(PROJECT_PATH, expect="file")
+        except ProjectIOError as error:
+            if error.code != "PROJECT_PATH_MISSING":
+                raise
+            initialize_fresh_project(files, requested, template_bytes)
+        else:
+            verify_existing_project(files, requested, validator, openpyxl)
 
         emit(
             "OK",
-            "AI SOW project is ready",
-            outputs=[str(project_path), str(template_path)],
-            nextStep="Run analyze-requirement.",
+            "AI SOW 项目外壳已通过验证",
+            outputs=[PROJECT_PATH, TEMPLATE_PATH],
+            nextStep="显式调用 analyze-requirement。",
         )
         return 0
-    except BlockedError as error:
+    except (BlockedError, ProjectIOError) as error:
         emit("BLOCKED", str(error))
         return 2
     except Exception as error:

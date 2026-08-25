@@ -20,14 +20,14 @@ STRUCTURED_REFERENCE = re.compile(
 )
 
 SCHEMA_SHA256 = {
-    "skills/analyze-as-is/contracts/asis.schema.json": "c2813c34c0a595814b2ea9c5eda9654f0413c6e3b7534d5332d8cfcc0094b763",
-    "skills/analyze-requirement/contracts/source-requirements.schema.json": "98cc93bf2c347e7d1ba806fedc9979edf272f3309cae6e046749c40d02516ec5",
-    "skills/generate-design/contracts/technical-requirements.schema.json": "b4aed99021f07ab893ef77e8744c125a01a70bee195e1c80ad596e295a927f6e",
-    "skills/generate-design/contracts/design.schema.json": "edb66abc964e2aaf80e5c401da6ead403ead474fea51ca68875312205c01fe0e",
-    "skills/generate-sow/contracts/manifest.schema.json": "2bed8184a8d7a1933b96c68d6392a7219f5b6643e974a6057217dc24c4bb920c",
-    "skills/generate-story/contracts/delivery.schema.json": "8becebb352f5bd10f9434f871301041747f481e9d0b6bbd230f142cf2b83ba1f",
-    "skills/generate-task/contracts/estimate.schema.json": "88f4ff184dc9fd2cdba0c2903674edb99cc556a8faf27158d2373f59766d621a",
-    "skills/setup/contracts/project.schema.json": "8fb1713f471bcf809925dbfb3d34f3e46d1b9412d1ad3dfcba5411f31be08ef0",
+    "skills/analyze-as-is/contracts/asis.schema.json": "0f9421a1000b9c7c157cc34f6683954ee0c67f7f2a8d2eea2f8c7b87d759d137",
+    "skills/analyze-requirement/contracts/source-requirements.schema.json": "70562d9dbd6ac63f86ab8271f7f216e9c49799a1a6ac4f765a4dc9a6dd736c80",
+    "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
+    "skills/generate-design/contracts/design.schema.json": "27acb2adb696931bc16a103603fd9bc89b6b7c9d71c65ede51708edf9554d12f",
+    "skills/generate-sow/contracts/manifest.schema.json": "b42c30a82e76709f0021caa3f7aac8bdaeb40ebb83d237f168f8f9fba8ebaee5",
+    "skills/generate-story/contracts/delivery.schema.json": "d76137028a6879000ff08ed50ece9c6cb7c95022a9b219c164fc7817c65596d3",
+    "skills/generate-task/contracts/estimate.schema.json": "34986edeb7fe53984b6e4696c979cd44f90ae2ff0c662d3665db6d748c5534c6",
+    "skills/setup/contracts/project.schema.json": "6c10d9695de6eaffb2e1b3af79447467127c5c1e1dd4dd6ca37d788b63386e2d",
 }
 
 SCHEMA_ENUMS = {
@@ -50,7 +50,10 @@ SCHEMA_ENUMS = {
     "skills/generate-design/contracts/design.schema.json": {
         "$.$defs.designItem.properties.type": ["COMPONENT", "FLOW", "DATA", "INTEGRATION", "INFRASTRUCTURE", "QUALITY"],
         "$.$defs.architectureDelta.properties.changeType": ["NEW", "ADOPT", "ADJUST", "REPLACE", "RETIRE"],
+        "$.$defs.decision.properties.decisionKind": ["INTEGRATION_BOUNDARY", "PROVIDER_TARGET", "OPERATIONAL_THRESHOLD", "ENVIRONMENT_AUTHORITY", "CUTOVER_ROLLBACK", "OTHER"],
         "$.$defs.scopeDecision.properties.decision": ["IN_SCOPE", "FULLY_COVERED", "OUT_OF_SCOPE"],
+        "$.$defs.scopeDecision.properties.requiredIntegrationBoundary": ["NONE", "PORT_ONLY", "END_TO_END"],
+        "$.$defs.scopeDecision.properties.requiredDecisionKinds.items": ["INTEGRATION_BOUNDARY", "PROVIDER_TARGET", "OPERATIONAL_THRESHOLD", "ENVIRONMENT_AUTHORITY", "CUTOVER_ROLLBACK"],
     },
     "skills/generate-sow/contracts/manifest.schema.json": {
         "$.properties.projectMode": ["GREENFIELD", "BROWNFIELD"],
@@ -58,6 +61,10 @@ SCHEMA_ENUMS = {
     "skills/generate-story/contracts/delivery.schema.json": {
         "$.$defs.integration.properties.direction": ["INBOUND", "OUTBOUND"],
         "$.$defs.integration.properties.owner": ["INTERNAL", "EXTERNAL"],
+        "$.$defs.integration.properties.deliveryBoundary": ["PORT_ONLY", "END_TO_END"],
+        "$.$defs.integration.properties.targetKind": ["PORT", "ADAPTER", "SYSTEM", "PROVIDER"],
+        "$.$defs.story.properties.requiredIntegrationBoundary": ["NONE", "PORT_ONLY", "END_TO_END"],
+        "$.$defs.acceptanceCriterion.properties.decisionGate": ["NOT_REQUIRED", "REQUIRED"],
         "$.$defs.assumption.properties.type": ["假设", "风险"],
         "$.$defs.assumption.properties.status": ["已明确", "待确认"],
     },
@@ -71,7 +78,7 @@ SCHEMA_ENUMS = {
     "skills/setup/contracts/project.schema.json": {},
 }
 
-TEMPLATE_SHA256 = "40c15a7a4917f4127a17bccb49b9c44df41c4a57c2bbead9b4c3c7163a68efbc"
+TEMPLATE_SHA256 = "dc17a4ccb2902ba12379e7b964a2612d07f138a9b542cc6774bc05b4d3bf2e48"
 
 
 def enum_arrays(value: object, path: str = "$") -> dict[str, list[object]]:
@@ -139,7 +146,8 @@ class RepositoryLayoutTests(unittest.TestCase):
             "pyproject.toml",
             "uv.lock",
             "README.md",
-            "runtime/review_gates.py",
+            "runtime/handoff.py",
+            "runtime/project_io.py",
             "skills/setup/SKILL.md",
             "skills/generate-sow/SKILL.md",
             "skills/setup/assets/sow-template.xlsx",
@@ -167,16 +175,16 @@ class RepositoryLayoutTests(unittest.TestCase):
         pyproject_text = (plugin_root / "pyproject.toml").read_text()
         lock_text = (plugin_root / "uv.lock").read_text()
         self.assertEqual(manifest["name"], "ai-sow")
-        self.assertEqual(manifest["version"], "0.1.0-beta.1")
-        self.assertEqual(schema["properties"]["pluginVersion"]["const"], "0.1.0-beta.1")
-        self.assertEqual(project["pluginVersion"], "0.1.0-beta.1")
+        self.assertEqual(manifest["version"], "0.1.0-beta.2")
+        self.assertEqual(schema["properties"]["pluginVersion"]["const"], "0.1.0-beta.2")
+        self.assertEqual(project["pluginVersion"], "0.1.0-beta.2")
         self.assertRegex(
             pyproject_text,
-            r'(?ms)^\[project\].*?^version = "0\.1\.0b1"$',
+            r'(?ms)^\[project\].*?^version = "0\.1\.0b2"$',
         )
         self.assertRegex(
             lock_text,
-            r'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "0\.1\.0b1"$',
+            r'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "0\.1\.0b2"$',
         )
         self.assertEqual(project["sowStandardVersion"], "1.3")
 
@@ -232,7 +240,19 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertTrue(shared_reference.is_file(), shared_reference)
 
         skill_paths = sorted((plugin_root / "skills").glob("*/SKILL.md"))
-        self.assertEqual(len(skill_paths), 7)
+        self.assertEqual(
+            {path.parent.name for path in skill_paths},
+            {
+                "setup",
+                "analyze-requirement",
+                "analyze-as-is",
+                "generate-design",
+                "generate-story",
+                "generate-task",
+                "generate-sow",
+                "reconcile",
+            },
+        )
         for skill_path in skill_paths:
             declared_references = [
                 Path(target)
@@ -327,8 +347,8 @@ class RepositoryLayoutTests(unittest.TestCase):
             "Windows 11 实机",
             "NTFS 目录联接",
             "重解析点",
-            "check/write/rename race",
-            "零字节",
+            "同文件系统发布",
+            "不同内容拒绝覆盖",
             "非 ASCII",
             "长路径",
             ".cmd Git shim",

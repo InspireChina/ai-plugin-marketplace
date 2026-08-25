@@ -1,61 +1,89 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:generate-sow:manifest:0.1",
+  "$id": "urn:ai-sow:generate-sow:manifest:0.2",
+  "$defs": {
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"description": "交付包内的项目相对路径。", "type": "string", "pattern": "^(?:sources|validation)/.+$"},
+        "sha256": {"description": "该文件原始字节的 SHA-256 摘要。", "type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repoId", "setupRevision"],
+      "properties": {
+        "repoId": {"description": "项目登记的代码仓库稳定标识。", "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+        "setupRevision": {"description": "现状调查绑定的仓库完整提交摘要。", "type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "priorSow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priorSowId", "sha256"],
+      "properties": {
+        "priorSowId": {"description": "项目登记的往期 SOW 稳定标识。", "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+        "sha256": {"description": "往期 SOW 原始字节的 SHA-256 摘要。", "type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  },
   "type": "object",
   "additionalProperties": false,
-  "required": ["packageId", "projectId", "pluginVersion", "sowStandardVersion", "projectMode", "repositories", "priorSows", "inputs", "templatePath"],
+  "required": ["packageId", "fingerprintAlgorithm", "generationFingerprint", "generatedWorkbookSha256", "projectId", "pluginVersion", "sowStandardVersion", "projectMode", "repositories", "priorSows", "inputs", "reviews", "template", "validationReceipts"],
   "properties": {
-    "packageId": {
-      "type": "string",
-      "pattern": "^sow-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-    },
-    "projectId": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"
-    },
-    "pluginVersion": {
-      "type": "string",
-      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
-    },
-    "sowStandardVersion": {"const": "1.3"},
-    "projectMode": {"enum": ["GREENFIELD", "BROWNFIELD"]},
-    "repositories": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["repoId", "setupRevision"],
-        "properties": {
-          "repoId": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
-          "setupRevision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
-        }
-      }
-    },
-    "priorSows": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["priorSowId", "sha256"],
-        "properties": {
-          "priorSowId": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
-          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
-        }
-      }
-    },
+    "packageId": {"description": "由生成指纹形成的确定性交付包标识。", "type": "string", "pattern": "^sow-sha256-[0-9a-f]{64}$"},
+    "fingerprintAlgorithm": {"description": "计算交付包标识所采用的固定算法。", "const": "ai-sow-package-v1"},
+    "generationFingerprint": {"description": "绑定项目、稳定数据、评审、收据与模板的生成指纹。", "type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "generatedWorkbookSha256": {"description": "生成工作簿确定性字节的 SHA-256 摘要。", "type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "projectId": {"description": "生成该交付包的项目稳定机器标识。", "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
+    "pluginVersion": {"description": "生成该交付包的 AI SOW 插件版本。", "const": "0.1.0-beta.2"},
+    "sowStandardVersion": {"description": "工作簿采用的 SOW 标准版本。", "const": "1.3"},
+    "projectMode": {"description": "现状合同声明的项目模式。", "enum": ["GREENFIELD", "BROWNFIELD"]},
+    "repositories": {"description": "现状收据绑定的仓库及其提交快照。", "type": "array", "items": {"$ref": "#/$defs/repository"}},
+    "priorSows": {"description": "现状收据绑定的往期 SOW 摘要。", "type": "array", "items": {"$ref": "#/$defs/priorSow"}},
     "inputs": {
+      "description": "投影到工作簿的六份稳定 JSON。",
       "type": "object",
       "additionalProperties": false,
       "required": ["sourceRequirements", "asis", "design", "derivedRequirements", "delivery", "estimate"],
       "properties": {
-        "sourceRequirements": {"const": ".ai-sow/data/analyze-requirement/requirements.json"},
-        "asis": {"const": ".ai-sow/data/analyze-as-is/asis.json"},
-        "design": {"const": ".ai-sow/data/generate-design/design.json"},
-        "derivedRequirements": {"const": ".ai-sow/data/generate-design/requirements.json"},
-        "delivery": {"const": ".ai-sow/data/generate-story/delivery.json"},
-        "estimate": {"const": ".ai-sow/data/generate-task/estimate.json"}
+        "sourceRequirements": {"description": "业务需求稳定数据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/data/analyze-requirement/requirements.json"}}}]},
+        "asis": {"description": "系统现状稳定数据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/data/analyze-as-is/asis.json"}}}]},
+        "design": {"description": "目标设计稳定数据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/data/generate-design/design.json"}}}]},
+        "derivedRequirements": {"description": "技术需求稳定数据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/data/generate-design/requirements.json"}}}]},
+        "delivery": {"description": "Story 与验收范围稳定数据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/data/generate-story/delivery.json"}}}]},
+        "estimate": {"description": "Task 估算输入稳定数据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/data/generate-task/estimate.json"}}}]}
       }
     },
-    "templatePath": {"const": ".ai-sow/templates/sow-template.xlsx"}
+    "reviews": {
+      "description": "五位 Owner 批准且被收据绑定的评审文件。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzeRequirement", "analyzeAsIs", "generateDesign", "generateStory", "generateTask"],
+      "properties": {
+        "analyzeRequirement": {"description": "业务需求批准评审。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/reviews/analyze-requirement.md"}}}]},
+        "analyzeAsIs": {"description": "系统现状批准评审。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/reviews/analyze-as-is.md"}}}]},
+        "generateDesign": {"description": "目标设计批准评审。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/reviews/generate-design.md"}}}]},
+        "generateStory": {"description": "交付 Story 批准评审。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/reviews/generate-story.md"}}}]},
+        "generateTask": {"description": "Task 估算输入批准评审。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/reviews/generate-task.md"}}}]}
+      }
+    },
+    "template": {"description": "唯一计算权威模板的原始字节副本。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "sources/templates/sow-template.xlsx"}}}]},
+    "validationReceipts": {
+      "description": "五位 Owner 的成功编译收据。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzeRequirement", "analyzeAsIs", "generateDesign", "generateStory", "generateTask"],
+      "properties": {
+        "analyzeRequirement": {"description": "业务需求 Owner 收据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "validation/analyze-requirement.json"}}}]},
+        "analyzeAsIs": {"description": "系统现状 Owner 收据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "validation/analyze-as-is.json"}}}]},
+        "generateDesign": {"description": "目标设计 Owner 收据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "validation/generate-design.json"}}}]},
+        "generateStory": {"description": "交付 Story Owner 收据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "validation/generate-story.json"}}}]},
+        "generateTask": {"description": "Task 估算输入 Owner 收据。", "allOf": [{"$ref": "#/$defs/digest"}, {"properties": {"path": {"const": "validation/generate-task.json"}}}]}
+      }
+    }
   }
 }

@@ -1,7 +1,7 @@
 {
   "analysisScope": {
     "mode": "BROWNFIELD",
-    "asOfDate": "2026-08-19",
+    "asOfDate": "2026-08-25",
     "repositorySnapshots": [
       {"repoId": "service-api", "path": "repositories/service-api", "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "dirty": false}
     ],
@@ -95,13 +95,6 @@
       "reference": "prior-sow:sow-phase-one#section=customer-profile",
       "summary": "往期 SOW 承诺增加忠诚度状态。",
       "supportsIds": ["commitment-loyalty-profile"]
-    },
-    {
-      "evidenceId": "evidence-retention-question",
-      "kind": "QUESTIONNAIRE",
-      "reference": "questionnaire:DATA-01",
-      "summary": "数据保留问题仍未得到答复。",
-      "supportsIds": ["uncertainty-data-retention"]
     },
     {
       "evidenceId": "evidence-source-requirement",

@@ -31,7 +31,7 @@ class PluginSmokeTests(unittest.TestCase):
                 copy_plugin=True,
             )
             self.assertEqual(report["pluginName"], "ai-sow")
-            self.assertEqual(report["pluginVersion"], "0.1.0-beta.1")
+            self.assertEqual(report["pluginVersion"], "0.1.0-beta.2")
             self.assertEqual(report["setupOutcome"], "OK")
             self.assertEqual(report["validatorCount"], 5)
             self.assertEqual(report["generateOutcome"], "OK")
@@ -45,7 +45,7 @@ class PluginSmokeTests(unittest.TestCase):
                 {
                     "projectId": "smoke-greenfield",
                     "name": "Smoke Greenfield",
-                    "pluginVersion": "0.1.0-beta.1",
+                    "pluginVersion": "0.1.0-beta.2",
                     "sowStandardVersion": "1.3",
                 },
             )

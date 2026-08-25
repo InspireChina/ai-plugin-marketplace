@@ -11,9 +11,24 @@
     }
   },
   "properties": {
-    "projectId": {"$ref": "#/$defs/id"},
-    "name": {"type": "string", "minLength": 1},
-    "pluginVersion": {"type": "string", "const": "0.1.0-beta.1"},
-    "sowStandardVersion": {"type": "string", "const": "1.3"}
+    "projectId": {
+      "$ref": "#/$defs/id",
+      "description": "项目的稳定机器标识；项目语义不变时保持原值，不能用于保存名称、路径或版本。"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "面向用户展示的项目正式名称；保留用户确认的专有名称，不混入项目状态或版本说明。"
+    },
+    "pluginVersion": {
+      "type": "string",
+      "const": "0.1.0-beta.2",
+      "description": "初始化该项目外壳的 AI SOW 插件版本，用于判断合同兼容性；不表示业务数据已迁移。"
+    },
+    "sowStandardVersion": {
+      "type": "string",
+      "const": "1.3",
+      "description": "项目采用的 SOW 标准版本，用于绑定模板与交付规则；不保存插件实现版本。"
+    }
   }
 }

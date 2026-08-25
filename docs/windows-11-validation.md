@@ -1,6 +1,6 @@
 # Windows 11 验证状态
 
-AI Plugin Marketplace 0.1.0-beta.1 对 Windows 11 的支持状态为**临时支持
+AI Plugin Marketplace 0.1.0-beta.2 对 Windows 11 的支持状态为**临时支持
 （`Provisional`）**。仓库已经具备 Windows CI 和针对部分可移植分支的合成测试，但尚未
 在 Windows 11 实机上完成下方清单。CI 和合成测试是有价值的回归信号，但都不能作为
 NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
@@ -24,7 +24,7 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
 | 领域 | 实机测试前状态 | 必需结论 |
 | --- | --- | --- |
 | NTFS 间接引用 | 未确认 | 创建目录符号链接、NTFS 目录联接（NTFS junction）和其他可访问的重解析点形式。确认指向项目外部的 `.ai-sow/validation` 和报告目标会被拒绝，且外部目标保持不变。 |
-| 报告写入竞态 | 未确认 | 针对验证目录和报告文件运行并发的检查、写入、重命名竞态（`check/write/rename race`）。确认报告只会安全写入或被拒绝，不会重定向到项目外部，也不会截断原报告或留下零字节（zero-byte）文件。 |
+| 同文件系统发布 | 未确认 | 确认项目内临时目录与最终 package 的 rename、相同内容复用和不同内容拒绝覆盖在 NTFS 上行为一致。 |
 | Windows 路径 | 未确认 | 从包含非 ASCII 字符和空格的项目路径运行。另行测试长路径（long path），并记录是否启用 Windows 长路径支持。 |
 | Git 发现 | 仅合成测试 | 确认真正的 Git for Windows 和受控 `.cmd Git shim` 都能被发现，并使用预期的 optional-lock 环境设置调用。 |
 | 工具链与已安装插件 | 未确认 | 确认 Python 3.12、`uv`、Codex marketplace 注册、插件安装、已安装插件目录发现，以及从已安装插件而非源码 checkout 运行 `pytest`。 |
@@ -32,8 +32,9 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
 | Excel 结果 | 未确认 | 在 Microsoft Excel Desktop 中打开生成的工作簿，使用 `F9` 计算，再执行完整计算，保存并检查公式缓存值和公式错误。 |
 | 开发者功能 | 未确认 | 在记录开发者模式（Developer Mode）和普通符号链接权限的情况下重复文件系统测试；记录需要提权或无法创建的场景。 |
 
-报告写入实现已经包含防御性的身份与重解析点检查。在上述原生 NTFS 和并发场景完成前，
-这些控制仍属于尚未在 Windows 上验证的防护，不能宣传为已解决的 Windows 兼容性。
+项目 I/O 已拒绝受管路径中的重解析点；生成器只实现同文件系统 rename 与内容一致性复用，
+不声明对同权限攻击者竞态或跨设备 copy 的防护。在上述原生 NTFS 场景完成前，不能宣传为
+已解决的 Windows 兼容性。
 
 ## Windows 11 实机验收清单
 
