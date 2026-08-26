@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "AI SOW",
     "shortDescription": "分析范围并生成可评审的 SOW 工作簿。",
-    "longDescription": "七个相互隔离的 Skill 依次指导需求分析、现状调研、方案设计、交付拆分、任务估算，并确定性地生成 SOW 工作簿。",
+    "longDescription": "七个主线阶段依次完成需求、现状、设计、交付、估算和 SOW 生成；一个维护 Skill 负责已发布链路的整体影响复核。",
     "developerName": "Yuan Li",
     "category": "Productivity",
     "capabilities": [

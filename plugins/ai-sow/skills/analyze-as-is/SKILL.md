@@ -8,16 +8,17 @@ description: 当 AI SOW 在方案设计前需要独立调查代码、集成、�
 先形成证据完整、可独立批准的人类可读评审，再编译稳定 As-Is 数据。没有代码库或往期 SOW 是合法的 Greenfield 情况；仍须明确九个 Topic 的覆盖边界和未知项。
 
 执行前读取并遵守[输出语言合同](../../references/output-language.md)。中文用于结论、问卷、证据摘要和评审；合同 token 保持原值。
+按[插件运行时环境合同](../../references/runtime-environment.md)从 `<plugin-root>` 解析当前平台的 `<python-bin>`；后续命令直接使用 setup 已建立的插件 `.venv`。
 
 ## 精确批准快速路径
 
 若本次新 session 的用户指令已经明确批准 Owner `analyze-as-is` 和一个完整 packet SHA-256，本节优先于下方完整调查流程。从当前 turn 的 Available skills 条目直接取得本 `SKILL.md` 的绝对路径；不得使用 `rg`、`find` 或 `rg --files` 枚举或重新定位 Skill。Stage 不得手写 approval JSON，必须严格依次只运行以下两条确定性命令；第一条用 canonical bytes 写固定 `ai-sow-owner-approval-v1` sidecar，第二条执行唯一发布 preflight：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-approval \
   --packet-sha256 "<用户明确批准的完整 packet SHA-256>"
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode publish-approved \
   --candidate .ai-sow/work/analyze-as-is/asis.candidate.json \
   --review-path .ai-sow/work/analyze-as-is/review.candidate.md
@@ -32,7 +33,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文或证据：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-reviewer \
   --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
 ```
@@ -67,7 +68,7 @@ Validator 是本 Skill 的确定性脚本，不再单独创建 Agent。Stage 原
 Stage 在读取 Requirements 或开始调查前只运行以下确定性输入门禁；不得用 `check` 或 `review` 代替：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode upstream-check
 ```
 
@@ -100,9 +101,9 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 Stage 先确定性准备 Owner-local closure 并投影 review：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/prepare_context.py" \
+"<python-bin>" "<skill-root>/scripts/prepare_context.py" \
   --project-root "<project-root>"
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/render_review.py" \
+"<python-bin>" "<skill-root>/scripts/render_review.py" \
   --project-root "<project-root>"
 ```
 
@@ -111,7 +112,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/render_re
 随后生成 hash-bound packet：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode review \
   --candidate .ai-sow/work/analyze-as-is/asis.candidate.json \
   --review-path .ai-sow/work/analyze-as-is/review.candidate.md
@@ -124,7 +125,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 Reviewer `PASS` 后，Stage 向用户展示 Owner、packet path、精确 SHA-256、risk summary 和正式目标路径。只有用户明确批准该精确 packet，才写 canonical `.ai-sow/work/analyze-as-is/approval.json`，使用 `ai-sow-owner-approval-v1` 并绑定相同 packet SHA-256，然后只运行：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode publish-approved \
   --candidate .ai-sow/work/analyze-as-is/asis.candidate.json \
   --review-path .ai-sow/work/analyze-as-is/review.candidate.md
@@ -137,7 +138,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 Requirement receipt/output 更新但 As-Is 专业结论与稳定 JSON 无需变化时，Stage 在 review 记录新旧 receipt hash、理由、稳定 ID 和 `Impact: NO_CHANGE`。Reviewer `PASS` 且用户确认后，Stage 运行：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode rebind
 ```
 

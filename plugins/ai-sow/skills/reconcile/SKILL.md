@@ -10,6 +10,8 @@ Skill 不拥有稳定业务 JSON，也不解释或复制 Owner 业务规则。
 
 执行前完整读取并遵守[输出语言合同](../../references/output-language.md)。整体评审使用简体中文；
 Owner、路径、hash、枚举和其他 machine token 保持原值。
+按[插件运行时环境合同](../../references/runtime-environment.md)从 `<plugin-root>` 解析当前平台的
+`<python-bin>`；全部确定性命令直接使用 setup 已建立的插件 `.venv`。
 
 ## 当前任务与固定边界
 
@@ -73,15 +75,15 @@ Owner receipt 的 named output 顺序使用 canonical `name=64-lowercase-hex`；
 
 ### 精确路径与 Adapter 命令
 
-从已加载 Skill 路径解析一次 `<plugin-root>` 后，在整个 run 中原样复用该绝对路径；不得重新搜索、
-手工缩写或猜测 cache version。Owner 的固定路径如下，不得把 `requirements.json` 猜成
+从已加载 Skill 路径解析一次 `<skill-root>`、`<plugin-root>` 与 `<python-bin>` 后，在整个 run 中原样
+复用这些绝对路径；不得重新搜索、手工缩写或猜测 cache version。Owner 的固定路径如下，不得把 `requirements.json` 猜成
 `technical-requirements.json`，也不得预读尚未创建的 candidate 或 projection：
 
 Owner 合同读取后的第一条项目命令固定为只读 baseline inspection；不得用 `sha256sum`、`shasum`、
 整文件 `sed` 或自行拼接 Python 代替，也不得在它之前读取任何项目 artifact：
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" \
   --start-owner "<correction-owner>" \
   --mode inspect
@@ -116,29 +118,27 @@ baseline 或读取完整 `NO_CHANGE` review/output。
 `inspect-work` 与 `prepare-changed` 的独立命令分别为：
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" --owner "<owner>" --mode inspect-work
 ```
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" --run-id "<run-id>" --owner "<owner>" \
   --mode prepare-changed
 ```
 
 Owner validator 仍由当前 Stage 直接调用，reconcile Python 不跨 Skill 执行脚本。每条下列命令必须
-是一个独立 tool call：一个 shell command 中只能出现一次 `uv run`，不得用换行、`;`、`&&` 或
-`||` 串联后续动作。统一使用 `uv --directory "<plugin-root>" run --project .`，每条命令只出现一次
-插件根字面量，不使用 shell 临时变量或重复 cache path；所有 `--project-root` 必须是绝对路径，
-不得使用 `--stage-root`。`uv --directory` 会把子进程 cwd 切到插件目录，因此它只用于下方
-Adapter/Owner 脚本命令；读取或编辑项目 artifact 时保持项目 cwd，不得把项目相对路径传给
-`uv --directory ... python -c`。
+是一个独立 tool call：一个 shell command 中只能出现一次 `"<python-bin>"`，不得用换行、`;`、`&&`
+或 `||` 串联后续动作。每条命令直接使用一个绝对脚本路径，不使用 shell 临时变量或重复 cache path；
+所有 `--project-root` 必须是绝对路径，不得使用 `--stage-root`。直接调用插件 `.venv` Python 不改变
+项目 cwd；读取或编辑项目 artifact 时继续保持项目 cwd，不得拼接临时 `python -c` 代替公开命令。
 
 `CHANGED` 固定执行三个独立调用：Owner `check`、`stage-owner review`、Owner `publish`。Owner 命令
 使用表中 validator/candidate/work review 精确路径及其 Skill 公布的 candidate flags：
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "<validator-path>" \
+"<python-bin>" "<validator-path>" \
   --project-root "<project-root>" \
   --staging-root ".ai-sow/.stage-<run-id>" \
   --mode check \
@@ -147,13 +147,13 @@ uv --directory "<plugin-root>" run --project . --locked python "<validator-path>
 ```
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" --run-id "<run-id>" --owner "<owner>" \
   --artifact review --mode stage-owner
 ```
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "<validator-path>" \
+"<python-bin>" "<validator-path>" \
   --project-root "<project-root>" \
   --staging-root ".ai-sow/.stage-<run-id>" \
   --mode publish \
@@ -171,7 +171,7 @@ input：
   Task receipt 可同时直接绑定 Design 与 Story，因此不得把“直接输入”误解为只有紧邻上一阶段。
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" --run-id "<run-id>" --owner "<owner>" \
   --mode prepare-no-change
 ```
@@ -181,7 +181,7 @@ uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile
 Owner-local `rebind` 的独立命令为：
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "<validator-path>" \
+"<python-bin>" "<validator-path>" \
   --project-root "<project-root>" \
   --staging-root ".ai-sow/.stage-<run-id>" \
   --mode rebind
@@ -199,7 +199,7 @@ receipt 和模板不得复制进 staging。完整受影响后缀通过后，直�
 读取 `generate-sow/SKILL.md`：
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/generate-sow/scripts/generate_sow.py" \
+"<python-bin>" "<plugin-root>/skills/generate-sow/scripts/generate_sow.py" \
   --project-root "<project-root>" \
   --staging-root ".ai-sow/.stage-<run-id>"
 ```
@@ -220,7 +220,7 @@ uv --directory "<plugin-root>" run --project . --locked python "skills/generate-
 全部通过后，当前 Stage 运行确定性 assemble：
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" \
   --run-id "<run-id>" \
   --mode assemble
@@ -258,12 +258,12 @@ Stage 向用户展示整份 `review.md`、risk summary、package ID、run ID 与
 Reviewer、执行 Owner validator/publish/rebind 或重新生成 package：
 
 ```text
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" \
   --manifest ".ai-sow/work/reconcile/<run-id>/redo.json" \
   --mode check
 
-uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+"<python-bin>" "<skill-root>/scripts/reconcile.py" \
   --project-root "<project-root>" \
   --manifest ".ai-sow/work/reconcile/<run-id>/redo.json" \
   --mode publish

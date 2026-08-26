@@ -78,20 +78,24 @@ AI SOW 的领域实现与参考资料全部位于 `plugins/ai-sow/`：
 
 Codex 安装本地 marketplace 插件时会创建独立的插件目录。AI SOW 运行时不得假设用户当前目录中存在 `plugin/skills/...`，也不得读取 marketplace 根目录。
 
-所有 Skill 按以下规则运行脚本：
+setup 与后续 Skill 按以下规则运行脚本：
 
 1. 从当前已加载 `SKILL.md` 的绝对路径确定 `<plugin-root>`：`skills/<skill-name>/SKILL.md` 的上两级目录。
-2. 从用户项目根目录执行命令，不改变当前工作目录。
-3. 使用插件自带锁文件选择运行环境：
+2. `setup` 先运行平台对应的 Skill-local bootstrap，在插件安装副本内准备 uv 0.11.7、managed Python
+   3.12、锁定依赖和 `.venv`，再初始化或只读复核项目。
+3. 后续 Skill 从用户项目根目录执行命令，不改变当前工作目录，并直接使用 setup 建立的插件
+   `.venv`：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<plugin-root>/skills/<skill-name>/scripts/<script>.py" --project-root .
+   "<plugin-root>/.venv/bin/python" "<plugin-root>/skills/<skill-name>/scripts/<script>.py" --project-root .
    ```
 
-4. `setup` 的其他参数继续跟在命令末尾。
-5. 不依赖 `PLUGIN_ROOT`、shell profile、激活虚拟环境或仓库根目录相对路径。
+   Windows 使用等价的 `<plugin-root>/.venv/Scripts/python.exe`。
+4. 不依赖 `PLUGIN_ROOT`、shell profile、PATH 中的 uv、手工激活虚拟环境或仓库根目录相对路径。
 
-`uv` 和 Python 3.12 是明确的宿主前置条件。插件自带 `pyproject.toml` 与 `uv.lock`，首次运行会准备隔离环境；插件不下载或安装 Python、uv，也不修改用户项目的依赖文件。
+普通插件用户无需预装 uv、Python 或 Python 依赖。插件自带 `pyproject.toml` 与 `uv.lock`；首次
+`setup` 在插件安装副本内按固定官方来源准备工具链，后续阶段只复用插件 `.venv`，不会修改用户项目
+的依赖文件。Git、Python 和 uv 仍是仓库贡献者执行开发与 CI 命令的工具链，不属于插件安装条件。
 
 这套调用方式的设计目标是在 macOS、Linux 和 Windows 路径上可表达。文档示例使用引号包围所有绝对路径，不提供仅适用于 POSIX shell 的启动器。当前发布已在真实 macOS 环境完成本地验收；Windows 11 仍为临时支持（`Provisional`），不能用 macOS 上执行的 Windows 分支合成测试或 GitHub 托管 CI 代替真实 Windows 11 验收。公开状态与实机清单见 [Windows 11 验证状态](../windows-11-validation.md)。
 
@@ -125,7 +129,7 @@ Codex 安装本地 marketplace 插件时会创建独立的插件目录。AI SOW 
 
 ## CI 与验证
 
-GitHub Actions 使用 Python 3.12 和固定 uv 版本。测试矩阵覆盖 Ubuntu、macOS 和 Windows。CI 不依赖开发者机器上的 Codex skill 目录。该矩阵证明自动化测试在 GitHub-hosted runner 上执行，不证明物理 Windows 11、Codex Desktop、NTFS reparse point 或 Excel Desktop 的端到端兼容性。
+GitHub Actions 使用 Python 3.12 和 uv 0.11.7。测试矩阵覆盖 Ubuntu、macOS 和 Windows。CI 不依赖开发者机器上的 Codex skill 目录。该矩阵证明自动化测试在 GitHub-hosted runner 上执行，不证明物理 Windows 11、Codex Desktop、NTFS reparse point 或 Excel Desktop 的端到端兼容性。
 
 仓库内验证分四层：
 
@@ -141,7 +145,7 @@ GitHub Actions 使用 Python 3.12 和固定 uv 版本。测试矩阵覆盖 Ubunt
 
 - 使用 `uv sync --project plugins/ai-sow --locked` 验证锁文件。
 - 运行 AI SOW 全量 pytest。
-- 运行官方本地 plugin validator 和七个 skill quick validator。
+- 运行官方本地 plugin validator 和八个 Skill quick validator（七个主线阶段加 `reconcile`）。
 - 三份 SOW 模板副本保持字节一致。
 - `0.1.0-beta.2` manifest、schema、fixture 和 setup 常量与 SOW `1.3` 一致。
 
@@ -150,9 +154,9 @@ GitHub Actions 使用 Python 3.12 和固定 uv 版本。测试矩阵覆盖 Ubunt
 只复制 `plugins/ai-sow/` 到临时目录，不复制 marketplace 根目录。随后从另一个空目录：
 
 - 使用复制后的 `pyproject.toml` 与 `uv.lock` 建立运行环境。
-- 执行 setup help 和 Greenfield setup。
-- 依次执行五位 Owner validator，发布六份稳定数据和 0.3 receipts。
-- 使用审核通过的 fixture 生成 SOW 包。
+- 直接使用复制插件 `.venv` 的 Python 执行 Greenfield setup，证明后续命令不依赖 PATH uv。
+- 复核审核 fixture 中五位 Owner 的 0.3 receipts 和六份稳定数据；不在 smoke 中重放 Owner 业务门禁。
+- 使用同一插件 `.venv` Python 从审核 fixture 生成 SOW 包。
 
 这一层证明独立插件副本不依赖源码仓库布局。
 
@@ -171,7 +175,8 @@ codex plugin add ai-sow@ai-plugin-marketplace
 - `codex plugin list` 显示 `ai-sow` 已安装并启用。
 - 已安装目录中的 plugin manifest、skills、锁文件和模板完整。
 - 从已安装插件目录而非源码目录，在全新临时项目中完成 Greenfield setup。
-- 将六份已审核 fixture 作为 Owner Skill 编译结果，依次运行五位 Owner validator，并生成确定性 SOW 包。
+- 独立 Owner E2E 运行五位 Owner validator；copy smoke 则复核已审核 fixture 的五份 0.3 receipt，
+  并使用安装副本 `.venv` Python 生成确定性 SOW 包，避免下游重放 Owner 业务门禁。
 - 用 Microsoft Excel 打开临时输出、完整重算并保存；缓存值中公式错误数为零。
 - 检查 13 个工作表、动态 As-Is 表、Task → Effective Start 追溯和三份模板哈希。
 - 用全新的 Codex 进程确认安装后的 skill 可以被发现；当前任务不假设热重载。

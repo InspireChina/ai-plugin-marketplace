@@ -1,15 +1,18 @@
 # AI SOW v1.3 领域模型、Skill 与工作簿设计
 
-状态：方案已确认，等待文档复核
+状态：v1.3 初始设计已实施；当前发布面由 0.1.0-beta.2 增量合同继续维护
 日期：2026-08-20  
-目标插件版本：0.1.0-beta.1
+初始落地版本：0.1.0-beta.1
+当前插件版本：0.1.0-beta.2
 目标 SOW 标准版本：v1.3
 
 ## 1. 背景与结论
 
 大规模独立测试发现，问题不只是中文输出不自然。当前实现还存在交付层级与工作簿不一致、Skill 职责交叉、过早接入输入、字段含义丢失、需求理由和 Task 内容套用固定模板，以及把开发期工具带入正式流程等问题。
 
-本设计发生于 AI SOW 首次公开预发布之前。`0.1.0-beta.1` 直接采用新格式，不为内部原型提供兼容层、自动迁移或新旧格式并行处理。
+本设计发生于 AI SOW 首次公开预发布之前，记录 `0.1.0-beta.1` 首次落地 v1.3 的历史决策。当前
+`0.1.0-beta.2` 继续使用 SOW v1.3，并以显式 `beta1_to_beta2.py` 只迁移四字段 project metadata；
+正常 `setup` 仍不自动迁移，也不并行读取新旧稳定合同。
 
 ## 2. 目标
 
@@ -134,7 +137,9 @@ setup
 
 ### 8.1 setup
 
-setup 只创建项目所需的基本目录和文件：项目 ID、名称、插件版本、模板版本、模板和父目录，并检查 Python、uv、锁定依赖以及模板能否完整读写。`.ai-sow/project.json` 不再保存 mode、Repo 或往期 SOW。
+setup bootstrap 先在插件安装副本内自动准备固定 uv、managed Python 3.12、锁定依赖和 `.venv`；
+setup Module 再创建项目所需的基本目录和文件：项目 ID、名称、插件版本、模板版本、模板和父目录，
+并复读模板能否完整读写。普通用户无需预装运行时。`.ai-sow/project.json` 不再保存 mode、Repo 或往期 SOW。
 
 setup 不接收 mode、Repo 或往期 SOW，不安装 CodeGraph，不安装 Testcontainers，不使用 cachebuster，也不写业务数据。项目是否具有现有系统、代码库或历史承诺由后续现状调查确定；`GREENFIELD / BROWNFIELD` 如仍用于交付展示，应由 `analyze-as-is` 在完成输入登记后判定并保存。
 
@@ -196,7 +201,9 @@ Task 删除 `quantity`、`activity` 和人工填写的 `professionalDomain`。�
 
 所有 Skill 删除有关开发期缓存、cachebuster、旧版本兼容和迁移的说明。资源路径只说明如何根据当前 `SKILL.md` 找到 Skill 根目录和插件根目录，不介绍插件缓存的实现方式。
 
-通用依赖在 setup 阶段验证。只服务单一 Skill 的专用工具在该 Skill 使用时检查和安装：CodeGraph 属于 `analyze-as-is`；模板读取属于 `generate-task`；交付打包属于 `generate-sow`。
+通用依赖由 setup bootstrap 在插件 `.venv` 中准备和验证，后续 Skill 直接使用该隔离 Python，不依赖
+PATH 中的 uv。只服务单一 Skill 的专用工具在该 Skill 使用时检查和安装：CodeGraph 属于
+`analyze-as-is`；模板读取属于 `generate-task`；交付打包属于 `generate-sow`。
 
 根目录 `scripts/validate_repository.py` 继续负责整个 marketplace。跨越七个 AI SOW Skill 的 `scripts/smoke_plugin.py` 移到 `plugins/ai-sow/tests/support/`，而不是放入任一单独 Skill，以保持 Skill 隔离。
 

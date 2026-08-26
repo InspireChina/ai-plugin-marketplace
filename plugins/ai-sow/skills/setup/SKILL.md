@@ -1,12 +1,13 @@
 ---
 name: setup
-description: 当需要首次初始化 AI SOW 项目，或验证现有项目外壳、Python、uv、锁定依赖和 XLSX 模板是否可用时使用。
+description: 当需要首次初始化或只读验证 AI SOW 项目，并自动准备插件隔离的 uv、Python、锁定依赖和 XLSX 模板时使用。
 ---
 
 # 设置 AI SOW 项目
 
 本 Skill 只准备运行环境和最小项目外壳，不进行业务分析、专业评审、稳定业务数据发布或版本迁移。
 执行前完整读取并遵守[输出语言合同](../../references/output-language.md)。
+运行时产物与后续 Skill 的解释方式以[插件运行时环境合同](../../references/runtime-environment.md)为准。
 
 ## 执行边界
 
@@ -21,7 +22,7 @@ outcome 与 diagnostics，不拆成多条模型驱动的环境命令，也不为
 
 当前 Stage Agent 先获取并向用户回显稳定 `projectId` 与正式项目名称，再只运行当前平台的一条 bootstrap 命令。bootstrap 负责：
 
-1. 复用兼容 `uv`；不存在时通过 Astral 官方固定版本 standalone installer 自动安装到插件安装副本的 `.ai-sow-tools/`，不修改 shell profile、不要求管理员权限；
+1. 只复用精确 `uv 0.11.7`；不存在或版本不同时，通过 Astral 官方固定版本 standalone installer 自动安装到插件安装副本的 `.ai-sow-tools/`，不修改 shell profile、不要求管理员权限；
 2. 复用 Python 3.12；不存在时由 uv 自动安装 managed Python 3.12；
 3. 以锁定文件创建或复用 `<plugin-root>/.venv`，复核 Python 版本以及 `jsonschema`、`openpyxl` import；
 4. 环境有效后立即调用同目录 `setup.py` 完成项目初始化与复读。
@@ -44,7 +45,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>/scripts/bootst
   -ProjectRoot "<project-root>" -ProjectId <stable-id> -Name <name>
 ```
 
-bootstrap 内部在环境复核后固定执行 `uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/setup.py"`；Stage 不再单独执行或复读这些内部步骤。
+bootstrap 在锁定同步与依赖复核后，直接使用刚建立的插件 `.venv` Python 执行
+`"<skill-root>/scripts/setup.py"`；Stage 不再单独执行或复读这些内部步骤。
 
 脚本只维护：
 

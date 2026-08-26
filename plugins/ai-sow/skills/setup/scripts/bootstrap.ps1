@@ -28,14 +28,26 @@ if ([string]::IsNullOrWhiteSpace($env:UV_CACHE_DIR)) {
 }
 $env:UV_NO_MODIFY_PATH = "1"
 
-$UvCommand = Get-Command uv -ErrorAction SilentlyContinue
-if ($null -ne $UvCommand) {
-    $UvBin = $UvCommand.Source
-    $UvSource = "PATH"
-} elseif (Test-Path -LiteralPath $LocalUv -PathType Leaf) {
-    $UvBin = $LocalUv
-    $UvSource = "PLUGIN_LOCAL"
-} else {
+$UvBin = $null
+$UvSource = $null
+if (Test-Path -LiteralPath $LocalUv -PathType Leaf) {
+    $LocalVersion = (& $LocalUv --version 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $LocalVersion -eq "uv $UvVersion") {
+        $UvBin = $LocalUv
+        $UvSource = "PLUGIN_LOCAL"
+    }
+}
+if ($null -eq $UvBin) {
+    $UvCommand = Get-Command uv -ErrorAction SilentlyContinue
+    if ($null -ne $UvCommand) {
+        $PathVersion = (& $UvCommand.Source --version 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $PathVersion -eq "uv $UvVersion") {
+            $UvBin = $UvCommand.Source
+            $UvSource = "PATH"
+        }
+    }
+}
+if ($null -eq $UvBin) {
     try {
         Invoke-WebRequest -UseBasicParsing -Uri "https://astral.sh/uv/0.11.7/install.ps1" -OutFile $Installer
         $env:UV_UNMANAGED_INSTALL = $ToolsBin
@@ -54,6 +66,7 @@ if ($null -ne $UvCommand) {
 
 $UvVersionText = (& $UvBin --version 2>&1 | Out-String).Trim()
 if ($LASTEXITCODE -ne 0) { Stop-Bootstrap "UV_CHECK_FAILED" "uv 版本检查失败" }
+if ($UvVersionText -ne "uv $UvVersion") { Stop-Bootstrap "UV_VERSION_INVALID" "插件运行时 uv 版本不是固定的 $UvVersion" }
 
 & $UvBin python find 3.12 *> $null
 if ($LASTEXITCODE -ne 0) {
@@ -80,7 +93,7 @@ if ($HasSetupArgs) {
     if ([string]::IsNullOrWhiteSpace($ProjectRoot) -or [string]::IsNullOrWhiteSpace($ProjectId) -or [string]::IsNullOrWhiteSpace($Name)) {
         Stop-Bootstrap "SETUP_ARGUMENTS_INCOMPLETE" "setup 的项目根目录、项目 ID 和名称必须同时提供"
     }
-    & $UvBin run --project $PluginRoot --locked python (Join-Path $PSScriptRoot "setup.py") --project-root $ProjectRoot --project-id $ProjectId --name $Name
+    & $PythonBin (Join-Path $PSScriptRoot "setup.py") --project-root $ProjectRoot --project-id $ProjectId --name $Name
     exit $LASTEXITCODE
 }
 

@@ -2,7 +2,9 @@
 
 日期：2026-08-25
 
-状态：流程隔离 A/B 与自然专业拆分认证均通过；Owner 推广、E2E 与 release certification 待执行。
+状态：流程隔离 A/B 与自然专业拆分认证均通过；后续 Owner 推广、普通
+happy path、reconciliation happy/sad/recovery E2E、coexistence smoke 与 release certification
+也已完成。Windows 11 和 Excel Desktop 实机证据仍按 `Provisional` 单独管理。
 
 关联设计：[AI SOW 性能优化设计修正](2026-08-25-ai-sow-performance-optimization-design.md)
 

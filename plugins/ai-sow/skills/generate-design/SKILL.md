@@ -8,16 +8,17 @@ description: 当 AI SOW 项目需要基于已批准的业务需求、原始来�
 本 Skill 独占全部 TECHNICAL Epic 与 Feature：既包括来源明示技术输入，也包括设计决策产生的技术工作。
 
 执行前读取并遵守[输出语言合同](../../references/output-language.md)。方案、决策、理由和技术需求使用简体中文；合同 token 保持原值。
+按[插件运行时环境合同](../../references/runtime-environment.md)从 `<plugin-root>` 解析当前平台的 `<python-bin>`；后续命令直接使用 setup 已建立的插件 `.venv`。
 
 ## 精确批准快速路径
 
 若本次新 session 的用户指令已经明确批准 Owner `generate-design` 和一个完整 packet SHA-256，本节优先于下方完整设计流程。从当前 turn 的 Available skills 条目直接取得本 `SKILL.md` 的绝对路径；不得使用 `rg`、`find` 或 `rg --files` 枚举或重新定位 Skill。Stage 不得手写 approval JSON，必须严格依次只运行以下两条确定性命令；第一条用 canonical bytes 写固定 `ai-sow-owner-approval-v1` sidecar，第二条执行唯一发布 preflight：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-approval \
   --packet-sha256 "<用户明确批准的完整 packet SHA-256>"
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode publish-approved \
   --candidate .ai-sow/work/generate-design/design.candidate.json \
   --requirements-candidate .ai-sow/work/generate-design/requirements.candidate.json \
@@ -33,7 +34,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、两份 candidate、上下文或来源：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-reviewer \
   --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
 ```
@@ -94,16 +95,16 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
 10. 当前 Stage 直接运行以下确定性脚本；`--mode review` 验证两份 candidate、HLD/Go-live、provenance、context 与 risk summary，并用固定算法 `ai-sow-owner-review-packet-v1` 写入 hash-bound `review-packet.json`。此时 `.ai-sow/reviews/generate-design.md`、两份稳定 JSON 和 validation receipt 必须都不存在或保持原值：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/prepare_context.py" --project-root .
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/render_review.py" --project-root .
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode review --review-path .ai-sow/work/generate-design/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/prepare_context.py" --project-root .
+   "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root .
+   "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --review-path .ai-sow/work/generate-design/review.candidate.md
    ```
 11. 当前 Stage 只启动一个不继承当前完整聊天的全新 Reviewer Agent。Reviewer 以当前 packet、评审、风险摘要、闭包和必要来源独立审查专业遗漏、HLD/Go-live、范围边界及两份候选忠实度。首次失败时，当前 Stage 只允许一次整体修复，并重新检查所有新增或变化对象后交回同一 Reviewer 完整复审；第二次仍失败则 `BLOCKED`。Reviewer PASS 后 Stage 只运行“精确 Reviewer 绑定”命令，用固定算法 `ai-sow-owner-reviewer-v1` 写 `reviewer.json`，绑定精确 packet SHA-256。
 12. 将 Reviewer 已绑定的同一 packet 提交用户。用户明确批准 Owner 与精确 packet SHA-256 后，用固定算法 `ai-sow-owner-approval-v1` 写 `approval.json`；候选、上下文、review、risk 或 input 任一字节变化都必须重新生成 packet 并重新整体评审、批准。
 13. 当前 Stage 只运行 `--mode publish-approved`。确定性脚本校验两个 sidecar 后，按 candidate 原字节同时发布 Design 与 TECHNICAL requirements、正式 review 与 0.3 receipt；不得在此阶段重做分析、改候选或启动 Reviewer：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --review-path .ai-sow/work/generate-design/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --review-path .ai-sow/work/generate-design/review.candidate.md
    ```
 14. 直接上游 receipt 变化而专业结论不变时，在正式 review 中记录 `Impact: NO_CHANGE`、旧/新 receipt hash、全部稳定 ID 的影响理由，并只运行 legacy `--mode rebind`。Reconciliation Adapter 继续使用 legacy `--mode check`、`--mode publish` 与 `--mode rebind`；rebind 必须证明两份稳定输出原字节均未变化。
 15. receipt 发布后报告完成，推荐用户显式调用 `generate-story`，然后停止；不得自动启动下游 Skill。

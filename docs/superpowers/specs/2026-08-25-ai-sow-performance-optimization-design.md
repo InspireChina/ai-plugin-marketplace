@@ -3,9 +3,12 @@
 状态：用户于 2026-08-25 确认本方向；`generate-task` 自动化纵向试点、流程隔离 Agent A/B、两次
 自然专业拆分发布与预埋遗漏检出均已通过，candidate-first 生命周期已经推广到五个专业 Owner。
 五个 Owner 的 Owner-local closure/renderer、hash-bound packet、一个 fresh-context Reviewer、精确
-批准和原字节发布均已有聚焦合同测试；setup 与 generate-sow 已改为当前 Stage 直接调用确定性
-Module，reconcile 也已把 Owner staged pass、package、redo/diff/risk 和完整 packet 移到批准前，
-contract `0.2` publisher 在批准后只执行 hash/check/publish。E2E 认证仍按硬停止点延后。
+批准和原字节发布均已有聚焦合同测试；setup 已改为当前 Stage 只调用一次确定性
+bootstrap，由 bootstrap 建立插件 `.venv` 后调用 setup Module；generate-sow 由当前 Stage
+直接调用确定性 Module。reconcile 也已把 Owner staged pass、package、redo/diff/risk 和完整 packet 移到批准前，
+contract `0.2` publisher 在批准后只执行 hash/check/publish。普通 happy path、
+reconciliation happy/sad/recovery E2E、coexistence smoke 与最终 release certification 已完成；
+Windows 11 和 Excel Desktop 实机证据仍按 `Provisional` 单独管理。
 
 适用目标版本：`0.1.0-beta.2`
 
@@ -325,10 +328,9 @@ Schema，也不解释业务字段；Stage 不再自行选择 `sha256sum/shasum` 
 reconciliation-only `prepare-no-change` 从 base review/receipt 与 staged upstream receipt 自动生成
 完整 Stable ID/hash binding，`stage-owner` 固定 flat path 投影；Owner validator 仍由 Stage 直接
 调用且每个动作必须是独立 fail-fast tool call。这样消除漏列 ID、双层 `.ai-sow` 和失败后继续，
-同时不让 reconcile Python 执行/import Owner、读取业务 Schema 或成为通用 Owner runner。命令使用
-单路径 `uv --directory <plugin-root> run --project .`，不依赖 shell 临时变量或重复 cache path。
-该形式只用于传入绝对 `--project-root` 的 Adapter/Owner 脚本；项目 artifact 读取保持项目 cwd，
-避免 `--directory` 改变子进程 cwd 后误解相对路径。
+同时不让 reconcile Python 执行/import Owner、读取业务 Schema 或成为通用 Owner runner。命令统一
+使用 setup 建立的插件 `.venv` Python 与绝对脚本路径，不依赖 PATH uv、shell 临时变量或重复 cache
+path；Adapter/Owner 接收绝对 `--project-root`，直接 Python 调用保持项目 cwd。
 任何 staging 前，`inspect-work` 只读返回 CHANGED candidate named hashes，Stage 先冻结整体
 `review.md`，再由 `prepare-changed` 绑定 CHANGED work review；这消除先发布 Design、后发现整体
 review 尚不存在的返工。

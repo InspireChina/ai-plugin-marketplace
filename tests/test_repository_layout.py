@@ -160,6 +160,7 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_manifest_identity_and_contract_version_match(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
+        release_version = "0.1.0-beta.2"
         manifest = json.loads(
             (plugin_root / ".codex-plugin/plugin.json").read_text()
         )
@@ -172,12 +173,18 @@ class RepositoryLayoutTests(unittest.TestCase):
                 / "skills/generate-sow/fixtures/project/.ai-sow/project.json"
             ).read_text()
         )
+        package_schema = json.loads(
+            (plugin_root / "skills/generate-sow/contracts/manifest.schema.json").read_text()
+        )
         pyproject_text = (plugin_root / "pyproject.toml").read_text()
         lock_text = (plugin_root / "uv.lock").read_text()
         self.assertEqual(manifest["name"], "ai-sow")
-        self.assertEqual(manifest["version"], "0.1.0-beta.2")
-        self.assertEqual(schema["properties"]["pluginVersion"]["const"], "0.1.0-beta.2")
-        self.assertEqual(project["pluginVersion"], "0.1.0-beta.2")
+        self.assertEqual(manifest["version"], release_version)
+        self.assertEqual(schema["properties"]["pluginVersion"]["const"], release_version)
+        self.assertEqual(project["pluginVersion"], release_version)
+        self.assertEqual(
+            package_schema["properties"]["pluginVersion"]["const"], release_version
+        )
         self.assertRegex(
             pyproject_text,
             r'(?ms)^\[project\].*?^version = "0\.1\.0b2"$',
@@ -187,6 +194,52 @@ class RepositoryLayoutTests(unittest.TestCase):
             r'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "0\.1\.0b2"$',
         )
         self.assertEqual(project["sowStandardVersion"], "1.3")
+        for relative in (
+            "README.md",
+            "CHANGELOG.md",
+            "SECURITY.md",
+            "docs/architecture/ai-plugin-marketplace-design.md",
+            "docs/windows-11-validation.md",
+            "plugins/ai-sow/README.md",
+            "plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md",
+            "plugins/ai-sow/docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
+        ):
+            self.assertIn(
+                release_version,
+                (REPO_ROOT / relative).read_text(encoding="utf-8"),
+                relative,
+            )
+        for relative in (
+            "plugins/ai-sow/skills/setup/scripts/setup.py",
+            "plugins/ai-sow/skills/generate-sow/scripts/generate_sow.py",
+        ):
+            self.assertIn(
+                f'PLUGIN_VERSION = "{release_version}"',
+                (REPO_ROOT / relative).read_text(encoding="utf-8"),
+                relative,
+            )
+
+    def test_user_install_docs_match_bootstrapped_runtime(self) -> None:
+        expected = {
+            "README.md": "无需预装 Git、Python",
+            "CONTRIBUTING.md": "普通插件用户由 `setup` 自动准备隔离运行时",
+            "docs/architecture/ai-plugin-marketplace-design.md": "普通插件用户无需预装 uv、Python",
+            "plugins/ai-sow/README.md": "不要求 uv 位于 PATH",
+            "plugins/ai-sow/docs/CONTEXT.md": "普通用户无需预装 Python/uv",
+            "plugins/ai-sow/references/runtime-environment.md": "普通插件用户无需预装 Python、`uv`",
+        }
+        for relative, statement in expected.items():
+            self.assertIn(
+                statement,
+                (REPO_ROOT / relative).read_text(encoding="utf-8"),
+                relative,
+            )
+
+        runtime_contract = (
+            REPO_ROOT / "plugins/ai-sow/references/runtime-environment.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("<plugin-root>/.venv/bin/python", runtime_contract)
+        self.assertIn("<plugin-root>/.venv/Scripts/python.exe", runtime_contract)
 
     def test_task_estimation_contract_has_no_removed_shape_or_modes(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"

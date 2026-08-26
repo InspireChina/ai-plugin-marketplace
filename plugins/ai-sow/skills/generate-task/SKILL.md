@@ -8,16 +8,17 @@ description: 当已评审的交付 Story 需要按权威模板的基础单元目
 把每个 Story 拆成一组基础单元实例；一条 Task 包含该实例必要的设计、实现、开发自测、单元验证和基本联调，不拆成固定活动流水线。
 
 执行前读取并遵守[输出语言合同](../../references/output-language.md)。该链接固定解析为 `<plugin-root>/references/output-language.md`，绝不位于 `<plugin-root>/skills/references/`。Task 名称和理由使用简体中文；模板枚举保持原值。
+按[插件运行时环境合同](../../references/runtime-environment.md)从 `<plugin-root>` 解析当前平台的 `<python-bin>`；后续命令直接使用 setup 已建立的插件 `.venv`。
 
 ## 精确批准快速路径
 
 若本次新 session 的用户指令已经明确批准 Owner `generate-task` 和一个完整 packet SHA-256，本节优先于下方完整估算拆分流程。从当前 turn 的 Available skills 条目直接取得本 `SKILL.md` 的绝对路径；不得使用 `rg`、`find` 或 `rg --files` 枚举或重新定位 Skill。Stage 不得手写 approval JSON，必须严格依次只运行以下两条确定性命令；第一条用 canonical bytes 写固定 `ai-sow-owner-approval-v1` sidecar，第二条执行唯一发布 preflight：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-approval \
   --packet-sha256 "<用户明确批准的完整 packet SHA-256>"
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode publish-approved \
   --candidate .ai-sow/work/generate-task/estimate.candidate.json \
   --review-path .ai-sow/work/generate-task/review.candidate.md
@@ -32,7 +33,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文、模板或上游数据：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-reviewer \
   --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
 ```
@@ -50,7 +51,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 1. 当前 Stage Agent 是本 Skill 的唯一用户接口、专业执行者和工具派发者，不再创建独立 Worker 或机械校验角色。先运行 Owner-local context compiler；它用公共 matcher 验证 As-Is、Design 和 Story 三个 receipt，并只投影 Task 拆分必需的引用闭包。任一 handoff 为 missing、invalid、stale 或 unsupported 时，报告对应 Owner Skill 并停止。不得调用上游 validator，不得重新执行 HLD/Go-live 门禁，也不得重新诊断 Story 或 Design 的内部业务质量：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/prepare_context.py" --project-root .
+   "<python-bin>" "<skill-root>/scripts/prepare_context.py" --project-root .
    ```
 2. 当前 Stage Agent 先读取 `.ai-sow/work/generate-task/context/manifest.json`，再用一个工具回合把 manifest 点名的五个 fragment 各读取且只读取一次；不得预先加载完整上游 artifact，也不得在随后回合用 `jq`、`sed` 或其他命令重新筛选、摘要或复读这些 fragment。closure 成功后从固定路径 `<skill-root>/contracts/estimate.schema.json` 读取 Schema 一次，并读取[评审模板](references/review-template.md)。路径映射是确定的：若 `SKILL.md` 位于 `<plugin-root>/skills/generate-task/SKILL.md`，Schema 就位于 `<plugin-root>/skills/generate-task/contracts/estimate.schema.json`，绝不位于 `<plugin-root>/contracts/`。不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema，也不得使用 `find` 或读取 test 代替合同。
 3. context compiler 已用权威项目模板和同一模板读取器生成 `template-catalog.json`；它是普通运行中唯一需要读取的模板目录投影，包含 37 项基础单元、13 个任务族、计数口径、包含/排除边界、可用工作模式和 S/M/L/X 规则。普通 candidate 流程不得运行 `read_template.py`，不得再次读取项目 XLSX，也不得读取 Skill-local `fixtures/sow-template.xlsx`；fixture 只属于构建和测试。基础人天、倍率、公式、SIT、UAT、风险和取整值不进入 context、Python 或稳定 JSON。
@@ -63,14 +64,14 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 10. 当前 Stage Agent 在 `.ai-sow/work/generate-task/` 形成 `estimate.candidate.json`，再调用确定性 renderer 从该 candidate 与项目模板哈希生成 `review.candidate.md`。不得手写或局部修补 review 投影；candidate 变化后必须整体重跑 renderer。投影覆盖 Story→Task、AC 多对多完整覆盖、基础单元、工作模式、复杂度、现状依据、Integration 一对一、Task 计价遗漏/重复/排除理由和实际使用的估算前提。多个 Task 引用同一 AC 是业务追溯，不等于基础单元重复计价。批准前不得改写正式 `.ai-sow/reviews/generate-task.md`、Estimate 或 receipt：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/render_review.py" --project-root . --candidate .ai-sow/work/generate-task/estimate.candidate.json --output .ai-sow/work/generate-task/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root . --candidate .ai-sow/work/generate-task/estimate.candidate.json --output .ai-sow/work/generate-task/review.candidate.md
    ```
 11. 对候选与评审运行审批前闭环。`review` 模式执行全部确定性门禁，生成 `risk-summary.md` 和 canonical `review-packet.json`；packet 精确绑定 context manifest 与五个 evidence fragment。上游 handoff、input、context 或模板错误必须原样报告并停止。若首次 `review` 只返回当前 Task candidate 可修复的机械 diagnostics，机械门禁只允许一次整体修正：当前 Stage 仅使用公开 diagnostics、已读取的 Schema/context/模板目录整体复核全部 Task，重跑 renderer 和 `review`；不得读取 validator 源码、fixture 或完整上游。第二次仍为 `BLOCKED` 则原样报告并停止。该机械修正在 Reviewer 创建之前完成，不占用第 12 步的一次专业 finding 修复额度。work-only `review.candidate.md` 中的 `Reviewer: PASS` 与 `User Approval: APPROVED` 是拟发布的最终声明，在 `reviewer.json` 和 `approval.json` 精确绑定当前 packet 前没有授权效力：
 
    packet 的固定算法 token 为 `ai-sow-owner-review-packet-v1`；它属于 Owner-local 审批合同，不进入公共 runtime。
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-task/estimate.candidate.json --review-path .ai-sow/work/generate-task/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-task/estimate.candidate.json --review-path .ai-sow/work/generate-task/review.candidate.md
    ```
 12. 只创建一个 Reviewer Agent，并使用不继承当前完整聊天的新上下文。Reviewer 只读取 `review-packet.json`、candidate、review、risk summary、[评审模板](references/review-template.md)和 packet 点名的证据 fragment；不读取 canonical fixture 或完整上游 artifact，不运行机械校验，不修改成果。Reviewer 返回有限 findings 或 `PASS`。finding 允许当前 Stage Agent 完成一次整体修复；整体修复必须对全部新增或变化的 Task 重新核对基础单元计数边界、工作模式、复杂度、现状依据、Integration 和非重复计价，而不是只改 finding 点名的字段。随后整体重跑 renderer 与 `review`，并交回同一 Reviewer 完整复审；第二次仍不通过时 `BLOCKED`。Reviewer `PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令，把下列对象按递归 key 排序、紧凑分隔符和一个结尾换行写入 work-only `reviewer.json`：
 
@@ -85,7 +86,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 14. Reviewer 与用户绑定均有效后运行精确发布。`publish-approved` 在任何正式写入前复算全部 hash，只把 work-only review 与 candidate 原字节发布到正式路径，并让 receipt 最后写入；批准后不得再修改专业成果或调用 Reviewer：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --candidate .ai-sow/work/generate-task/estimate.candidate.json --review-path .ai-sow/work/generate-task/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --candidate .ai-sow/work/generate-task/estimate.candidate.json --review-path .ai-sow/work/generate-task/review.candidate.md
    ```
 15. 直接上游 receipt 变化但专业结论不变时，review 记录 `Impact: NO_CHANGE`、变化的直接上游、旧/新 receipt hash 和点名全部 Task ID 的影响理由；同一 Reviewer PASS 且用户确认后运行 `--mode rebind`。rebind 必须证明 Estimate 稳定原字节不变。纵向试点暂保留既有 rebind Adapter；推广阶段再让普通 rebind 使用相同 packet-bound approval。
 16. receipt 发布后报告完成，只推荐用户显式调用 `generate-sow`，并提示在生成前完成模板参数校准、项目元数据、合同、商业条款等 PM 补充项，然后 STOP；不得自动启动下游 Skill。

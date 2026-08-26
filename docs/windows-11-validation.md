@@ -27,7 +27,7 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
 | 同文件系统发布 | 未确认 | 确认项目内临时目录与最终 package 的 rename、相同内容复用和不同内容拒绝覆盖在 NTFS 上行为一致。 |
 | Windows 路径 | 未确认 | 从包含非 ASCII 字符和空格的项目路径运行。另行测试长路径（long path），并记录是否启用 Windows 长路径支持。 |
 | Git 发现 | 仅合成测试 | 确认真正的 Git for Windows 和受控 `.cmd Git shim` 都能被发现，并使用预期的 optional-lock 环境设置调用。 |
-| 工具链与已安装插件 | 未确认 | 从未预装 Python、`uv` 且没有管理员权限的普通用户环境运行 `setup`，确认插件自动准备固定版 `uv`、managed Python 3.12、锁定依赖和插件 `.venv`；再确认 Codex marketplace 注册、插件安装、已安装插件目录发现，以及从已安装插件而非源码 checkout 运行 `pytest`。 |
+| 工具链与已安装插件 | 未确认 | 从未预装 Python、`uv` 且没有管理员权限的普通用户环境运行 `setup`，确认插件自动准备 `uv 0.11.7`、managed Python 3.12、锁定依赖和插件 `.venv`；再确认 Codex marketplace 注册、插件安装、已安装插件目录发现，以及从已安装插件而非源码 checkout 运行 `pytest`。 |
 | Codex 工作流 | 未确认 | 通过已安装插件目录，在空项目中依次运行 `setup`、五个 Owner validator 和 `generate-sow`；确认全部七个 Skill 都从该目录解析。 |
 | Excel 结果 | 未确认 | 在 Microsoft Excel Desktop 中打开生成的工作簿，使用 `F9` 计算，再执行完整计算，保存并检查公式缓存值和公式错误。 |
 | 开发者功能 | 未确认 | 在记录开发者模式（Developer Mode）和普通符号链接权限的情况下重复文件系统测试；记录需要提权或无法创建的场景。 |
@@ -67,7 +67,7 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
   `analyze-requirement`、`analyze-as-is`、`generate-design`、`generate-story` 和
   `generate-task`，最后运行 `generate-sow`。确认生成的合同、验证报告、包 manifest
   和工作簿位于文档规定路径。
-- [ ] 启动新的 Codex 会话，确认七个已安装 Skill 均可发现，并从已安装插件目录运行。
+- [ ] 启动新的 Codex 会话，确认七个主线 Skill 和 `reconcile` 维护 Skill 均可发现，并从已安装插件目录运行。
 - [ ] 在 Microsoft Excel Desktop 中打开最终工作簿，按 `F9` 执行普通计算，再执行
   Calculate Full（例如 `Ctrl+Alt+F9`），保存、重新打开并检查公式缓存值。记录任何公式
   错误的数量和位置。

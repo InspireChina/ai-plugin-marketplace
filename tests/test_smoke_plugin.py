@@ -33,7 +33,7 @@ class PluginSmokeTests(unittest.TestCase):
             self.assertEqual(report["pluginName"], "ai-sow")
             self.assertEqual(report["pluginVersion"], "0.1.0-beta.2")
             self.assertEqual(report["setupOutcome"], "OK")
-            self.assertEqual(report["validatorCount"], 5)
+            self.assertEqual(report["ownerReceiptCount"], 5)
             self.assertEqual(report["generateOutcome"], "OK")
             self.assertTrue(Path(report["workbookPath"]).is_file())
 

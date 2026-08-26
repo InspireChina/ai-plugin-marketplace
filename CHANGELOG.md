@@ -2,11 +2,14 @@
 
 所有重要的用户可见变更都记录在此。
 
-## 未发布
+## 0.1.0-beta.2 - 未发布
 
 - `setup` 新增 macOS/Linux 与 Windows 的确定性环境 bootstrap：在插件安装副本内自动准备 uv、
   managed Python 3.12、锁定依赖和 `.venv`，再执行项目初始化；BA/PM 无需管理员权限或终端
   安装步骤，网络/权限不足时在写项目之前 fail closed 并由 Codex 自动重试。
+- setup 后的七个 Owner/生成/维护入口统一直接使用插件 `.venv` 的跨平台 Python 路径，不再依赖
+  PATH 中的 uv；根 README、插件 README、架构、领域上下文、安全支持版本与运行时合同同步区分
+  普通用户和仓库贡献者的工具链。
 - `analyze-requirement` 新增 work-only 来源处置闭包：完整来源中的决策相关陈述必须分类为
   `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`，由确定性 context、review 与 packet
   绑定；技术输入不会污染 BUSINESS 稳定 JSON，跨域边界必须映射全部受影响的 Epic/Feature。
@@ -93,9 +96,9 @@
   确定性投影 review 与 `NO_CHANGE` 原 output，消除手工复制造成的双层 `.ai-sow` 和 base review
   回退；新增 reconciliation-only `--mode prepare-no-change`，从 base/staged receipts 自动投影完整
   Stable ID/hash binding。Owner validator 仍由 Stage 直接调用，且每个 Adapter/Owner 动作必须作为
-  独立 fail-fast tool call；命令统一使用单路径 `uv --directory <plugin-root>`，避免遗漏 ID、失败后
-  继续物化、shell 临时变量展开错误和重复 cache path 拼写；Adapter/Owner 强制绝对 project root，
-  项目 artifact 读取保持项目 cwd，避免 `--directory` 改变 cwd 后误读相对路径。
+  独立 fail-fast tool call；命令统一使用插件 `.venv` Python 与绝对脚本路径，避免遗漏 ID、失败后
+  继续物化、PATH uv、shell 临时变量展开错误和重复 cache path 拼写；Adapter/Owner 强制绝对
+  project root，直接 Python 调用保持项目 cwd。
 - `reconcile` 新增只读 `inspect-work` 与机械 `prepare-changed`：任何 staging 前先固定 CHANGED
   candidate hashes、冻结整体 review，再把精确 run/review hash 绑定到 Owner work review；禁止先
   发布 Owner 再补整体批准闭包。

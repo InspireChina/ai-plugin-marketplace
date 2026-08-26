@@ -122,6 +122,102 @@ fi
     assert (plugin_root / ".venv/bin/python").is_file()
 
 
+def test_unix_bootstrap_installs_private_uv_when_path_has_none(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    script = plugin_root / "skills/setup/scripts/bootstrap.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copy2(BOOTSTRAP_SH, script)
+    (plugin_root / "pyproject.toml").write_text(
+        '[project]\nname = "bootstrap-test"\nversion = "0"\nrequires-python = ">=3.12,<3.13"\n',
+        encoding="utf-8",
+    )
+    (plugin_root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+
+    fake_uv_source = tmp_path / "fake-uv"
+    fake_uv_source.write_text(
+        """#!/bin/sh
+set -eu
+if [ "${1:-}" = "--version" ]; then
+  printf '%s\n' 'uv 0.11.7'
+  exit 0
+fi
+if [ "${1:-}" = "python" ] && [ "${2:-}" = "find" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "sync" ]; then
+  shift
+  project=
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--project" ]; then
+      shift
+      project=$1
+    fi
+    shift
+  done
+  mkdir -p "$project/.venv/bin"
+  printf '%s\n' '#!/bin/sh' 'if [ "${1:-}" = "--version" ]; then echo "Python 3.12.13"; fi' 'exit 0' > "$project/.venv/bin/python"
+  chmod +x "$project/.venv/bin/python"
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_uv_source.chmod(0o755)
+
+    installer = tmp_path / "installer.sh"
+    installer.write_text(
+        """#!/bin/sh
+set -eu
+mkdir -p "$UV_UNMANAGED_INSTALL"
+cp "$FAKE_UV_SOURCE" "$UV_UNMANAGED_INSTALL/uv"
+chmod +x "$UV_UNMANAGED_INSTALL/uv"
+""",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text(
+        """#!/bin/sh
+set -eu
+output=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    output=$1
+  fi
+  shift
+done
+cp "$FAKE_INSTALLER" "$output"
+""",
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o755)
+    env = {
+        **os.environ,
+        "FAKE_INSTALLER": str(installer),
+        "FAKE_UV_SOURCE": str(fake_uv_source),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+    }
+    assert shutil.which("uv", path=env["PATH"]) is None
+
+    result = subprocess.run(
+        ["/bin/sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.splitlines()[-1])
+    assert payload["outcome"] == "OK"
+    assert payload["uvSource"] == "PLUGIN_LOCAL"
+    assert (plugin_root / ".ai-sow-tools/bin/uv").is_file()
+    assert (plugin_root / ".venv/bin/python").is_file()
+
+
 def test_unix_bootstrap_failure_does_not_create_project_shell(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     script = plugin_root / "skills/setup/scripts/bootstrap.sh"

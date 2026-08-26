@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -44,13 +45,11 @@ def plugin_python_command(
     *args: str,
 ) -> list[str]:
     """Build the cross-platform command published by the installed Skills."""
+    python_bin = plugin_root / ".venv" / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
     return [
-        "uv",
-        "run",
-        "--project",
-        str(plugin_root),
-        "--locked",
-        "python",
+        str(python_bin),
         str(script),
         *args,
     ]
@@ -135,7 +134,7 @@ def run_smoke(
         "generate-story",
         "generate-task",
     )
-    validator_results: list[dict[str, object]] = []
+    owner_receipts: list[dict[str, object]] = []
     for skill_name in validator_skills:
         receipt_path = reviewed_fixture / f".ai-sow/validation/{skill_name}.json"
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -146,7 +145,7 @@ def run_smoke(
             or compilation.get("validatorContractVersion") != "0.3"
         ):
             raise RuntimeError(f"invalid fixture Owner receipt: {receipt_path}")
-        validator_results.append(receipt)
+        owner_receipts.append(receipt)
 
     generate_script = active_plugin / "skills/generate-sow/scripts/generate_sow.py"
     generate_result = run_command(
@@ -200,7 +199,7 @@ def run_smoke(
         "greenfieldProject": str(greenfield),
         "reviewedProject": str(reviewed_fixture),
         "setupOutcome": setup_result["outcome"],
-        "validatorCount": len(validator_results),
+        "ownerReceiptCount": len(owner_receipts),
         "generateOutcome": generate_result["outcome"],
         "workbookPath": str(workbook_path),
         "manifestPath": str(output_manifest.resolve()),

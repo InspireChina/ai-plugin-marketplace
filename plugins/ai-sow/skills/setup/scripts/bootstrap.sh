@@ -25,13 +25,20 @@ fi
 export UV_CACHE_DIR
 export UV_NO_MODIFY_PATH=1
 
-if command -v uv >/dev/null 2>&1; then
-  UV_BIN=$(command -v uv)
-  UV_SOURCE="PATH"
-elif [ -x "$LOCAL_UV" ]; then
+UV_BIN=
+UV_SOURCE=
+if [ -x "$LOCAL_UV" ] && [ "$($LOCAL_UV --version 2>/dev/null)" = "uv $UV_VERSION" ]; then
   UV_BIN="$LOCAL_UV"
   UV_SOURCE="PLUGIN_LOCAL"
-else
+elif command -v uv >/dev/null 2>&1; then
+  PATH_UV=$(command -v uv)
+  if [ "$($PATH_UV --version 2>/dev/null)" = "uv $UV_VERSION" ]; then
+    UV_BIN="$PATH_UV"
+    UV_SOURCE="PATH"
+  fi
+fi
+
+if [ -z "$UV_BIN" ]; then
   if command -v curl >/dev/null 2>&1; then
     curl -LsSf "$UV_INSTALLER_URL" -o "$INSTALLER" || blocked "UV_INSTALL_DOWNLOAD_FAILED" "无法下载 uv 官方安装器"
   elif command -v wget >/dev/null 2>&1; then
@@ -47,6 +54,7 @@ else
 fi
 
 UV_VERSION_TEXT=$("$UV_BIN" --version 2>&1) || blocked "UV_CHECK_FAILED" "uv 版本检查失败"
+[ "$UV_VERSION_TEXT" = "uv $UV_VERSION" ] || blocked "UV_VERSION_INVALID" "插件运行时 uv 版本不是固定的 $UV_VERSION"
 
 if ! "$UV_BIN" python find 3.12 >/dev/null 2>&1; then
   if ! "$UV_BIN" python install 3.12; then
@@ -67,7 +75,7 @@ esac
 "$PYTHON_BIN" -c 'import jsonschema, openpyxl' || blocked "DEPENDENCY_IMPORT_FAILED" "插件隔离依赖复核失败"
 
 if [ "$#" -gt 0 ]; then
-  "$UV_BIN" run --project "$PLUGIN_ROOT" --locked python "$SCRIPT_DIR/setup.py" "$@"
+  "$PYTHON_BIN" "$SCRIPT_DIR/setup.py" "$@"
   exit $?
 fi
 

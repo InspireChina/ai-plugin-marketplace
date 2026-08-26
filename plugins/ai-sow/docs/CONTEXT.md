@@ -141,7 +141,14 @@ Task 通过 `matchedEffectiveStartItemIds` 关联 Effective Start：“调整 / 
 
 ## 7. 项目文件、Skill 隔离与交付
 
-setup 由当前 Stage Agent 检查 uv、Python 3.12 与插件锁定依赖环境，再直接调用一次确定性 Module 创建项目目录、四字段项目元数据和模板，并在返回前复读 Project Schema 与模板。完整项目只读验证，合法的项目级模板定制按当前项目模板合同复读，不与 bundled template 强制比较字节；不完整、损坏或身份冲突项目 fail closed。setup 不 repair、不自动迁移，也不接入 Repo 或往期 SOW。`analyze-as-is` 在开展现状调查时按需登记 Repo、往期 SOW、配置、部署材料及其他现状证据，并负责自己输入目录中的文件和元数据。没有 Repo 或往期 SOW 也可以正常开展调查，但必须说明实际检查了哪些现状材料。
+setup 由当前 Stage Agent 只调用一次平台 bootstrap；它在插件安装副本内自动准备固定 uv、managed
+Python 3.12、锁定依赖和 `.venv`，再调用确定性 Module 创建项目目录、四字段项目元数据和模板，并在
+返回前复读 Project Schema 与模板。普通用户无需预装 Python/uv，后续 Skill 直接使用插件 `.venv`
+的跨平台 Python 路径。完整项目只读验证，合法的项目级模板定制按当前项目模板合同复读，不与
+bundled template 强制比较字节；不完整、损坏或身份冲突项目 fail closed。setup 不 repair、不自动
+迁移，也不接入 Repo 或往期 SOW。`analyze-as-is` 在开展现状调查时按需登记 Repo、往期 SOW、配置、
+部署材料及其他现状证据，并负责自己输入目录中的文件和元数据。没有 Repo 或往期 SOW 也可以正常
+开展调查，但必须说明实际检查了哪些现状材料。
 
 `.ai-sow/project.json` 保存 `projectId`、`name`、`pluginVersion` 和 `sowStandardVersion`。每个 Skill 只写自己的 work、review、data、validation 或 output 目录。
 
@@ -166,9 +173,9 @@ validation inputs、candidate/review 路径与 review ID 声明；它不写项�
 `reconcile.py --mode prepare-no-change` 从 base review/receipt 与 staged upstream receipt 自动投影
 完整 Stable ID 和 hash binding，`stage-owner` 只做 flat staging 写入；Owner validator 仍由 Stage
 直接调用。每一动作必须是独立 fail-fast tool call，reconcile Python 不执行/import Owner、不读取
-Owner Schema，也不形成通用 Owner runner；命令统一用单路径 `uv --directory <plugin-root>`，避免
-shell 临时赋值展开和重复 cache path 拼写。该形式只用于接收绝对 `--project-root` 的 Adapter/Owner
-脚本；项目 artifact 读取仍保持项目 cwd。
+Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立的 `<plugin-root>/.venv` Python
+和绝对脚本路径，避免 PATH uv、shell 临时赋值展开和重复 cache path 拼写。所有 Adapter/Owner 命令
+接收绝对 `--project-root`，直接 Python 调用不改变项目 cwd。
 任何 staging 前先用只读 `inspect-work` 固定 CHANGED candidate hashes、写完整体 `review.md`，再用
 `prepare-changed` 绑定 CHANGED work review；整体 review 不存在时所有 projection 准备均 fail closed。
 批准后 publisher 的进度对外按全部 manifest operation 计数；`before == after` 的 `NO_CHANGE`

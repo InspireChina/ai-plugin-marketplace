@@ -150,7 +150,7 @@ PM 补充人员和迭代计划；支持这项工作的 Skill 尚在规划中，�
 ### 1. 初始化项目
 
 - **主责：** TL。
-- **输入：** 项目 ID、项目名称，以及已经准备好的本机环境。
+- **输入：** 项目 ID 和项目名称；插件运行环境由 `setup` 自动准备。
 - **输出：** 项目基本信息、SOW 模板和后续阶段所需的项目目录。
 - **必须评审：** 项目名称和 ID 是否正确，插件版本和 SOW 标准是否符合本次项目。
 - **需要澄清或阻塞：** 已有项目和本次输入的身份不一致、模板内容冲突、目录不安全或
@@ -329,5 +329,6 @@ uv sync --project plugins/ai-sow --locked
 uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow/skills -q
 ```
 
-AI SOW 只在首次 `setup` 或安装副本缺少环境时自动准备插件隔离的 Python、uv 与锁定依赖；
-不会操作 Git，不会执行 Excel 公式，不提供事务恢复，也不会把用户在工作簿中的修改反向写回阶段结果。
+AI SOW 在首次 `setup` 或安装副本缺少环境时自动准备插件私有 uv、managed Python、锁定依赖与
+`.venv`；后续 Skill 直接使用该 `.venv` 的跨平台 Python 路径，不要求 uv 位于 PATH。插件不会操作
+Git，不会执行 Excel 公式，不提供事务恢复，也不会把用户在工作簿中的修改反向写回阶段结果。

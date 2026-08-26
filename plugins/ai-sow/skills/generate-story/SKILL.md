@@ -8,16 +8,17 @@ description: 当已评审的业务需求、技术需求、现状和目标设计�
 把每个范围内 Feature 相对于 Effective Start 的差距分解为 Story、AC、Integration、Assumption 和 Risk。
 
 执行前读取并遵守[输出语言合同](../../references/output-language.md)。业务自由文本使用简体中文；合同 token 保持原值。
+按[插件运行时环境合同](../../references/runtime-environment.md)从 `<plugin-root>` 解析当前平台的 `<python-bin>`；后续命令直接使用 setup 已建立的插件 `.venv`。
 
 ## 精确批准快速路径
 
 若本次新 session 的用户指令已经明确批准 Owner `generate-story` 和一个完整 packet SHA-256，本节优先于下方完整拆分流程。从当前 turn 的 Available skills 条目直接取得本 `SKILL.md` 的绝对路径；不得使用 `rg`、`find` 或 `rg --files` 枚举或重新定位 Skill。Stage 不得手写 approval JSON，必须严格依次只运行以下两条确定性命令；第一条用 canonical bytes 写固定 `ai-sow-owner-approval-v1` sidecar，第二条执行唯一发布 preflight：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-approval \
   --packet-sha256 "<用户明确批准的完整 packet SHA-256>"
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode publish-approved \
   --candidate .ai-sow/work/generate-story/delivery.candidate.json \
   --review-path .ai-sow/work/generate-story/review.candidate.md
@@ -32,7 +33,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文或上游数据：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+"<python-bin>" "<skill-root>/scripts/validate.py" \
   --project-root "<project-root>" --mode write-reviewer \
   --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
 ```
@@ -50,7 +51,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 1. 当前 Stage Agent 是本 Skill 的唯一用户接口和专业执行者，不创建 Worker 或 Validator Agent。先运行 Owner-local context compiler；它用公共 matcher 验证 Requirement、As-Is 和 Design 三个 receipt，并只投影 ScopeDecision、Feature、相关 Design Decision、Effective Start、问卷决定、固定 Go-live Concern 以及关联 Commitment/Evidence/Uncertainty。任一 handoff 为 missing、invalid、stale 或 unsupported 时，报告对应 Owner Skill 并停止。不得调用上游 validator，不得重新执行 Design 的 HLD/Go-live 门禁，也不得重诊断 Requirement 问卷终态或 As-Is 内部实体：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/prepare_context.py" --project-root .
+   "<python-bin>" "<skill-root>/scripts/prepare_context.py" --project-root .
    ```
 2. 当前 Stage Agent 先读 `.ai-sow/work/generate-story/context/manifest.json`，再只读取其中点名的四个 fragment、固定 Schema `<skill-root>/contracts/delivery.schema.json` 和[评审模板](references/review-template.md)。closure 成功后按该精确路径读取 Schema 一次；不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema，也不得读取 fixture/test 代替合同。BUSINESS 与 TECHNICAL requirements 仅在当前内存中联合，不写 merged requirements。对每个已批准的 `APPROVED_DEFAULT / ASSUMPTION_CANDIDATE` Question ID 恰好生成一个 Assumption，其 `handling` 保留 `analyze-requirement-questionnaire#<Question-ID>` 锚点并至少关联一个 Story。`CLOSED / INCORPORATED_BUSINESS:<stable-id>` 与 `CLOSED / NO_CHANGE` 不生成 Assumption。
 3. 对每个 `IN_SCOPE` Feature，用目标结果减去其 Coverage 所连接的 Effective Start，形成 Delivery Gap。把相关 `CARRY_FORWARD` Commitment 纳入差距，不能当作基线。`FULLY_COVERED` Feature 不生成 Gap 或 Story；其完整性已由设计门禁中的 Effective Start、Evidence 和理由证明。
@@ -65,12 +66,12 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 11. 当前 Stage Agent 在 `.ai-sow/work/generate-story/delivery.candidate.json` 保存专业分解，再用确定性 renderer 整体生成 `.ai-sow/work/generate-story/review.candidate.md`；不得手写或局部修补投影。投影覆盖 Gap、Story、AC、Integration、Assumption/Risk、问卷消费和 `Concern -> Feature -> Gap -> Story/Assumption/Risk`，并确认上线准备、发布切换、生产验证与运维移交、条件适用的下线、独立数据迁移、UAT 分母和支持边界无遗漏或重复：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/render_review.py" --project-root . --candidate .ai-sow/work/generate-story/delivery.candidate.json --output .ai-sow/work/generate-story/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root . --candidate .ai-sow/work/generate-story/delivery.candidate.json --output .ai-sow/work/generate-story/review.candidate.md
    ```
 12. 直接运行审批前机械闭环。`review` 生成 `risk-summary.md` 与 canonical `review-packet.json`，固定算法为 `ai-sow-owner-review-packet-v1`，并绑定 inputs、context manifest/fragments、candidate、review 与 risk summary。批准前不得写正式 review、Delivery 或 receipt：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
    ```
 13. 只创建一个不继承当前完整聊天的 fresh-context Reviewer。Reviewer 只读 packet、candidate、review、risk summary、评审模板和 packet 点名的 fragment；不运行机械校验、不修改成果、不代替用户批准。finding 只允许当前 Stage Agent 完成一次整体修复，重新检查全部新增/变化 Gap、Story、AC、Integration、Assumption/Risk、问卷和十项上线映射，整体重跑 renderer/`review` 后交回同一 Reviewer 完整复审；第二次仍不通过则 `BLOCKED`。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical work-only sidecar：
 
@@ -85,7 +86,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 15. 精确绑定有效后只运行 `publish-approved`。它在任何正式写入前复算全部 hash，把 work-only review 和 Delivery candidate 原字节发布到正式路径，并让 receipt `0.3` 最后写入；批准后不得再修改专业成果或调用 Reviewer：
 
    ```text
-   uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
+   "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
    ```
 16. 直接上游 receipt 变化但专业结论不变时，review 记录 `Impact: NO_CHANGE`、发生变化的直接上游、旧/新 receipt hash 和点名全部稳定 ID 的影响理由。现有 `--mode rebind` 只保留为 reconciliation Adapter，并必须证明稳定 Delivery 原字节不变；普通调用按同一 packet-bound 审批闭包形成原字节 candidate 后发布。
 17. receipt 发布后报告完成，只推荐用户显式调用 `generate-task`，然后 STOP；不得自动启动下游 Skill。

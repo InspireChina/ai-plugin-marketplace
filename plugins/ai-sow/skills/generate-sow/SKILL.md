@@ -8,6 +8,7 @@ description: 当五位 Owner 的 0.3 收据、六份稳定 JSON、五份批准�
 把已批准的稳定交接数据投影到项目模板。此 Skill 只写 `.ai-sow/outputs/`，不修改任何 Owner 输入，也不替用户重新决定需求、现状、设计、Story 或 Task。
 
 执行前读取并遵守[输出语言合同](../../references/output-language.md)。自由文本保持简体中文；machine token、字段、枚举、ID、路径、hash、Sheet、Table 和公式保持合同原值。
+按[插件运行时环境合同](../../references/runtime-environment.md)从 `<plugin-root>` 解析当前平台的 `<python-bin>`；后续命令直接使用 setup 已建立的插件 `.venv`。
 
 ## 路径与执行边界
 
@@ -49,7 +50,7 @@ receipt 绑定的项目相对路径；普通项目文档路径保持原值。
 在项目根目录运行：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/generate_sow.py" --project-root .
+"<python-bin>" "<skill-root>/scripts/generate_sow.py" --project-root .
 ```
 
 工作簿投影到 `01-需求`、`02-子需求`、`03-SOW主表`、`04-验收条件`、`05-任务明细`、`06-集成点`、`07-假设清单` 和 `90-系统现状`。动态 Table、样式、筛选、行高与跨 Sheet 引用来自模板；公式只能来自模板原型，Python 不保存基础人天、倍率、公式或取整规则，也不执行 Excel 公式。以 `=`、`+`、`-` 或 `@` 开头的普通文本按文本安全写入。

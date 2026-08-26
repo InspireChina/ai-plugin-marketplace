@@ -1,12 +1,18 @@
 # AI SOW Owner Skill 合同、质量闭环与交接简化设计
 
-状态：书面设计候选——合同简化、“新工作树、代码重写、资产迁移”、Skill 独立 seam、纯技术 runtime、纵向 Phase 0–4、实施期轻量 TDD 和 Superpowers 隔离方向已获用户批准；实施计划、freeze manifest 与代码实施尚未授权
+状态：历史设计记录；Owner 所有权和 receipt-only handoff 已落地，但本文中的多 Agent、
+setup 和 release E2E 编排已被后续设计取代，不再是当前运行权威。
 
 日期：2026-08-24
 
 目标插件版本：`0.1.0-beta.2`
 
 目标 SOW 标准版本：`1.3`
+
+当前行为以 [性能优化设计修正](2026-08-25-ai-sow-performance-optimization-design.md)、
+[`AI_SOW_PLUGIN_DESIGN.md`](../../../plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md) 和各 Skill 的
+`SKILL.md` 为准。特别是本文 4.4 节“不新增 bootstrap”、旧 Agent 角色与七 session
+release topology 仅保留为决策演进记录。
 
 ## 1. 文档关系与实施门禁
 

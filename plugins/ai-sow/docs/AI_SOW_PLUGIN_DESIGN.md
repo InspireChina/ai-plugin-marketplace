@@ -89,7 +89,7 @@ plugins/ai-sow/
 
 ### setup
 
-当前 Stage Agent 只调用一次平台对应的确定性 bootstrap。它复用兼容 uv，缺失时以 Astral 官方固定版本 standalone installer 安装到插件安装副本；随后复用或自动安装 managed Python 3.12，以锁定文件创建插件 `.venv` 并复核依赖，再调用 setup Module。用户无需管理员权限、终端操作或技术安装步骤；网络/权限不足时在任何项目写入前 fail closed，并由 Stage 通过 Codex 权限机制自动重试。setup Module 写四字段项目元数据、复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动迁移已有项目，也不接收代码库、往期 SOW 或模式。
+当前 Stage Agent 只调用一次平台对应的确定性 bootstrap。它只复用精确 uv 0.11.7；缺失或版本不同时以 Astral 官方固定版本 standalone installer 安装到插件安装副本；随后复用或自动安装 managed Python 3.12，以锁定文件创建插件 `.venv` 并复核依赖，再用该 Python 调用 setup Module。用户无需管理员权限、终端操作或技术安装步骤；网络/权限不足时在任何项目写入前 fail closed，并由 Stage 通过 Codex 权限机制自动重试。后续 Skill 直接使用该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四字段项目元数据、复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动迁移已有项目，也不接收代码库、往期 SOW 或模式。
 
 ### analyze-requirement
 
@@ -159,9 +159,9 @@ Owner validator 仍由 Stage 直接调用，reconcile Python 不跨 Skill 执行
 `prepare-no-change` 从 base review/receipt 与 staged upstream receipt 确定性投影全部 Stable ID 及
 hash binding；`stage-owner` 只负责 flat review/output 写入。Owner check/publish/rebind 与 Adapter
 动作必须各自是独立 fail-fast tool call，禁止命令串联、双层 `.ai-sow`、错误后继续或模型手拼
-NO_CHANGE 声明；所有调用统一使用单路径 `uv --directory <plugin-root> run --project .`，不依赖 shell
-临时变量或重复 cache path，并传绝对 `--project-root`。`--directory` 仅用于 Adapter/Owner 脚本；
-项目 artifact 读取保持项目 cwd。Adapter 不拥有业务 Schema，也不是通用 Owner runner。
+NO_CHANGE 声明；所有调用统一使用 setup 建立的插件 `.venv` Python 与绝对脚本路径，不依赖 PATH
+uv、shell 临时变量或重复 cache path，并传绝对 `--project-root`；直接 Python 调用保持项目 cwd。
+Adapter 不拥有业务 Schema，也不是通用 Owner runner。
 在任何 staging 前，`inspect-work` 先返回 CHANGED candidate named hashes，Stage 据此冻结整体
 `review.md`；随后 `prepare-changed` 把精确 run/review hash 写入 CHANGED work review。整体 review
 不存在时 `prepare-changed/prepare-no-change` 都 fail closed，禁止先发布 Owner 再补整体批准闭包。

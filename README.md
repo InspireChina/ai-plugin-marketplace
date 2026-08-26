@@ -22,8 +22,10 @@ CI 和合成测试不能作为 Windows 11 实机验收结果。开放风险、�
 
 ## 安装
 
-前置条件：Codex、Python 3.12、Git，以及 0.11.7 或兼容版本的
-[uv](https://docs.astral.sh/uv/)。
+普通插件用户只需要支持本地 marketplace 的 Codex，安装时能访问 marketplace，首次
+`setup` 时能访问 Astral 官方下载源；无需预装 Git、Python、[uv](https://docs.astral.sh/uv/) 或 Python 依赖，也
+无需管理员权限或终端操作。`setup` 会在插件安装副本内自动准备 uv 0.11.7、managed Python 3.12、
+锁定依赖和插件 `.venv`，后续阶段直接复用该隔离环境。
 
 ```text
 codex plugin marketplace add InspireChina/ai-plugin-marketplace
@@ -79,6 +81,8 @@ tests/                            Marketplace 级测试
 的是发布支持边界，因此作为公共文档保留。
 
 ## 开发
+
+以下命令面向仓库贡献者，不是普通插件用户的安装步骤。贡献者需要 Git、Python 3.12 和 uv 0.11.7：
 
 ```text
 uv sync --project plugins/ai-sow --locked
