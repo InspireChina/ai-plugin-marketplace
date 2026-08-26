@@ -139,7 +139,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("check", "review", "publish-approved", "publish", "rebind"),
+        choices=(
+            "check",
+            "review",
+            "write-reviewer",
+            "write-approval",
+            "publish-approved",
+            "publish",
+            "rebind",
+        ),
     )
     parser.add_argument("--review-path", default=REVIEW_PATH)
     parser.add_argument("--candidate", default=".ai-sow/work/generate-design/design.candidate.json")
@@ -151,7 +159,106 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-summary-path", default=RISK_SUMMARY_PATH)
     parser.add_argument("--reviewer-path", default=REVIEWER_PATH)
     parser.add_argument("--approval-path", default=APPROVAL_PATH)
+    parser.add_argument("--packet-sha256")
     return parser.parse_args()
+
+
+def write_reviewer(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("REVIEWER_STAGING_UNSUPPORTED", "write-reviewer does not accept --staging-root")
+        )
+    if args.reviewer_path != REVIEWER_PATH:
+        diagnostics.append(
+            diag("REVIEWER_PATH_INVALID", f"write-reviewer must use {REVIEWER_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                REVIEWER_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": REVIEWER_ALGORITHM,
+                        "decision": "PASS",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "REVIEWER_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} reviewer sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} reviewer sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [REVIEWER_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
+
+
+def write_approval(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("APPROVAL_STAGING_UNSUPPORTED", "write-approval does not accept --staging-root")
+        )
+    if args.approval_path != APPROVAL_PATH:
+        diagnostics.append(
+            diag("APPROVAL_PATH_INVALID", f"write-approval must use {APPROVAL_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                APPROVAL_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": APPROVAL_ALGORITHM,
+                        "decision": "APPROVED",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "APPROVAL_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} approval sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} approval sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [APPROVAL_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
 
 
 def validate_review_path(mode: str, review_path: str) -> list[dict[str, object]]:
@@ -339,8 +446,18 @@ def current_asis_inputs(files: ProjectFiles) -> tuple[tuple[Artifact, ...], Matc
         evidence_id = entry["evidenceId"]
         name = f"evidence:{evidence_id}"
         path: str | None = None
-        if entry["kind"] == "RUNTIME" or (entry["kind"] == "DOCUMENT" and not entry["reference"].startswith("requirements:")):
+        if entry["kind"] == "RUNTIME" or (
+            entry["kind"] == "DOCUMENT"
+            and not entry["reference"].startswith("requirements:")
+        ):
             path = entry["reference"].split("#", 1)[0]
+            if entry["kind"] == "DOCUMENT":
+                match = re.fullmatch(
+                    r"([a-z][a-z0-9-]*):([^#]+)(?:#.*)?",
+                    entry["reference"],
+                )
+                if match:
+                    path = repository_path(scope, match.group(1), match.group(2))
         elif entry["kind"] in ANCHOR_KINDS:
             match = re.fullmatch(r"([a-z][a-z0-9-]*):([^#]+)(?:#.*)?", entry["reference"])
             path = repository_path(scope, match.group(1), match.group(2)) if match else None
@@ -1062,6 +1179,10 @@ def write_failure(files: ProjectFiles, diagnostics: list[dict[str, object]]) -> 
 
 def main() -> int:
     args = parse_args()
+    if args.mode == "write-reviewer":
+        return write_reviewer(args)
+    if args.mode == "write-approval":
+        return write_approval(args)
     review_path_diagnostics = validate_review_path(args.mode, args.review_path)
     if review_path_diagnostics:
         print(

@@ -8,6 +8,17 @@
 
 列出每份 `sourceDocumentId`、项目相对路径、原文件名、内容哈希，以及归一化条目的合并、拆分或去重理由。
 
+## 来源处置
+
+从 `.ai-sow/work/analyze-requirement/source-disposition.json` 确定性投影每条会影响业务或后续方案边界的明确来源陈述。逐条列出来源定位、摘要、唯一处置、BUSINESS 目标 ID 与理由：
+
+- `BUSINESS` 必须进入 normalized item；
+- `DESIGN_INPUT` 只交给 `generate-design`，不得在本阶段创建 TECHNICAL Epic/Feature；
+- `SCOPE_BOUNDARY` 必须映射全部受影响的 BUSINESS Epic/Feature；
+- `EXCLUDED` 必须说明明确排除理由。
+
+Reviewer 必须回读完整来源确认无遗漏，不能只检查 candidate 已经选择的条目。
+
 ## Epic 与 Feature
 
 按 BUSINESS Epic 展开 Feature，说明业务结果、参与者、规则、优先级和验收意图；技术约束只登记来源位置，不在本阶段解决。

@@ -482,6 +482,54 @@ def test_prepare_context_writes_owner_local_reference_closure_without_calculatio
     assert "ROUND_STORY" not in serialized
 
 
+def test_prepare_context_accepts_repository_anchored_document_evidence(
+    tmp_path: Path,
+) -> None:
+    write_bytes(tmp_path, ".ai-sow/project.json", json_bytes(PROJECT))
+    write_bytes(tmp_path, SOURCE_PATH, b"Task source.\n")
+    template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
+    template.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(SKILL_ROOT / "fixtures/sow-template.xlsx", template)
+    publish_requirements(tmp_path)
+
+    repository = {
+        "repoId": "customer-portal",
+        "path": "repositories/customer-portal",
+    }
+    evidence_path = "repositories/customer-portal/docs/current-state.md"
+    write_bytes(tmp_path, evidence_path, b"Customer API evidence.\n")
+    asis = copy.deepcopy(ASIS)
+    asis["analysisScope"]["repositorySnapshots"] = [repository]  # type: ignore[index]
+    asis["evidence"] = [
+        {
+            "evidenceId": "evidence-customer-api",
+            "kind": "DOCUMENT",
+            "reference": "customer-portal:docs/current-state.md#customer-api",
+        }
+    ]
+    write_bytes(tmp_path, ".ai-sow/reviews/analyze-as-is.md", b"Questionnaire: NOT_REQUIRED\n")
+    files = ProjectFiles.open(tmp_path)
+    publish_owner(
+        files,
+        ASIS_CONTRACT,
+        (
+            Artifact("project", "FILE", ".ai-sow/project.json", sha256_bytes(files.read_bytes(".ai-sow/project.json"))),
+            Artifact("requirementsValidation", "FILE", ".ai-sow/validation/analyze-requirement.json", sha256_bytes(files.read_bytes(".ai-sow/validation/analyze-requirement.json"))),
+            Artifact("requirements", "FILE", ".ai-sow/data/analyze-requirement/requirements.json", sha256_bytes(files.read_bytes(".ai-sow/data/analyze-requirement/requirements.json"))),
+            Artifact("repository:customer-portal", "CANONICAL_JSON", "repository:customer-portal", sha256_bytes(canonical_json_bytes(repository))),
+            Artifact("evidence:evidence-customer-api", "FILE", evidence_path, sha256_bytes(files.read_bytes(evidence_path))),
+            absent_questionnaire(),
+        ),
+        {"asIs": json_bytes(asis)},
+    )
+    publish_design(tmp_path)
+    publish_story(tmp_path)
+
+    result = run_context(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+
+
 def test_context_closure_includes_related_design_decision_and_evidence() -> None:
     delivery = {
         "gaps": [{"featureId": "feature-customer-profile"}],
@@ -963,6 +1011,80 @@ def test_rejects_reuse_work_types_out_of_contract_order(tmp_path: Path) -> None:
     assert "WORK_MODE_REUSE_NOT_ESTIMABLE" in codes(result)
 
 
+def test_adjustment_accepts_as_is_regression_assets_for_quality_work(
+    tmp_path: Path,
+) -> None:
+    prepare(tmp_path)
+    asis = copy.deepcopy(ASIS)
+    asis["effectiveStartItems"][1]["summary"] = (  # type: ignore[index]
+        "既有一期回归资产和恢复演练可供本期质量验证调整。"
+    )
+    publish_asis(tmp_path, asis)
+    publish_design(tmp_path)
+    publish_story(tmp_path)
+
+    def change(value: dict[str, object]) -> None:
+        task = value["tasks"][2]  # type: ignore[index]
+        task["baseUnit"] = "BU-AUTOMATION-CASES"
+        task["name"] = "调整现有客户档案托管架构方案回归资产"
+        task["rationale"] = "约十条现有客户档案托管场景作为一个可重复执行的回归资产组。"
+
+    mutate_candidate(tmp_path, change)
+    estimate = json.loads(
+        (tmp_path / ".ai-sow/work/generate-task/estimate.candidate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    template_hash = sha256_bytes(
+        (tmp_path / ".ai-sow/templates/sow-template.xlsx").read_bytes()
+    )
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/generate-task.md",
+        task_review(estimate, template_hash).encode("utf-8"),
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_adjustment_asset_diagnostic_recommends_new_work_mode(
+    tmp_path: Path,
+) -> None:
+    prepare(tmp_path)
+
+    def change(value: dict[str, object]) -> None:
+        task = value["tasks"][2]  # type: ignore[index]
+        task["baseUnit"] = "BU-DATA-MIGRATION"
+        task["name"] = "调整现有客户档案托管架构方案的数据迁移"
+        task["rationale"] = "一个源对象到目标对象的迁移实例。"
+
+    mutate_candidate(tmp_path, change)
+    estimate = json.loads(
+        (tmp_path / ".ai-sow/work/generate-task/estimate.candidate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    template_hash = sha256_bytes(
+        (tmp_path / ".ai-sow/templates/sow-template.xlsx").read_bytes()
+    )
+    write_bytes(
+        tmp_path,
+        ".ai-sow/reviews/generate-task.md",
+        task_review(estimate, template_hash).encode("utf-8"),
+    )
+
+    result = run_validator(tmp_path)
+
+    diagnostic = next(
+        entry
+        for entry in payload(result)["diagnostics"]  # type: ignore[index]
+        if entry["code"] == "WORK_MODE_ADJUSTMENT_ASSET_UNSPECIFIED"
+    )
+    assert "otherwise use 新建" in diagnostic["message"]
+
+
 def test_rejects_catalog_copied_complexity_rationale(tmp_path: Path) -> None:
     prepare(tmp_path)
     catalog = read_contract(SKILL_ROOT / "fixtures/sow-template.xlsx")
@@ -1112,6 +1234,7 @@ def test_schema_forbids_calculation_outputs() -> None:
     schema = (SKILL_ROOT / "contracts/estimate.schema.json").read_text(encoding="utf-8")
     for removed in ("professionalDomain", "activity", "quantity", "baseEffort", "taskEffort", "sitEstimates"):
         assert f'"{removed}"' not in schema
+    assert "<effectiveStartItemName>保持不变；<projectSideWorkCommitment>。" in schema
 
 
 def test_skill_uses_review_candidate_publish_stop_and_local_template() -> None:
@@ -1125,6 +1248,7 @@ def test_skill_uses_review_candidate_publish_stop_and_local_template() -> None:
         assert required in contract
     assert "Validator Agent" not in contract
     assert "Worker Agent" not in contract
+    assert contract.count("read_template.py") == 1
 
 
 def test_review_template_documents_task_maps_and_rebind_declarations() -> None:

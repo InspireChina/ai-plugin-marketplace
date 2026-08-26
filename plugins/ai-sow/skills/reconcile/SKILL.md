@@ -64,10 +64,145 @@ analyze-requirement
 ```
 
 当前 Stage 先读取[整体评审模板](references/review-template.md)和受影响 Owner 的完整 `SKILL.md`、
-Owner-local 必需 reference、当前稳定 output/review/receipt 与修正证据，形成 `review.md`、全部
-`CHANGED` candidate 和每个 Owner 的 work-only review projection。影响矩阵 Before/After 必须按
+Owner-local 必需 reference；随后用下方只读 `inspect` 取得固定路径、hash、receipt input 和 review
+ID 声明。Stage 只读取 `CHANGED` Owner 的专业工作所需稳定内容与修正证据；`NO_CHANGE` 不把完整
+稳定 output/review 带入模型上下文，也不由模型创建 work review。然后只形成 `review.md`、全部
+`CHANGED` candidate 及其 work-only review；`NO_CHANGE` projection 由 Adapter 确定性生成。影响矩阵 Before/After 必须按
 Owner receipt 的 named output 顺序使用 canonical `name=64-lowercase-hex`；多份 output 以 `; `
 连接。`NO_CHANGE` 的 Before/After hash 必须相同。
+
+### 精确路径与 Adapter 命令
+
+从已加载 Skill 路径解析一次 `<plugin-root>` 后，在整个 run 中原样复用该绝对路径；不得重新搜索、
+手工缩写或猜测 cache version。Owner 的固定路径如下，不得把 `requirements.json` 猜成
+`technical-requirements.json`，也不得预读尚未创建的 candidate 或 projection：
+
+Owner 合同读取后的第一条项目命令固定为只读 baseline inspection；不得用 `sha256sum`、`shasum`、
+整文件 `sed` 或自行拼接 Python 代替，也不得在它之前读取任何项目 artifact：
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+  --project-root "<project-root>" \
+  --start-owner "<correction-owner>" \
+  --mode inspect
+```
+
+`inspect` 只返回固定 Owner 后缀的 stable output/review/receipt SHA-256、candidate/work review 路径、
+base receipt 的 validation inputs 和 review 中已有的 ID 声明；它不写项目、不调用 Owner 脚本、
+不读取其他 Skill Schema，也不解释业务字段。Stage 必须直接复用该结构化结果，不再自行哈希同一
+baseline 或读取完整 `NO_CHANGE` review/output。
+读取 `CHANGED` 内容时只访问 `inspect` 返回的精确路径和修正证据 anchor；禁止对 `.ai-sow` 递归
+`rg/find`，禁止再次运行 Adapter `--help`，也不得重新哈希 `inspect` 已返回的 baseline。
+
+| Owner | Stable output | Candidate | Work review | Formal review | Receipt |
+|---|---|---|---|---|---|
+| analyze-requirement | `.ai-sow/data/analyze-requirement/requirements.json` | `.ai-sow/work/analyze-requirement/requirements.candidate.json` | `.ai-sow/work/analyze-requirement/review.candidate.md` | `.ai-sow/reviews/analyze-requirement.md` | `.ai-sow/validation/analyze-requirement.json` |
+| analyze-as-is | `.ai-sow/data/analyze-as-is/asis.json` | `.ai-sow/work/analyze-as-is/asis.candidate.json` | `.ai-sow/work/analyze-as-is/review.candidate.md` | `.ai-sow/reviews/analyze-as-is.md` | `.ai-sow/validation/analyze-as-is.json` |
+| generate-design | `.ai-sow/data/generate-design/design.json`; `.ai-sow/data/generate-design/requirements.json` | `.ai-sow/work/generate-design/design.candidate.json`; `.ai-sow/work/generate-design/requirements.candidate.json` | `.ai-sow/work/generate-design/review.candidate.md` | `.ai-sow/reviews/generate-design.md` | `.ai-sow/validation/generate-design.json` |
+| generate-story | `.ai-sow/data/generate-story/delivery.json` | `.ai-sow/work/generate-story/delivery.candidate.json` | `.ai-sow/work/generate-story/review.candidate.md` | `.ai-sow/reviews/generate-story.md` | `.ai-sow/validation/generate-story.json` |
+| generate-task | `.ai-sow/data/generate-task/estimate.json` | `.ai-sow/work/generate-task/estimate.candidate.json` | `.ai-sow/work/generate-task/review.candidate.md` | `.ai-sow/reviews/generate-task.md` | `.ai-sow/validation/generate-task.json` |
+
+任何 Owner staging 前必须先冻结整体专业 review，顺序不可交换：
+
+1. 形成全部 `CHANGED` candidate 及其 renderer 生成的 work review；
+2. 对每个 `CHANGED` Owner 单独运行只读 `inspect-work`，取得 candidate named hashes；
+3. 用 baseline `inspect` 与 `inspect-work` 的精确 hashes 写完
+   `.ai-sow/work/reconcile/<run-id>/review.md` 全文；不得留占位；
+4. 对每个 `CHANGED` Owner 单独运行 `prepare-changed`，把精确 run ID、整体 review hash 与
+   `Impact: CHANGED` 绑定到其 work review；
+5. 只有上述步骤全部完成，才开始下方 Owner `check/stage/publish`。`prepare-no-change` 同样要求整体
+   review 已存在，绝不能先发布 Design 再补整体 review。
+
+`inspect-work` 与 `prepare-changed` 的独立命令分别为：
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+  --project-root "<project-root>" --owner "<owner>" --mode inspect-work
+```
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+  --project-root "<project-root>" --run-id "<run-id>" --owner "<owner>" \
+  --mode prepare-changed
+```
+
+Owner validator 仍由当前 Stage 直接调用，reconcile Python 不跨 Skill 执行脚本。每条下列命令必须
+是一个独立 tool call：一个 shell command 中只能出现一次 `uv run`，不得用换行、`;`、`&&` 或
+`||` 串联后续动作。统一使用 `uv --directory "<plugin-root>" run --project .`，每条命令只出现一次
+插件根字面量，不使用 shell 临时变量或重复 cache path；所有 `--project-root` 必须是绝对路径，
+不得使用 `--stage-root`。`uv --directory` 会把子进程 cwd 切到插件目录，因此它只用于下方
+Adapter/Owner 脚本命令；读取或编辑项目 artifact 时保持项目 cwd，不得把项目相对路径传给
+`uv --directory ... python -c`。
+
+`CHANGED` 固定执行三个独立调用：Owner `check`、`stage-owner review`、Owner `publish`。Owner 命令
+使用表中 validator/candidate/work review 精确路径及其 Skill 公布的 candidate flags：
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "<validator-path>" \
+  --project-root "<project-root>" \
+  --staging-root ".ai-sow/.stage-<run-id>" \
+  --mode check \
+  --review-path "<work-review>" \
+  <Owner candidate flags>
+```
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+  --project-root "<project-root>" --run-id "<run-id>" --owner "<owner>" \
+  --artifact review --mode stage-owner
+```
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "<validator-path>" \
+  --project-root "<project-root>" \
+  --staging-root ".ai-sow/.stage-<run-id>" \
+  --mode publish \
+  <Owner candidate flags>
+```
+
+`NO_CHANGE` 不编译 candidate，也不由模型读取/复制 base review。先单独运行 `prepare-no-change`；它读取
+base formal review 中已有的 `Stable IDs`、`Design IDs`、`Technical IDs` 声明形成完整 Impact
+Rationale，替换旧 reconciliation declarations，再比较当前 Owner receipt 的每个 `*Validation`
+input：
+
+- `Previous Receipt SHA-256`：base Owner receipt 中该 named input 已绑定的 hash；
+- `Current Receipt SHA-256`：同一 upstream Owner 的 staged upstream receipt 原字节 hash；
+- `Upstream`：只列上述两个 hash 不同的全部直接输入 Owner，保持 Owner validator 的固定顺序。一个
+  Task receipt 可同时直接绑定 Design 与 Story，因此不得把“直接输入”误解为只有紧邻上一阶段。
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
+  --project-root "<project-root>" --run-id "<run-id>" --owner "<owner>" \
+  --mode prepare-no-change
+```
+
+成功后才分别执行 `stage-owner --artifact review`、Owner-local `rebind`、
+`stage-owner --artifact unchanged-output`；每步仍是单独 tool call，前一步失败时绝不发起后一步。
+Owner-local `rebind` 的独立命令为：
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "<validator-path>" \
+  --project-root "<project-root>" \
+  --staging-root ".ai-sow/.stage-<run-id>" \
+  --mode rebind
+```
+
+`stage-owner` 接收逻辑 `.ai-sow/...` 路径并机械写到 flat staging 的 `reviews/...` 或 `data/...`，拒绝
+不同字节覆盖，且禁止生成双层 `.ai-sow/.stage-*/.ai-sow/...`。Stage 不得手工 `mkdir/cp` staging
+内容。任一 Owner closure 失败都立即停止
+整个 run；不得在同一个 staging 中修补后重试，因为失败 receipt 会占用 staging validation 路径，
+后续命令不能再把它当作有效的 base Owner receipt。修正插件或专业结论后必须删除这个隔离 run，使用
+新 run ID 从该 reconciliation 步骤整体重跑。
+
+flat staging view 会对未覆盖路径回退读取 base；因此 correction Owner 之前的 Owner output、review、
+receipt 和模板不得复制进 staging。完整受影响后缀通过后，直接运行一次 staged generator；无需再次
+读取 `generate-sow/SKILL.md`：
+
+```text
+uv --directory "<plugin-root>" run --project . --locked python "skills/generate-sow/scripts/generate_sow.py" \
+  --project-root "<project-root>" \
+  --staging-root ".ai-sow/.stage-<run-id>"
+```
 
 批准前在同一个 flat staging view 完成一次固定顺序的前向 pass：
 
@@ -85,7 +220,7 @@ Owner receipt 的 named output 顺序使用 canonical `name=64-lowercase-hex`；
 全部通过后，当前 Stage 运行确定性 assemble：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/reconcile.py" \
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
   --project-root "<project-root>" \
   --run-id "<run-id>" \
   --mode assemble
@@ -123,12 +258,12 @@ Stage 向用户展示整份 `review.md`、risk summary、package ID、run ID 与
 Reviewer、执行 Owner validator/publish/rebind 或重新生成 package：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/reconcile.py" \
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
   --project-root "<project-root>" \
   --manifest ".ai-sow/work/reconcile/<run-id>/redo.json" \
   --mode check
 
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/reconcile.py" \
+uv --directory "<plugin-root>" run --project . --locked python "skills/reconcile/scripts/reconcile.py" \
   --project-root "<project-root>" \
   --manifest ".ai-sow/work/reconcile/<run-id>/redo.json" \
   --mode publish
@@ -139,6 +274,10 @@ package tree；任一漂移都在正式发布前 `BLOCKED`。它先发布或复�
 顺序写 review/output，并让每个 receipt 最后写入；`generate-task` receipt 是整批最后一个正式 Owner
 写入。正式状态必须属于 manifest 的 before/after，已完成的 after 只能形成有序前缀；第三种 hash、
 staged-only receipt input、批准漂移或并发写迹象都不得覆盖。
+
+`check` 的 `completedOperations` 统计已经处于 after 状态的全部 manifest operation；`before == after`
+的原字节复用路径天然视为完成。因此一次完整发布后的复查必须报告
+`completedOperations == totalOperations`，不能只报告发生字节变化的 operation。
 
 删除只允许 Requirement Owner 以显式 tombstone 删除已存在的可选 questionnaire review，不允许用
 staging 新增 Owner input。Publisher 按 `ai-sow-package-v1` 与 `receipt-only-beta2-v1` 机械复算最终

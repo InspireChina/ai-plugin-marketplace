@@ -194,11 +194,79 @@ def test_all_professional_owners_freeze_owner_local_candidate_first_interface() 
         skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
         validator = (skill_root / "scripts" / "validate.py").read_text(encoding="utf-8")
         assert "当前 Stage" in skill
+        assert "不得复读 `scripts/*.py` 实现" in skill, owner
+        assert "## 精确批准快速路径" in skill, owner
+        assert "不得枚举项目或插件文件" in skill, owner
+        assert "不得运行 `--help`" in skill, owner
+        assert "独立 `check`" in skill, owner
+        assert "正式写入前唯一需要的 preflight" in skill, owner
+        assert "不得手写 approval JSON" in skill, owner
+        assert "不得手写 reviewer JSON" in skill, owner
+        assert "--mode write-reviewer" in skill, owner
+        assert "--mode write-approval" in skill, owner
+        assert "--packet-sha256" in skill, owner
+        assert "不得使用 `rg`、`find` 或 `rg --files`" in skill, owner
         for algorithm in OWNER_REVIEW_ALGORITHMS:
             assert algorithm in skill, (owner, algorithm)
             assert algorithm in validator, (owner, algorithm)
-        for mode in ("review", "publish-approved", "check", "publish", "rebind"):
+        for mode in (
+            "review",
+            "write-reviewer",
+            "write-approval",
+            "publish-approved",
+            "check",
+            "publish",
+            "rebind",
+        ):
             assert f'"{mode}"' in validator, (owner, mode)
+
+    as_is_skill = (
+        PLUGIN_ROOT / "skills/analyze-as-is/SKILL.md"
+    ).read_text(encoding="utf-8")
+    as_is_validator = (
+        PLUGIN_ROOT / "skills/analyze-as-is/scripts/validate.py"
+    ).read_text(encoding="utf-8")
+    assert "--mode upstream-check" in as_is_skill
+    assert '"upstream-check"' in as_is_validator
+
+    story_skill = (
+        PLUGIN_ROOT / "skills/generate-story/SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "contracts/delivery.schema.json" in story_skill
+    assert "不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema" in story_skill
+    assert "每个 `requiredIntegrationBoundary` 非 `NONE` 的 Story" in story_skill
+    assert "不得只挂到共享使能 Story" in story_skill
+    assert "INTEGRATION_SCOPE_OVERLAP" in (
+        PLUGIN_ROOT / "skills/generate-story/scripts/validate.py"
+    ).read_text(encoding="utf-8")
+    assert "不得再次聚合相关 BUSINESS Story 已拥有的外部目标" in story_skill
+    task_skill = (
+        PLUGIN_ROOT / "skills/generate-task/SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "contracts/estimate.schema.json" in task_skill
+    assert "不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema" in task_skill
+    assert (
+        '`workModeRationale = "<effectiveStartItemName>保持不变；'
+        '<projectSideWorkCommitment>。"`'
+    ) in task_skill
+    assert "明确点名当前基础单元可调整的既有资产" in task_skill
+    assert "复用既有 CI/CD 执行本项目的新切换仍是 `新建`" in task_skill
+    assert "机械门禁只允许一次整体修正" in task_skill
+    assert (
+        "`<plugin-root>/skills/generate-task/contracts/estimate.schema.json`"
+        in task_skill
+    )
+    assert "五个 fragment 各读取且只读取一次" in task_skill
+    assert "普通 candidate 流程不得运行 `read_template.py`" in task_skill
+    assert "`<plugin-root>/references/output-language.md`" in task_skill
+    assert "`<plugin-root>/skills/references/`" in task_skill
+    for public_treatment_rule in (
+        "`IMPLEMENTED` → `CURRENT_BASELINE`",
+        "`PARTIAL / NOT_IMPLEMENTED` → `EXPECTED_BEFORE_START / CARRY_FORWARD / NEEDS_DECISION`",
+        "`UNVERIFIED` → `NEEDS_DECISION`",
+        "`SUPERSEDED` → `EXCLUDE`",
+    ):
+        assert public_treatment_rule in as_is_skill
 
 
 def test_candidate_first_algorithms_remain_owner_contract_not_shared_runtime() -> None:

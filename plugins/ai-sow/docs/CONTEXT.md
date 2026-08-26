@@ -59,13 +59,14 @@ Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。
 |---|---|
 | 原始输入 | 用户提供的文件、文本、访谈或仓库，只在处理过程中读取，不写入正式数据或交付文件。 |
 | normalizedItem | 从来源材料中抽取、合并并去重后的最小条目，用于记录每项来源需求对应哪些原始材料。 |
+| 来源处置 | `analyze-requirement` 的 work-only 完整来源检查表；把决策相关陈述唯一分类为 `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`，由 review packet 绑定并投影到正式 review，但不新增稳定 JSON。 |
 | Epic | 围绕同一业务结果或技术目标的一组 Feature。 |
 | Feature | 可以独立纳入、排除、延期和评审的最小需求范围；每个 Feature 只属于一个 Epic。 |
 | 来源业务需求 | `SOURCE_INPUT` BUSINESS Epic 与 Feature，由 `analyze-requirement` 负责，每项需求都要关联相应的 normalizedItem。 |
 | 技术需求 | `SOURCE_INPUT / DESIGN_DERIVED` TECHNICAL Epic 与 Feature，由 `generate-design` 负责；设计产生的技术需求必须对应到设计决策、适用的有效起点和具体原因。 |
 | 需求合并结果 | 后续 Skill 在内存中按“来源需求在前、设计产生的技术需求在后”的顺序合并；不另存第三份 merged requirements。 |
 
-`generate-design` 不追加或改写来源业务 requirements。发现业务需求变化时，退回 `analyze-requirement` 处理；经来源确认或由设计产生的技术需求，写入 `generate-design` 自己的 `requirements.json`。
+`generate-design` 不追加或改写来源业务 requirements。它从已登记原始来源读取 Requirement review 中标记的 `DESIGN_INPUT`，再自行确认并形成 `SOURCE_INPUT` TECHNICAL 需求；来源处置摘要不能替代原文证据。发现业务需求变化时，退回 `analyze-requirement` 处理；经来源确认或由设计产生的技术需求，写入 `generate-design` 自己的 `requirements.json`。
 
 ## 4. As-Is 与设计
 
@@ -89,6 +90,9 @@ Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。
 As-Is 不要求所有工具使用同一种中间数据格式，也不限定必须使用某种调查工具。调查顺序为：先看仓库和文档，再看接口约定、配置、部署和运行证据，最后通过定向问卷补充信息。完整调查过程保留在该 Skill 自己的 work 目录中；正式 `asis.json` 只保存后续步骤确实需要的结论。
 
 `.ai-sow/reviews/generate-design.md` 以精确 `PASSED` 声明和固定七列矩阵保存两个批准门禁。它不是第七份正式 JSON；门禁语义只由 `generate-design` validator 判断并绑定到 receipt。`generate-story`、`generate-task` 和 `generate-sow` 只匹配当前 Design handoff，不复制或重放 HLD/Go-live 业务判断。
+Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate 写入唯一
+`Structure Counts` 声明；review-source 自由文本不得重复手写这些计数，避免专业整体修正后出现
+旧计数与候选不一致。
 
 ## 5. 交付 Story
 
@@ -153,9 +157,25 @@ Skill 之间：
 执行其公开命令；完整 staged closure 只创建一个 fresh-context Reviewer。批准后 Skill-local
 publisher 只验证 packet/hash 并前向发布。Skill Python 仍不跨 Skill import、读取 Schema/fixture
 或共享业务规则；Owner 只写自己的 review/candidate/output/receipt，Task 不能修改 Delivery、Story
-或 AC。
+或 AC。协调合同公开五个 Owner 的精确 Adapter 路径和 `--staging-root` 参数；`NO_CHANGE` 从 base
+Owner receipt 与 staged upstream receipt 构造 before/current 绑定，只先 stage review 再执行
+`rebind`。任一失败 receipt 都终止当前 run 并用新 run ID 整体重跑，不在已污染的 staging 内试错；
+未覆盖路径由 flat ProjectView 回退读取 base，无需复制影响集之前的稳定产物。
+reconciliation 的第一条项目命令固定为只读 `inspect`，集中投影固定 Owner 后缀的 baseline hash、
+validation inputs、candidate/review 路径与 review ID 声明；它不写项目、不调用 Owner，也不解释业务。
+`reconcile.py --mode prepare-no-change` 从 base review/receipt 与 staged upstream receipt 自动投影
+完整 Stable ID 和 hash binding，`stage-owner` 只做 flat staging 写入；Owner validator 仍由 Stage
+直接调用。每一动作必须是独立 fail-fast tool call，reconcile Python 不执行/import Owner、不读取
+Owner Schema，也不形成通用 Owner runner；命令统一用单路径 `uv --directory <plugin-root>`，避免
+shell 临时赋值展开和重复 cache path 拼写。该形式只用于接收绝对 `--project-root` 的 Adapter/Owner
+脚本；项目 artifact 读取仍保持项目 cwd。
+任何 staging 前先用只读 `inspect-work` 固定 CHANGED candidate hashes、写完整体 `review.md`，再用
+`prepare-changed` 绑定 CHANGED work review；整体 review 不存在时所有 projection 准备均 fail closed。
+批准后 publisher 的进度对外按全部 manifest operation 计数；`before == after` 的 `NO_CHANGE`
+原字节复用路径天然属于完成状态，完整发布后的复查必须返回
+`completedOperations == totalOperations`，不能把内部的 changed-prefix 计数暴露成未完成进度。
 
-`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。`90-系统现状` 使用固定九行的 `AsIsTopicTable` 和按明细数量扩展的 `AsIsDetailTable` 写入完整 As-Is；Task 页的“系统现状匹配”显示 Task 对应的 Effective Start。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。`90-系统现状` 使用固定九行的 `AsIsTopicTable` 和按明细数量扩展的 `AsIsDetailTable` 写入完整 As-Is；Task 页的“系统现状匹配”显示 Task 对应的 Effective Start。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
 
 生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
 

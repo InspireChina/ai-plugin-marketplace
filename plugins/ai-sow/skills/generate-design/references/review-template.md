@@ -4,7 +4,8 @@
 `.ai-sow/work/generate-design/review-source.json`，再由 `render_review.py` 与两份 candidate
 确定性投影本评审。source 顶层只使用 `targetDesign`、`architectureDeltaReview`、
 `designDecisionReview`、`scopeReview`、`technicalRequirementsReview` 与 `concerns`；前五项为
-非空中文说明。`concerns` 每行使用：
+非空中文说明，且不得手写 candidate 对象数量；对象数量由 renderer 从两份 candidate
+确定性投影为唯一 `Structure Counts` 声明。`concerns` 每行使用：
 
 ```json
 {
@@ -28,6 +29,7 @@ Reviewer 与用户批准的是 `review-packet.json` 的精确 SHA-256。评审�
 
 Design IDs: design-example
 Technical IDs: epic-example, feature-example
+Structure Counts: designItems=1, architectureDeltas=1, decisions=1, scopeDecisions=2, technicalEpics=1, technicalFeatures=1
 
 ## Architecture Delta
 

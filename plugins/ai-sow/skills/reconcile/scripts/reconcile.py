@@ -37,6 +37,7 @@ HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 PACKAGE_ID_PATTERN = re.compile(r"^sow-sha256-[0-9a-f]{64}$")
 Action = Literal["WRITE", "DELETE"]
 Impact = Literal["CHANGED", "NO_CHANGE"]
+StageArtifact = Literal["review", "unchanged-output"]
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,71 @@ OWNER_SPECS = (
     ),
 )
 OWNER_BY_NAME = {spec.name: spec for spec in OWNER_SPECS}
+OWNER_UPSTREAM_BINDINGS = {
+    "analyze-requirement": (),
+    "analyze-as-is": (
+        (
+            "analyze-requirement",
+            "requirementsValidation",
+            ".ai-sow/validation/analyze-requirement.json",
+        ),
+    ),
+    "generate-design": (
+        (
+            "analyze-requirement",
+            "requirementsValidation",
+            ".ai-sow/validation/analyze-requirement.json",
+        ),
+        (
+            "analyze-as-is",
+            "asIsValidation",
+            ".ai-sow/validation/analyze-as-is.json",
+        ),
+    ),
+    "generate-story": (
+        (
+            "analyze-requirement",
+            "requirementsValidation",
+            ".ai-sow/validation/analyze-requirement.json",
+        ),
+        (
+            "analyze-as-is",
+            "asIsValidation",
+            ".ai-sow/validation/analyze-as-is.json",
+        ),
+        (
+            "generate-design",
+            "designValidation",
+            ".ai-sow/validation/generate-design.json",
+        ),
+    ),
+    "generate-task": (
+        (
+            "analyze-as-is",
+            "asIsValidation",
+            ".ai-sow/validation/analyze-as-is.json",
+        ),
+        (
+            "generate-design",
+            "designValidation",
+            ".ai-sow/validation/generate-design.json",
+        ),
+        (
+            "generate-story",
+            "deliveryValidation",
+            ".ai-sow/validation/generate-story.json",
+        ),
+    ),
+}
+RECONCILIATION_REVIEW_LABELS = (
+    "Reconciliation Run ID",
+    "Reconciliation Review SHA-256",
+    "Impact",
+    "Upstream",
+    "Previous Receipt SHA-256",
+    "Current Receipt SHA-256",
+    "Impact Rationale",
+)
 
 PACKAGE_INPUT_BINDINGS = (
     (
@@ -297,13 +363,343 @@ def sha256_bytes(payload: bytes) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Assemble, check, or publish an AI SOW reconciliation closure"
+        description="Inspect, assemble, check, or publish an AI SOW reconciliation closure"
     )
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--manifest")
     parser.add_argument("--run-id")
-    parser.add_argument("--mode", required=True, choices=("assemble", "check", "publish"))
+    parser.add_argument("--start-owner")
+    parser.add_argument("--owner")
+    parser.add_argument(
+        "--artifact",
+        choices=("review", "unchanged-output"),
+    )
+    parser.add_argument(
+        "--mode",
+        required=True,
+        choices=(
+            "inspect",
+            "inspect-work",
+            "stage-owner",
+            "prepare-changed",
+            "prepare-no-change",
+            "assemble",
+            "check",
+            "publish",
+        ),
+    )
     return parser.parse_args()
+
+
+def stage_owner_artifacts(
+    project_root: Path,
+    run_id: str,
+    owner: str,
+    artifact: StageArtifact,
+) -> dict[str, object]:
+    if RUN_ID_PATTERN.fullmatch(run_id) is None:
+        raise ReconcileError(
+            "RUN_ID_INVALID",
+            ".ai-sow/work/reconcile",
+            "run ID must be exactly 12 lowercase hexadecimal characters",
+        )
+    spec = OWNER_BY_NAME.get(owner)
+    if spec is None:
+        raise ReconcileError(
+            "OWNER_INVALID",
+            ".ai-sow/work/reconcile",
+            "owner is not supported by reconciliation",
+        )
+    if artifact not in {"review", "unchanged-output"}:
+        raise ReconcileError(
+            "STAGE_ARTIFACT_INVALID",
+            ".ai-sow/work/reconcile",
+            "artifact must be review or unchanged-output",
+        )
+
+    files = ProjectFiles.open(project_root)
+    staging_view = ProjectFiles.open_view(
+        project_root,
+        f".ai-sow/.stage-{run_id}",
+    )
+    if artifact == "review":
+        sources = (f".ai-sow/work/{owner}/review.candidate.md",)
+        targets = (spec.review,)
+    else:
+        sources = spec.outputs
+        targets = spec.outputs
+
+    staged: list[dict[str, str]] = []
+    for source, target in zip(sources, targets, strict=True):
+        try:
+            payload = files.read_bytes(source)
+            physical_target = target.removeprefix(".ai-sow/")
+            staging_view.staging.publish_new(physical_target, payload)
+        except ProjectIOError as error:
+            code = (
+                "STAGING_CONTENT_CONFLICT"
+                if error.code == "PROJECT_CONTENT_CONFLICT"
+                else error.code
+            )
+            raise ReconcileError(code, target, str(error)) from error
+        staged.append({"path": target, "sha256": sha256_bytes(payload)})
+    return {
+        "outcome": "OK",
+        "runId": run_id,
+        "owner": owner,
+        "artifact": artifact,
+        "staged": staged,
+        "diagnostics": [],
+    }
+
+
+def receipt_input_hash(report: object, name: str, path: str) -> str:
+    receipt = report.get("compilationReceipt") if isinstance(report, dict) else None
+    inputs = receipt.get("inputs") if isinstance(receipt, dict) else None
+    if not isinstance(inputs, list):
+        raise ReconcileError(
+            "BASELINE_RECEIPT_INVALID",
+            path,
+            "baseline Owner receipt must contain compilationReceipt.inputs",
+        )
+    matches = [
+        item.get("sha256")
+        for item in inputs
+        if isinstance(item, dict) and item.get("name") == name
+    ]
+    if (
+        len(matches) != 1
+        or not isinstance(matches[0], str)
+        or HASH_PATTERN.fullmatch(matches[0]) is None
+    ):
+        raise ReconcileError(
+            "BASELINE_RECEIPT_INVALID",
+            path,
+            f"baseline Owner receipt must bind exactly one {name} input",
+        )
+    return matches[0]
+
+
+def strip_reconciliation_declarations(review_text: str) -> list[str]:
+    label_pattern = re.compile(
+        rf"^(?:{'|'.join(re.escape(label) for label in RECONCILIATION_REVIEW_LABELS)})\s*:.*$"
+    )
+    review_lines = [
+        line
+        for line in review_text.splitlines()
+        if label_pattern.fullmatch(line) is None
+    ]
+    while review_lines and not review_lines[-1]:
+        review_lines.pop()
+    return review_lines
+
+
+def inspect_work(project_root: Path, owner: str) -> dict[str, object]:
+    spec = OWNER_BY_NAME.get(owner)
+    if spec is None:
+        raise ReconcileError(
+            "OWNER_INVALID",
+            ".ai-sow/work/reconcile",
+            "owner is not supported by reconciliation",
+        )
+    files = ProjectFiles.open(project_root)
+    work_review = f".ai-sow/work/{owner}/review.candidate.md"
+    review_payload = files.read_bytes(work_review)
+    return {
+        "outcome": "OK",
+        "owner": owner,
+        "outputs": [
+            {
+                "name": name,
+                "candidatePath": candidate,
+                "stablePath": stable,
+                "sha256": sha256_bytes(files.read_bytes(candidate)),
+            }
+            for name, candidate, stable in zip(
+                spec.output_names,
+                spec.candidates,
+                spec.outputs,
+                strict=True,
+            )
+        ],
+        "workReview": {
+            "path": work_review,
+            "sha256": sha256_bytes(review_payload),
+        },
+        "diagnostics": [],
+    }
+
+
+def prepare_changed_review(
+    project_root: Path,
+    run_id: str,
+    owner: str,
+) -> dict[str, object]:
+    if RUN_ID_PATTERN.fullmatch(run_id) is None:
+        raise ReconcileError(
+            "RUN_ID_INVALID",
+            ".ai-sow/work/reconcile",
+            "run ID must be exactly 12 lowercase hexadecimal characters",
+        )
+    if owner not in OWNER_BY_NAME:
+        raise ReconcileError(
+            "OWNER_INVALID",
+            ".ai-sow/work/reconcile",
+            "owner is not supported by reconciliation",
+        )
+    files = ProjectFiles.open(project_root)
+    work_review = f".ai-sow/work/{owner}/review.candidate.md"
+    try:
+        review_text = files.read_bytes(work_review).decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ReconcileError(
+            "WORK_REVIEW_INVALID",
+            work_review,
+            "changed Owner work review must be UTF-8",
+        ) from error
+    holistic_path = f".ai-sow/work/reconcile/{run_id}/review.md"
+    holistic_hash = sha256_bytes(files.read_bytes(holistic_path))
+    projection = (
+        "\n".join(
+            [
+                *strip_reconciliation_declarations(review_text),
+                "",
+                f"Reconciliation Run ID: {run_id}",
+                f"Reconciliation Review SHA-256: {holistic_hash}",
+                "Impact: CHANGED",
+            ]
+        )
+        + "\n"
+    ).encode("utf-8")
+    files.write_atomic(work_review, projection)
+    return {
+        "outcome": "OK",
+        "runId": run_id,
+        "owner": owner,
+        "workReviewPath": work_review,
+        "sha256": sha256_bytes(projection),
+        "diagnostics": [],
+    }
+
+
+def prepare_no_change_review(
+    project_root: Path,
+    run_id: str,
+    owner: str,
+) -> dict[str, object]:
+    if RUN_ID_PATTERN.fullmatch(run_id) is None:
+        raise ReconcileError(
+            "RUN_ID_INVALID",
+            ".ai-sow/work/reconcile",
+            "run ID must be exactly 12 lowercase hexadecimal characters",
+        )
+    spec = OWNER_BY_NAME.get(owner)
+    if spec is None:
+        raise ReconcileError(
+            "OWNER_INVALID",
+            ".ai-sow/work/reconcile",
+            "owner is not supported by reconciliation",
+        )
+
+    files = ProjectFiles.open(project_root)
+    staging_view = ProjectFiles.open_view(
+        project_root,
+        f".ai-sow/.stage-{run_id}",
+    )
+    try:
+        base_review = files.read_bytes(spec.review).decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ReconcileError(
+            "BASELINE_REVIEW_INVALID",
+            spec.review,
+            "baseline Owner review must be UTF-8",
+        ) from error
+    review_lines = strip_reconciliation_declarations(base_review)
+
+    id_lines = [
+        line
+        for line in review_lines
+        if re.fullmatch(r"(?:Stable IDs|Design IDs|Technical IDs):\s*\S.*", line)
+    ]
+    stable_ids: list[str] = []
+    for line in id_lines:
+        _, values = line.split(":", 1)
+        stable_ids.extend(
+            value
+            for value in re.split(r"[,，、;；\s]+", values.strip())
+            if value
+        )
+    if owner != "analyze-requirement" and not stable_ids:
+        raise ReconcileError(
+            "BASELINE_REVIEW_ID_DECLARATION_MISSING",
+            spec.review,
+            "baseline Owner review must declare its stable IDs",
+        )
+
+    try:
+        base_receipt = files.read_json(spec.receipt)
+    except ProjectIOError as error:
+        raise ReconcileError(error.code, spec.receipt, str(error)) from error
+    changed: list[tuple[str, str, str]] = []
+    for upstream_owner, input_name, receipt_path in OWNER_UPSTREAM_BINDINGS[owner]:
+        previous_hash = receipt_input_hash(base_receipt, input_name, spec.receipt)
+        current_hash = sha256_bytes(staging_view.read_bytes(receipt_path))
+        if previous_hash != current_hash:
+            changed.append((upstream_owner, previous_hash, current_hash))
+    if owner != "analyze-requirement" and not changed:
+        raise ReconcileError(
+            "NO_CHANGE_UPSTREAM_UNCHANGED",
+            spec.receipt,
+            "NO_CHANGE rebind requires at least one changed direct upstream receipt",
+        )
+
+    holistic_path = f".ai-sow/work/reconcile/{run_id}/review.md"
+    holistic_hash = sha256_bytes(files.read_bytes(holistic_path))
+    declarations = [
+        f"Reconciliation Run ID: {run_id}",
+        f"Reconciliation Review SHA-256: {holistic_hash}",
+        "Impact: NO_CHANGE",
+    ]
+    if changed:
+        if owner == "analyze-as-is":
+            declarations.extend(
+                [
+                    "Upstream: analyze-requirement",
+                    f"Previous Receipt SHA-256: {changed[0][1]}",
+                    f"Current Receipt SHA-256: {changed[0][2]}",
+                ]
+            )
+        else:
+            declarations.extend(
+                [
+                    "Upstream: " + ", ".join(item[0] for item in changed),
+                    "Previous Receipt SHA-256: "
+                    + ", ".join(f"{item[0]}={item[1]}" for item in changed),
+                    "Current Receipt SHA-256: "
+                    + ", ".join(f"{item[0]}={item[2]}" for item in changed),
+                ]
+            )
+    if stable_ids:
+        declarations.append(
+            "Impact Rationale: "
+            + ", ".join(stable_ids)
+            + " 均确认不受影响。"
+        )
+    projection = ("\n".join([*review_lines, "", *declarations]) + "\n").encode(
+        "utf-8"
+    )
+    work_review = f".ai-sow/work/{owner}/review.candidate.md"
+    files.write_atomic(work_review, projection)
+    return {
+        "outcome": "OK",
+        "runId": run_id,
+        "owner": owner,
+        "workReviewPath": work_review,
+        "sha256": sha256_bytes(projection),
+        "changedUpstreamOwners": [item[0] for item in changed],
+        "stableIdCount": len(stable_ids),
+        "diagnostics": [],
+    }
 
 
 def require_keys(
@@ -352,6 +748,97 @@ def owner_suffix(start_owner: str) -> tuple[OwnerSpec, ...]:
             f"unsupported correction Owner: {start_owner}",
         )
     return OWNER_SPECS[names.index(start_owner) :]
+
+
+def inspect_baseline(project_root: Path, start_owner: str) -> dict[str, object]:
+    """Return a compact, read-only hash projection for one fixed Owner suffix."""
+
+    files = ProjectFiles.open(project_root)
+    owners: list[dict[str, object]] = []
+    for spec in owner_suffix(start_owner):
+        review_payload = files.read_bytes(spec.review)
+        try:
+            review_text = review_payload.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ReconcileError(
+                "BASELINE_REVIEW_INVALID",
+                spec.review,
+                "baseline Owner review must be UTF-8",
+            ) from error
+        id_declarations = [
+            line
+            for line in review_text.splitlines()
+            if re.fullmatch(r"(?:Stable IDs|Design IDs|Technical IDs):\s*\S.*", line)
+        ]
+        receipt_payload = files.read_bytes(spec.receipt)
+        try:
+            report = json.loads(receipt_payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ReconcileError(
+                "BASELINE_RECEIPT_INVALID",
+                spec.receipt,
+                "baseline Owner receipt must be valid UTF-8 JSON",
+            ) from error
+        receipt = report.get("compilationReceipt") if isinstance(report, dict) else None
+        inputs = receipt.get("inputs") if isinstance(receipt, dict) else None
+        if not isinstance(inputs, list):
+            raise ReconcileError(
+                "BASELINE_RECEIPT_INVALID",
+                spec.receipt,
+                "baseline Owner receipt must contain compilationReceipt.inputs",
+            )
+        validation_inputs: list[dict[str, str]] = []
+        for item in inputs:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            digest = item.get("sha256")
+            path = item.get("path")
+            if (
+                isinstance(name, str)
+                and name.endswith("Validation")
+                and isinstance(path, str)
+                and isinstance(digest, str)
+                and HASH_PATTERN.fullmatch(digest)
+            ):
+                validation_inputs.append(
+                    {"name": name, "path": path, "sha256": digest}
+                )
+        owners.append(
+            {
+                "owner": spec.name,
+                "validatorPath": f"skills/{spec.name}/scripts/validate.py",
+                "candidatePaths": list(spec.candidates),
+                "workReviewPath": f".ai-sow/work/{spec.name}/review.candidate.md",
+                "review": {
+                    "path": spec.review,
+                    "sha256": sha256_bytes(review_payload),
+                    "idDeclarations": id_declarations,
+                },
+                "outputs": [
+                    {
+                        "name": name,
+                        "path": path,
+                        "sha256": sha256_bytes(files.read_bytes(path)),
+                    }
+                    for name, path in zip(
+                        spec.output_names, spec.outputs, strict=True
+                    )
+                ],
+                "receipt": {
+                    "path": spec.receipt,
+                    "sha256": sha256_bytes(receipt_payload),
+                    "validationInputs": validation_inputs,
+                },
+            }
+        )
+    return {
+        "outcome": "OK",
+        "summary": "Reconciliation baseline inspected",
+        "startOwner": start_owner,
+        "owners": owners,
+        "diagnostics": [],
+    }
 
 
 def stage_path(run_id: str, logical_path: str) -> str:
@@ -2257,12 +2744,15 @@ def execute(project_root: Path, manifest_path: str, mode: str) -> dict[str, obje
     plan = load_plan(files, manifest_path)
     payloads, staged_package, completed, packet_sha256 = validate_plan(files, plan)
     if mode == "check":
+        reported_completed = completed + sum(
+            operation.before == operation.after for operation in plan.operations
+        )
         result: dict[str, object] = {
             "outcome": "OK",
             "publication": "CHECKED",
             "runId": plan.run_id,
             "packagePath": plan.package.final_path,
-            "completedOperations": completed,
+            "completedOperations": reported_completed,
             "totalOperations": len(plan.operations),
             "diagnostics": [],
         }
@@ -2310,20 +2800,101 @@ def execute(project_root: Path, manifest_path: str, mode: str) -> dict[str, obje
 def main() -> int:
     args = parse_args()
     try:
-        if args.mode == "assemble":
-            if args.manifest is not None or args.run_id is None:
+        if args.mode == "inspect":
+            if (
+                args.start_owner is None
+                or args.manifest is not None
+                or args.run_id is not None
+                or args.owner is not None
+                or args.artifact is not None
+            ):
+                raise ReconcileError(
+                    "INSPECT_ARGUMENT_INVALID",
+                    ".ai-sow/work/reconcile",
+                    "inspect requires --start-owner and does not accept --manifest or --run-id",
+                )
+            result = inspect_baseline(args.project_root, args.start_owner)
+        elif args.mode == "inspect-work":
+            if (
+                args.owner is None
+                or args.manifest is not None
+                or args.run_id is not None
+                or args.start_owner is not None
+                or args.artifact is not None
+            ):
+                raise ReconcileError(
+                    "INSPECT_WORK_ARGUMENT_INVALID",
+                    ".ai-sow/work/reconcile",
+                    "inspect-work requires --owner only",
+                )
+            result = inspect_work(args.project_root, args.owner)
+        elif args.mode == "stage-owner":
+            if (
+                args.run_id is None
+                or args.owner is None
+                or args.artifact is None
+                or args.manifest is not None
+                or args.start_owner is not None
+            ):
+                raise ReconcileError(
+                    "STAGE_OWNER_ARGUMENT_INVALID",
+                    ".ai-sow/work/reconcile",
+                    "stage-owner requires --run-id, --owner, and --artifact only",
+                )
+            result = stage_owner_artifacts(
+                args.project_root,
+                args.run_id,
+                args.owner,
+                args.artifact,
+            )
+        elif args.mode in {"prepare-changed", "prepare-no-change"}:
+            if (
+                args.run_id is None
+                or args.owner is None
+                or args.manifest is not None
+                or args.start_owner is not None
+                or args.artifact is not None
+            ):
+                raise ReconcileError(
+                    "PREPARE_REVIEW_ARGUMENT_INVALID",
+                    ".ai-sow/work/reconcile",
+                    "prepare-changed/prepare-no-change require --run-id and --owner only",
+                )
+            result = (
+                prepare_changed_review(args.project_root, args.run_id, args.owner)
+                if args.mode == "prepare-changed"
+                else prepare_no_change_review(
+                    args.project_root,
+                    args.run_id,
+                    args.owner,
+                )
+            )
+        elif args.mode == "assemble":
+            if (
+                args.manifest is not None
+                or args.run_id is None
+                or args.start_owner is not None
+                or args.owner is not None
+                or args.artifact is not None
+            ):
                 raise ReconcileError(
                     "ASSEMBLE_ARGUMENT_INVALID",
                     ".ai-sow/work/reconcile",
-                    "assemble requires --run-id and does not accept --manifest",
+                    "assemble requires --run-id and does not accept --manifest or --start-owner",
                 )
             result = assemble(args.project_root, args.run_id)
         else:
-            if args.manifest is None or args.run_id is not None:
+            if (
+                args.manifest is None
+                or args.run_id is not None
+                or args.start_owner is not None
+                or args.owner is not None
+                or args.artifact is not None
+            ):
                 raise ReconcileError(
                     "PUBLISH_ARGUMENT_INVALID",
                     ".ai-sow/work/reconcile",
-                    "check/publish require --manifest and do not accept --run-id",
+                    "check/publish require --manifest and do not accept --run-id or --start-owner",
                 )
             result = execute(args.project_root, args.manifest, args.mode)
     except ReconcileError as error:

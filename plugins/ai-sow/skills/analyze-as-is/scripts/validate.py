@@ -143,7 +143,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("check", "review", "publish-approved", "publish", "rebind"),
+        choices=(
+            "upstream-check",
+            "check",
+            "review",
+            "write-reviewer",
+            "write-approval",
+            "publish-approved",
+            "publish",
+            "rebind",
+        ),
     )
     parser.add_argument("--review-path", default=REVIEW_PATH)
     parser.add_argument("--candidate", default=".ai-sow/work/analyze-as-is/asis.candidate.json")
@@ -151,7 +160,106 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-summary-path", default=RISK_SUMMARY_PATH)
     parser.add_argument("--reviewer-path", default=REVIEWER_PATH)
     parser.add_argument("--approval-path", default=APPROVAL_PATH)
+    parser.add_argument("--packet-sha256")
     return parser.parse_args()
+
+
+def write_reviewer(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("REVIEWER_STAGING_UNSUPPORTED", "write-reviewer does not accept --staging-root")
+        )
+    if args.reviewer_path != REVIEWER_PATH:
+        diagnostics.append(
+            diag("REVIEWER_PATH_INVALID", f"write-reviewer must use {REVIEWER_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                REVIEWER_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": REVIEWER_ALGORITHM,
+                        "decision": "PASS",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "REVIEWER_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} reviewer sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} reviewer sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [REVIEWER_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
+
+
+def write_approval(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("APPROVAL_STAGING_UNSUPPORTED", "write-approval does not accept --staging-root")
+        )
+    if args.approval_path != APPROVAL_PATH:
+        diagnostics.append(
+            diag("APPROVAL_PATH_INVALID", f"write-approval must use {APPROVAL_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                APPROVAL_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": APPROVAL_ALGORITHM,
+                        "decision": "APPROVED",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "APPROVAL_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} approval sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} approval sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [APPROVAL_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
 
 
 def validate_review_path(mode: str, review_path: str) -> list[dict[str, object]]:
@@ -716,6 +824,18 @@ def validate_semantics(
     for commitment in data["commitments"]:
         if commitment["priorSowId"] not in prior_ids:
             diagnostics.append(diag("PRIOR_SOW_REF_UNKNOWN", f"unknown priorSowId: {commitment['priorSowId']}"))
+        source_match = re.fullmatch(
+            r"prior-sow:([a-z][a-z0-9-]*)(?:#.+)?",
+            commitment["sourceReference"],
+        )
+        if source_match is None or source_match.group(1) != commitment["priorSowId"]:
+            diagnostics.append(
+                diag(
+                    "PRIOR_SOW_COMMITMENT_REF_INVALID",
+                    "Commitment sourceReference must use "
+                    f"prior-sow:{commitment['priorSowId']}#<anchor>: {commitment['commitmentId']}",
+                )
+            )
         status = commitment["implementationStatus"]
         treatment = commitment["treatment"]
         if treatment not in ALLOWED_TREATMENTS[status]:
@@ -815,10 +935,13 @@ def validate_semantics(
         if evidence["kind"] == "PRIOR_SOW":
             match = re.fullmatch(r"prior-sow:([a-z][a-z0-9-]*)(?:#.+)?", evidence["reference"])
             if match is None or match.group(1) not in prior_ids:
+                registered = ", ".join(sorted(prior_ids)) or "NONE"
                 diagnostics.append(
                     diag(
                         "PRIOR_SOW_EVIDENCE_REF_UNKNOWN",
-                        f"PRIOR_SOW Evidence has an unknown priorSowId: {evidence['evidenceId']}",
+                        "PRIOR_SOW Evidence must use "
+                        "prior-sow:<registered-priorSowId>#<anchor>: "
+                        f"{evidence['evidenceId']}; registered priorSowIds: {registered}",
                     )
                 )
         if evidence["kind"] == "DOCUMENT" and evidence["reference"].startswith("requirements:"):
@@ -910,33 +1033,40 @@ def attest_inputs(
         if evidence["kind"] == "RUNTIME" or (
             evidence["kind"] == "DOCUMENT" and not evidence["reference"].startswith("requirements:")
         ):
-            path = evidence["reference"].split("#", 1)[0]
+            reference_path = evidence["reference"].split("#", 1)[0]
+            path: str | None = reference_path
+            if evidence["kind"] == "DOCUMENT":
+                match = re.fullmatch(r"([a-z][a-z0-9-]*):([^#]+)(?:#.*)?", evidence["reference"])
+                if match:
+                    path = repository_path(scope, match.group(1), match.group(2))
             if evidence["kind"] == "RUNTIME" and re.fullmatch(
                 r"\.ai-sow/work/analyze-as-is/runtime-[a-z0-9]+(?:-[a-z0-9]+)*\.md",
-                path,
+                reference_path,
             ) is None:
                 diagnostics.append(
                     diag(
                         "RUNTIME_EVIDENCE_PATH_INVALID",
                         f"RUNTIME Evidence must use an owned runtime record: {evidence['evidenceId']}",
-                        path,
+                        reference_path,
                     )
                 )
                 continue
             try:
-                payload = files.read_bytes(path)
+                payload = files.read_bytes(path) if path else None
             except ProjectIOError:
+                payload = None
+            if payload is None:
                 diagnostics.append(
                     diag(
                         "ANCHOR_FILE_MISSING",
                         f"Evidence anchor file is unavailable: {evidence['evidenceId']}",
-                        path,
+                        path or evidence["reference"],
                     )
                 )
-            else:
-                inputs.append(
-                    Artifact(f"evidence:{evidence['evidenceId']}", "FILE", path, sha256_bytes(payload))
-                )
+                continue
+            inputs.append(
+                Artifact(f"evidence:{evidence['evidenceId']}", "FILE", path, sha256_bytes(payload))
+            )
             continue
         if evidence["kind"] not in ANCHOR_KINDS:
             continue
@@ -1334,6 +1464,10 @@ def approved_packet_diagnostics(
 
 def main() -> int:
     args = parse_args()
+    if args.mode == "write-reviewer":
+        return write_reviewer(args)
+    if args.mode == "write-approval":
+        return write_approval(args)
     review_path_diagnostics = validate_review_path(args.mode, args.review_path)
     if review_path_diagnostics:
         print(
@@ -1354,10 +1488,28 @@ def main() -> int:
             if args.staging_root is not None
             else ProjectFiles.open(args.project_root)
         )
+        handoff = requirement_handoff(files)
+        if args.mode == "upstream-check":
+            diagnostics = list(handoff.diagnostics)
+            print(
+                json.dumps(
+                    {
+                        "outcome": "BLOCKED" if diagnostics else "OK",
+                        "summary": (
+                            "analyze-requirement handoff is invalid"
+                            if diagnostics
+                            else "analyze-requirement handoff is valid"
+                        ),
+                        "diagnostics": diagnostics,
+                        "outputs": [],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return 2 if diagnostics else 0
         schema = json.loads(
             (Path(__file__).resolve().parents[1] / "contracts/asis.schema.json").read_text(encoding="utf-8")
         )
-        handoff = requirement_handoff(files)
         diagnostics: list[dict[str, object]] = list(handoff.diagnostics)
         relative = STABLE_PATH if args.mode == "rebind" else args.candidate
         payload, data, local_diagnostics = load_candidate(files, relative, schema)

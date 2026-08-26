@@ -214,6 +214,35 @@ def test_asis_inputs_do_not_rebind_prior_sow_logical_evidence(tmp_path: Path) ->
     assert GENERATOR.asis_inputs(files, data) == expected
 
 
+def test_repository_document_logical_anchor_resolves_through_snapshot(tmp_path: Path) -> None:
+    project = copy_project(tmp_path)
+    asis_path = project / GENERATOR.DATA_PATHS["asis"]
+    asis = json.loads(asis_path.read_text(encoding="utf-8"))
+    evidence = next(
+        item
+        for item in asis["evidence"]
+        if item["evidenceId"] == "evidence-operations-assets"
+    )
+    evidence["reference"] = "customer-portal:docs/operations-and-test-assets.md#baseline"
+    asis_path.write_bytes(GENERATOR.canonical_json_bytes(asis))
+
+    for relative in GENERATOR.VALIDATION_PATHS.values():
+        receipt_path = project / relative
+        validation = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt = validation["compilationReceipt"]
+        for section in ("inputs", "outputs", "reviews"):
+            for artifact in receipt[section]:
+                path = artifact.get("path")
+                if isinstance(path, str):
+                    artifact["sha256"] = hashlib.sha256((project / path).read_bytes()).hexdigest()
+        receipt_path.write_bytes(GENERATOR.canonical_json_bytes(validation))
+
+    completed, result = run_generator(project)
+
+    assert completed.returncode == 0, (completed.stderr, completed.stdout)
+    assert result["outcome"] == "OK"
+
+
 def test_changed_existing_package_fails_closed(tmp_path: Path) -> None:
     project = copy_project(tmp_path)
     completed, result = run_generator(project)

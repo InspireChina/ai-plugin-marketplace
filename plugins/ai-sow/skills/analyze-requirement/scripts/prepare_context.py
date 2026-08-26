@@ -66,9 +66,14 @@ def main() -> int:
             )
         questionnaire_artifact = None
         questionnaire_declaration = "NOT_REQUIRED"
+        source_disposition: dict[str, Any] | None = None
         records: list[dict[str, str]] = []
         if not diagnostics and isinstance(candidate, dict):
             diagnostics.extend(requirement_validator.validate_business(files, candidate))
+            source_disposition, source_disposition_diagnostics = (
+                requirement_validator.load_source_disposition(files, candidate)
+            )
+            diagnostics.extend(source_disposition_diagnostics)
             questionnaire_declaration = requirement_validator.current_questionnaire_declaration(files)
             questionnaire_diagnostics, questionnaire_artifact = (
                 requirement_validator.validate_questionnaire(
@@ -107,11 +112,13 @@ def main() -> int:
             return 2
 
         assert isinstance(candidate, dict)
+        assert source_disposition is not None
         fragments: dict[str, object] = {
             "sourceIndex": {
                 "normalizedItems": candidate["normalizedItems"],
                 "sourceDocuments": candidate["sourceDocuments"],
             },
+            "sourceDisposition": source_disposition,
             "questionnaire": {
                 "declaration": questionnaire_declaration,
                 "records": records,
@@ -130,7 +137,7 @@ def main() -> int:
                 }
             )
         manifest = {
-            "algorithm": "ai-sow-analyze-requirement-context-v1",
+            "algorithm": requirement_validator.CONTEXT_ALGORITHM,
             "fragments": fragment_entries,
             "inputArtifacts": [requirement_validator.input_entry(artifact) for artifact in inputs],
             "owner": requirement_validator.SUBJECT,

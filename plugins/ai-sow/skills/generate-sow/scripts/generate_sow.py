@@ -218,7 +218,10 @@ def asis_inputs(files: ProjectFiles, data: dict[str, Any]) -> tuple[Artifact, ..
             kind == "DOCUMENT" and reference.startswith("requirements:")
         ):
             continue
-        if kind in {"CODE", "CONTRACT", "CONFIGURATION", "DEPLOYMENT"}:
+        if kind in {"CODE", "CONTRACT", "CONFIGURATION", "DEPLOYMENT"} or (
+            kind == "DOCUMENT"
+            and re.fullmatch(r"[a-z][a-z0-9-]*:[^#]+(?:#.*)?", reference) is not None
+        ):
             path = repository_evidence_path(scope, reference)
         elif kind in {"RUNTIME", "DOCUMENT"}:
             path = reference.split("#", 1)[0]

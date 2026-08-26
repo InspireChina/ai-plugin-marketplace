@@ -227,10 +227,15 @@ def absent_questionnaire() -> Artifact:
     )
 
 
-def publish_requirements(root: Path, *, questionnaire: bytes | None = None) -> None:
+def publish_requirements(
+    root: Path,
+    *,
+    questionnaire: bytes | None = None,
+    value: dict[str, object] | None = None,
+) -> None:
     files = ProjectFiles.open(root)
     source = files.read_bytes(SOURCE_PATH)
-    requirements = copy.deepcopy(REQUIREMENTS)
+    requirements = copy.deepcopy(value or REQUIREMENTS)
     requirements["sourceDocuments"][0]["sha256"] = sha256_bytes(source)  # type: ignore[index]
     q_artifact = absent_questionnaire()
     if questionnaire is not None:
@@ -375,13 +380,25 @@ def story_review(
     )
 
 
-def prepare(root: Path, *, questionnaire: bytes | None = None) -> bytes:
+def prepare(
+    root: Path,
+    *,
+    questionnaire: bytes | None = None,
+    requirements: dict[str, object] | None = None,
+    design: dict[str, object] | None = None,
+    technical: dict[str, object] | None = None,
+    delivery: dict[str, object] | None = None,
+) -> bytes:
     write_bytes(root, ".ai-sow/project.json", json_bytes(PROJECT))
     write_bytes(root, SOURCE_PATH, b"Customer profile source.\n")
-    publish_requirements(root, questionnaire=questionnaire)
+    publish_requirements(root, questionnaire=questionnaire, value=requirements)
     publish_asis(root)
-    publish_design(root)
-    delivery = fixture("delivery.valid.json")
+    publish_design(
+        root,
+        design_payload=json_bytes(design) if design is not None else None,
+        technical_payload=json_bytes(technical) if technical is not None else None,
+    )
+    delivery = copy.deepcopy(delivery or fixture("delivery.valid.json"))
     questionnaire_map = "NONE"
     if questionnaire is not None:
         delivery["assumptions"][0]["handling"] += " 来源：analyze-requirement-questionnaire#ARQ-001。"  # type: ignore[index]
@@ -768,6 +785,63 @@ def test_routes_three_owner_handoff_failures_without_candidate_replay(
     assert result_payload(result)["diagnostics"][0]["upstreamOwner"] == owner  # type: ignore[index]
 
 
+def test_prepare_context_accepts_repository_anchored_document_evidence(
+    tmp_path: Path,
+) -> None:
+    write_bytes(tmp_path, ".ai-sow/project.json", json_bytes(PROJECT))
+    write_bytes(tmp_path, SOURCE_PATH, b"Customer profile source.\n")
+    publish_requirements(tmp_path)
+
+    repository = {
+        "repoId": "customer-portal",
+        "path": "repositories/customer-portal",
+    }
+    evidence_path = "repositories/customer-portal/docs/current-state.md"
+    write_bytes(tmp_path, evidence_path, b"Customer API evidence.\n")
+    asis = copy.deepcopy(ASIS)
+    asis["analysisScope"]["repositorySnapshots"] = [repository]  # type: ignore[index]
+    asis["evidence"] = [
+        {
+            "evidenceId": "evidence-customer-api",
+            "kind": "DOCUMENT",
+            "reference": "customer-portal:docs/current-state.md#customer-api",
+        }
+    ]
+    write_bytes(tmp_path, ".ai-sow/reviews/analyze-as-is.md", b"Questionnaire: NOT_REQUIRED\n")
+    files = ProjectFiles.open(tmp_path)
+    publish_owner(
+        files,
+        ASIS_CONTRACT,
+        (
+            Artifact("project", "FILE", ".ai-sow/project.json", sha256_bytes(files.read_bytes(".ai-sow/project.json"))),
+            Artifact("requirementsValidation", "FILE", ".ai-sow/validation/analyze-requirement.json", sha256_bytes(files.read_bytes(".ai-sow/validation/analyze-requirement.json"))),
+            Artifact("requirements", "FILE", ".ai-sow/data/analyze-requirement/requirements.json", sha256_bytes(files.read_bytes(".ai-sow/data/analyze-requirement/requirements.json"))),
+            Artifact("repository:customer-portal", "CANONICAL_JSON", "repository:customer-portal", sha256_bytes(canonical_json_bytes(repository))),
+            Artifact("evidence:evidence-customer-api", "FILE", evidence_path, sha256_bytes(files.read_bytes(evidence_path))),
+            absent_questionnaire(),
+        ),
+        {"asIs": json_bytes(asis)},
+    )
+    publish_design(tmp_path, review=design_review())
+
+    result = run_script(PREPARE_CONTEXT, tmp_path)
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_prepare_context_projects_relevant_design_decisions(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    publish_design(tmp_path, review=design_review())
+
+    result = run_script(PREPARE_CONTEXT, tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    fragment = json.loads(
+        (tmp_path / ".ai-sow/work/generate-story/context/design.json").read_text()
+    )
+    assert fragment["decisions"] == DESIGN["decisions"]
+
+
 def test_does_not_replay_design_hld_or_go_live_gate(tmp_path: Path) -> None:
     prepare(tmp_path)
     publish_design(root=tmp_path, review=b"HLD Coverage: BLOCKED\nGo-live Assessment: BLOCKED\n")
@@ -864,6 +938,109 @@ def test_rejects_integration_boundary_mismatch(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "INTEGRATION_BOUNDARY_MISMATCH" in codes(result)
+
+
+def test_rejects_technical_aggregate_integration_that_repeats_related_business_targets(
+    tmp_path: Path,
+) -> None:
+    requirements = copy.deepcopy(REQUIREMENTS)
+    requirements["features"].append(  # type: ignore[index]
+        {"featureId": "feature-customer-export", "epicId": "epic-customer-management"}
+    )
+    design = copy.deepcopy(DESIGN)
+    design["scopeDecisions"].append(  # type: ignore[index]
+        {
+            "featureId": "feature-customer-export",
+            "decision": "IN_SCOPE",
+            "rationale": "客户导出仍需交付。",
+            "designItemIds": ["design-customer-profile"],
+            "effectiveStartItemIds": [],
+            "requiredIntegrationBoundary": "END_TO_END",
+            "requiredDecisionKinds": ["INTEGRATION_BOUNDARY"],
+        }
+    )
+    design["decisions"][0]["relatedFeatureIds"].append("feature-customer-export")  # type: ignore[index]
+    technical = copy.deepcopy(TECHNICAL)
+    technical["features"][0]["relatedBusinessFeatureIds"].append(  # type: ignore[index]
+        "feature-customer-export"
+    )
+    delivery = fixture("delivery.valid.json")
+    delivery["stories"][0]["requiredIntegrationBoundary"] = "END_TO_END"
+    delivery["gaps"].append(
+        {
+            "gapId": "gap-customer-export",
+            "featureId": "feature-customer-export",
+            "name": "客户导出交付差距",
+            "description": "客户导出端到端结果尚未交付。",
+            "commitmentIds": [],
+        }
+    )
+    delivery["stories"].append(
+        {
+            "storyId": "story-customer-export",
+            "gapId": "gap-customer-export",
+            "name": "交付客户导出",
+            "description": "交付客户导出端到端结果。",
+            "uatRelevant": True,
+            "requiredIntegrationBoundary": "END_TO_END",
+        }
+    )
+    delivery["acceptanceCriteria"].append(
+        {
+            "acceptanceCriterionId": "ac-customer-export",
+            "storyId": "story-customer-export",
+            "sequence": 1,
+            "result": "客户导出可取得完整结果。",
+            "decisionGate": "REQUIRED",
+            "approvalDecisionIds": ["decision-profile-api"],
+        }
+    )
+    delivery["integrations"].extend(
+        [
+            {
+                "integrationId": "integration-customer-profile-business",
+                "storyId": "story-customer-profile",
+                "source": "Customer Portal（客户门户）",
+                "target": "Customer API（客户接口）",
+                "trigger": "查看客户档案",
+                "direction": "OUTBOUND",
+                "purpose": "取得客户档案",
+                "owner": "INTERNAL",
+                "deliveryBoundary": "END_TO_END",
+                "targetKind": "SYSTEM",
+                "decisionIds": ["decision-profile-api"],
+            },
+            {
+                "integrationId": "integration-customer-export-business",
+                "storyId": "story-customer-export",
+                "source": "Customer Portal（客户门户）",
+                "target": "Customer Export API（客户导出接口）",
+                "trigger": "导出客户档案",
+                "direction": "OUTBOUND",
+                "purpose": "取得客户导出结果",
+                "owner": "INTERNAL",
+                "deliveryBoundary": "END_TO_END",
+                "targetKind": "SYSTEM",
+                "decisionIds": ["decision-profile-api"],
+            },
+        ]
+    )
+    delivery["integrations"][0]["target"] = (
+        "Customer API（客户接口）、Customer Export API（客户导出接口）"
+    )
+
+    prepare(
+        tmp_path,
+        requirements=requirements,
+        design=design,
+        technical=technical,
+        delivery=delivery,
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "INTEGRATION_SCOPE_OVERLAP" in codes(result)
 
 
 def test_consumes_approved_default_exactly_once(tmp_path: Path) -> None:

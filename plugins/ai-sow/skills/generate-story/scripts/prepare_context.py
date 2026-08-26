@@ -172,6 +172,11 @@ def context_fragments(
         for feature_id in concern["featureIds"]  # type: ignore[union-attr]
         if isinstance(feature_id, str)
     )
+    selected_decisions = [
+        item
+        for item in values(design, "decisions")
+        if bool(ids([item], "relatedFeatureIds") & selected_features)
+    ]
     effective_start_ids = ids(scopes, "effectiveStartItemIds")
     effective_start_ids.update(
         value
@@ -241,6 +246,7 @@ def context_fragments(
                 ],
             },
             "design": {
+                "decisions": selected_decisions,
                 "goLiveConcerns": concerns,
                 "scopeDecisions": scopes,
             },

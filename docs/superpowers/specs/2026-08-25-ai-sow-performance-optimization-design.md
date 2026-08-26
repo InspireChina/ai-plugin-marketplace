@@ -66,6 +66,13 @@ BLOCKED
 模型 turn 接收用户批准，因此本设计承诺的是“批准后零专业推理、零叶子 Agent、零 artifact 修订”，
 而不是字面意义上的零模型调用。
 
+当新 session 已携带 Owner 与完整 packet SHA-256 的精确批准时，五个 Owner 使用显式快速路径：
+依次调用 Owner-local `write-approval` 与一次 `publish-approved`。前者只校验 Owner、固定 work-only
+路径和用户提供的 64 位小写 packet SHA-256，再确定性写 canonical approval sidecar；后者是 packet、
+Reviewer、candidate、context、input、review、risk summary 与 approval 的唯一发布前总复核。Stage 不得
+手写 approval JSON，也不再枚举项目、预读这些 artifact、运行 `--help`/closure/renderer/独立 `check`
+或重新进入专业流程。
+
 ## 3. Agent 拓扑
 
 ### 3.1 当前 Stage Agent
@@ -170,8 +177,10 @@ Agent 同时形成 `review-notes.md`；Owner-local renderer 把 candidate 中的
 `inputArtifacts` 使用 Owner receipt 的 named input 顺序；`candidateOutputs` 使用 Owner receipt 的
 named output 顺序。每项至少包含项目相对 path 与 SHA-256。packet hash 是用户批准的唯一精确对象。
 
-Reviewer `PASS` 不写入 packet 本体，避免 Reviewer 消息成为稳定业务数据；Reviewer 只把以下
-canonical work-only sidecar 绑定到 packet，不保存聊天记录或成为稳定业务数据：
+Reviewer `PASS` 不写入 packet 本体，也不直接写项目文件，避免 Reviewer 消息成为稳定业务数据。
+Reviewer 只返回 `PASS` 或 findings；`PASS` 后当前 Stage 必须把已审 packet 的完整 SHA-256 传给
+Owner-local `validate.py --mode write-reviewer --packet-sha256 <hash>`。该命令只验证固定路径和 hash
+格式，以 canonical bytes 原子写入下列 work-only sidecar，不读取 candidate、上游或 Schema：
 
 ```json
 {
@@ -183,12 +192,15 @@ canonical work-only sidecar 绑定到 packet，不保存聊天记录或成为稳
 ```
 
 向用户展示时同时报告 packet path、packet SHA-256、Reviewer 结果和风险摘要。Reviewer 返回 finding
-时不写 `reviewer.json`；Stage 的一次整体修复会产生新 packet，原 Reviewer 结论自动失效。
+时不运行 `write-reviewer`；Stage 的一次整体修复会产生新 packet，原 Reviewer 结论自动失效。
+Stage 不得手写、格式化或补全 reviewer JSON；`write-reviewer` 只能消费实际 fresh-context Reviewer
+对精确 packet 的 `PASS`，不能替代独立评审。
 
 ### 4.3 Approval 与发布
 
-用户必须明确批准 Owner 与 packet SHA-256。当前 Stage Agent 随后写 canonical work-only
-`approval.json`：
+用户必须明确批准 Owner 与 packet SHA-256。当前 Stage Agent 随后只把该精确值传给 Owner-local
+`validate.py --mode write-approval --packet-sha256 <hash>`；该命令不读取 candidate、上游或 Schema，
+只验证参数并在 Owner 固定 work-only 路径确定性写入 canonical `approval.json`：
 
 ```json
 {
@@ -198,6 +210,9 @@ canonical work-only sidecar 绑定到 packet，不保存聊天记录或成为稳
   "packetSha256": "<64-lowercase-hex>"
 }
 ```
+
+Stage 不得手写、格式化或补全该 JSON。`write-approval` 成功后必须紧接着只调用一次
+`publish-approved`；只有后者承担全部 artifact 与 hash 发布前复核。
 
 publish/rebind 在任何正式写入前重新验证：
 
@@ -223,6 +238,9 @@ Worker 修复、Reviewer 复审或 candidate 编译。
 
 不建设中央 `slice_context()`、共享业务 context compiler 或 `global_pipeline_state.json`。每个 Owner
 在自己的 Skill 内提供 `scripts/prepare_context.py`，输出可丢弃、可重新生成的 work-only closure。
+对已有明确 closure 命令的 Owner，该命令是 Stage 的第一条项目命令，并同时承担直接上游 receipt
+启动门禁；Stage 不先枚举 `.ai-sow`、探测 Git 或复读完整上游 artifact。closure 成功后只读取
+manifest 点名的 fragment 和完成专业分析确需的 source anchor。
 
 `context/manifest.json` 至少记录输入 path、hash、选择规则、选中稳定 ID 和各 fragment 字节数；
 它不拥有业务事实，正式判断仍引用稳定 artifact 和 receipt。
@@ -232,6 +250,12 @@ Worker 修复、Reviewer 复审或 candidate 编译。
 - `analyze-requirement`：来源 inventory、hash、问卷状态；来源正文按需读取；
 - `analyze-as-is`：证据 inventory、九个 Topic、仓库/往期 SOW anchor；源码和文档按需读取；
 - `generate-design`：Requirements、As-Is Coverage、Uncertainty、Effective Start 与来源 anchor 闭包；
+  As-Is 仓库 `DOCUMENT` Evidence 按登记 repoId 把逻辑 `<repoId>:<anchor>` 重建为 receipt 中的真实
+  项目相对路径，不复制或重放 As-Is 业务校验；source anchor 同时保留用于追溯的逻辑 `reference`
+  与只供 Stage 读取文件的项目相对 `resolvedPath`，禁止模型自行猜测磁盘位置；两份 candidate
+  Schema 由 Skill 公布精确文件名，Stage 不枚举插件目录寻找合同；BUSINESS Epic/Feature、
+  Effective Start/Item/Commitment 和 source/Evidence/snapshot 分别只在一个 fragment 投影，避免
+  同一集合被 packet 与模型重复加载；
 - `generate-story`：ScopeDecision、Feature、Effective Start、问卷决定和十项 Go-live Concern 闭包；
 - `generate-task`：Story/AC/Integration、关联 Design Item/Delta、关联 Effective Start 和模板任务目录；
 - Reviewer：只读取最终 packet 及 packet 点名的专业证据 fragment。
@@ -289,6 +313,25 @@ review 或重新生成 package。任何 staged byte 变化都生成新 packet �
 
 当前 flat staging、`NO_CHANGE` 直接 staged rebind、package 先发布、receipt 最后写入、第三种 hash
 阻塞和幂等前向恢复语义保持不变。
+
+真实 recovery E2E 进一步要求调度合同本身可复制：`reconcile/SKILL.md` 固定列出 Owner stable、
+candidate、review、receipt 路径和 `--staging-root` 命令，`NO_CHANGE` 的 previous/current 分别来自
+base Owner receipt 与 staged upstream receipt。Stage 不预读尚未创建的 work 文件，不复制 flat
+ProjectView 可回退读取的 base 产物；任一失败 receipt 终止当前 run 并从新 run ID 重测，避免重试
+输出在后续模型回合反复累计。
+Skill-local `reconcile.py --mode inspect` 在任何项目 artifact 读取之前一次返回该固定后缀的路径、hash、
+base validation inputs 和 review ID 声明。它属于既有 path/hash seam，不调用 Owner、不读取其他 Skill
+Schema，也不解释业务字段；Stage 不再自行选择 `sha256sum/shasum` 或加载完整 `NO_CHANGE` artifact。
+reconciliation-only `prepare-no-change` 从 base review/receipt 与 staged upstream receipt 自动生成
+完整 Stable ID/hash binding，`stage-owner` 固定 flat path 投影；Owner validator 仍由 Stage 直接
+调用且每个动作必须是独立 fail-fast tool call。这样消除漏列 ID、双层 `.ai-sow` 和失败后继续，
+同时不让 reconcile Python 执行/import Owner、读取业务 Schema 或成为通用 Owner runner。命令使用
+单路径 `uv --directory <plugin-root> run --project .`，不依赖 shell 临时变量或重复 cache path。
+该形式只用于传入绝对 `--project-root` 的 Adapter/Owner 脚本；项目 artifact 读取保持项目 cwd，
+避免 `--directory` 改变子进程 cwd 后误解相对路径。
+任何 staging 前，`inspect-work` 只读返回 CHANGED candidate named hashes，Stage 先冻结整体
+`review.md`，再由 `prepare-changed` 绑定 CHANGED work review；这消除先发布 Design、后发现整体
+review 尚不存在的返工。
 
 ## 8. Setup 与 Generate SOW
 

@@ -54,6 +54,32 @@ def list_at(value: dict[str, Any], key: str) -> list[dict[str, Any]]:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
+def source_evidence(
+    entries: list[dict[str, Any]],
+    *,
+    evidence_paths: dict[str, str],
+    prior_sow_paths: dict[str, str],
+) -> list[dict[str, Any]]:
+    projected: list[dict[str, Any]] = []
+    for entry in entries:
+        value = {
+            key: entry.get(key)
+            for key in ("evidenceId", "kind", "reference", "summary", "supportsIds")
+            if key in entry
+        }
+        evidence_id = entry.get("evidenceId")
+        resolved = evidence_paths.get(evidence_id) if isinstance(evidence_id, str) else None
+        reference = entry.get("reference")
+        if resolved is None and entry.get("kind") == "PRIOR_SOW" and isinstance(reference, str):
+            locator = reference.split("#", 1)[0]
+            if locator.startswith("prior-sow:"):
+                resolved = prior_sow_paths.get(locator.removeprefix("prior-sow:"))
+        if resolved is not None:
+            value["resolvedPath"] = resolved
+        projected.append(value)
+    return projected
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -91,9 +117,30 @@ def main() -> int:
 
         requirements = object_at(files, design_validator.REQUIREMENTS_PATH)
         asis = object_at(files, design_validator.ASIS_PATH)
+        scope = asis.get("analysisScope")
+        if not isinstance(scope, dict):
+            raise ValueError("analysisScope must be an object")
+        asis_inputs, asis_input_failure = design_validator.current_asis_inputs(files)
+        if asis_input_failure is not None:
+            raise ProjectIOError(
+                "CONTEXT_INPUT_INVALID", MANIFEST_PATH, str(asis_input_failure.diagnostics)
+            )
+        evidence_paths = {
+            artifact.name.removeprefix("evidence:"): artifact.locator
+            for artifact in asis_inputs
+            if artifact.kind == "FILE" and artifact.name.startswith("evidence:")
+        }
+        repository_snapshots = list_at(scope, "repositorySnapshots")
+        prior_sow_snapshots = list_at(scope, "priorSowSnapshots")
+        prior_sow_paths = {
+            entry["priorSowId"]: entry["file"]
+            for entry in prior_sow_snapshots
+            if isinstance(entry.get("priorSowId"), str)
+            and isinstance(entry.get("file"), str)
+        }
         business = {
             key: requirements.get(key, [])
-            for key in ("sourceDocuments", "normalizedItems", "epics", "features")
+            for key in ("epics", "features")
         }
         coverage = {
             key: asis.get(key, [])
@@ -102,19 +149,18 @@ def main() -> int:
         uncertainties = {"uncertainties": asis.get("uncertainties", [])}
         effective_start = {
             key: asis.get(key, [])
-            for key in ("effectiveStartItems", "items", "commitments", "evidence")
+            for key in ("effectiveStartItems", "items", "commitments")
         }
         source_anchors = {
             "sourceDocuments": list_at(requirements, "sourceDocuments"),
             "normalizedItems": list_at(requirements, "normalizedItems"),
-            "evidence": [
-                {
-                    key: entry.get(key)
-                    for key in ("evidenceId", "kind", "reference", "summary", "supportsIds")
-                    if key in entry
-                }
-                for entry in list_at(asis, "evidence")
-            ],
+            "repositorySnapshots": repository_snapshots,
+            "priorSowSnapshots": prior_sow_snapshots,
+            "evidence": source_evidence(
+                list_at(asis, "evidence"),
+                evidence_paths=evidence_paths,
+                prior_sow_paths=prior_sow_paths,
+            ),
         }
         fragments = {
             "businessRequirements": business,

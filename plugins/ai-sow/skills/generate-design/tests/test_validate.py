@@ -371,6 +371,33 @@ def prepare_review_candidate(
     return design, technical, review
 
 
+def test_renderer_owns_candidate_structure_counts(tmp_path: Path) -> None:
+    design_bytes, technical_bytes, review_bytes = prepare_review_candidate(tmp_path)
+    design = json.loads(design_bytes)
+    technical = json.loads(technical_bytes)
+    review = review_bytes.decode("utf-8")
+    assert (
+        "Structure Counts: "
+        f"designItems={len(design['designItems'])}, "
+        f"architectureDeltas={len(design['architectureDeltas'])}, "
+        f"decisions={len(design['decisions'])}, "
+        f"scopeDecisions={len(design['scopeDecisions'])}, "
+        f"technicalEpics={len(technical['epics'])}, "
+        f"technicalFeatures={len(technical['features'])}"
+    ) in review
+
+    mutate_json(
+        tmp_path,
+        ".ai-sow/work/generate-design/review-source.json",
+        lambda value: value.update(
+            {"architectureDeltaReview": "共九项架构变化，均已完成核对。"}
+        ),
+    )
+    blocked = run_renderer(tmp_path)
+    assert blocked.returncode == 2
+    assert "must not manually state candidate object counts" in blocked.stdout
+
+
 def bind_review_packet(root: Path) -> str:
     packet = (root / ".ai-sow/work/generate-design/review-packet.json").read_bytes()
     digest = sha256_bytes(packet)
@@ -429,14 +456,97 @@ def test_prepare_context_closes_business_asis_uncertainty_start_and_source_ancho
     ]
     business = json.loads((context_root / "business-requirements.json").read_text())
     assert business["features"] == REQUIREMENTS["features"]
+    assert set(business) == {"epics", "features"}
     starts = json.loads((context_root / "effective-start.json").read_text())
     assert starts["effectiveStartItems"] == ASIS["effectiveStartItems"]
+    assert set(starts) == {"effectiveStartItems", "items", "commitments"}
     anchors = json.loads((context_root / "source-anchors.json").read_text())
     assert anchors["sourceDocuments"][0]["sourceDocumentId"] == (
         "source-document-customer-profile"
     )
+    assert anchors["normalizedItems"] == REQUIREMENTS["normalizedItems"]
+    assert anchors["evidence"] == ASIS["evidence"]
     assert not (tmp_path / ".ai-sow/reviews/generate-design.md").exists()
     assert not (tmp_path / ".ai-sow/data/generate-design/design.json").exists()
+
+
+def test_prepare_context_accepts_asis_repository_document_receipt(
+    tmp_path: Path,
+) -> None:
+    prepare(tmp_path)
+    asis = copy.deepcopy(ASIS)
+    repository = {
+        "repoId": "customer-portal",
+        "path": "repositories/customer-portal",
+        "revision": "a" * 40,
+        "dirty": False,
+    }
+    evidence_path = "repositories/customer-portal/docs/current-state.md"
+    evidence_payload = b"# Current state\n\nThe profile API is read-only.\n"
+    asis["analysisScope"]["mode"] = "BROWNFIELD"  # type: ignore[index]
+    asis["analysisScope"]["repositorySnapshots"] = [repository]  # type: ignore[index]
+    asis["evidence"] = [
+        {
+            "evidenceId": "evidence-customer-api",
+            "kind": "DOCUMENT",
+            "reference": "customer-portal:docs/current-state.md#L3",
+            "summary": "现状登记确认接口只读边界。",
+            "supportsIds": ["asis-customer-api", "effective-start-customer-api"],
+        }
+    ]
+    write_bytes(tmp_path, evidence_path, evidence_payload)
+    files = ProjectFiles.open(tmp_path)
+    publish_owner(
+        files,
+        ASIS_CONTRACT,
+        (
+            Artifact(
+                "project",
+                "FILE",
+                ".ai-sow/project.json",
+                sha256_bytes(files.read_bytes(".ai-sow/project.json")),
+            ),
+            Artifact(
+                "requirementsValidation",
+                "FILE",
+                ".ai-sow/validation/analyze-requirement.json",
+                sha256_bytes(files.read_bytes(".ai-sow/validation/analyze-requirement.json")),
+            ),
+            Artifact(
+                "requirements",
+                "FILE",
+                ".ai-sow/data/analyze-requirement/requirements.json",
+                sha256_bytes(files.read_bytes(".ai-sow/data/analyze-requirement/requirements.json")),
+            ),
+            Artifact(
+                "repository:customer-portal",
+                "CANONICAL_JSON",
+                "repository:customer-portal",
+                sha256_bytes(canonical_json_bytes(repository)),
+            ),
+            Artifact(
+                "evidence:evidence-customer-api",
+                "FILE",
+                evidence_path,
+                sha256_bytes(evidence_payload),
+            ),
+            questionnaire_absent_artifact(),
+        ),
+        {"asIs": json_bytes(asis)},
+    )
+
+    result = run_context(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    assert payload(result)["outcome"] == "OK"
+    anchors = json.loads(
+        (
+            tmp_path
+            / ".ai-sow/work/generate-design/context/source-anchors.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert anchors["repositorySnapshots"] == [repository]
+    assert anchors["evidence"][0]["resolvedPath"] == evidence_path
 
 
 def test_review_mode_binds_both_candidates_without_formal_writes(tmp_path: Path) -> None:
@@ -1007,6 +1117,15 @@ def test_skill_defines_review_candidate_publish_stop_flow() -> None:
         "独立服务容量模型或单独支持 SOW",
         "不得仅因实现机制新增 Feature",
         "不得要求下游修改已批准的 Story/AC",
+        "第一条项目命令必须是下方公开的 `prepare_context.py`",
+        "`rg`、`rg --files`、`find`、`git status`",
+        "context/manifest.json",
+        "resolvedPath",
+        "contracts/design.schema.json",
+        "contracts/technical-requirements.schema.json",
+        "不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema",
+        "不得手写 Design Item、Architecture Delta",
+        "`Structure Counts`",
     ):
         assert required in contract
     for forbidden in ("Worker", "Validator", "Orchestrator"):

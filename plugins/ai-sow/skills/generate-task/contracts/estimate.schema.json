@@ -83,7 +83,7 @@
           "enum": ["新建", "调整", "接入复用"]
         },
         "workModeRationale": {
-          "description": "结合当前实例和现状说明工作模式选择的具体理由。",
+          "description": "结合当前实例和现状说明工作模式选择的具体理由；接入复用时精确使用 <effectiveStartItemName>保持不变；<projectSideWorkCommitment>。",
           "type": "string",
           "minLength": 1
         },

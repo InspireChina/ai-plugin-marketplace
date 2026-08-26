@@ -71,9 +71,9 @@ Integration 作为单独的数据对象保存，不再只是 Story 里的一个�
 
 ### 6.1 业务需求
 
-`analyze-requirement` 只输出 `BUSINESS` Epic 和 Feature。它不识别、不分类、不产出 `TECHNICAL` 需求。
+`analyze-requirement` 只输出 `BUSINESS` Epic 和 Feature。它不产出 `TECHNICAL` 需求。
 
-来源文件中可能包含技术约束或已有方案。`analyze-requirement` 登记原始来源，并只建立 BUSINESS 需求与来源材料之间的对应关系，不整理或转换其中的技术内容。相关内容保留在已登记的原始来源中，由 `generate-design` 结合业务需求和 As-Is 读取、判断并记录技术要求来自哪里。
+来源文件中可能包含技术约束或已有方案。`analyze-requirement` 登记原始来源，并在 work-only 来源处置表中把决策相关陈述唯一分类为 `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`。`DESIGN_INPUT` 只保存原文定位和摘要用于完整性评审，不整理或转换为稳定 TECHNICAL 数据；相关内容仍以已登记原始来源为权威，由 `generate-design` 结合业务需求和 As-Is 读取、判断并记录技术要求来自哪里。来源处置表由评审 packet 绑定并投影到正式 review，但不是第七份稳定 JSON。
 
 ### 6.2 技术需求
 
@@ -140,7 +140,7 @@ setup 不接收 mode、Repo 或往期 SOW，不安装 CodeGraph，不安装 Test
 
 ### 8.2 analyze-requirement
 
-该 Skill 在使用时将需求来源复制或登记到 `.ai-sow/inputs/analyze-requirement/`，保存固定的来源 ID、项目内相对路径和哈希。先判断现有材料是否足以整理业务需求；如果信息不足、含义不清或相互冲突，并且可能改变范围、目标、业务规则、优先级或验收意图，就在 `.ai-sow/reviews/analyze-requirement-questionnaire.md` 生成结构化澄清问卷。
+该 Skill 在使用时将需求来源复制或登记到 `.ai-sow/inputs/analyze-requirement/`，保存固定的来源 ID、项目内相对路径和哈希。先通读完整来源并维护 work-only 来源处置表：BUSINESS 陈述绑定 normalized item，明确技术输入留给设计，范围边界映射全部受影响的 Epic/Feature，明确排除项记录理由。确定性 context 与 review packet 绑定该表，但批准发布时仍只写正式 review、BUSINESS requirements 和 receipt。如果信息不足、含义不清或相互冲突，并且可能改变范围、目标、业务规则、优先级或验收意图，就在 `.ai-sow/reviews/analyze-requirement-questionnaire.md` 生成结构化澄清问卷。
 
 问卷至少包含问题 ID、类型、来源、缺失或冲突之处、业务影响、可选答案、建议选项及理由、用户答案和状态。关键问题解决前不能批准正式业务需求；非关键未知项只有在用户确认默认处理方式后才能转为 Assumption。技术设计问题不在本问卷中解决，交给 `generate-design` 处理。
 

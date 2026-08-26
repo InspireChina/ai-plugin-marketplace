@@ -4,6 +4,49 @@
 
 ## 未发布
 
+- `setup` 新增 macOS/Linux 与 Windows 的确定性环境 bootstrap：在插件安装副本内自动准备 uv、
+  managed Python 3.12、锁定依赖和 `.venv`，再执行项目初始化；BA/PM 无需管理员权限或终端
+  安装步骤，网络/权限不足时在写项目之前 fail closed 并由 Codex 自动重试。
+- `analyze-requirement` 新增 work-only 来源处置闭包：完整来源中的决策相关陈述必须分类为
+  `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`，由确定性 context、review 与 packet
+  绑定；技术输入不会污染 BUSINESS 稳定 JSON，跨域边界必须映射全部受影响的 Epic/Feature。
+  同时固定 Skill 资产按 `<skill-root>` 直接解析，避免无关目录搜索和 Git 探测；五个专业
+  Owner 把确定性脚本作为公开命令黑盒执行，不再为预测 diagnostics 复读实现源码。
+- 五个专业 Owner 新增确定性 Reviewer/批准绑定：fresh-context Reviewer 只返回 `PASS` 或 findings，
+  `PASS` 后 Stage 调用 Owner-local `write-reviewer` 写 canonical reviewer sidecar；新 session 已提供
+  Owner 与完整 packet SHA-256 时，依次调用 `write-approval` 与一次 `publish-approved`。两个写命令
+  只校验固定路径和 hash 参数，发布命令仍是唯一总复核；Stage 不再手写 reviewer/approval JSON，
+  也不再枚举/预读 artifact、运行 `--help`、closure、renderer 或额外 `check`。
+- `analyze-as-is` 新增只读 `upstream-check` 输入门禁，在 candidate 尚不存在时先匹配 Requirement
+  receipt；不再误用 `review` 产生 `CANDIDATE_UNREADABLE`，且门禁不写任何 As-Is artifact。
+  同时修正仓库内 `DOCUMENT` Evidence 的 attestation：`<repoId>:<anchor>` 会按已登记
+  repository snapshot path 解析和绑定，不再被误当成项目根目录下的字面文件名；Commitment
+  与 `PRIOR_SOW` Evidence 统一强制使用 `prior-sow:<priorSowId>#<anchor>`，防止来源字段与逻辑
+  anchor 指向不同往期 SOW。Skill 同时公开既有 `implementationStatus → treatment` 完整矩阵，
+  Stage 无需读取脚本或先消耗一次机械失败才能正确编制承诺。
+- `generate-design` 修正 As-Is handoff 的仓库 `DOCUMENT` Evidence 重建：下游按登记 repoId 解析
+  `<repoId>:<anchor>`，与 As-Is receipt 的真实项目路径保持一致，不再把逻辑引用误当字面路径。
+  Design 的第一条项目命令固定为 `prepare_context.py`，Stage 不再预先枚举 `.ai-sow` 或探测 Git，
+  成功后只读取 manifest 点名的闭包和必要 source anchor；closure 为每条可读 Evidence 提供项目
+  相对 `resolvedPath` 及 repository/prior SOW snapshot，模型无需猜测逻辑引用的磁盘位置；Skill
+  同时公布两份 candidate Schema 的精确路径，避免探测插件目录或猜测不存在的 `schemas/`。Design
+  closure 删除 fragment 间重复的 source document、normalized item 与 Evidence，真实 E2E 输入下
+  fragment bytes 从 37,385 降为 29,457（-21.2%）。
+- `generate-design` review renderer 新增 candidate 驱动的唯一 `Structure Counts` 声明，并拒绝
+  review-source 自由文本重复手写 Design/TECHNICAL 对象数量；一次专业整体修正新增或删除对象后，
+  评审计数会随 candidate 自动更新，不再因旧摘要计数漂移而消耗第二次 Reviewer 失败。
+- `generate-story` 公开 candidate 合同的精确路径 `contracts/delivery.schema.json`，Stage 在 closure
+  后直接读取一次，不再通过 `ls`、glob、`rg`、fixture 或 test 枚举猜测 Schema。
+- `generate-story` 修正 As-Is handoff 的仓库 `DOCUMENT` Evidence 重建：逻辑
+  `<repoId>:<anchor>` 现在按 `repositorySnapshots` 解析为 receipt 绑定的项目相对路径，与
+  `generate-design` 的既有 handoff 语义保持一致。
+- `generate-story` context closure 新增已选 Feature 相关的 Design Decision 投影，避免 Stage 为
+  AC/Integration 猜测批准 ID；Skill 和评审模板同时明确每个非 `NONE` 集成边界 Story 都要有
+  边界一致的顶级 Integration，不能只挂到共享使能 Story。
+- `generate-story` 新增横切技术范围的非重复门禁：带 `relatedBusinessFeatureIds` 的 TECHNICAL Story
+  只能交付独立共享适配器/控制边界，不得聚合两个或更多相关 BUSINESS Story 已登记的提供方 target，
+  也不得再次声明这些业务调用的映射、幂等、重试、异常处置和核对；机械 review 以
+  `INTEGRATION_SCOPE_OVERLAP` 在进入 Task 前阻塞可证明的重复计价。
 - 将 candidate-first 生命周期推广到五个专业 Owner：各 Owner-local context closure 只投影本阶段
   所需引用，独立 Reviewer 使用 fresh context；候选、机械校验、风险摘要和 hash-bound review
   packet 全部前置到用户批准之前，批准后只执行精确 `publish-approved` 原字节发布。现有 receipt
@@ -12,6 +55,27 @@
   Delivery 无完备 Story→Effective Start 映射时保守保留全部 Effective Start；新增确定性 review
   renderer，从 candidate 与模板投影逐 Task 计数、包含、排除和非重复计价边界，避免修复后的
   review 漂移。
+- `generate-task` 公开 candidate 合同的固定路径 `contracts/estimate.schema.json`，closure 后只读
+  一次，不再通过目录枚举或 test 猜测 Schema。
+- `generate-task` 修正 As-Is handoff 的仓库 `DOCUMENT` Evidence 重建：逻辑
+  `<repoId>:<anchor>` 按 `repositorySnapshots` 解析为 receipt 绑定的项目相对路径，与 Design、
+  Story 消费同一交接语义，不再因把逻辑引用当成文件名而阻塞 Task context closure。
+- `generate-task` 公开接入复用 `workModeRationale` 的精确 canonical 公式，并明确只有 Effective Start
+  点名当前基础单元的既有资产时才使用“调整”；质量验证门禁同步识别 As-Is 的“回归资产”和
+  “恢复演练”原词，失败 diagnostics 直接返回期望的 canonical rationale，Stage 无需读取 validator
+  源码或消耗额外 session 才能遵守工作模式合同。复用既有 CI/CD 执行本项目新切换仍明确归为
+  “新建”发布切换；首次机械 review 只含 candidate 可修复项时允许一次整体修正，第二次失败才停止，
+  且不占用后续 Reviewer 的一次专业修复额度。
+- `generate-task` 普通 candidate 流程在 manifest 后用一个工具回合各读取五个 context fragment 一次，
+  禁止随后再次筛选或复读；Schema 明确映射到
+  `<plugin-root>/skills/generate-task/contracts/estimate.schema.json`，template catalog 成为唯一正常运行
+  目录投影，不再重复运行 `read_template.py`、读取项目 XLSX 或 Skill-local fixture。由此减少大段模板/
+  As-Is 内容在后续模型回合中的重复累计。
+- `generate-task` 同时固定输出语言合同为 `<plugin-root>/references/output-language.md`，禁止误探测
+  不存在的 `<plugin-root>/skills/references/` 路径。
+- `generate-sow` 修正最终 receipt matcher 的仓库 `DOCUMENT` Evidence 重建：逻辑
+  `<repoId>:<anchor>` 按 `repositorySnapshots` 解析为 receipt 绑定的项目相对路径，普通项目文档路径
+  保持原值，不再在最终 XLSX 生成时把仓库逻辑 anchor 当成项目根目录文件名。
 - 简化确定性阶段拓扑：`setup` 与普通 `generate-sow` 均由当前 Stage 直接调用一次现有 Module，
   不再为环境/Schema 复读或 receipt/工作簿/package 机械检查创建 Worker、Validator 或默认 Reviewer
   叶子 Agent；既有 fail-closed、模板权威、复读和内容寻址发布语义保持不变。
@@ -20,6 +84,24 @@
   redo/diff/risk 都在批准前由完整 packet 绑定，一个 Reviewer 与一次批准绑定同一 packet SHA-256，
   批准后只做确定性 check/publish 和可恢复批量发布。未新增稳定业务 JSON、DAG、通用 Owner runner
   或 revision store。
+- `reconcile` 公开五个 Owner Adapter 的 stable/candidate/review/receipt 精确路径、统一
+  `--staging-root` 命令和 `NO_CHANGE` before/current receipt 取值规则；禁止预读未创建 work 文件、
+  复制 ProjectView 可回退读取的 base 成果，或在失败 receipt 已占用 staging 后原地试错。真实 E2E
+  暴露的路径猜测、参数拼写和两级 rebind 声明返工由此转为一次性确定性调度。新增只读
+  `reconcile.py --mode inspect` 一次输出固定后缀的 baseline hash、validation inputs 与 ID 声明，避免
+  平台相关 hash 命令和完整 `NO_CHANGE` artifact 进入 Stage 上下文；新增 `--mode stage-owner`
+  确定性投影 review 与 `NO_CHANGE` 原 output，消除手工复制造成的双层 `.ai-sow` 和 base review
+  回退；新增 reconciliation-only `--mode prepare-no-change`，从 base/staged receipts 自动投影完整
+  Stable ID/hash binding。Owner validator 仍由 Stage 直接调用，且每个 Adapter/Owner 动作必须作为
+  独立 fail-fast tool call；命令统一使用单路径 `uv --directory <plugin-root>`，避免遗漏 ID、失败后
+  继续物化、shell 临时变量展开错误和重复 cache path 拼写；Adapter/Owner 强制绝对 project root，
+  项目 artifact 读取保持项目 cwd，避免 `--directory` 改变 cwd 后误读相对路径。
+- `reconcile` 新增只读 `inspect-work` 与机械 `prepare-changed`：任何 staging 前先固定 CHANGED
+  candidate hashes、冻结整体 review，再把精确 run/review hash 绑定到 Owner work review；禁止先
+  发布 Owner 再补整体批准闭包。
+- 修正 `reconcile --mode check` 的进度报告：`before == after` 的 `NO_CHANGE` 原字节复用路径现在
+  也计入 `completedOperations`，完整发布后的幂等复查会准确报告 `completedOperations ==
+  totalOperations`，不再把内部 changed-prefix 计数误报为未完成。
 - 修正 `generate-task` 的 AC 追溯语义：Story/AC 在批准后保持只读，Task 与同 Story AC
   允许多对多映射；每条 AC 仍须至少有一个 Task 覆盖，但多个基础单元 Task 可共同满足同一
   业务验收条件。

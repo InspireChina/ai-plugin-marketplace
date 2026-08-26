@@ -9,6 +9,36 @@ description: 当 AI SOW 项目需要从业务简报、招标文件、研讨会�
 
 执行前完整读取并遵守[输出语言合同](../../references/output-language.md)。业务自由文本使用简体中文，合同 token、ID、路径与 hash 保持原值。
 
+## 精确批准快速路径
+
+若本次新 session 的用户指令已经明确批准 Owner `analyze-requirement` 和一个完整 packet SHA-256，本节优先于下方完整分析流程。从当前 turn 的 Available skills 条目直接取得本 `SKILL.md` 的绝对路径；不得使用 `rg`、`find` 或 `rg --files` 枚举或重新定位 Skill。Stage 不得手写 approval JSON，必须严格依次只运行以下两条确定性命令；第一条用 canonical bytes 写固定 `ai-sow-owner-approval-v1` sidecar，第二条执行唯一发布 preflight：
+
+```text
+uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode write-approval \
+  --packet-sha256 "<用户明确批准的完整 packet SHA-256>"
+uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode publish-approved \
+  --candidate .ai-sow/work/analyze-requirement/requirements.candidate.json \
+  --review-path .ai-sow/work/analyze-requirement/review.candidate.md
+```
+
+`write-approval` 只校验 hash 格式并写固定 sidecar，不读取 packet 或专业成果；`publish-approved` 自己复算 packet、Reviewer、candidate、context、input、review、risk summary 与 approval 的全部绑定，是正式写入前唯一需要的 preflight。
+
+此快速路径不得重新读取来源、Schema、fixture、review template、candidate、packet 或 Reviewer 内容，不得枚举项目或插件文件，不得运行 `--help` 或除上述两条以外的其他命令，不得运行 `prepare_context.py`、`render_review.py`、独立 `check`，也不得创建 Reviewer 或修改专业成果。任一命令返回 `BLOCKED` 时原样报告 diagnostics 并停止；不得探索实现或退回完整分析。
+
+## 精确 Reviewer 绑定
+
+fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文或来源：
+
+```text
+uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode write-reviewer \
+  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
+```
+
+该命令只能消费实际 Reviewer 的 `PASS`，不能替代独立评审。命令返回 `BLOCKED` 时原样报告并停止；任何 packet 字节变化都必须重新创建 packet、交回 Reviewer 完整复审，再重新绑定。
+
 ## 当前任务与 Reviewer
 
 - 当前 Stage Agent 就是当前 Codex task，也是本 Skill 的唯一用户接口：直接与用户协作，完成来源登记、业务分析、问卷关闭、candidate、确定性 review 投影、机械校验和最多一次整体修复。不要为 Stage 工作另派 Agent。
@@ -20,23 +50,34 @@ Reviewer 不可用、packet 无法稳定绑定，或需要的用户事实仍缺�
 
 ## 路径与生成前合同
 
-将包含当前 `SKILL.md` 的目录解析为 `<skill-root>`，将其上两级目录解析为 `<plugin-root>`，将用户项目根目录解析为 `<project-root>`；执行前把命令占位符替换为绝对路径。
+将包含当前 `SKILL.md` 的目录解析为 `<skill-root>`，将其上两级目录解析为 `<plugin-root>`，将用户项目根目录解析为 `<project-root>`；执行前把命令占位符替换为绝对路径。以下 Skill 资产均直接按 `<skill-root>` 解析，不得相对 `<plugin-root>`、`<project-root>` 或当前 shell 目录猜测：
 
 Stage 开始完整分析前必须读取：
 
-- `contracts/source-requirements.schema.json`；
-- `fixtures/requirements.valid.json`；
-- `references/review-template.md`；
-- 需要澄清时的 `references/requirement-clarification-questionnaire.md`。
+- `"<skill-root>/contracts/source-requirements.schema.json"`；
+- `"<skill-root>/contracts/source-disposition.schema.json"`；
+- `"<skill-root>/fixtures/requirements.valid.json"`；
+- `"<skill-root>/references/review-template.md"`；
+- 需要澄清时的 `"<skill-root>/references/requirement-clarification-questionnaire.md"`。
+
+这些路径已经由当前 `SKILL.md` 唯一确定；不得搜索插件树来重新定位，不得运行 `git status`，也不得假设用户项目是 Git 仓库。
+
+确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
 
 先向用户说明：本阶段会形成的 BUSINESS 结论与稳定输出、已登记来源、当前充分输入、会改变业务范围/目标/规则/优先级/验收意图的缺口、需要用户回答的问题，以及必须保持 `BLOCKED` 的事项。
 
 ## 专业分析与问卷门禁
 
 1. 只在 `.ai-sow/inputs/analyze-requirement/` 登记用户提供的来源，保存稳定 `sourceDocumentId`、项目相对路径、原文件名和 SHA-256；稳定数据不保存来源原文。
-2. 只分析业务结果、参与者、范围、规则、优先级、验收意图、冲突和未知项。明确技术内容保留在来源中，不产出 TECHNICAL Epic/Feature。
-3. 信息缺口会改变业务结论时，按问卷参考维护 `.ai-sow/reviews/analyze-requirement-questionnaire.md`。`Blocking: YES` 必须在创建 Reviewer 前成为 `CLOSED`；非阻塞默认只有用户明确接受后才可为字段完整的 `APPROVED_DEFAULT` 与 `ASSUMPTION_CANDIDATE`。
-4. 用户答案改变业务结论时，先更新完整 BUSINESS candidate；不要把开放问题、猜测或技术答案包装成稳定业务结论。
+2. 在分解 BUSINESS candidate 前先通读全部已登记来源，为每条会影响业务范围、结果、规则、验收意图、方案边界或交付边界的明确来源陈述建立 work-only `.ai-sow/work/analyze-requirement/source-disposition.json`。每条陈述只采用一种处置：
+   - `BUSINESS`：进入 BUSINESS normalized item，并至少绑定一个对应 `norm-*`；
+   - `DESIGN_INPUT`：保留来源定位与摘要，交给 `generate-design` 形成 `SOURCE_INPUT` TECHNICAL 需求，本阶段不创建 TECHNICAL Epic/Feature；
+   - `SCOPE_BOUNDARY`：明确“不替换、沿用、仅集成”等范围边界，并绑定全部受影响的 BUSINESS Epic/Feature，不能只挂在其中一个领域；
+   - `EXCLUDED`：来源明确不进入当前交付，写清排除理由且不绑定 BUSINESS ID。
+3. `source-disposition.json` 不是稳定业务 JSON，不是第七份交接数据；它只用于证明本次完整来源分析、确定性 review 投影和 Reviewer packet 绑定。来源同一句同时包含业务结果和技术边界时，应拆成两个处置条目，不能用 `DESIGN_INPUT` 掩盖业务范围，也不能把技术实现伪装成 BUSINESS。
+4. 只分析业务结果、参与者、范围、规则、优先级、验收意图、冲突和未知项。明确技术内容通过 `DESIGN_INPUT` 保留在已登记来源中，不产出 TECHNICAL Epic/Feature。
+5. 信息缺口会改变业务结论时，按问卷参考维护 `.ai-sow/reviews/analyze-requirement-questionnaire.md`。`Blocking: YES` 必须在创建 Reviewer 前成为 `CLOSED`；非阻塞默认只有用户明确接受后才可为字段完整的 `APPROVED_DEFAULT` 与 `ASSUMPTION_CANDIDATE`。
+6. 用户答案改变业务结论时，先更新完整 BUSINESS candidate 与完整来源处置表；不要把开放问题、猜测或技术答案包装成稳定业务结论。
 
 critical questionnaire 未关闭时，不运行 `prepare_context.py`，不创建 Reviewer，也不写任何正式 review、data 或 validation 路径。
 
@@ -46,6 +87,7 @@ Stage 在 work-only 路径形成完整候选：
 
 ```text
 .ai-sow/work/analyze-requirement/requirements.candidate.json
+.ai-sow/work/analyze-requirement/source-disposition.json
 ```
 
 然后依次运行：
@@ -62,10 +104,11 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
   --review-path .ai-sow/work/analyze-requirement/review.candidate.md
 ```
 
-`prepare_context.py` 固化当前项目、已登记来源和问卷终态的 Owner-local closure。`render_review.py` 从 candidate 确定性投影专业评审材料。`--mode review` 重新校验 Schema、来源字节、BUSINESS Owner-local ID/关系、问卷终态和 review 声明，写入：
+`prepare_context.py` 先按 Skill-local schema 校验来源处置表，再固化当前项目、已登记来源、逐项处置和问卷终态的 Owner-local closure。`render_review.py` 从 candidate 与已固化处置 fragment 确定性投影专业评审材料。`--mode review` 重新校验 Schema、来源字节、BUSINESS Owner-local ID/关系、问卷终态和 review 声明，写入：
 
 ```text
 .ai-sow/work/analyze-requirement/context/manifest.json
+.ai-sow/work/analyze-requirement/context/source-disposition.json
 .ai-sow/work/analyze-requirement/review.candidate.md
 .ai-sow/work/analyze-requirement/risk-summary.md
 .ai-sow/work/analyze-requirement/review-packet.json
@@ -73,7 +116,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 
 `review-packet.json` 的固定算法 token 为 `ai-sow-owner-review-packet-v1`；它是本 Owner 的审批合同，不进入公共 runtime。
 
-Reviewer 必须检查来源与证据、业务范围遗漏、Epic→Feature 关系、冲突、未经批准猜测、问卷处置、验收意图和稳定 ID，并核对 candidate 与 review 的编译忠实度。`PASS` 后 Stage 写 canonical sidecar：
+Reviewer 必须逐份读取完整来源，并以来源处置表为检查清单，检查每条决策相关陈述是否缺失、误分类或漏映射；同时检查业务范围遗漏、跨域 `SCOPE_BOUNDARY`、`DESIGN_INPUT` 保留、Epic→Feature 关系、冲突、未经批准猜测、问卷处置、验收意图和稳定 ID，并核对 candidate 与 review 的编译忠实度。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical sidecar：
 
 ```json
 {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"analyze-requirement","packetSha256":"<packet-sha256>"}

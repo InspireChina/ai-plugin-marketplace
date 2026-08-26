@@ -27,7 +27,7 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
 | 同文件系统发布 | 未确认 | 确认项目内临时目录与最终 package 的 rename、相同内容复用和不同内容拒绝覆盖在 NTFS 上行为一致。 |
 | Windows 路径 | 未确认 | 从包含非 ASCII 字符和空格的项目路径运行。另行测试长路径（long path），并记录是否启用 Windows 长路径支持。 |
 | Git 发现 | 仅合成测试 | 确认真正的 Git for Windows 和受控 `.cmd Git shim` 都能被发现，并使用预期的 optional-lock 环境设置调用。 |
-| 工具链与已安装插件 | 未确认 | 确认 Python 3.12、`uv`、Codex marketplace 注册、插件安装、已安装插件目录发现，以及从已安装插件而非源码 checkout 运行 `pytest`。 |
+| 工具链与已安装插件 | 未确认 | 从未预装 Python、`uv` 且没有管理员权限的普通用户环境运行 `setup`，确认插件自动准备固定版 `uv`、managed Python 3.12、锁定依赖和插件 `.venv`；再确认 Codex marketplace 注册、插件安装、已安装插件目录发现，以及从已安装插件而非源码 checkout 运行 `pytest`。 |
 | Codex 工作流 | 未确认 | 通过已安装插件目录，在空项目中依次运行 `setup`、五个 Owner validator 和 `generate-sow`；确认全部七个 Skill 都从该目录解析。 |
 | Excel 结果 | 未确认 | 在 Microsoft Excel Desktop 中打开生成的工作簿，使用 `F9` 计算，再执行完整计算，保存并检查公式缓存值和公式错误。 |
 | 开发者功能 | 未确认 | 在记录开发者模式（Developer Mode）和普通符号链接权限的情况下重复文件系统测试；记录需要提权或无法创建的场景。 |
@@ -56,6 +56,11 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
   或被拒绝后留下的零字节残留。
 - [ ] 使用 `codex plugin marketplace add` 注册 checkout、安装 AI SOW，并保存注册
   命令及输出和 `codex plugin list` 输出。
+- [ ] 恢复到未预装 Python 和 `uv` 的普通用户快照，不授予管理员权限；从已安装插件调用
+  `setup`，确认它通过固定版官方安装器在插件副本内准备 `uv`，自动安装 managed Python
+  3.12、创建 `.venv`、同步锁定依赖并初始化项目。用户不得手工打开终端或执行安装命令。
+- [ ] 分别断开网络和拒绝插件缓存写入后调用 `setup`；确认返回结构化 `BLOCKED`，未创建
+  半成品 `.ai-sow`。恢复对应权限后由 Codex 自动重试同一 bootstrap，并确认成功。
 - [ ] 在不使用源码路径的情况下定位已安装插件目录；对该目录运行锁定 pytest 和仓库提供
   的独立副本冒烟检查。
 - [ ] 在新项目中运行 `setup`，然后按工作流顺序运行五个 Owner validator：

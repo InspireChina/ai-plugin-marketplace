@@ -110,6 +110,7 @@ EXISTING_OBJECT_NEW_WORK = {"数据迁移", "系统功能下线", "同一根因�
 EXISTING_CUTOVER_MARKERS = ("现有", "已有", "当前运行", "生产", "切流", "替换")
 TEST_ASSET_MARKERS = (
     "测试资产",
+    "回归资产",
     "测试方案",
     "测试范围",
     "测试用例",
@@ -117,6 +118,7 @@ TEST_ASSET_MARKERS = (
     "测试配置",
     "测试框架",
     "自动化框架",
+    "恢复演练",
 )
 ADJUSTMENT_ASSET_MARKERS = {
     "数据迁移": ("迁移资产", "迁移脚本", "迁移方案", "映射规则"),
@@ -177,7 +179,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("check", "review", "publish-approved", "publish", "rebind"),
+        choices=(
+            "check",
+            "review",
+            "write-reviewer",
+            "write-approval",
+            "publish-approved",
+            "publish",
+            "rebind",
+        ),
     )
     parser.add_argument("--candidate", default=".ai-sow/work/generate-task/estimate.candidate.json")
     parser.add_argument("--review-path", default=REVIEW_PATH)
@@ -185,7 +195,106 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-summary-path", default=RISK_SUMMARY_PATH)
     parser.add_argument("--reviewer-path", default=REVIEWER_PATH)
     parser.add_argument("--approval-path", default=APPROVAL_PATH)
+    parser.add_argument("--packet-sha256")
     return parser.parse_args()
+
+
+def write_reviewer(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("REVIEWER_STAGING_UNSUPPORTED", "write-reviewer does not accept --staging-root")
+        )
+    if args.reviewer_path != REVIEWER_PATH:
+        diagnostics.append(
+            diag("REVIEWER_PATH_INVALID", f"write-reviewer must use {REVIEWER_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                REVIEWER_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": REVIEWER_ALGORITHM,
+                        "decision": "PASS",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "REVIEWER_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} reviewer sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} reviewer sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [REVIEWER_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
+
+
+def write_approval(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("APPROVAL_STAGING_UNSUPPORTED", "write-approval does not accept --staging-root")
+        )
+    if args.approval_path != APPROVAL_PATH:
+        diagnostics.append(
+            diag("APPROVAL_PATH_INVALID", f"write-approval must use {APPROVAL_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                APPROVAL_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": APPROVAL_ALGORITHM,
+                        "decision": "APPROVED",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "APPROVAL_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} approval sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} approval sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [APPROVAL_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
 
 
 def review_path_diagnostics(mode: str, review_path: str) -> list[dict[str, object]]:
@@ -398,6 +507,13 @@ def current_asis_inputs(files: ProjectFiles) -> tuple[tuple[Artifact, ...], Matc
             entry["kind"] == "DOCUMENT" and not entry["reference"].startswith("requirements:")
         ):
             path = entry["reference"].split("#", 1)[0]
+            if entry["kind"] == "DOCUMENT":
+                match = re.fullmatch(
+                    r"([a-z][a-z0-9-]*):([^#]+)(?:#.*)?",
+                    entry["reference"],
+                )
+                if match:
+                    path = repository_path(scope, match.group(1), match.group(2))
         elif entry["kind"] in ANCHOR_KINDS:
             match = re.fullmatch(r"([a-z][a-z0-9-]*):([^#]+)(?:#.*)?", entry["reference"])
             path = repository_path(scope, match.group(1), match.group(2)) if match else None
@@ -730,7 +846,7 @@ def validate_semantics(
                 diagnostics.append(
                     diag(
                         "WORK_MODE_ADJUSTMENT_ASSET_UNSPECIFIED",
-                        f"adjustment does not identify its existing asset: {task_id}",
+                        f"adjustment requires an existing {base_name} asset; otherwise use 新建: {task_id}",
                     )
                 )
         if task["workMode"] == "接入复用" and isinstance(evidence, dict):
@@ -756,7 +872,7 @@ def validate_semantics(
                 diagnostics.append(
                     diag(
                         "WORK_MODE_REUSE_NOT_ESTIMABLE",
-                        f"reuse evidence lacks canonical project-side delivery: {task_id}",
+                        f"reuse evidence must produce this canonical rationale: {rationale} [{task_id}]",
                     )
                 )
 
@@ -1400,6 +1516,10 @@ def write_failure(files: ProjectFiles, diagnostics: list[dict[str, object]]) -> 
 
 def main() -> int:
     args = parse_args()
+    if args.mode == "write-reviewer":
+        return write_reviewer(args)
+    if args.mode == "write-approval":
+        return write_approval(args)
     path_diagnostics = review_path_diagnostics(args.mode, args.review_path)
     if path_diagnostics:
         print(

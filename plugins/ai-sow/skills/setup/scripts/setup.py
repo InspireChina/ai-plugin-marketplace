@@ -137,7 +137,7 @@ def main() -> int:
         emit(
             "NEEDS_INPUT",
             f"缺少 Python 依赖：{error.name}",
-            nextStep="运行 `uv sync --project <plugin-root> --locked` 后重新执行 setup。",
+            nextStep="重新调用 setup；setup 会自动修复插件隔离环境，用户无需执行 uv 命令。",
         )
         return 2
 

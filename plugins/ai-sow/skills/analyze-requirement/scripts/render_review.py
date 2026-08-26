@@ -18,6 +18,7 @@ from runtime.project_io import ProjectFiles, ProjectIOError
 
 
 DEFAULT_CANDIDATE = ".ai-sow/work/analyze-requirement/requirements.candidate.json"
+DEFAULT_SOURCE_DISPOSITION = ".ai-sow/work/analyze-requirement/context/source-disposition.json"
 DEFAULT_OUTPUT = ".ai-sow/work/analyze-requirement/review.candidate.md"
 
 
@@ -26,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--staging-root")
     parser.add_argument("--candidate", default=DEFAULT_CANDIDATE)
+    parser.add_argument("--source-disposition", default=DEFAULT_SOURCE_DISPOSITION)
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     return parser.parse_args()
 
@@ -43,13 +45,20 @@ def optional(item: dict[str, Any], key: str) -> str:
     return value if isinstance(value, str) and value else "NONE"
 
 
-def render(data: dict[str, Any], questionnaire: str) -> bytes:
+def render(
+    data: dict[str, Any],
+    source_disposition: dict[str, Any],
+    questionnaire: str,
+) -> bytes:
     sources = data.get("sourceDocuments")
     normalized = data.get("normalizedItems")
     epics = data.get("epics")
     features = data.get("features")
     if not all(isinstance(value, list) for value in (sources, normalized, epics, features)):
         raise ValueError("requirements candidate collections are unavailable")
+    disposition_items = source_disposition.get("items")
+    if not isinstance(disposition_items, list):
+        raise ValueError("source disposition items are unavailable")
     ids = requirement_validator.stable_ids(data)
     lines = [
         "# 业务需求评审",
@@ -74,6 +83,21 @@ def render(data: dict[str, Any], questionnaire: str) -> bytes:
             f"{cell(item['title'])} | {cell(item['statement'])} |"
             for item in normalized
         ],
+        "",
+        "## 来源处置",
+        "",
+        "| Disposition ID | Source ID | 来源定位 | 摘要 | 处置 | BUSINESS 目标 | 理由 |",
+        "|---|---|---|---|---|---|---|",
+        *[
+            f"| {cell(item['dispositionId'])} | {cell(item['sourceDocumentId'])} | "
+            f"{cell(item['sourceReference'])} | {cell(item['summary'])} | "
+            f"{cell(item['disposition'])} | {cell(joined(item['targetIds']))} | "
+            f"{cell(item['rationale'])} |"
+            for item in disposition_items
+        ],
+        "",
+        "每条会影响本阶段业务结论或后续方案边界的明确来源陈述都必须有且仅有一种处置；",
+        "DESIGN_INPUT 仅保留给 generate-design，不得因此在本阶段创建 TECHNICAL Epic/Feature。",
         "",
         "## Epic 与 Feature",
         "",
@@ -134,8 +158,11 @@ def main() -> int:
         candidate = files.read_json(args.candidate)
         if not isinstance(candidate, dict):
             raise ValueError("requirements candidate must be a JSON object")
+        source_disposition = files.read_json(args.source_disposition)
+        if not isinstance(source_disposition, dict):
+            raise ValueError("source disposition must be a JSON object")
         questionnaire = requirement_validator.current_questionnaire_declaration(files)
-        payload = render(candidate, questionnaire)
+        payload = render(candidate, source_disposition, questionnaire)
         files.write_atomic(args.output, payload)
         print(
             json.dumps(

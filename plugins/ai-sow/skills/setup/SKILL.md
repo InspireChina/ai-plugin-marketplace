@@ -10,31 +10,41 @@ description: 当需要首次初始化 AI SOW 项目，或验证现有项目外�
 
 ## 执行边界
 
-当前 Stage Agent 是本 Skill 的唯一用户接口，直接完成环境检查、项目身份确认和确定性初始化；不派发
-叶子 Agent。setup 不形成新的专业结论或评审材料，也不创建模型审查。确定性脚本已经在一次调用内
-完成写入、Project Schema 校验和模板 round-trip 复读，Stage 原样报告它的 outcome 与 diagnostics，
-不为重复同一检查再运行第二次命令。
+当前 Stage Agent 是本 Skill 的唯一用户接口，直接完成环境自举、项目身份确认和确定性初始化；不派发
+叶子 Agent。setup 不形成新的专业结论或评审材料，也不创建模型审查。bootstrap 与 setup Module 已在
+一次公开命令内完成运行时准备、写入、Project Schema 校验和模板 round-trip 复读，Stage 原样报告最终
+outcome 与 diagnostics，不拆成多条模型驱动的环境命令，也不为重复同一检查再运行第二次命令。
 
 ## 路径与环境
 
 将包含当前 `SKILL.md` 的目录解析为 `<skill-root>`，将其上两级目录解析为 `<plugin-root>`；将用户指定的项目根目录解析为 `<project-root>`。执行前把命令占位符替换为绝对路径。
 
-当前 Stage Agent 按顺序完成：
+当前 Stage Agent 先获取并向用户回显稳定 `projectId` 与正式项目名称，再只运行当前平台的一条 bootstrap 命令。bootstrap 负责：
 
-1. 确认 AI SOW 插件已安装并加载；setup 不安装、升级或重新安装 Codex 插件。
-2. 检查 uv 0.11.7 或兼容版本；缺失或不兼容时按当前操作系统的受支持方式进行用户级安装并复核。平台、网络或权限阻止安装时报告确切 blocker。
-3. 检查 Python 3.12；缺失或不兼容时通过 uv 安装并复核，不要求管理员权限。
-4. 确认 `<plugin-root>/uv.lock` 存在，运行 `uv sync --project "<plugin-root>" --locked`，准备或复用插件自己的隔离依赖环境；不向用户项目写入依赖，不修改 lockfile。
-5. 获取并向用户回显稳定 `projectId` 与正式项目名称。
+1. 复用兼容 `uv`；不存在时通过 Astral 官方固定版本 standalone installer 自动安装到插件安装副本的 `.ai-sow-tools/`，不修改 shell profile、不要求管理员权限；
+2. 复用 Python 3.12；不存在时由 uv 自动安装 managed Python 3.12；
+3. 以锁定文件创建或复用 `<plugin-root>/.venv`，复核 Python 版本以及 `jsonschema`、`openpyxl` import；
+4. 环境有效后立即调用同目录 `setup.py` 完成项目初始化与复读。
+
+用户无需手工安装 Python、uv 或依赖，也无需复制、理解或执行命令。缺少联网或插件缓存写权限时，Stage 说明一次必要权限的目的并使用 Codex 的权限机制自动重试同一 bootstrap；不得要求 BA、PM 打开终端处理。联网或平台能力确实不可用时，原样返回 bootstrap 的 `BLOCKED` diagnostics，且不得先创建 `.ai-sow`。
 
 ## 初始化与验证
 
-当前 Stage Agent 在 `<project-root>` 直接运行：
+macOS 或 Linux 直接运行：
 
 ```text
-uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/setup.py" \
+sh "<skill-root>/scripts/bootstrap.sh" \
   --project-root "<project-root>" --project-id <stable-id> --name <name>
 ```
+
+Windows PowerShell 直接运行：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>/scripts/bootstrap.ps1" \
+  -ProjectRoot "<project-root>" -ProjectId <stable-id> -Name <name>
+```
+
+bootstrap 内部在环境复核后固定执行 `uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/setup.py"`；Stage 不再单独执行或复读这些内部步骤。
 
 脚本只维护：
 

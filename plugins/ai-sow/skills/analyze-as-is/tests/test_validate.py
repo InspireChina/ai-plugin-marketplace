@@ -454,6 +454,44 @@ def test_publish_preserves_candidate_bytes_and_binds_named_inputs(tmp_path: Path
     }
 
 
+def test_upstream_check_succeeds_without_candidate_and_is_read_only(tmp_path: Path) -> None:
+    publish_requirement(tmp_path)
+    before = {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+
+    result = run_validator(tmp_path, "upstream-check")
+
+    assert result.returncode == 0, result.stdout
+    assert json.loads(result.stdout) == {
+        "outcome": "OK",
+        "summary": "analyze-requirement handoff is valid",
+        "diagnostics": [],
+        "outputs": [],
+    }
+    assert not (tmp_path / ".ai-sow/work/analyze-as-is/asis.candidate.json").exists()
+    assert {
+        path.relative_to(tmp_path).as_posix(): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    } == before
+
+
+def test_upstream_check_reports_handoff_error_without_candidate_diagnostic(
+    tmp_path: Path,
+) -> None:
+    publish_requirement(tmp_path)
+    (tmp_path / ".ai-sow/validation/analyze-requirement.json").unlink()
+
+    result = run_validator(tmp_path, "upstream-check")
+
+    assert result.returncode == 2
+    assert codes(result) == {"UPSTREAM_HANDOFF_MISSING"}
+    assert "CANDIDATE_UNREADABLE" not in result.stdout
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected"),
     (
@@ -615,6 +653,29 @@ def test_registered_prior_sow_and_evidence_anchor_are_attested(tmp_path: Path) -
     assert {"PRIOR_SOW_HASH_MISMATCH", "ANCHOR_FILE_MISSING"}.issubset(codes(result))
 
 
+def test_registered_repository_document_anchor_is_attested(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    write_bytes(
+        tmp_path,
+        "repositories/service-api/docs/operations.md",
+        b"Operational test assets are available.\n",
+    )
+    payload["evidence"].append(
+        {
+            "evidenceId": "evidence-operations-document",
+            "kind": "DOCUMENT",
+            "reference": "service-api:docs/operations.md",
+            "summary": "仓库文档记录了当前运维测试资产。",
+            "supportsIds": ["asis-customer-api"],
+        }
+    )
+    write_candidate(tmp_path, payload)
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 @pytest.mark.parametrize(
     ("kind", "reference", "expected"),
     (
@@ -637,6 +698,17 @@ def test_logical_evidence_references_are_closed(
 
     assert result.returncode == 2
     assert expected in codes(result)
+
+
+def test_commitment_source_reference_must_match_its_registered_prior_sow(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    payload["commitments"][0]["sourceReference"] = "prior-sow:other-sow#section=customer-profile"
+    write_candidate(tmp_path, payload)
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert "PRIOR_SOW_COMMITMENT_REF_INVALID" in codes(result)
 
 
 def test_runtime_evidence_cannot_use_requirement_logical_reference(tmp_path: Path) -> None:

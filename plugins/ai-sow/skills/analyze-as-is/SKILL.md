@@ -9,9 +9,41 @@ description: 当 AI SOW 在方案设计前需要独立调查代码、集成、�
 
 执行前读取并遵守[输出语言合同](../../references/output-language.md)。中文用于结论、问卷、证据摘要和评审；合同 token 保持原值。
 
+## 精确批准快速路径
+
+若本次新 session 的用户指令已经明确批准 Owner `analyze-as-is` 和一个完整 packet SHA-256，本节优先于下方完整调查流程。从当前 turn 的 Available skills 条目直接取得本 `SKILL.md` 的绝对路径；不得使用 `rg`、`find` 或 `rg --files` 枚举或重新定位 Skill。Stage 不得手写 approval JSON，必须严格依次只运行以下两条确定性命令；第一条用 canonical bytes 写固定 `ai-sow-owner-approval-v1` sidecar，第二条执行唯一发布 preflight：
+
+```text
+uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode write-approval \
+  --packet-sha256 "<用户明确批准的完整 packet SHA-256>"
+uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode publish-approved \
+  --candidate .ai-sow/work/analyze-as-is/asis.candidate.json \
+  --review-path .ai-sow/work/analyze-as-is/review.candidate.md
+```
+
+`write-approval` 只校验 hash 格式并写固定 sidecar，不读取 packet 或专业成果；`publish-approved` 自己复算 packet、Reviewer、candidate、context、input、review、risk summary 与 approval 的全部绑定，是正式写入前唯一需要的 preflight。
+
+此快速路径不得重新读取上游数据、证据、Schema、reference、candidate、packet 或 Reviewer 内容，不得枚举项目或插件文件，不得运行 `--help` 或除上述两条以外的其他命令，不得运行 `prepare_context.py`、`render_review.py`、独立 `check`，也不得创建 Reviewer 或修改专业成果。任一命令返回 `BLOCKED` 时原样报告 diagnostics 并停止；不得探索实现或退回完整调查。
+
+## 精确 Reviewer 绑定
+
+fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文或证据：
+
+```text
+uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode write-reviewer \
+  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
+```
+
+该命令只能消费实际 Reviewer 的 `PASS`，不能替代独立评审。命令返回 `BLOCKED` 时原样报告并停止；任何 packet 字节变化都必须重新创建 packet、交回 Reviewer 完整复审，再重新绑定。
+
 ## 路径与边界
 
 将包含当前 `SKILL.md` 的目录解析为 `<skill-root>`，将其上两级目录解析为 `<plugin-root>`。项目根目录保持为当前工作目录，命令中的占位符使用解析后的绝对路径。
+
+确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
 
 本 Skill 只写以下 owned artifacts：
 
@@ -32,7 +64,14 @@ Validator 是本 Skill 的确定性脚本，不再单独创建 Agent。Stage 原
 
 ## 输入门禁
 
-Stage 先用本 Skill 的确定性 validator 验证当前 `analyze-requirement` handoff。下游只接受 `ai-sow-owner-v1`、validator contract `0.3` 和 Source Requirements Schema `:0.1`；只报告 `UPSTREAM_HANDOFF_MISSING`、`UPSTREAM_HANDOFF_INVALID`、`UPSTREAM_HANDOFF_STALE` 或 `UPSTREAM_CONTRACT_UNSUPPORTED`，不得重跑或复述 Requirement 的业务 diagnostics。
+Stage 在读取 Requirements 或开始调查前只运行以下确定性输入门禁；不得用 `check` 或 `review` 代替：
+
+```text
+uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode upstream-check
+```
+
+`upstream-check` 不需要 As-Is candidate，也不写任何 work、review、data 或 validation 文件；它只验证当前 `analyze-requirement` handoff。下游只接受 `ai-sow-owner-v1`、validator contract `0.3` 和 Source Requirements Schema `:0.1`；只报告 `UPSTREAM_HANDOFF_MISSING`、`UPSTREAM_HANDOFF_INVALID`、`UPSTREAM_HANDOFF_STALE` 或 `UPSTREAM_CONTRACT_UNSUPPORTED`，不得重跑或复述 Requirement 的业务 diagnostics。
 
 Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目相对 path，建议用户显式返回 `analyze-requirement`。
 
@@ -41,7 +80,16 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 1. 读取四字段 `.ai-sow/project.json` 和已发布 Requirements。询问可用的本地代码库、往期 SOW、配置、部署材料和其他证据；只登记用户提供或明确授权取得的输入。仓库记录稳定 `repoId`、项目相对 path、revision 与 dirty；往期 SOW 复制到 `.ai-sow/inputs/analyze-as-is/prior-sows/` 并记录稳定 ID、原文件名和 SHA-256。依据证据确定 `GREENFIELD` 或 `BROWNFIELD`，不回写项目元数据。
 2. 按合同顺序评估 `SYSTEM_CONTEXT`、`CAPABILITY`、`APPLICATION`、`INTEGRATION`、`DATA`、`PLATFORM`、`SECURITY_COMPLIANCE`、`OPERATIONS_QUALITY`、`DELIVERY_CONSTRAINTS`。每个 Topic 恰有一个结论；`INSUFFICIENT_EVIDENCE` 至少关联一个 Uncertainty。
 3. 对代码库读取[CodeGraph 参考](references/codegraph.md)，依次采用 MCP、已有 CLI、项目局部 CLI、已记录静态回退。生成代码、动态分派、配置、部署和运行边界必须由直接证据佐证，否则记录 Uncertainty。
-4. 从每份往期 SOW 提取 Commitment，核对 `implementationStatus` 与 `treatment`。只有当前 Item 和 `EXPECTED_BEFORE_START` Commitment 可构成 Effective Start；`CARRY_FORWARD` 仍是待交付范围。
+4. 从每份往期 SOW 提取 Commitment，核对 `implementationStatus` 与 `treatment`。Commitment 的
+   `sourceReference` 与 `PRIOR_SOW` Evidence 的 `reference` 固定使用
+   `prior-sow:<priorSowId>#<anchor>`，例如 `prior-sow:prior-sow-phase-one#Profile!A12`；冒号后的
+   ID 必须与已登记 `priorSowId` 完全一致，原材料内的 `!` 等定位符放在 `#` 后。只有当前 Item
+   和 `EXPECTED_BEFORE_START` Commitment 可构成 Effective Start；`CARRY_FORWARD` 仍是待交付范围。
+   Commitment 的状态与处置矩阵固定为：
+   - `IMPLEMENTED` → `CURRENT_BASELINE`
+   - `PARTIAL / NOT_IMPLEMENTED` → `EXPECTED_BEFORE_START / CARRY_FORWARD / NEEDS_DECISION`
+   - `UNVERIFIED` → `NEEDS_DECISION`
+   - `SUPERSEDED` → `EXCLUDE`
 5. 为每个 BUSINESS Feature 建立一条 Coverage；无对应现状时使用 `MISSING`，不编造有效起点。
 6. 默认不启动应用、数据库或容器。静态证据无法解决会实质影响设计的重要不确定性时，读取[运行时验证参考](references/runtime-verification.md)，说明原因后仅运行目标仓库已有的最小测试或只读探针。
 7. 直接调查结束后仍有缺口时，读取[现状证据问卷](references/current-state-questionnaire.md)，只选择实际需要的问题并写入 `.ai-sow/work/analyze-as-is/questionnaire.md`。已确认回答可形成 `QUESTIONNAIRE` Evidence；`UNKNOWN` 或冲突回答形成 Uncertainty。每条 Uncertainty 必须明确 `affectsEstimate`。
@@ -71,7 +119,7 @@ uv run --project "<plugin-root>" --locked python "<skill-root>/scripts/validate.
 
 脚本校验有效 Requirement handoff、As-Is Schema、Owner-local ID/关系、九个 Topic、登记输入、Evidence anchor、问卷消费和 review 机械合同，再写 work-only `risk-summary.md` 与 canonical `review-packet.json`。packet 算法固定为 `ai-sow-owner-review-packet-v1`，绑定 named inputs、candidate、context manifest/fragments、review、risk summary 及其 SHA-256；返回 `REVIEW_REQUIRED`。此步骤不写正式 data、review 或 validation report。
 
-只创建一个 fresh-context Reviewer。Reviewer 对照登记输入、Evidence anchor、问卷、Schema 和[评审模板](references/review-template.md)完整审查当前 packet。`PASS` 时写 canonical `.ai-sow/work/analyze-as-is/reviewer.json`，使用 `ai-sow-owner-reviewer-v1` 并绑定精确 packet SHA-256。findings 只允许 Stage 做一次整体修复；修复必须重新核对九个 Topic、全部新增或变化的 Item/Commitment/Effective Start/Coverage/Uncertainty/Evidence、问卷消费和隐私边界，再重新生成 context、review、risk summary 与新 packet，由同一 Reviewer 完整复审。第二次仍有 findings 时返回 `BLOCKED`，不写 Reviewer sidecar 或任何正式路径。
+只创建一个 fresh-context Reviewer。Reviewer 对照登记输入、Evidence anchor、问卷、Schema 和[评审模板](references/review-template.md)完整审查当前 packet。`PASS` 时 Stage 只运行“精确 Reviewer 绑定”命令写 canonical `.ai-sow/work/analyze-as-is/reviewer.json`，使用 `ai-sow-owner-reviewer-v1` 并绑定精确 packet SHA-256。findings 只允许 Stage 做一次整体修复；修复必须重新核对九个 Topic、全部新增或变化的 Item/Commitment/Effective Start/Coverage/Uncertainty/Evidence、问卷消费和隐私边界，再重新生成 context、review、risk summary 与新 packet，由同一 Reviewer 完整复审。第二次仍有 findings 时返回 `BLOCKED`，不写 Reviewer sidecar 或任何正式路径。
 
 Reviewer `PASS` 后，Stage 向用户展示 Owner、packet path、精确 SHA-256、risk summary 和正式目标路径。只有用户明确批准该精确 packet，才写 canonical `.ai-sow/work/analyze-as-is/approval.json`，使用 `ai-sow-owner-approval-v1` 并绑定相同 packet SHA-256，然后只运行：
 

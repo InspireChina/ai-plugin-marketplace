@@ -145,7 +145,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("check", "review", "publish-approved", "publish", "rebind"),
+        choices=(
+            "check",
+            "review",
+            "write-reviewer",
+            "write-approval",
+            "publish-approved",
+            "publish",
+            "rebind",
+        ),
     )
     parser.add_argument("--review-path", default=REVIEW_PATH)
     parser.add_argument("--candidate", default=".ai-sow/work/generate-story/delivery.candidate.json")
@@ -153,7 +161,106 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-summary-path", default=RISK_SUMMARY_PATH)
     parser.add_argument("--reviewer-path", default=REVIEWER_PATH)
     parser.add_argument("--approval-path", default=APPROVAL_PATH)
+    parser.add_argument("--packet-sha256")
     return parser.parse_args()
+
+
+def write_reviewer(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("REVIEWER_STAGING_UNSUPPORTED", "write-reviewer does not accept --staging-root")
+        )
+    if args.reviewer_path != REVIEWER_PATH:
+        diagnostics.append(
+            diag("REVIEWER_PATH_INVALID", f"write-reviewer must use {REVIEWER_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                REVIEWER_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": REVIEWER_ALGORITHM,
+                        "decision": "PASS",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "REVIEWER_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} reviewer sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} reviewer sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [REVIEWER_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
+
+
+def write_approval(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("APPROVAL_STAGING_UNSUPPORTED", "write-approval does not accept --staging-root")
+        )
+    if args.approval_path != APPROVAL_PATH:
+        diagnostics.append(
+            diag("APPROVAL_PATH_INVALID", f"write-approval must use {APPROVAL_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                APPROVAL_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": APPROVAL_ALGORITHM,
+                        "decision": "APPROVED",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "APPROVAL_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} approval sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} approval sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [APPROVAL_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
 
 
 def validate_review_path(mode: str, review_path: str) -> list[dict[str, object]]:
@@ -312,8 +419,18 @@ def current_asis_inputs(files: ProjectFiles) -> tuple[tuple[Artifact, ...], Matc
             return (), upstream_failure("analyze-as-is", ASIS_PATH, "Evidence input contract is invalid")
         name = f"evidence:{entry['evidenceId']}"
         path: str | None = None
-        if entry["kind"] == "RUNTIME" or (entry["kind"] == "DOCUMENT" and not entry["reference"].startswith("requirements:")):
+        if entry["kind"] == "RUNTIME" or (
+            entry["kind"] == "DOCUMENT"
+            and not entry["reference"].startswith("requirements:")
+        ):
             path = entry["reference"].split("#", 1)[0]
+            if entry["kind"] == "DOCUMENT":
+                match = re.fullmatch(
+                    r"([a-z][a-z0-9-]*):([^#]+)(?:#.*)?",
+                    entry["reference"],
+                )
+                if match:
+                    path = repository_path(scope, match.group(1), match.group(2))
         elif entry["kind"] in ANCHOR_KINDS:
             match = re.fullmatch(r"([a-z][a-z0-9-]*):([^#]+)(?:#.*)?", entry["reference"])
             path = repository_path(scope, match.group(1), match.group(2)) if match else None
@@ -473,7 +590,10 @@ def validate_semantics(
 ) -> list[dict[str, object]]:
     diagnostics: list[dict[str, object]] = []
     source_features = {entry["featureId"] for entry in upstream["requirements"]["features"]}
-    technical_features = {entry["featureId"] for entry in upstream["technical"]["features"]}
+    technical_feature_by_id = {
+        entry["featureId"]: entry for entry in upstream["technical"]["features"]
+    }
+    technical_features = set(technical_feature_by_id)
     known_features = source_features | technical_features
     scopes = {entry["featureId"]: entry for entry in upstream["design"]["scopeDecisions"]}
     in_scope = {feature_id for feature_id, scope in scopes.items() if scope.get("decision") == "IN_SCOPE"}
@@ -581,6 +701,43 @@ def validate_semantics(
                             f"Design Decision is unrelated to Integration Story Feature: {decision_id}",
                         )
                     )
+
+    integrations_by_feature: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for story_id, related in integrations_by_story.items():
+        story = stories.get(story_id)
+        if story is None:
+            continue
+        gap = gaps.get(story["gapId"])
+        if gap is not None:
+            integrations_by_feature[gap["featureId"]].extend(related)
+    for feature_id, feature in technical_feature_by_id.items():
+        related_business_features = set(feature.get("relatedBusinessFeatureIds", []))
+        if len(related_business_features) < 2:
+            continue
+        related_targets = [
+            (business_feature_id, integration["target"].strip().casefold())
+            for business_feature_id in related_business_features
+            for integration in integrations_by_feature.get(business_feature_id, [])
+            if integration["target"].strip()
+        ]
+        for integration in integrations_by_feature.get(feature_id, []):
+            aggregate_target = integration["target"].strip().casefold()
+            repeated_features = {
+                business_feature_id
+                for business_feature_id, target in related_targets
+                if target in aggregate_target
+            }
+            if len(repeated_features) >= 2:
+                diagnostics.append(
+                    diag(
+                        "INTEGRATION_SCOPE_OVERLAP",
+                        "TECHNICAL Feature Integration aggregates targets already owned by "
+                        "related BUSINESS Story Integrations; keep the shared technical Story "
+                        "to a distinct adapter/control boundary: "
+                        f"{integration['integrationId']} repeats "
+                        f"{', '.join(sorted(repeated_features))}",
+                    )
+                )
     for story_id, story in stories.items():
         boundary = story["requiredIntegrationBoundary"]
         related = integrations_by_story.get(story_id, [])
@@ -1197,6 +1354,10 @@ def write_failure(files: ProjectFiles, diagnostics: list[dict[str, object]]) -> 
 
 def main() -> int:
     args = parse_args()
+    if args.mode == "write-reviewer":
+        return write_reviewer(args)
+    if args.mode == "write-approval":
+        return write_approval(args)
     review_path_diagnostics = validate_review_path(args.mode, args.review_path)
     if review_path_diagnostics:
         print(

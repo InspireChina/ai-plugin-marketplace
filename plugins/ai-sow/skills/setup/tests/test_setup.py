@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from io import BytesIO
@@ -13,6 +14,8 @@ import pytest
 
 SKILL_ROOT = Path(__file__).parents[1]
 SCRIPT = SKILL_ROOT / "scripts/setup.py"
+BOOTSTRAP_SH = SKILL_ROOT / "scripts/bootstrap.sh"
+BOOTSTRAP_PS1 = SKILL_ROOT / "scripts/bootstrap.ps1"
 TEMPLATE = SKILL_ROOT / "assets/sow-template.xlsx"
 
 
@@ -22,6 +25,151 @@ def test_skill_uses_current_stage_without_leaf_agents() -> None:
     assert "直接运行" in skill
     for forbidden in ("Orchestrator Agent", "Worker Agent", "Validator Agent", "Reviewer Agent"):
         assert forbidden not in skill
+
+
+def test_skill_bootstraps_runtime_without_user_commands() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    for required in (
+        "<skill-root>/scripts/bootstrap.sh",
+        "<skill-root>/scripts/bootstrap.ps1",
+        "用户无需手工安装",
+        "自动重试",
+    ):
+        assert required in skill
+
+
+def test_bootstrap_scripts_pin_official_uv_and_avoid_admin_install() -> None:
+    unix = BOOTSTRAP_SH.read_text(encoding="utf-8")
+    windows = BOOTSTRAP_PS1.read_text(encoding="utf-8")
+    for text in (unix, windows):
+        assert "https://astral.sh/uv/0.11.7/install" in text
+        assert "UV_UNMANAGED_INSTALL" in text
+        assert "python install 3.12" in text
+        assert "sync" in text and "--locked" in text and "--python" in text
+        assert "sudo" not in text.lower()
+    assert subprocess.run(
+        ["/bin/sh", "-n", str(BOOTSTRAP_SH)],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).returncode == 0
+
+
+def test_unix_bootstrap_creates_plugin_venv_with_existing_uv(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    script = plugin_root / "skills/setup/scripts/bootstrap.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copy2(BOOTSTRAP_SH, script)
+    (plugin_root / "pyproject.toml").write_text(
+        '[project]\nname = "bootstrap-test"\nversion = "0"\nrequires-python = ">=3.12,<3.13"\n',
+        encoding="utf-8",
+    )
+    (plugin_root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uv = fake_bin / "uv"
+    fake_uv.write_text(
+        """#!/bin/sh
+set -eu
+printf '%s\\n' "$*" >> "$FAKE_UV_LOG"
+if [ "${1:-}" = "--version" ]; then
+  printf '%s\\n' 'uv 0.11.7'
+  exit 0
+fi
+if [ "${1:-}" = "python" ] && [ "${2:-}" = "find" ]; then
+  exit 1
+fi
+if [ "${1:-}" = "sync" ]; then
+  shift
+  project=
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--project" ]; then
+      shift
+      project=$1
+    fi
+    shift
+  done
+  mkdir -p "$project/.venv/bin"
+  printf '%s\\n' '#!/bin/sh' 'if [ "${1:-}" = "--version" ]; then echo "Python 3.12.13"; fi' 'exit 0' > "$project/.venv/bin/python"
+  chmod +x "$project/.venv/bin/python"
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_uv.chmod(0o755)
+    log = tmp_path / "uv.log"
+    env = {
+        **os.environ,
+        "FAKE_UV_LOG": str(log),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+    }
+
+    result = subprocess.run(
+        ["/bin/sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.splitlines()[-1])
+    assert payload["outcome"] == "OK"
+    assert payload["pythonVersion"].startswith("Python 3.12.")
+    calls = log.read_text(encoding="utf-8")
+    assert "python install 3.12" in calls
+    assert f"sync --project {plugin_root} --locked --python 3.12" in calls
+    assert (plugin_root / ".venv/bin/python").is_file()
+
+
+def test_unix_bootstrap_failure_does_not_create_project_shell(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    script = plugin_root / "skills/setup/scripts/bootstrap.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copy2(BOOTSTRAP_SH, script)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uv = fake_bin / "uv"
+    fake_uv.write_text(
+        """#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  printf '%s\\n' 'uv 0.11.7'
+  exit 0
+fi
+if [ "${1:-}" = "python" ] && [ "${2:-}" = "find" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "sync" ]; then
+  exit 1
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_uv.chmod(0o755)
+    project_root = tmp_path / "customer-project"
+    project_root.mkdir()
+
+    result = subprocess.run(
+        [
+            "/bin/sh",
+            str(script),
+            "--project-root",
+            str(project_root),
+            "--project-id",
+            "empty-machine",
+            "--name",
+            "零预装环境",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PATH": f"{fake_bin}:/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["diagnostics"][0]["code"] == "DEPENDENCY_SYNC_FAILED"
+    assert not (project_root / ".ai-sow").exists()
 
 
 def run_setup(
@@ -178,7 +326,8 @@ def test_setup_reports_missing_python_dependencies(tmp_path: Path) -> None:
     assert result.returncode == 2
     payload = json.loads(result.stdout)
     assert payload["outcome"] == "NEEDS_INPUT"
-    assert "uv sync --project" in payload["nextStep"]
+    assert "重新调用 setup" in payload["nextStep"]
+    assert "uv sync --project" not in payload["nextStep"]
     assert not (tmp_path / ".ai-sow").exists()
 
 

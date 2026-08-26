@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,13 @@ DEFAULT_DESIGN = ".ai-sow/work/generate-design/design.candidate.json"
 DEFAULT_TECHNICAL = ".ai-sow/work/generate-design/requirements.candidate.json"
 DEFAULT_SOURCE = ".ai-sow/work/generate-design/review-source.json"
 DEFAULT_OUTPUT = ".ai-sow/work/generate-design/review.candidate.md"
+MANUAL_COUNT_PATTERN = re.compile(
+    r"(?:\d+|[零一二三四五六七八九十百]+)\s*(?:个|项|条|份)?\s*"
+    r"(?:Design\s+Items?|Architecture\s+Deltas?|Design\s+Decisions?|"
+    r"Scope\s+Decisions?|TECHNICAL\s+(?:Epics?|Features?)|"
+    r"BUSINESS\s+Features?|设计项|架构变化|(?:设计)?决策|范围(?:决策|结论))",
+    re.IGNORECASE,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,6 +70,11 @@ def required_text(source: dict[str, Any], key: str) -> str:
     value = source.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"review source requires non-empty {key}")
+    if MANUAL_COUNT_PATTERN.search(value):
+        raise ValueError(
+            f"review source {key} must not manually state candidate object counts; "
+            "renderer owns Structure Counts"
+        )
     return value
 
 
@@ -85,6 +98,14 @@ def render(
         *[entry["epicId"] for entry in objects(technical, "epics")],
         *[entry["featureId"] for entry in objects(technical, "features")],
     ]
+    structure_counts = (
+        f"designItems={len(objects(design, 'designItems'))}, "
+        f"architectureDeltas={len(objects(design, 'architectureDeltas'))}, "
+        f"decisions={len(objects(design, 'decisions'))}, "
+        f"scopeDecisions={len(objects(design, 'scopeDecisions'))}, "
+        f"technicalEpics={len(objects(technical, 'epics'))}, "
+        f"technicalFeatures={len(objects(technical, 'features'))}"
+    )
     concerns = objects(source, "concerns")
     rows = []
     for concern in concerns:
@@ -116,6 +137,7 @@ def render(
         "",
         f"Design IDs: {', '.join(design_ids) if design_ids else 'NONE'}",
         f"Technical IDs: {', '.join(technical_ids) if technical_ids else 'NONE'}",
+        f"Structure Counts: {structure_counts}",
         f"Design Candidate SHA-256: {design_hash}",
         f"Technical Candidate SHA-256: {technical_hash}",
         "",

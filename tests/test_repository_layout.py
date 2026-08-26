@@ -25,8 +25,8 @@ SCHEMA_SHA256 = {
     "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
     "skills/generate-design/contracts/design.schema.json": "27acb2adb696931bc16a103603fd9bc89b6b7c9d71c65ede51708edf9554d12f",
     "skills/generate-sow/contracts/manifest.schema.json": "b42c30a82e76709f0021caa3f7aac8bdaeb40ebb83d237f168f8f9fba8ebaee5",
-    "skills/generate-story/contracts/delivery.schema.json": "d76137028a6879000ff08ed50ece9c6cb7c95022a9b219c164fc7817c65596d3",
-    "skills/generate-task/contracts/estimate.schema.json": "34986edeb7fe53984b6e4696c979cd44f90ae2ff0c662d3665db6d748c5534c6",
+    "skills/generate-story/contracts/delivery.schema.json": "e9c99df13fdaf0f7dbef064d2935c6a9dad0668395908736465f03fc23b9dc9f",
+    "skills/generate-task/contracts/estimate.schema.json": "81c456ccbd55242b5875dee98733f68d34fa68366ee52e096368d62d0ed8e3e8",
     "skills/setup/contracts/project.schema.json": "6c10d9695de6eaffb2e1b3af79447467127c5c1e1dd4dd6ca37d788b63386e2d",
 }
 

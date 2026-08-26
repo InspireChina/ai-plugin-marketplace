@@ -37,17 +37,21 @@ PACKET_PATH = ".ai-sow/work/analyze-requirement/review-packet.json"
 RISK_SUMMARY_PATH = ".ai-sow/work/analyze-requirement/risk-summary.md"
 REVIEWER_PATH = ".ai-sow/work/analyze-requirement/reviewer.json"
 APPROVAL_PATH = ".ai-sow/work/analyze-requirement/approval.json"
+SOURCE_DISPOSITION_PATH = ".ai-sow/work/analyze-requirement/source-disposition.json"
 CONTEXT_MANIFEST_PATH = ".ai-sow/work/analyze-requirement/context/manifest.json"
 CONTEXT_FRAGMENT_SPECS = (
     ("sourceIndex", ".ai-sow/work/analyze-requirement/context/source-index.json"),
+    ("sourceDisposition", ".ai-sow/work/analyze-requirement/context/source-disposition.json"),
     ("questionnaire", ".ai-sow/work/analyze-requirement/context/questionnaire.json"),
 )
+CONTEXT_ALGORITHM = "ai-sow-analyze-requirement-context-v2"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-owner-reviewer-v1"
 APPROVAL_ALGORITHM = "ai-sow-owner-approval-v1"
 SCHEMA_ID = "urn:ai-sow:analyze-requirement:source-requirements:0.1"
 REQUIRED_REVIEW_SECTIONS = (
     "来源与归一化",
+    "来源处置",
     "Epic 与 Feature",
     "范围边界",
     "问卷状态",
@@ -96,7 +100,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("check", "review", "publish-approved", "publish", "rebind"),
+        choices=(
+            "check",
+            "review",
+            "write-reviewer",
+            "write-approval",
+            "publish-approved",
+            "publish",
+            "rebind",
+        ),
     )
     parser.add_argument("--review-path", default=REVIEW_PATH)
     parser.add_argument(
@@ -107,7 +119,106 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-summary-path", default=RISK_SUMMARY_PATH)
     parser.add_argument("--reviewer-path", default=REVIEWER_PATH)
     parser.add_argument("--approval-path", default=APPROVAL_PATH)
+    parser.add_argument("--packet-sha256")
     return parser.parse_args()
+
+
+def write_reviewer(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("REVIEWER_STAGING_UNSUPPORTED", "write-reviewer does not accept --staging-root")
+        )
+    if args.reviewer_path != REVIEWER_PATH:
+        diagnostics.append(
+            diag("REVIEWER_PATH_INVALID", f"write-reviewer must use {REVIEWER_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                REVIEWER_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": REVIEWER_ALGORITHM,
+                        "decision": "PASS",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "REVIEWER_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} reviewer sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} reviewer sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [REVIEWER_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
+
+
+def write_approval(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag("APPROVAL_STAGING_UNSUPPORTED", "write-approval does not accept --staging-root")
+        )
+    if args.approval_path != APPROVAL_PATH:
+        diagnostics.append(
+            diag("APPROVAL_PATH_INVALID", f"write-approval must use {APPROVAL_PATH}")
+        )
+    if not isinstance(args.packet_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", args.packet_sha256) is None:
+        diagnostics.append(
+            diag(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if not diagnostics:
+        try:
+            files = ProjectFiles.open(args.project_root)
+            files.write_atomic(
+                APPROVAL_PATH,
+                canonical_json_bytes(
+                    {
+                        "algorithm": APPROVAL_ALGORITHM,
+                        "decision": "APPROVED",
+                        "owner": SUBJECT,
+                        "packetSha256": args.packet_sha256,
+                    }
+                ),
+            )
+        except (ProjectIOError, OSError) as error:
+            diagnostics.append(diag(getattr(error, "code", "APPROVAL_WRITE_BLOCKED"), str(error)))
+    result: dict[str, object] = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            f"{SUBJECT} approval sidecar is invalid"
+            if diagnostics
+            else f"{SUBJECT} approval sidecar is ready"
+        ),
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [APPROVAL_PATH],
+    }
+    if not diagnostics:
+        result["packetSha256"] = args.packet_sha256
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
 
 
 def validate_review_path(mode: str, review_path: str) -> list[dict[str, object]]:
@@ -466,6 +577,128 @@ def validate_business(
     return diagnostics
 
 
+def load_source_disposition(
+    files: ProjectFiles,
+    data: dict[str, Any],
+    *,
+    path: str = SOURCE_DISPOSITION_PATH,
+) -> tuple[dict[str, Any] | None, list[dict[str, object]]]:
+    try:
+        value = files.read_json(path)
+    except ProjectIOError:
+        return None, [
+            diag(
+                "SOURCE_DISPOSITION_MISSING",
+                "work-only source disposition inventory is unavailable",
+                path,
+            )
+        ]
+    if not isinstance(value, dict):
+        return None, [
+            diag(
+                "SOURCE_DISPOSITION_INVALID",
+                "source disposition inventory must be a JSON object",
+                path,
+            )
+        ]
+
+    schema_path = Path(__file__).resolve().parents[1] / "contracts/source-disposition.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    diagnostics = [
+        diag(
+            "SOURCE_DISPOSITION_INVALID",
+            error.message,
+            path + "/" + "/".join(str(part) for part in error.path),
+        )
+        for error in sorted(
+            Draft202012Validator(schema).iter_errors(value),
+            key=lambda item: list(item.path),
+        )
+    ]
+    if diagnostics:
+        return None, diagnostics
+
+    items = value["items"]
+    source_ids = {item["sourceDocumentId"] for item in data["sourceDocuments"]}
+    normalized_ids = {item["normalizedItemId"] for item in data["normalizedItems"]}
+    epic_ids = {item["epicId"] for item in data["epics"]}
+    feature_ids = {item["featureId"] for item in data["features"]}
+    business_ids = normalized_ids | epic_ids | feature_ids
+    disposition_ids = [item["dispositionId"] for item in items]
+    for disposition_id, count in Counter(disposition_ids).items():
+        if count > 1:
+            diagnostics.append(
+                diag(
+                    "SOURCE_DISPOSITION_ID_DUPLICATE",
+                    f"duplicate source disposition ID: {disposition_id}",
+                    path,
+                )
+            )
+
+    covered_sources: set[str] = set()
+    covered_normalized: set[str] = set()
+    for item in items:
+        source_id = item["sourceDocumentId"]
+        if source_id not in source_ids:
+            diagnostics.append(
+                diag(
+                    "SOURCE_DISPOSITION_SOURCE_UNKNOWN",
+                    f"unknown sourceDocumentId: {source_id}",
+                    path,
+                )
+            )
+        else:
+            covered_sources.add(source_id)
+        target_ids = set(item["targetIds"])
+        for target_id in sorted(target_ids - business_ids):
+            diagnostics.append(
+                diag(
+                    "SOURCE_DISPOSITION_TARGET_UNKNOWN",
+                    f"unknown BUSINESS target ID: {target_id}",
+                    path,
+                )
+            )
+        if item["disposition"] == "BUSINESS":
+            normalized_targets = target_ids & normalized_ids
+            if not normalized_targets:
+                diagnostics.append(
+                    diag(
+                        "SOURCE_DISPOSITION_BUSINESS_TARGET_INVALID",
+                        "BUSINESS disposition must target at least one normalized item",
+                        path,
+                    )
+                )
+            covered_normalized.update(normalized_targets)
+        elif item["disposition"] == "SCOPE_BOUNDARY":
+            invalid_targets = target_ids - (epic_ids | feature_ids)
+            if invalid_targets:
+                diagnostics.append(
+                    diag(
+                        "SOURCE_DISPOSITION_BOUNDARY_TARGET_INVALID",
+                        "SCOPE_BOUNDARY may target only BUSINESS Epic or Feature IDs",
+                        path,
+                    )
+                )
+
+    for source_id in sorted(source_ids - covered_sources):
+        diagnostics.append(
+            diag(
+                "SOURCE_DISPOSITION_DOCUMENT_UNCOVERED",
+                f"registered source has no disposition items: {source_id}",
+                path,
+            )
+        )
+    for normalized_id in sorted(normalized_ids - covered_normalized):
+        diagnostics.append(
+            diag(
+                "SOURCE_DISPOSITION_BUSINESS_UNCOVERED",
+                f"normalized BUSINESS item has no BUSINESS disposition: {normalized_id}",
+                path,
+            )
+        )
+    return (value if not diagnostics else None), diagnostics
+
+
 def owner_inputs(
     files: ProjectFiles,
     data: dict[str, Any],
@@ -585,7 +818,7 @@ def context_packet_entry(
                 CONTEXT_MANIFEST_PATH,
             )
         )
-    if manifest.get("algorithm") != "ai-sow-analyze-requirement-context-v1":
+    if manifest.get("algorithm") != CONTEXT_ALGORITHM:
         diagnostics.append(
             diag("CONTEXT_MANIFEST_INVALID", "context manifest algorithm is invalid", CONTEXT_MANIFEST_PATH)
         )
@@ -784,6 +1017,10 @@ def write_failure(files: ProjectFiles, diagnostics: list[dict[str, object]]) -> 
 
 def main() -> int:
     args = parse_args()
+    if args.mode == "write-reviewer":
+        return write_reviewer(args)
+    if args.mode == "write-approval":
+        return write_approval(args)
     review_path_diagnostics = validate_review_path(args.mode, args.review_path)
     if review_path_diagnostics:
         print(

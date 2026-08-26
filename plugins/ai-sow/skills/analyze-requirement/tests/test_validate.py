@@ -35,6 +35,10 @@ def review_path(project_root: Path) -> Path:
     return project_root / ".ai-sow/reviews/analyze-requirement.md"
 
 
+def source_disposition_path(project_root: Path) -> Path:
+    return project_root / ".ai-sow/work/analyze-requirement/source-disposition.json"
+
+
 def run_validator(
     project_root: Path,
     mode: str,
@@ -101,6 +105,10 @@ def approved_review(
 ## 来源与归一化
 
 来源已登记，归一化条目逐项保留来源关系。
+
+## 来源处置
+
+所有决策相关来源陈述均已分类并绑定当前业务范围或后续设计输入。
 
 ## Epic 与 Feature
 
@@ -183,6 +191,27 @@ def prepare_valid(project_root: Path) -> dict[str, object]:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    disposition = {
+        "schemaVersion": "0.1",
+        "items": [
+            {
+                "dispositionId": f"source-disposition-{item['normalizedItemId'].removeprefix('norm-')}",
+                "sourceDocumentId": item["sourceDocumentId"],
+                "sourceReference": f"业务需求/{item['title']}",
+                "summary": item["statement"],
+                "disposition": "BUSINESS",
+                "targetIds": [item["normalizedItemId"]],
+                "rationale": "该陈述直接形成可追溯的 BUSINESS normalized item。",
+            }
+            for item in payload["normalizedItems"]
+        ],
+    }
+    disposition_path = source_disposition_path(project_root)
+    disposition_path.parent.mkdir(parents=True, exist_ok=True)
+    disposition_path.write_text(
+        json.dumps(disposition, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     review = review_path(project_root)
     review.parent.mkdir(parents=True)
     review.write_text(approved_review(payload), encoding="utf-8")
@@ -241,6 +270,7 @@ def test_review_template_exists_and_declares_required_machine_fields() -> None:
     text = REVIEW_TEMPLATE.read_text(encoding="utf-8")
     for heading in (
         "来源与归一化",
+        "来源处置",
         "Epic 与 Feature",
         "范围边界",
         "问卷状态",
@@ -253,6 +283,94 @@ def test_review_template_exists_and_declares_required_machine_fields() -> None:
     assert "Stable IDs:" in text
     assert "Reviewer: PASS" in text
     assert "User Approval: APPROVED" in text
+
+
+def test_context_requires_source_disposition_inventory(tmp_path: Path) -> None:
+    prepare_valid(tmp_path)
+    source_disposition_path(tmp_path).unlink()
+
+    result = run_context(tmp_path)
+
+    assert result.returncode == 2
+    assert "SOURCE_DISPOSITION_MISSING" in {
+        item["code"] for item in json.loads(result.stdout)["diagnostics"]
+    }
+
+
+def test_review_projects_design_input_and_cross_domain_scope_boundary(tmp_path: Path) -> None:
+    payload = prepare_valid(tmp_path)
+    disposition = json.loads(source_disposition_path(tmp_path).read_text(encoding="utf-8"))
+    disposition["items"].extend(
+        [
+            {
+                "dispositionId": "source-disposition-profile-api",
+                "sourceDocumentId": "source-document-customer-profile",
+                "sourceReference": "技术边界/客户档案接口",
+                "summary": "客户档案能力通过稳定接口供下游系统调用。",
+                "disposition": "DESIGN_INPUT",
+                "targetIds": [],
+                "rationale": "由 generate-design 决定接口认证、契约和适配方案。",
+            },
+            {
+                "dispositionId": "source-disposition-existing-platforms",
+                "sourceDocumentId": "source-document-customer-profile",
+                "sourceReference": "范围边界/既有平台",
+                "summary": "本期沿用既有平台，只交付相关业务能力的集成边界。",
+                "disposition": "SCOPE_BOUNDARY",
+                "targetIds": [item["featureId"] for item in payload["features"]],
+                "rationale": "该共同边界适用于登记维护与查询两个业务领域。",
+            },
+        ]
+    )
+    source_disposition_path(tmp_path).write_text(
+        json.dumps(disposition, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    assert run_context(tmp_path).returncode == 0
+    result = run_renderer(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    review = (
+        tmp_path / ".ai-sow/work/analyze-requirement/review.candidate.md"
+    ).read_text(encoding="utf-8")
+    assert "## 来源处置" in review
+    assert "DESIGN_INPUT" in review
+    assert "source-disposition-profile-api" in review
+    assert "source-disposition-existing-platforms" in review
+    assert ", ".join(item["featureId"] for item in payload["features"]) in review
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    (
+        ("design-target", "SOURCE_DISPOSITION_INVALID"),
+        ("boundary-normalized-target", "SOURCE_DISPOSITION_BOUNDARY_TARGET_INVALID"),
+        ("business-uncovered", "SOURCE_DISPOSITION_BUSINESS_UNCOVERED"),
+    ),
+)
+def test_source_disposition_relationships_fail_closed(
+    tmp_path: Path,
+    mutation: str,
+    expected: str,
+) -> None:
+    prepare_valid(tmp_path)
+    disposition = json.loads(source_disposition_path(tmp_path).read_text(encoding="utf-8"))
+    if mutation == "design-target":
+        disposition["items"][0]["disposition"] = "DESIGN_INPUT"
+    elif mutation == "boundary-normalized-target":
+        disposition["items"][0]["disposition"] = "SCOPE_BOUNDARY"
+    else:
+        disposition["items"].pop()
+    source_disposition_path(tmp_path).write_text(
+        json.dumps(disposition, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_context(tmp_path)
+
+    assert result.returncode == 2
+    assert expected in {item["code"] for item in json.loads(result.stdout)["diagnostics"]}
 
 
 def test_check_accepts_canonical_fixture_without_writing_stable_artifacts(tmp_path: Path) -> None:
@@ -840,3 +958,20 @@ def test_skill_contract_uses_single_fresh_reviewer_and_candidate_first_publicati
         assert required in contract
     assert "Validator Agent" not in contract
     assert "Worker Agent" not in contract
+
+
+def test_skill_contract_requires_full_source_disposition_and_direct_skill_paths() -> None:
+    contract = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    for required in (
+        ".ai-sow/work/analyze-requirement/source-disposition.json",
+        "BUSINESS",
+        "DESIGN_INPUT",
+        "SCOPE_BOUNDARY",
+        "EXCLUDED",
+        "每条会影响业务范围、结果、规则、验收意图、方案边界或交付边界的明确来源陈述",
+        "不得运行 `git status`",
+        "不得复读 `scripts/*.py` 实现",
+        '"<skill-root>/contracts/source-requirements.schema.json"',
+    ):
+        assert required in contract

@@ -73,10 +73,344 @@ def test_skill_freezes_preapproval_closure_and_postapproval_publisher_only() -> 
         assert forbidden not in skill
 
 
+def test_skill_publishes_exact_owner_adapter_and_rebind_context_contract() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    for required in (
+        ".ai-sow/data/generate-design/requirements.json",
+        ".ai-sow/data/generate-story/delivery.json",
+        ".ai-sow/data/generate-task/estimate.json",
+        '--staging-root ".ai-sow/.stage-<run-id>"',
+        "不得使用 `--stage-root`",
+        "不得预读尚未创建的 candidate 或 projection",
+        "--mode prepare-no-change",
+        "--mode inspect-work",
+        "--mode prepare-changed",
+        "任何 Owner staging 前必须先冻结整体专业 review",
+        "绝不能先发布 Design 再补整体 review",
+        "一个 shell command 中只能出现一次 `uv run`",
+        "前一步失败时绝不发起后一步",
+        'python "<validator-path>"',
+        'uv --directory "<plugin-root>" run --project .',
+        "不使用 shell 临时变量或重复 cache path",
+        "所有 `--project-root` 必须是绝对路径",
+        "它只用于下方",
+        "Adapter/Owner 脚本命令",
+        "读取或编辑项目 artifact 时保持项目 cwd",
+        "不得手工 `mkdir/cp`",
+        "禁止生成双层 `.ai-sow/.stage-*/.ai-sow/...`",
+        "禁止对 `.ai-sow` 递归",
+        "失败 receipt 会占用 staging validation 路径",
+        "Previous Receipt SHA-256",
+        "base Owner receipt",
+        "Current Receipt SHA-256",
+        "staged upstream receipt",
+        "staging view 会对未覆盖路径回退读取 base",
+        "--mode inspect",
+    ):
+        assert required in skill
+
+    assert skill.index("--mode prepare-no-change") < skill.index("--mode assemble")
+    assert skill.index("--mode inspect-work") < skill.index("--mode check")
+    assert skill.index("--mode prepare-changed") < skill.index("--mode check")
+    assert skill.index("--mode check") < skill.index("--mode publish")
+
+
+def test_inspect_baseline_returns_compact_fixed_path_hashes_without_writes(
+    tmp_path: Path,
+) -> None:
+    project, _ = build_project(tmp_path, start_owner="generate-design")
+    before = {
+        path.relative_to(project).as_posix(): path.read_bytes()
+        for path in project.rglob("*")
+        if path.is_file()
+    }
+
+    result = RECONCILE.inspect_baseline(project, "generate-design")
+
+    assert result["outcome"] == "OK"
+    assert [owner["owner"] for owner in result["owners"]] == [
+        "generate-design",
+        "generate-story",
+        "generate-task",
+    ]
+    design = result["owners"][0]
+    assert design["candidatePaths"] == list(
+        PREPARED_CANDIDATE_PATHS["generate-design"]
+    )
+    assert design["outputs"] == [
+        {
+            "name": "design",
+            "path": ".ai-sow/data/generate-design/design.json",
+            "sha256": RECONCILE.sha256_bytes(
+                before[".ai-sow/data/generate-design/design.json"]
+            ),
+        },
+        {
+            "name": "technicalRequirements",
+            "path": ".ai-sow/data/generate-design/requirements.json",
+            "sha256": RECONCILE.sha256_bytes(
+                before[".ai-sow/data/generate-design/requirements.json"]
+            ),
+        },
+    ]
+    assert design["review"]["path"] == ".ai-sow/reviews/generate-design.md"
+    assert design["receipt"]["path"] == ".ai-sow/validation/generate-design.json"
+    after = {
+        path.relative_to(project).as_posix(): path.read_bytes()
+        for path in project.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_inspect_work_returns_named_candidate_hashes_without_writes(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    design = b"changed design\n"
+    technical = b"unchanged technical requirements\n"
+    review = b"rendered Design work review\n"
+    write(project, ".ai-sow/work/generate-design/design.candidate.json", design)
+    write(
+        project,
+        ".ai-sow/work/generate-design/requirements.candidate.json",
+        technical,
+    )
+    write(project, ".ai-sow/work/generate-design/review.candidate.md", review)
+    before = {
+        path.relative_to(project).as_posix(): path.read_bytes()
+        for path in project.rglob("*")
+        if path.is_file()
+    }
+
+    result = RECONCILE.inspect_work(project, "generate-design")
+
+    assert result["outputs"] == [
+        {
+            "name": "design",
+            "candidatePath": ".ai-sow/work/generate-design/design.candidate.json",
+            "stablePath": ".ai-sow/data/generate-design/design.json",
+            "sha256": RECONCILE.sha256_bytes(design),
+        },
+        {
+            "name": "technicalRequirements",
+            "candidatePath": ".ai-sow/work/generate-design/requirements.candidate.json",
+            "stablePath": ".ai-sow/data/generate-design/requirements.json",
+            "sha256": RECONCILE.sha256_bytes(technical),
+        },
+    ]
+    assert result["workReview"] == {
+        "path": ".ai-sow/work/generate-design/review.candidate.md",
+        "sha256": RECONCILE.sha256_bytes(review),
+    }
+    after = {
+        path.relative_to(project).as_posix(): path.read_bytes()
+        for path in project.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_prepare_changed_review_binds_exact_holistic_review(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    run_id = "b2c3d4e5f6a7"
+    write(
+        project,
+        ".ai-sow/work/generate-design/review.candidate.md",
+        (
+            b"# Design review\n\nReviewer: PASS\nUser Approval: APPROVED\n"
+            b"Reconciliation Run ID: old-run-id\n"
+            b"Reconciliation Review SHA-256: " + b"0" * 64 + b"\n"
+            b"Impact: CHANGED\n"
+        ),
+    )
+    holistic = b"frozen holistic review\n"
+    write(
+        project,
+        f".ai-sow/work/reconcile/{run_id}/review.md",
+        holistic,
+    )
+
+    result = RECONCILE.prepare_changed_review(
+        project,
+        run_id,
+        "generate-design",
+    )
+
+    projection = (
+        project / ".ai-sow/work/generate-design/review.candidate.md"
+    ).read_text(encoding="utf-8")
+    assert projection.count("Reconciliation Run ID:") == 1
+    assert f"Reconciliation Run ID: {run_id}" in projection
+    assert projection.count("Reconciliation Review SHA-256:") == 1
+    assert (
+        "Reconciliation Review SHA-256: "
+        + RECONCILE.sha256_bytes(holistic)
+    ) in projection
+    assert projection.count("Impact: CHANGED") == 1
+    assert result["sha256"] == RECONCILE.sha256_bytes(projection.encode())
+
+
+def test_stage_owner_adapter_uses_flat_staging_paths_and_never_overwrites(
+    tmp_path: Path,
+) -> None:
+    project, _ = build_project(tmp_path, start_owner="generate-design")
+    stage_run_id = "b2c3d4e5f6a7"
+    spec = RECONCILE.OWNER_BY_NAME["generate-story"]
+    projection = b"projected reconciliation review\n"
+    work_review = ".ai-sow/work/generate-story/review.candidate.md"
+    write(project, work_review, projection)
+    original_output = (project / spec.outputs[0]).read_bytes()
+
+    review_result = RECONCILE.stage_owner_artifacts(
+        project,
+        stage_run_id,
+        "generate-story",
+        "review",
+    )
+    output_result = RECONCILE.stage_owner_artifacts(
+        project,
+        stage_run_id,
+        "generate-story",
+        "unchanged-output",
+    )
+
+    stage = project / ".ai-sow" / f".stage-{stage_run_id}"
+    assert (stage / "reviews/generate-story.md").read_bytes() == projection
+    assert (stage / "data/generate-story/delivery.json").read_bytes() == original_output
+    assert not (stage / ".ai-sow").exists()
+    assert review_result["staged"] == [
+        {
+            "path": spec.review,
+            "sha256": RECONCILE.sha256_bytes(projection),
+        }
+    ]
+    assert output_result["staged"] == [
+        {
+            "path": spec.outputs[0],
+            "sha256": RECONCILE.sha256_bytes(original_output),
+        }
+    ]
+
+    write(project, work_review, b"replacement must be rejected\n")
+    with pytest.raises(RECONCILE.ReconcileError) as error:
+        RECONCILE.stage_owner_artifacts(
+            project,
+            stage_run_id,
+            "generate-story",
+            "review",
+        )
+    assert error.value.code == "STAGING_CONTENT_CONFLICT"
+
+
 def write(root: Path, relative: str, payload: bytes) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
+
+
+def test_prepare_no_change_review_derives_all_ids_and_receipt_bindings(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    run_id = "b2c3d4e5f6a7"
+    old_design_receipt = b"old design receipt\n"
+    new_design_receipt = b"new design receipt\n"
+    requirements_receipt = b"requirements receipt\n"
+    asis_receipt = b"as-is receipt\n"
+    base_review = (
+        "# Delivery review\n\n"
+        "Stable IDs: gap-one, story-one, ac-one, integration-one, assumption-one\n"
+        "Reviewer: PASS\n"
+        "User Approval: APPROVED\n"
+    ).encode()
+    write(project, ".ai-sow/reviews/generate-story.md", base_review)
+    write(
+        project,
+        ".ai-sow/validation/generate-story.json",
+        RECONCILE.canonical_json_bytes(
+            {
+                "compilationReceipt": {
+                    "inputs": [
+                        {
+                            "kind": "FILE",
+                            "name": "requirementsValidation",
+                            "path": ".ai-sow/validation/analyze-requirement.json",
+                            "sha256": RECONCILE.sha256_bytes(requirements_receipt),
+                        },
+                        {
+                            "kind": "FILE",
+                            "name": "asIsValidation",
+                            "path": ".ai-sow/validation/analyze-as-is.json",
+                            "sha256": RECONCILE.sha256_bytes(asis_receipt),
+                        },
+                        {
+                            "kind": "FILE",
+                            "name": "designValidation",
+                            "path": ".ai-sow/validation/generate-design.json",
+                            "sha256": RECONCILE.sha256_bytes(old_design_receipt),
+                        }
+                    ]
+                }
+            }
+        ),
+    )
+    write(
+        project,
+        ".ai-sow/validation/analyze-requirement.json",
+        requirements_receipt,
+    )
+    write(project, ".ai-sow/validation/analyze-as-is.json", asis_receipt)
+    write(
+        project,
+        f".ai-sow/work/reconcile/{run_id}/review.md",
+        b"holistic review\n",
+    )
+    write(
+        project,
+        f".ai-sow/.stage-{run_id}/validation/generate-design.json",
+        new_design_receipt,
+    )
+
+    result = RECONCILE.prepare_no_change_review(
+        project,
+        run_id,
+        "generate-story",
+    )
+
+    projection_path = project / ".ai-sow/work/generate-story/review.candidate.md"
+    projection = projection_path.read_text(encoding="utf-8")
+    assert "Reconciliation Run ID: b2c3d4e5f6a7" in projection
+    assert (
+        "Reconciliation Review SHA-256: "
+        + RECONCILE.sha256_bytes(b"holistic review\n")
+    ) in projection
+    assert "Impact: NO_CHANGE" in projection
+    assert "Upstream: generate-design" in projection
+    assert (
+        "Previous Receipt SHA-256: generate-design="
+        + RECONCILE.sha256_bytes(old_design_receipt)
+    ) in projection
+    assert (
+        "Current Receipt SHA-256: generate-design="
+        + RECONCILE.sha256_bytes(new_design_receipt)
+    ) in projection
+    for stable_id in (
+        "gap-one",
+        "story-one",
+        "ac-one",
+        "integration-one",
+        "assumption-one",
+    ):
+        assert stable_id in projection.split("Impact Rationale: ", 1)[1]
+    assert result["workReviewPath"] == (
+        ".ai-sow/work/generate-story/review.candidate.md"
+    )
 
 
 def owner_review(review_hash: str, owner: str, revision: int) -> bytes:
@@ -681,7 +1015,7 @@ def test_prepared_packet_requires_exact_reviewer_and_approval_sidecars(
 def test_check_and_publish_use_one_fixed_suffix_and_finish_with_task_receipt(
     tmp_path: Path,
 ) -> None:
-    project, manifest = build_project(tmp_path)
+    project, manifest = build_project(tmp_path, start_owner="generate-design")
     assert not (project / f".ai-sow/.stage-{RUN_ID}/.ai-sow").exists()
     task = RECONCILE.OWNER_BY_NAME["generate-task"]
     receipt_before = (project / task.receipt).read_bytes()
@@ -703,6 +1037,9 @@ def test_check_and_publish_use_one_fixed_suffix_and_finish_with_task_receipt(
     repeated = run(project, "publish")
     assert repeated["publication"] == "REUSED"
     assert repeated["writtenOperations"] == 0
+
+    rechecked = run(project)
+    assert rechecked["completedOperations"] == rechecked["totalOperations"]
 
 
 def test_no_change_rebind_preserves_stable_output_bytes(tmp_path: Path) -> None:

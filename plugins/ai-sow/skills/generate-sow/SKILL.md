@@ -29,6 +29,8 @@ description: 当五位 Owner 的 0.3 收据、六份稳定 JSON、五份批准�
 - `.ai-sow/validation/generate-task.json`
 
 收据分别绑定五份批准评审、六份稳定 JSON 及各 Owner 的直接输入。生成器通过公共 handoff matcher 重建预期 input 并检查当前 review/output 字节；只报告 missing、invalid、stale、unsupported，不重放上游业务规则、HLD/Go-live、Uncertainty、AC→Task、工作模式、复杂度或 Integration 语义。
+As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 解析为
+receipt 绑定的项目相对路径；普通项目文档路径保持原值。
 
 投影输入固定为：
 
