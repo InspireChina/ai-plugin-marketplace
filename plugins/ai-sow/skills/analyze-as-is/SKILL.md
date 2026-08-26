@@ -133,16 +133,14 @@ Reviewer `PASS` 后，Stage 向用户展示 Owner、packet path、精确 SHA-256
 
 `publish-approved` 重新计算并核对所有 hash、packet、Reviewer 与 approval sidecar；任一 input、candidate、review、risk summary、context 或 sidecar 漂移都在正式写入前阻塞。通过后把 review candidate 原字节发布为 `.ai-sow/reviews/analyze-as-is.md`，把 candidate 原字节发布为 `.ai-sow/data/analyze-as-is/asis.json`，最后发布 `.ai-sow/validation/analyze-as-is.json` 的 validator contract `0.3` receipt。receipt 继续绑定 project、Requirement validation/output、repository snapshot、prior SOW、可解析 Evidence anchor、questionnaire presence、当前 review 和稳定输出。批准后不再修改专业结论，也不再次创建 Reviewer。
 
-## 上游影响复核
+## 普通上游影响复核
 
-Requirement receipt/output 更新但 As-Is 专业结论与稳定 JSON 无需变化时，Stage 在 review 记录新旧 receipt hash、理由、稳定 ID 和 `Impact: NO_CHANGE`。Reviewer `PASS` 且用户确认后，Stage 运行：
-
-```text
-"<python-bin>" "<skill-root>/scripts/validate.py" \
-  --project-root "<project-root>" --mode rebind
-```
-
-`rebind` 必须证明稳定 As-Is output bytes 与上一成功 receipt 完全一致，只更新当前 inputs/review 绑定。`Impact: CHANGED` 必须返回完整调查、candidate-first 评审和 `publish-approved` 流程。repository、prior SOW、Evidence anchor 或问卷输入变化也必须由 Reviewer 判断是否确属 `NO_CHANGE`，不能由脚本代替专业判断。
+Requirement receipt/output 更新时，普通调用始终重新执行完整 candidate-first review、
+Reviewer 绑定、精确 packet 批准和 `publish-approved`。专业结论无需变化时，Stage 在
+work-only review 记录新旧 receipt hash、理由、稳定 ID 和 `Impact: NO_CHANGE`，并形成
+与稳定 As-Is 原字节相同的 candidate；发布器复用输出并最后更新 receipt。
+repository、prior SOW、Evidence anchor 或问卷输入变化也必须由 Reviewer 判断影响，
+普通调用不使用 legacy `publish/rebind`。
 
 ## 完成与停止
 
@@ -158,5 +156,5 @@ staging root 时，本 Skill 作为 As-Is Owner Adapter 运行。它继续独占
 本内部模式不在本阶段 STOP，也不调用下游。候选机械检查可用
 `--review-path <project-relative-posix-path>` 读取 `.ai-sow/work/analyze-as-is/` 下的 work-only Owner
 review；该 override 仅允许 `--mode check`，不传时仍读取正式
-`.ai-sow/reviews/analyze-as-is.md`。`publish/rebind` 禁止 review override，继续只绑定正式 review。
-普通独立调用保持原合同。
+`.ai-sow/reviews/analyze-as-is.md`。`publish/rebind` 禁止 review override，继续只绑定正式 review，
+且只能携带 `--staging-root` 写入 reconciliation staging view。

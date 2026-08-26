@@ -31,7 +31,5 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 冒烟命令只把插件包复制到独立临时目录，在该目录之外创建用户项目：先建立复制插件的 `.venv`，
 再通过该 Python 运行 setup、复核 fixture 中五份 Owner 0.3 receipt，并生成确定性交付包。它不重放
 Owner 专业 validator；这些规则由前一条全量 pytest 覆盖。最终 JSON 报告会包含临时工作目录，便于检查。
-beta.1 项目 metadata 只能显式运行 `plugins/ai-sow/migrations/beta1_to_beta2.py` 升级；正常
-`setup` 不自动迁移，六份稳定数据必须由 Owner 重新评审并发布 0.3 收据。
 
 提交贡献即表示你同意该贡献采用 Apache License 2.0。

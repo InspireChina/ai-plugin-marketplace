@@ -35,6 +35,7 @@ htmlcov/
 .research-worktrees/
 .worktrees/
 .superpowers/
+docs/superpowers/
 outputs/
 **/.codex-tmp/
 **/.codex_spreadsheet_work_*/

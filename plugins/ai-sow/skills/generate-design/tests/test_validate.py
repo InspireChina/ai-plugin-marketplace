@@ -286,12 +286,22 @@ def run_validator(
     command = [sys.executable, str(SCRIPT), "--project-root", str(root), "--mode", mode]
     if review_path is not None:
         command.extend(("--review-path", review_path))
+    if mode in {"publish", "rebind"}:
+        command.extend(("--staging-root", STAGING_ROOT))
     return subprocess.run(
         command,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+STAGING_ROOT = ".ai-sow/.stage-0123456789ab"
+
+
+def managed_path(root: Path, logical_path: str) -> Path:
+    staged = root / STAGING_ROOT / logical_path.removeprefix(".ai-sow/")
+    return staged if staged.exists() else root / logical_path
 
 
 def run_context(root: Path) -> subprocess.CompletedProcess[str]:
@@ -801,8 +811,8 @@ def test_publish_preserves_both_candidate_byte_streams_and_names_outputs(tmp_pat
     result = run_validator(tmp_path, "publish")
 
     assert result.returncode == 0, result.stdout
-    assert (tmp_path / ".ai-sow/data/generate-design/design.json").read_bytes() == design_bytes
-    assert (tmp_path / ".ai-sow/data/generate-design/requirements.json").read_bytes() == technical_bytes
+    assert managed_path(tmp_path, ".ai-sow/data/generate-design/design.json").read_bytes() == design_bytes
+    assert managed_path(tmp_path, ".ai-sow/data/generate-design/requirements.json").read_bytes() == technical_bytes
     receipt = payload(result)["receipt"]
     assert [entry["name"] for entry in receipt["outputs"]] == ["design", "technicalRequirements"]  # type: ignore[index]
     assert [entry["name"] for entry in receipt["inputs"]] == [  # type: ignore[index]
@@ -829,7 +839,9 @@ def test_failed_publish_preserves_both_existing_stable_outputs(tmp_path: Path) -
     assert result.returncode == 2
     assert (tmp_path / ".ai-sow/data/generate-design/design.json").read_bytes() == stable_design
     assert (tmp_path / ".ai-sow/data/generate-design/requirements.json").read_bytes() == stable_technical
-    report = json.loads((tmp_path / ".ai-sow/validation/generate-design.json").read_text())
+    report = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+    )
     assert report["passed"] is False and "compilationReceipt" not in report
 
 
@@ -1029,7 +1041,9 @@ def test_rebind_updates_both_upstreams_without_changing_either_output(tmp_path: 
     design_bytes, technical_bytes = prepare(tmp_path)
     published = run_validator(tmp_path, "publish")
     assert published.returncode == 0, published.stdout
-    old_report = json.loads((tmp_path / ".ai-sow/validation/generate-design.json").read_text())
+    old_report = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+    )
     old_hashes = {
         "oldRequirements": input_hash(old_report, "requirementsValidation"),
         "oldAsIs": input_hash(old_report, "asIsValidation"),
@@ -1054,9 +1068,11 @@ def test_rebind_updates_both_upstreams_without_changing_either_output(tmp_path: 
     result = run_validator(tmp_path, "rebind")
 
     assert result.returncode == 0, result.stdout
-    assert (tmp_path / ".ai-sow/data/generate-design/design.json").read_bytes() == design_bytes
-    assert (tmp_path / ".ai-sow/data/generate-design/requirements.json").read_bytes() == technical_bytes
-    rebound = json.loads((tmp_path / ".ai-sow/validation/generate-design.json").read_text())
+    assert managed_path(tmp_path, ".ai-sow/data/generate-design/design.json").read_bytes() == design_bytes
+    assert managed_path(tmp_path, ".ai-sow/data/generate-design/requirements.json").read_bytes() == technical_bytes
+    rebound = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+    )
     assert input_hash(rebound, "requirementsValidation") == new_requirements
     assert input_hash(rebound, "asIsValidation") == new_asis
 
@@ -1065,7 +1081,9 @@ def test_rebind_rejects_changed_stable_output_bytes(tmp_path: Path) -> None:
     prepare(tmp_path)
     published = run_validator(tmp_path, "publish")
     assert published.returncode == 0, published.stdout
-    old_report = json.loads((tmp_path / ".ai-sow/validation/generate-design.json").read_text())
+    old_report = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+    )
     old_hashes = {
         "oldRequirements": input_hash(old_report, "requirementsValidation"),
         "oldAsIs": input_hash(old_report, "asIsValidation"),
@@ -1073,7 +1091,7 @@ def test_rebind_rejects_changed_stable_output_bytes(tmp_path: Path) -> None:
     write_bytes(tmp_path, SOURCE_PATH, b"Changed source.\n")
     publish_requirements(tmp_path)
     publish_asis(tmp_path)
-    stable_design = tmp_path / ".ai-sow/data/generate-design/design.json"
+    stable_design = managed_path(tmp_path, ".ai-sow/data/generate-design/design.json")
     stable_design.write_bytes(stable_design.read_bytes() + b" ")
     write_bytes(
         tmp_path,

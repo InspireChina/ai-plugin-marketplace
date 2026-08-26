@@ -106,7 +106,11 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
    ```text
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --review-path .ai-sow/work/generate-design/review.candidate.md
    ```
-14. 直接上游 receipt 变化而专业结论不变时，在正式 review 中记录 `Impact: NO_CHANGE`、旧/新 receipt hash、全部稳定 ID 的影响理由，并只运行 legacy `--mode rebind`。Reconciliation Adapter 继续使用 legacy `--mode check`、`--mode publish` 与 `--mode rebind`；rebind 必须证明两份稳定输出原字节均未变化。
+14. 直接上游 receipt 变化而专业结论不变时，在 work-only review 中记录
+    `Impact: NO_CHANGE`、旧/新 receipt hash 和全部稳定 ID 的影响理由，但仍使用完整
+    candidate-first packet 与 `publish-approved`；两份 candidate 可与稳定输出原字节相同。
+    Legacy `check`、`--mode publish` 与 `--mode rebind` 只由 Reconciliation Adapter 携带 `--staging-root` 调用；
+    rebind 必须证明两份稳定输出原字节均未变化。
 15. receipt 发布后报告完成，推荐用户显式调用 `generate-story`，然后停止；不得自动启动下游 Skill。
 
 ## 字段质量

@@ -105,7 +105,7 @@ Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate �
 | UAT 适用性 | Story 对业务 UAT 是否适用的明确判断；不从 Story 类型或 Task 任务族推导。 |
 | 假设/风险 | 保存类型、名称、触发条件、责任边界、`已明确 / 待确认` 状态和处理方式，并通过关系行关联 Story。 |
 
-每个 IN_SCOPE Feature 至少有一个 Gap，每个 Gap 至少有一个 Story，每个 Story 至少有一条 AC。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 `NO_CHANGE` rebind；只有用户明确批准交付结果变化后才重新评审 Story/AC。
+每个 IN_SCOPE Feature 至少有一个 Gap，每个 Gap 至少有一个 Story，每个 Story 至少有一条 AC。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 packet-bound `NO_CHANGE` 发布；只有用户明确批准交付结果变化后才重新评审 Story/AC。
 
 ## 6. Task 与估算输入
 
@@ -164,10 +164,16 @@ Skill 之间：
 执行其公开命令；完整 staged closure 只创建一个 fresh-context Reviewer。批准后 Skill-local
 publisher 只验证 packet/hash 并前向发布。Skill Python 仍不跨 Skill import、读取 Schema/fixture
 或共享业务规则；Owner 只写自己的 review/candidate/output/receipt，Task 不能修改 Delivery、Story
-或 AC。协调合同公开五个 Owner 的精确 Adapter 路径和 `--staging-root` 参数；`NO_CHANGE` 从 base
+或 AC。协调合同公开五个 Owner 的精确 Adapter 路径和 `--staging-root` 参数；legacy
+`publish/rebind` 只允许 reconciliation 调用，缺少合法 staging root 时必须在任何 Owner 写入前
+阻塞。普通 Owner 发布始终走 candidate-first packet 与 `publish-approved`。`NO_CHANGE` 从 base
 Owner receipt 与 staged upstream receipt 构造 before/current 绑定，只先 stage review 再执行
 `rebind`。任一失败 receipt 都终止当前 run 并用新 run ID 整体重跑，不在已污染的 staging 内试错；
 未覆盖路径由 flat ProjectView 回退读取 base，无需复制影响集之前的稳定产物。
+
+普通 Owner 调用的 `NO_CHANGE` 不属于 reconciliation rebind：它必须证明至少一项 receipt 绑定输入
+发生变化、candidate 与当前稳定输出原字节一致，并把 review、context、输入与精确 packet 一起重新
+批准；`publish-approved` 只更新正式 review 与 receipt，不改稳定输出字节。
 reconciliation 的第一条项目命令固定为只读 `inspect`，集中投影固定 Owner 后缀的 baseline hash、
 validation inputs、candidate/review 路径与 review ID 声明；它不写项目、不调用 Owner，也不解释业务。
 `reconcile.py --mode prepare-no-change` 从 base review/receipt 与 staged upstream receipt 自动投影
@@ -187,7 +193,7 @@ Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立
 生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
 
 插件不提供统一 CLI，也不建设共享业务 Python 内核、项目锁、不可变 revision store、活动指针、
-自动回滚、自动 Git commit、统一管理的 Python/uv 运行环境、公式执行、OOXML 全量基准或 XLSX
+自动回滚、自动 Git commit、用户项目级 Python/uv 环境、公式执行、OOXML 全量基准或 XLSX
 反向导入。`reconcile` 仅使用 work-only run ID、显式 tombstone 和 canonical redo manifest 做单写者
 前向恢复；这些不是稳定业务合同或通用事务系统。
 

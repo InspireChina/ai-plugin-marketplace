@@ -18,6 +18,7 @@ from runtime.handoff import (
     publish_owner,
     rebind_owner,
     sha256_bytes,
+    validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
 
@@ -213,3 +214,44 @@ def test_rebind_fails_when_stable_output_bytes_changed(tmp_path: Path) -> None:
         rebind_owner(files, CONTRACT, inputs)
     assert raised.value.code == "OWNER_REBIND_OUTPUT_CHANGED"
     assert files.read_bytes(CONTRACT.validation_path) == report_before
+
+
+def test_no_change_candidate_requires_changed_inputs_and_exact_stable_bytes(
+    tmp_path: Path,
+) -> None:
+    files, old_inputs = prepare_project(tmp_path)
+    candidate = canonical_json_bytes({"result": "stable"})
+    publish_owner(files, CONTRACT, old_inputs, {"result": candidate})
+
+    with pytest.raises(ProjectIOError) as unchanged:
+        validate_no_change_candidate(files, CONTRACT, old_inputs, {"result": candidate})
+    assert unchanged.value.code == "REBIND_INPUT_UNCHANGED"
+
+    new_project = canonical_json_bytes({"projectId": "sample-project", "revision": 2})
+    files.write_atomic(".ai-sow/project.json", new_project)
+    new_inputs = (
+        Artifact("project", "FILE", ".ai-sow/project.json", sha256_bytes(new_project)),
+        old_inputs[1],
+    )
+    outputs = validate_no_change_candidate(
+        files,
+        CONTRACT,
+        new_inputs,
+        {"result": candidate},
+    )
+    assert outputs == [
+        {
+            "name": "result",
+            "path": ".ai-sow/data/sample-owner/result.json",
+            "sha256": sha256_bytes(candidate),
+        }
+    ]
+
+    with pytest.raises(ProjectIOError) as changed:
+        validate_no_change_candidate(
+            files,
+            CONTRACT,
+            new_inputs,
+            {"result": canonical_json_bytes({"result": "changed"})},
+        )
+    assert changed.value.code == "OWNER_NO_CHANGE_CANDIDATE_CHANGED"

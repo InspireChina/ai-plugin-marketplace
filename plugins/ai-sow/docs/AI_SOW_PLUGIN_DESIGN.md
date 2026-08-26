@@ -3,10 +3,11 @@
 - 状态：当前正式合同
 - SOW 标准：v1.3
 - 插件合同版本：0.1.0-beta.2
-- 适用宿主：Codex；首发支持原生 macOS Apple Silicon 与原生 Windows 11 x64
+- 适用宿主：Codex；macOS 已实机验证，Linux 由 CI 覆盖，Windows 11 x64 当前为
+  `Provisional`，尚未完成实机验收
 - 领域语义：[CONTEXT.md](CONTEXT.md)
 - 计算权威：[sow-template.xlsx](../skills/setup/assets/sow-template.xlsx)
-- 性能合同：[AI SOW 性能优化设计修正](../../../docs/superpowers/specs/2026-08-25-ai-sow-performance-optimization-design.md)
+- 运行时合同：[插件运行时环境合同](../references/runtime-environment.md)
 
 本插件通过七个阶段 Skill，把来源材料和现状证据转换为可评审的专业成果、六份稳定交接数据和
 一份权威 XLSX 交付包；另提供一个不属于业务阶段的 `reconcile` 维护 Skill，在已有下游产物后用
@@ -55,7 +56,7 @@ plugins/ai-sow/
     └── reconcile/
 ```
 
-每个 Skill 只创建实际需要的 `contracts/`、`scripts/`、`fixtures/`、`tests/`、`references/` 或 `assets/`。脚本不跨 Skill import，不调用其他 Skill 脚本，也不读取其他 Skill 的 schema、fixture、test、reference 或 asset。`reconcile` 的 Agent 可按其合同读取受影响 Owner 的 `SKILL.md` 和项目 artifact，但其 Python 发布器仍只处理技术 manifest。`runtime/project_io.py` 只处理项目相对路径、staging view 和原子单文件写入；`runtime/handoff.py` 只处理 canonical hash、receipt、match、publish 和 `NO_CHANGE` rebind，不包含 Owner 业务语义。
+每个 Skill 只创建实际需要的 `contracts/`、`scripts/`、`fixtures/`、`tests/`、`references/` 或 `assets/`。脚本不跨 Skill import，不调用其他 Skill 脚本，也不读取其他 Skill 的 schema、fixture、test、reference 或 asset。`reconcile` 的 Agent 可按其合同读取受影响 Owner 的 `SKILL.md` 和项目 artifact，但其 Python 发布器仍只处理技术 manifest。`runtime/project_io.py` 只处理项目相对路径、staging view 和原子单文件写入；`runtime/handoff.py` 只处理 canonical hash、receipt、match、packet-bound `NO_CHANGE` 发布和 reconciliation staging rebind，不包含 Owner 业务语义。
 
 ## 3. 项目 seam
 
@@ -89,7 +90,16 @@ plugins/ai-sow/
 
 ### setup
 
-当前 Stage Agent 只调用一次平台对应的确定性 bootstrap。它只复用精确 uv 0.11.7；缺失或版本不同时以 Astral 官方固定版本 standalone installer 安装到插件安装副本；随后复用或自动安装 managed Python 3.12，以锁定文件创建插件 `.venv` 并复核依赖，再用该 Python 调用 setup Module。用户无需管理员权限、终端操作或技术安装步骤；网络/权限不足时在任何项目写入前 fail closed，并由 Stage 通过 Codex 权限机制自动重试。后续 Skill 直接使用该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四字段项目元数据、复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动迁移已有项目，也不接收代码库、往期 SOW 或模式。
+当前 Stage Agent 只调用一次平台对应的确定性 bootstrap：macOS/Linux 使用 `bootstrap.sh`，Windows
+使用 `bootstrap.ps1`。它只复用精确 uv 0.11.7；缺失或版本不同时以 Astral 官方固定版本 standalone
+installer 安装到插件安装副本；随后复用或自动安装 managed Python 3.12，以锁定文件创建插件 `.venv`
+并复核依赖，再用该 Python 调用 setup Module。用户无需管理员权限、终端操作或技术安装步骤；网络/
+权限不足时在任何项目写入前 fail closed，并由 Stage 通过 Codex 权限机制自动重试。后续 Skill 直接使用
+该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四字段项目元数据、
+复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发
+或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动
+迁移已有项目，也不接收代码库、往期 SOW 或模式。平台验证状态以根 README 为准；PowerShell 路径在
+Windows 11 实机验收完成前不得声明为 `Verified`。
 
 ### analyze-requirement
 
@@ -98,6 +108,11 @@ plugins/ai-sow/
 五个专业 Owner 共享同一 candidate-first 生命周期，但不共享业务编译器：各自的 `prepare_context.py` 只投影本阶段必要闭包，`render_review.py` 确定性投影专业评审，`validate.py --mode review` 生成 `ai-sow-owner-review-packet-v1` packet；唯一 Reviewer 只返回 `PASS` 或 findings，`PASS` 后 Stage 必须调用 Owner-local `write-reviewer` 确定性写入 `ai-sow-owner-reviewer-v1` sidecar；用户批准则由 `write-approval` 写入 `ai-sow-owner-approval-v1` sidecar。两个 sidecar 绑定同一 packet SHA-256，`publish-approved` 复算全部绑定后才发布正式 review、稳定输出与 receipt `0.3`。Stage 不手写 reviewer 或 approval JSON；任一输入、candidate、context、review 或风险摘要字节变化都使 Reviewer 与批准失效。
 
 新 session 已携带 Owner 与完整 packet SHA-256 的精确批准时走固定快速路径：Stage 依次调用 Owner-local `write-approval` 与一次 `publish-approved`。前者只校验批准参数并在固定 work-only 路径确定性写 canonical approval sidecar，不读取 candidate、上游或 Schema；后者承担全部 hash 发布前复核。Stage 不手写 approval JSON，不搜索 Skill，不枚举或预读项目 artifact，不运行 `--help`、closure、renderer、额外 `check`，也不重新进入专业分析或 Reviewer。
+
+普通 Owner 的直接上游或已绑定输入变化但专业结论不变时，仍走同一 candidate-first packet：review
+声明 `Impact: NO_CHANGE`，candidate 必须与当前稳定输出原字节一致，至少一项 receipt 绑定输入必须变化，
+并由 `publish-approved` 在精确 packet 批准后只更新正式 review 与 receipt。该路径不使用 legacy
+`publish/rebind`，也不得把语义变化伪装成 `NO_CHANGE`。
 
 ### analyze-as-is
 
@@ -109,7 +124,7 @@ plugins/ai-sow/
 
 ### generate-story
 
-在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再只为 `IN_SCOPE` Feature 相对 Effective Start 形成 Gap、Story 和 AC，`FULLY_COVERED` 不生成 Story。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 `NO_CHANGE` rebind，不为实现机制新增 Gap、Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由对应 BUSINESS Story 拥有。Assumption/Risk 每个语义只保存一次，通过关系集合连接 Story。
+在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再只为 `IN_SCOPE` Feature 相对 Effective Start 形成 Gap、Story 和 AC，`FULLY_COVERED` 不生成 Story。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 packet-bound `NO_CHANGE` 发布，不为实现机制新增 Gap、Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由对应 BUSINESS Story 拥有。Assumption/Risk 每个语义只保存一次，通过关系集合连接 Story。
 
 ### generate-task
 
@@ -137,7 +152,9 @@ context manifest/fragment 的 canonical review packet；唯一 Reviewer 使用�
 整体修正并整体重跑 renderer/review；第二次仍失败才停止，这一额度与 Reviewer 的一次专业 finding
 修复相互独立。用户批准 packet SHA-256 后，`--mode publish-approved` 复算 candidate、review、
 context、input、Reviewer 与 approval 绑定，再发布正式 review、Estimate 和 receipt。现有
-`check/publish/rebind` 继续作为 reconciliation Adapter，receipt contract 仍为 `0.3`。
+`check/publish/rebind` 继续作为 reconciliation Adapter；其中 `publish/rebind` 必须携带合法
+`--staging-root`，不能写正式路径。普通 Owner 调用只使用 packet-bound `publish-approved`，receipt
+contract 仍为 `0.3`。
 
 ### generate-sow
 
@@ -148,7 +165,8 @@ context、input、Reviewer 与 approval 绑定，再发布正式 review、Estima
 只处理已经存在有效下游产物后的用户修正。当前 Stage 确认唯一 Owner，按固定阶段顺序读取到
 `generate-sow` 的完整后缀，在批准前形成各 Owner `CHANGED/NO_CHANGE` 结论、全部 candidate 与
 work-only review projection，并在同一 flat staging view 完成一次前向 pass：`CHANGED` 先 `check`
-再 `publish`，`NO_CHANGE` 直接 `rebind` 并物化原 output 字节；最后从完整 staged handoff 生成并
+再 `publish`，`NO_CHANGE` 直接 `rebind` 并物化原 output 字节；每一次 Owner `publish/rebind` 都必须
+携带同一合法 `--staging-root`，缺失时在任何 Owner 写入前阻塞。最后从完整 staged handoff 生成并
 复读 package。为避免 Agent 猜测 Adapter Interface，reconcile 合同固定列出五个 Owner 的 stable、
 candidate、review、receipt 路径和 `--staging-root` 命令；`NO_CHANGE` 的 previous hash 来自 base
 Owner receipt，current hash 来自 staged upstream receipt，失败 run 不在同一 staging 内修补重试。

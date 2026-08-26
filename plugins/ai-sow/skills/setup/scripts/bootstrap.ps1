@@ -22,6 +22,10 @@ function Stop-Bootstrap([string]$Code, [string]$Summary) {
     exit 2
 }
 
+function Test-UvVersion([string]$VersionText) {
+    return $VersionText -match ("^uv " + [regex]::Escape($UvVersion) + "(?:\s|$)")
+}
+
 New-Item -ItemType Directory -Force -Path $ToolsBin, (Join-Path $ToolsRoot "cache") | Out-Null
 if ([string]::IsNullOrWhiteSpace($env:UV_CACHE_DIR)) {
     $env:UV_CACHE_DIR = Join-Path $ToolsRoot "cache"
@@ -32,7 +36,7 @@ $UvBin = $null
 $UvSource = $null
 if (Test-Path -LiteralPath $LocalUv -PathType Leaf) {
     $LocalVersion = (& $LocalUv --version 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -eq 0 -and $LocalVersion -eq "uv $UvVersion") {
+    if ($LASTEXITCODE -eq 0 -and (Test-UvVersion $LocalVersion)) {
         $UvBin = $LocalUv
         $UvSource = "PLUGIN_LOCAL"
     }
@@ -41,7 +45,7 @@ if ($null -eq $UvBin) {
     $UvCommand = Get-Command uv -ErrorAction SilentlyContinue
     if ($null -ne $UvCommand) {
         $PathVersion = (& $UvCommand.Source --version 2>&1 | Out-String).Trim()
-        if ($LASTEXITCODE -eq 0 -and $PathVersion -eq "uv $UvVersion") {
+        if ($LASTEXITCODE -eq 0 -and (Test-UvVersion $PathVersion)) {
             $UvBin = $UvCommand.Source
             $UvSource = "PATH"
         }
@@ -66,7 +70,7 @@ if ($null -eq $UvBin) {
 
 $UvVersionText = (& $UvBin --version 2>&1 | Out-String).Trim()
 if ($LASTEXITCODE -ne 0) { Stop-Bootstrap "UV_CHECK_FAILED" "uv 版本检查失败" }
-if ($UvVersionText -ne "uv $UvVersion") { Stop-Bootstrap "UV_VERSION_INVALID" "插件运行时 uv 版本不是固定的 $UvVersion" }
+if (-not (Test-UvVersion $UvVersionText)) { Stop-Bootstrap "UV_VERSION_INVALID" "插件运行时 uv 版本不是固定的 $UvVersion" }
 
 & $UvBin python find 3.12 *> $null
 if ($LASTEXITCODE -ne 0) {

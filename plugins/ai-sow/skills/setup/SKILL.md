@@ -45,6 +45,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>/scripts/bootst
   -ProjectRoot "<project-root>" -ProjectId <stable-id> -Name <name>
 ```
 
+两条命令都是 setup 的实际平台入口。macOS 已完成实机验证；Windows PowerShell 路径在
+[Windows 11 验证状态](../../../../docs/windows-11-validation.md)完成前保持 `Provisional`，不得把 CI 或
+合成测试描述成 Windows 实机认证。
+
 bootstrap 在锁定同步与依赖复核后，直接使用刚建立的插件 `.venv` Python 执行
 `"<skill-root>/scripts/setup.py"`；Stage 不再单独执行或复读这些内部步骤。
 
@@ -55,7 +59,7 @@ bootstrap 在锁定同步与依赖复核后，直接使用刚建立的插件 `.v
 - `inputs`、`work`、`reviews`、`data`、`validation`、`outputs` 受管父目录；
 - Project Schema 校验和 bundled template 的 XLSX 打开、保存、重新读取。
 
-脚本成功返回前已经复读刚写入或已存在的项目。现有项目只有在身份、四字段元数据、全部受管目录和当前项目模板的必要 Table/XLSX round-trip 均有效时才返回 `OK`，且不修改任何文件。项目模板可以是用户已授权的合法项目级定制，不要求与 bundled template 字节相同。目标存在不完整、损坏或身份冲突的受管内容时返回 `BLOCKED`；setup 不提供 repair、不补目录、不覆盖模板，也不自动迁移 beta.1 项目。
+脚本成功返回前已经复读刚写入或已存在的项目。现有项目只有在身份、四字段元数据、全部受管目录和当前项目模板的必要 Table/XLSX round-trip 均有效时才返回 `OK`，且不修改任何文件。项目模板可以是用户已授权的合法项目级定制，不要求与 bundled template 字节相同。目标存在不完整、损坏、身份或版本冲突的受管内容时返回 `BLOCKED`；setup 不提供 repair、不补目录也不覆盖模板。
 
 项目模板初始化后是项目级计算输入。以后只有用户明确授权时，`generate-sow` 才能调整该项目副本；不得反向修改 bundled template。
 

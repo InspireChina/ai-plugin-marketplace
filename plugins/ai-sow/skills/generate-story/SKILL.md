@@ -55,7 +55,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```
 2. 当前 Stage Agent 先读 `.ai-sow/work/generate-story/context/manifest.json`，再只读取其中点名的四个 fragment、固定 Schema `<skill-root>/contracts/delivery.schema.json` 和[评审模板](references/review-template.md)。closure 成功后按该精确路径读取 Schema 一次；不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema，也不得读取 fixture/test 代替合同。BUSINESS 与 TECHNICAL requirements 仅在当前内存中联合，不写 merged requirements。对每个已批准的 `APPROVED_DEFAULT / ASSUMPTION_CANDIDATE` Question ID 恰好生成一个 Assumption，其 `handling` 保留 `analyze-requirement-questionnaire#<Question-ID>` 锚点并至少关联一个 Story。`CLOSED / INCORPORATED_BUSINESS:<stable-id>` 与 `CLOSED / NO_CHANGE` 不生成 Assumption。
 3. 对每个 `IN_SCOPE` Feature，用目标结果减去其 Coverage 所连接的 Effective Start，形成 Delivery Gap。把相关 `CARRY_FORWARD` Commitment 纳入差距，不能当作基线。`FULLY_COVERED` Feature 不生成 Gap 或 Story；其完整性已由设计门禁中的 Effective Start、Evidence 和理由证明。
-   已批准的 Story/AC 是业务交付合同。Task 可实施性反馈经 `generate-design` 细化实现机制、但未改变用户批准的交付结果时，保持 Delivery 原字节并走 `Impact: NO_CHANGE` rebind；不得为实现机制创建 Gap、Story 或 AC。只有上游 Owner 经用户明确批准改变可独立验收的交付结果后，才按 `Impact: CHANGED` 重新评审 Story/AC。
+   已批准的 Story/AC 是业务交付合同。Task 可实施性反馈经 `generate-design` 细化实现机制、但未改变用户批准的交付结果时，保持 Delivery 原字节并走 packet-bound `Impact: NO_CHANGE` 发布；不得为实现机制创建 Gap、Story 或 AC。只有上游 Owner 经用户明确批准改变可独立验收的交付结果后，才按 `Impact: CHANGED` 重新评审 Story/AC。
 4. 对每个 `IN_SCOPE` 生产上线 TECHNICAL Feature 形成完整 Delivery Gap，并优先拆成“上线准备”“发布切换”“生产验证与运维移交”三个结果型核心 Story；旧功能下线条件适用时单独生成 Story，不与发布切换合并。每个上线 Story 通常设置 `uatRelevant = false`，只有确实属于业务 UAT 分母且获得评审确认时才能设为 `true`。
 5. 对每个 `IN_SCOPE` 数据迁移 TECHNICAL Feature 单独生成 Gap 和迁移 Story。迁移 Feature、Gap 和 Story 不得归入生产上线 Feature；发布切换只能把已完成的迁移结果写成前置条件或 AC，不能吞并迁移交付范围。
 6. `POST_GO_LIVE_SUPPORT` 只能形成明确的合同边界、Assumption/Risk，或已经批准且可验收的具体交付工作；不得生成泛化“上线后支持”、驻场、待命容量或 24×7 支持 Story。若输入明确购买专职驻场、固定班次、待命容量或 24×7 支持，停止 Story 分解并返回 `generate-design`：由其登记 `affectsEstimate = true` 的 Uncertainty，转入独立服务容量模型或单独支持 SOW，在责任方带回获批容量估算或明确排除决定前保持 `BLOCKED`。UAT 缺陷责任、变更请求和支持边界写入 AC、Assumption/Risk 与责任边界，不生成开放式缺陷 Story。
@@ -88,7 +88,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```text
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
    ```
-16. 直接上游 receipt 变化但专业结论不变时，review 记录 `Impact: NO_CHANGE`、发生变化的直接上游、旧/新 receipt hash 和点名全部稳定 ID 的影响理由。现有 `--mode rebind` 只保留为 reconciliation Adapter，并必须证明稳定 Delivery 原字节不变；普通调用按同一 packet-bound 审批闭包形成原字节 candidate 后发布。
+16. 直接上游 receipt 变化但专业结论不变时，review 记录 `Impact: NO_CHANGE`、发生变化的直接上游、旧/新 receipt hash 和点名全部稳定 ID 的影响理由。现有 `--mode rebind` 只保留为 reconciliation Adapter，必须携带 `--staging-root` 并证明稳定 Delivery 原字节不变；普通调用按同一 packet-bound 审批闭包形成原字节 candidate 后发布。
 17. receipt 发布后报告完成，只推荐用户显式调用 `generate-task`，然后 STOP；不得自动启动下游 Skill。
 
 ## 完成条件

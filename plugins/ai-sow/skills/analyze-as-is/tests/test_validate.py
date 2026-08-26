@@ -241,12 +241,22 @@ def run_validator(
     ]
     if review_override is not None:
         command.extend(("--review-path", review_override))
+    if mode in {"publish", "rebind"}:
+        command.extend(("--staging-root", STAGING_ROOT))
     return subprocess.run(
         command,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+STAGING_ROOT = ".ai-sow/.stage-0123456789ab"
+
+
+def managed_path(project_root: Path, logical_path: str) -> Path:
+    staged = project_root / STAGING_ROOT / logical_path.removeprefix(".ai-sow/")
+    return staged if staged.exists() else project_root / logical_path
 
 
 def run_context(project_root: Path) -> subprocess.CompletedProcess[str]:
@@ -330,7 +340,9 @@ def codes(result: subprocess.CompletedProcess[str]) -> set[str]:
 
 
 def validation_report(project_root: Path) -> dict[str, Any]:
-    return json.loads((project_root / ".ai-sow/validation/analyze-as-is.json").read_text())
+    return json.loads(
+        managed_path(project_root, ".ai-sow/validation/analyze-as-is.json").read_text()
+    )
 
 
 def test_review_template_has_complete_contract() -> None:
@@ -443,7 +455,7 @@ def test_publish_preserves_candidate_bytes_and_binds_named_inputs(tmp_path: Path
     result = run_validator(tmp_path, "publish")
 
     assert result.returncode == 0, result.stdout
-    assert (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").read_bytes() == candidate
+    assert managed_path(tmp_path, ".ai-sow/data/analyze-as-is/asis.json").read_bytes() == candidate
     receipt = validation_report(tmp_path)["compilationReceipt"]
     assert receipt["validatorContractVersion"] == "0.3"
     assert receipt["contractIds"] == ["urn:ai-sow:analyze-as-is:asis:0.1"]
@@ -918,7 +930,7 @@ def test_questionnaire_presence_and_selected_id_set_fail_closed(tmp_path: Path) 
 def test_rebind_updates_inputs_without_changing_stable_bytes(tmp_path: Path) -> None:
     payload = prepare_greenfield(tmp_path)
     assert run_validator(tmp_path, "publish").returncode == 0
-    stable = tmp_path / ".ai-sow/data/analyze-as-is/asis.json"
+    stable = managed_path(tmp_path, ".ai-sow/data/analyze-as-is/asis.json")
     before = stable.read_bytes()
     requirement_validation = tmp_path / ".ai-sow/validation/analyze-requirement.json"
     previous_hash = hashlib.sha256(requirement_validation.read_bytes()).hexdigest()
@@ -1026,7 +1038,7 @@ def test_rebind_requires_exact_stable_id_tokens(tmp_path: Path) -> None:
 def test_publish_rejects_no_change_and_failed_publish_preserves_stable(tmp_path: Path) -> None:
     payload = prepare_greenfield(tmp_path)
     assert run_validator(tmp_path, "publish").returncode == 0
-    stable = tmp_path / ".ai-sow/data/analyze-as-is/asis.json"
+    stable = managed_path(tmp_path, ".ai-sow/data/analyze-as-is/asis.json")
     before = stable.read_bytes()
     payload["coverage"] = []
     write_candidate(tmp_path, payload)

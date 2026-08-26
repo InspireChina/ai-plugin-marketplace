@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ SCRIPT = SKILL_ROOT / "scripts/setup.py"
 BOOTSTRAP_SH = SKILL_ROOT / "scripts/bootstrap.sh"
 BOOTSTRAP_PS1 = SKILL_ROOT / "scripts/bootstrap.ps1"
 TEMPLATE = SKILL_ROOT / "assets/sow-template.xlsx"
+POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
 
 
 def test_skill_uses_current_stage_without_leaf_agents() -> None:
@@ -53,6 +55,35 @@ def test_bootstrap_scripts_pin_official_uv_and_avoid_admin_install() -> None:
         text=True,
         check=False,
     ).returncode == 0
+    assert r"(?:\s|$)" in windows
+    assert r"(?:\\s|$)" not in windows
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell is unavailable on this platform")
+def test_powershell_uv_version_matcher_accepts_platform_suffix(tmp_path: Path) -> None:
+    source = BOOTSTRAP_PS1.read_text(encoding="utf-8")
+    function = re.search(
+        r"(?ms)^function Test-UvVersion\(.*?^}\s*$",
+        source,
+    )
+    assert function is not None
+    probe = tmp_path / "uv-version-probe.ps1"
+    probe.write_text(
+        '$UvVersion = "0.11.7"\n'
+        + function.group(0)
+        + '\nWrite-Output (Test-UvVersion "uv 0.11.7 (Windows x86_64)")\n',
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [str(POWERSHELL), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(probe)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().lower() == "true"
 
 
 def test_unix_bootstrap_creates_plugin_venv_with_existing_uv(tmp_path: Path) -> None:
@@ -73,7 +104,7 @@ def test_unix_bootstrap_creates_plugin_venv_with_existing_uv(tmp_path: Path) -> 
 set -eu
 printf '%s\\n' "$*" >> "$FAKE_UV_LOG"
 if [ "${1:-}" = "--version" ]; then
-  printf '%s\\n' 'uv 0.11.7'
+  printf '%s\\n' 'uv 0.11.7 (Homebrew 2026-04-15 aarch64-apple-darwin)'
   exit 0
 fi
 if [ "${1:-}" = "python" ] && [ "${2:-}" = "find" ]; then
@@ -97,6 +128,16 @@ fi
         encoding="utf-8",
     )
     fake_uv.chmod(0o755)
+    stale_local_uv = plugin_root / ".ai-sow-tools/bin/uv"
+    stale_local_uv.parent.mkdir(parents=True)
+    stale_local_uv.write_text(
+        "#!/bin/sh\nprintf '%s\\n' 'uv 0.10.0'\n",
+        encoding="utf-8",
+    )
+    stale_local_uv.chmod(0o755)
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    fake_curl.chmod(0o755)
     log = tmp_path / "uv.log"
     env = {
         **os.environ,
@@ -115,6 +156,7 @@ fi
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout.splitlines()[-1])
     assert payload["outcome"] == "OK"
+    assert payload["uvSource"] == "PATH"
     assert payload["pythonVersion"].startswith("Python 3.12.")
     calls = log.read_text(encoding="utf-8")
     assert "python install 3.12" in calls

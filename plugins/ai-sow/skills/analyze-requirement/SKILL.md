@@ -149,22 +149,19 @@ Reviewer 必须逐份读取完整来源，并以来源处置表为检查清单�
 
 `publish-approved` 重新计算并核对 context、input、candidate、review、risk summary、Reviewer 与 approval 的全部 hash。任一字节漂移都必须重新 review 和批准；失败不写正式路径。通过后把 candidate 与 review 原字节发布到正式路径，并发布 validator contract `0.3` receipt。
 
-## 上游影响复核
+## 普通输入变化
 
-项目元数据、正式 review 或问卷证据变化但 BUSINESS requirements 原字节不变时，可使用现行 `NO_CHANGE` 流程；来源字节的 SHA-256 是稳定 requirements 的权威字段，因此来源字节变化始终是 `CHANGED`，必须回到完整 candidate-first review 与精确 packet 批准。
-
-```text
-"<python-bin>" "<skill-root>/scripts/validate.py" \
-  --project-root "<project-root>" --mode rebind
-```
-
-`rebind` 必须证明稳定 requirements 与上一成功 receipt 完全一致，只更新当前 inputs/review 绑定。
+项目元数据、review 或问卷证据变化时，普通调用始终重新执行完整 candidate-first
+review、Reviewer 绑定、精确 packet 批准和 `publish-approved`。专业结论未变时
+candidate 可与稳定 requirements 原字节相同，发布器复用该输出并最后更新 receipt；
+来源字节的 SHA-256 是稳定 requirements 的权威字段，因此来源字节变化始终是
+`CHANGED`。普通调用不使用 legacy `publish/rebind`。
 
 ## Reconciliation Adapter
 
 仅当用户显式调用 `ai-sow:reconcile` 且提供 `Reconciliation Run ID`、整体 review SHA-256 与项目内 staging root 时，本 Skill 作为 Requirement Owner Adapter 运行。它继续独占 BUSINESS rules、candidate 编译、`check/publish/rebind` 与写集合，但复用 reconciliation 的外层当前 Stage、一个 Reviewer 和一次 hash-bound 用户批准；确定性 Owner 命令由外层当前 Stage 直接调用。Owner 输出写入 staging view，并把影响说明、机械检查原始结果和候选忠实度返回外层当前 Stage；此内部模式不在本阶段 STOP，也不调用下游。
 
-候选机械检查可用 `--review-path <project-relative-posix-path>` 读取 work-only Owner review；该 override 允许 `check/review/publish-approved`，legacy `publish/rebind` 继续只绑定正式 review。`check/publish/rebind` 是 reconciliation/兼容 adapter，不得替代普通调用的 candidate-first 授权链。
+候选机械检查可用 `--review-path <project-relative-posix-path>` 读取 work-only Owner review；该 override 允许 `check/review/publish-approved`。legacy `publish/rebind` 继续只绑定正式 review，且只能由 reconciliation 携带 `--staging-root` 调用；它们不得替代普通调用的 candidate-first 授权链。
 
 ## 完成与停止
 

@@ -112,7 +112,7 @@ class RepositoryValidatorTests(unittest.TestCase):
             plugin_root = write_plugin(
                 root,
                 "sample-plugin",
-                "0.1.0-beta.1+build.5",
+                "1.2.3-rc.4+build.5",
             )
 
             self.assertEqual(validate_plugin_manifest(root, plugin_root), [])

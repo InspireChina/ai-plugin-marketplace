@@ -59,6 +59,26 @@ def run_reviewer(owner: str, project_root: Path, packet_sha256: str) -> subproce
     )
 
 
+def run_legacy_write_mode(
+    owner: str,
+    project_root: Path,
+    mode: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(PLUGIN_ROOT / "skills" / owner / "scripts" / "validate.py"),
+            "--project-root",
+            str(project_root),
+            "--mode",
+            mode,
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
 @pytest.mark.parametrize("owner", OWNER_APPROVAL_PATHS)
 def test_owner_writes_canonical_approval_without_other_inputs(
     tmp_path: Path,
@@ -159,3 +179,27 @@ def test_owner_rejects_invalid_reviewer_packet_hash_without_writing(
         }
     ]
     assert not list(tmp_path.rglob("reviewer.json"))
+
+
+@pytest.mark.parametrize("owner", OWNER_APPROVAL_PATHS)
+@pytest.mark.parametrize("mode", ("publish", "rebind"))
+def test_owner_legacy_write_modes_require_reconciliation_staging(
+    tmp_path: Path,
+    owner: str,
+    mode: str,
+) -> None:
+    result = run_legacy_write_mode(owner, tmp_path, mode)
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    assert payload["outcome"] == "BLOCKED"
+    assert payload["summary"] == "Reconciliation 写入缺少 staging"
+    assert payload["diagnostics"] == [
+        {
+            "code": "RECONCILIATION_STAGING_REQUIRED",
+            "message": (
+                f"`--mode {mode}` 仅供 reconciliation 使用，必须提供 `--staging-root`"
+            ),
+        }
+    ]
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]

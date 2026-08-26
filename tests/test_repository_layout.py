@@ -431,7 +431,18 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("Windows 11 仍为临时支持（`Provisional`）", architecture)
 
     def test_public_docs_exclude_internal_execution_plans(self) -> None:
-        self.assertFalse((REPO_ROOT / "docs/superpowers/plans").exists())
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout.decode("utf-8").split("\0")
+        self.assertFalse(
+            any(
+                path.startswith((".superpowers/", "docs/superpowers/"))
+                for path in tracked
+            )
+        )
         self.assertTrue(
             (REPO_ROOT / "docs/architecture/ai-plugin-marketplace-design.md").is_file()
         )

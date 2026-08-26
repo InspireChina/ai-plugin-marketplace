@@ -24,9 +24,11 @@ from runtime.handoff import (
     VALIDATOR_CONTRACT_VERSION,
     canonical_json_bytes,
     match_owner,
+    publish_no_change_owner,
     publish_owner,
     rebind_owner,
     sha256_bytes,
+    validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
 
@@ -328,6 +330,14 @@ def review_path_diagnostics(mode: str, review_path: str) -> list[dict[str, objec
 
 def declaration(text: str, label: str) -> list[str]:
     return re.findall(rf"(?m)^{re.escape(label)}\s*:\s*(.+?)\s*$", text)
+
+
+def declares_no_change(files: ProjectFiles, review_path: str) -> bool:
+    try:
+        text = files.read_bytes(review_path).decode("utf-8")
+    except (ProjectIOError, UnicodeDecodeError):
+        return False
+    return declaration(text, "Impact") == ["NO_CHANGE"]
 
 
 def split_ids(value: str) -> list[str]:
@@ -1074,9 +1084,9 @@ def validate_review(
 
     impacts = declaration(text, "Impact")
     if require_no_change and impacts != ["NO_CHANGE"]:
-        diagnostics.append(diag("REVIEW_NO_CHANGE_MISSING", "rebind requires Impact: NO_CHANGE", review_path))
+        diagnostics.append(diag("REVIEW_NO_CHANGE_MISSING", "NO_CHANGE 发布或 rebind 要求 review 声明 Impact: NO_CHANGE", review_path))
     elif not require_no_change and "NO_CHANGE" in impacts:
-        diagnostics.append(diag("REVIEW_NO_CHANGE_MODE_INVALID", "Impact: NO_CHANGE is valid only for rebind", review_path))
+        diagnostics.append(diag("REVIEW_NO_CHANGE_MODE_INVALID", "Impact: NO_CHANGE 仅允许用于 NO_CHANGE 发布或 rebind", review_path))
     elif not require_no_change and impacts not in ([], ["CHANGED"]):
         diagnostics.append(diag("REVIEW_IMPACT_INVALID", "review Impact declaration is invalid", review_path))
     if require_no_change:
@@ -1094,17 +1104,17 @@ def validate_review(
         changed = [owner for owner, _, _ in specs if previous_hashes[owner] != current_hashes[owner]]
         upstream = declaration(text, "Upstream")
         if len(upstream) != 1 or split_ids(upstream[0]) != changed:
-            diagnostics.append(diag("REVIEW_UPSTREAM_INVALID", "rebind Upstream must list changed direct owners", review_path))
+            diagnostics.append(diag("REVIEW_UPSTREAM_INVALID", "NO_CHANGE review 的 Upstream 必须列出已变化的直接 Owner", review_path))
         previous_values = declaration(text, "Previous Receipt SHA-256")
         current_values = declaration(text, "Current Receipt SHA-256")
         if len(previous_values) != 1 or parse_hash_map(previous_values[0]) != {owner: previous_hashes[owner] for owner in changed}:
-            diagnostics.append(diag("REVIEW_PREVIOUS_RECEIPT_MISMATCH", "review previous receipt hashes are invalid", review_path))
+            diagnostics.append(diag("REVIEW_PREVIOUS_RECEIPT_MISMATCH", "review 中的旧 receipt hashes 无效", review_path))
         if len(current_values) != 1 or parse_hash_map(current_values[0]) != {owner: current_hashes[owner] for owner in changed}:
-            diagnostics.append(diag("REVIEW_CURRENT_RECEIPT_MISMATCH", "review current receipt hashes are invalid", review_path))
+            diagnostics.append(diag("REVIEW_CURRENT_RECEIPT_MISMATCH", "review 中的当前 receipt hashes 无效", review_path))
         rationales = declaration(text, "Impact Rationale")
         rationale_ids = set(STABLE_ID_PATTERN.findall(rationales[0])) if len(rationales) == 1 else set()
         if len(rationales) != 1 or not set(ids).issubset(rationale_ids):
-            diagnostics.append(diag("REVIEW_IMPACT_RATIONALE_INVALID", "Impact Rationale must name every Task ID", review_path))
+            diagnostics.append(diag("REVIEW_IMPACT_RATIONALE_INVALID", "Impact Rationale 必须点名每个 Task ID", review_path))
     return diagnostics
 
 
@@ -1138,18 +1148,6 @@ def input_entry(artifact: Artifact) -> dict[str, object]:
         "path": artifact.locator,
         "sha256": artifact.sha256,
     }
-
-
-def validate_rebind_inputs(
-    files: ProjectFiles,
-    inputs: tuple[Artifact, ...],
-) -> list[dict[str, object]]:
-    previous = previous_owner_receipt(files)
-    if previous is None or not isinstance(previous.get("inputs"), list):
-        return [diag("REBIND_PREVIOUS_RECEIPT_INVALID", "rebind requires a previous successful receipt", VALIDATION_PATH)]
-    if previous["inputs"] == [input_entry(artifact) for artifact in inputs]:
-        return [diag("REBIND_INPUT_UNCHANGED", "rebind requires a changed bound input", VALIDATION_PATH)]
-    return []
 
 
 def risk_summary_bytes(
@@ -1520,6 +1518,25 @@ def main() -> int:
         return write_reviewer(args)
     if args.mode == "write-approval":
         return write_approval(args)
+    if args.mode in {"publish", "rebind"} and args.staging_root is None:
+        print(
+            json.dumps(
+                {
+                    "outcome": "BLOCKED",
+                    "summary": "Reconciliation 写入缺少 staging",
+                    "diagnostics": [{
+                        "code": "RECONCILIATION_STAGING_REQUIRED",
+                        "message": (
+                            f"`--mode {args.mode}` 仅供 reconciliation 使用，"
+                            "必须提供 `--staging-root`"
+                        ),
+                    }],
+                    "outputs": [],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 2
     path_diagnostics = review_path_diagnostics(args.mode, args.review_path)
     if path_diagnostics:
         print(
@@ -1539,6 +1556,10 @@ def main() -> int:
             ProjectFiles.open_view(args.project_root, args.staging_root)
             if args.staging_root is not None
             else ProjectFiles.open(args.project_root)
+        )
+        no_change = (
+            args.mode in {"review", "publish-approved", "rebind"}
+            and declares_no_change(files, args.review_path)
         )
         diagnostics: list[dict[str, object]] = []
         for contract, builder in (
@@ -1581,14 +1602,22 @@ def main() -> int:
                         files,
                         estimate,
                         template_hash,
-                        require_no_change=args.mode == "rebind",
+                        require_no_change=no_change,
                         review_path=args.review_path,
                     )
                 )
                 local, inputs = owner_inputs(files)
                 diagnostics.extend(local)
-                if args.mode == "rebind":
-                    diagnostics.extend(validate_rebind_inputs(files, inputs))
+                if not diagnostics and no_change and payload is not None:
+                    try:
+                        validate_no_change_candidate(
+                            files,
+                            CONTRACT,
+                            inputs,
+                            {"estimate": payload},
+                        )
+                    except ProjectIOError as error:
+                        diagnostics.append(diag(error.code, str(error), error.relative_path))
         expected_packet: dict[str, object] | None = None
         if (
             not diagnostics
@@ -1674,7 +1703,8 @@ def main() -> int:
                 elif args.mode == "publish-approved":
                     assert payload is not None and review_payload is not None
                     files.write_atomic(REVIEW_PATH, review_payload)
-                    report = publish_owner(files, CONTRACT, inputs, {"estimate": payload})
+                    publisher = publish_no_change_owner if no_change else publish_owner
+                    report = publisher(files, CONTRACT, inputs, {"estimate": payload})
                 elif args.mode == "rebind":
                     report = rebind_owner(files, CONTRACT, inputs)
             except ProjectIOError as error:

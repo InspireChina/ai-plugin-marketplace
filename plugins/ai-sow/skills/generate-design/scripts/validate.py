@@ -25,9 +25,11 @@ from runtime.handoff import (
     VALIDATOR_CONTRACT_VERSION,
     canonical_json_bytes,
     match_owner,
+    publish_no_change_owner,
     publish_owner,
     rebind_owner,
     sha256_bytes,
+    validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
 
@@ -292,6 +294,14 @@ def validate_review_path(mode: str, review_path: str) -> list[dict[str, object]]
 
 def declaration(text: str, label: str) -> list[str]:
     return re.findall(rf"(?m)^{re.escape(label)}\s*:\s*(.+?)\s*$", text)
+
+
+def declares_no_change(files: ProjectFiles, review_path: str) -> bool:
+    try:
+        text = files.read_bytes(review_path).decode("utf-8")
+    except (ProjectIOError, UnicodeDecodeError):
+        return False
+    return declaration(text, "Impact") == ["NO_CHANGE"]
 
 
 def split_values(value: str) -> list[str]:
@@ -789,9 +799,9 @@ def validate_review(
         diagnostics.append(diag("USER_APPROVAL_MISSING", "User Approval must be APPROVED", review_path))
     impacts = declaration(text, "Impact")
     if require_no_change and impacts != ["NO_CHANGE"]:
-        diagnostics.append(diag("REVIEW_NO_CHANGE_MISSING", "rebind requires Impact: NO_CHANGE", review_path))
+        diagnostics.append(diag("REVIEW_NO_CHANGE_MISSING", "NO_CHANGE 发布或 rebind 要求 review 声明 Impact: NO_CHANGE", review_path))
     elif not require_no_change and "NO_CHANGE" in impacts:
-        diagnostics.append(diag("REVIEW_NO_CHANGE_MODE_INVALID", "Impact: NO_CHANGE is valid only for rebind", review_path))
+        diagnostics.append(diag("REVIEW_NO_CHANGE_MODE_INVALID", "Impact: NO_CHANGE 仅允许用于 NO_CHANGE 发布或 rebind", review_path))
     elif not require_no_change and impacts not in ([], ["CHANGED"]):
         diagnostics.append(diag("REVIEW_IMPACT_INVALID", "review Impact declaration is invalid", review_path))
     if require_no_change:
@@ -807,19 +817,19 @@ def validate_review(
         changed = [owner for owner in ("analyze-requirement", "analyze-as-is") if previous_hashes[owner] != current_hashes[owner]]
         upstream = declaration(text, "Upstream")
         if len(upstream) != 1 or split_values(upstream[0]) != changed:
-            diagnostics.append(diag("REVIEW_UPSTREAM_INVALID", "rebind Upstream must list exactly the changed direct owners", review_path))
+            diagnostics.append(diag("REVIEW_UPSTREAM_INVALID", "NO_CHANGE review 的 Upstream 必须精确列出已变化的直接 Owner", review_path))
         previous_values = declaration(text, "Previous Receipt SHA-256")
         current_values = declaration(text, "Current Receipt SHA-256")
         expected_previous = {owner: previous_hashes[owner] for owner in changed}
         expected_current = {owner: current_hashes[owner] for owner in changed}
         if len(previous_values) != 1 or parse_hash_map(previous_values[0]) != expected_previous:
-            diagnostics.append(diag("REVIEW_PREVIOUS_RECEIPT_MISMATCH", "review previous upstream receipt hashes are invalid", review_path))
+            diagnostics.append(diag("REVIEW_PREVIOUS_RECEIPT_MISMATCH", "review 中的旧上游 receipt hashes 无效", review_path))
         if len(current_values) != 1 or parse_hash_map(current_values[0]) != expected_current:
-            diagnostics.append(diag("REVIEW_CURRENT_RECEIPT_MISMATCH", "review current upstream receipt hashes are invalid", review_path))
+            diagnostics.append(diag("REVIEW_CURRENT_RECEIPT_MISMATCH", "review 中的当前上游 receipt hashes 无效", review_path))
         rationales = declaration(text, "Impact Rationale")
         rationale_ids = set(STABLE_ID_PATTERN.findall(rationales[0])) if len(rationales) == 1 else set()
         if len(rationales) != 1 or not set([*design_ids, *technical_ids]).issubset(rationale_ids):
-            diagnostics.append(diag("REVIEW_IMPACT_RATIONALE_INVALID", "Impact Rationale must name every confirmed stable ID", review_path))
+            diagnostics.append(diag("REVIEW_IMPACT_RATIONALE_INVALID", "Impact Rationale 必须点名每个已确认的稳定 ID", review_path))
     return diagnostics, text
 
 
@@ -844,15 +854,6 @@ def owner_inputs(files: ProjectFiles) -> tuple[list[dict[str, object]], tuple[Ar
 
 def input_entry(artifact: Artifact) -> dict[str, object]:
     return {"name": artifact.name, "kind": artifact.kind, "path": artifact.locator, "sha256": artifact.sha256}
-
-
-def validate_rebind_inputs(files: ProjectFiles, inputs: tuple[Artifact, ...]) -> list[dict[str, object]]:
-    previous = previous_owner_receipt(files)
-    if previous is None or not isinstance(previous.get("inputs"), list):
-        return [diag("REBIND_PREVIOUS_RECEIPT_INVALID", "rebind requires a previous successful owner receipt", VALIDATION_PATH)]
-    if previous["inputs"] == [input_entry(artifact) for artifact in inputs]:
-        return [diag("REBIND_INPUT_UNCHANGED", "rebind requires at least one changed bound input", VALIDATION_PATH)]
-    return []
 
 
 def file_entry(name: str, path: str, payload: bytes) -> dict[str, object]:
@@ -1183,6 +1184,25 @@ def main() -> int:
         return write_reviewer(args)
     if args.mode == "write-approval":
         return write_approval(args)
+    if args.mode in {"publish", "rebind"} and args.staging_root is None:
+        print(
+            json.dumps(
+                {
+                    "outcome": "BLOCKED",
+                    "summary": "Reconciliation 写入缺少 staging",
+                    "diagnostics": [{
+                        "code": "RECONCILIATION_STAGING_REQUIRED",
+                        "message": (
+                            f"`--mode {args.mode}` 仅供 reconciliation 使用，"
+                            "必须提供 `--staging-root`"
+                        ),
+                    }],
+                    "outputs": [],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 2
     review_path_diagnostics = validate_review_path(args.mode, args.review_path)
     if review_path_diagnostics:
         print(
@@ -1202,6 +1222,10 @@ def main() -> int:
             ProjectFiles.open_view(args.project_root, args.staging_root)
             if args.staging_root is not None
             else ProjectFiles.open(args.project_root)
+        )
+        no_change = (
+            args.mode in {"review", "publish-approved", "rebind"}
+            and declares_no_change(files, args.review_path)
         )
         diagnostics: list[dict[str, object]] = []
         requirement_handoff = owner_handoff(files, REQUIREMENT_CONTRACT, current_requirement_inputs)
@@ -1241,7 +1265,7 @@ def main() -> int:
                     files,
                     design,
                     technical,
-                    require_no_change=args.mode == "rebind",
+                    require_no_change=no_change,
                     review_path=args.review_path,
                 )
                 diagnostics.extend(review_diagnostics)
@@ -1251,8 +1275,24 @@ def main() -> int:
                 )
                 input_diagnostics, inputs = owner_inputs(files)
                 diagnostics.extend(input_diagnostics)
-                if args.mode == "rebind":
-                    diagnostics.extend(validate_rebind_inputs(files, inputs))
+                if (
+                    not diagnostics
+                    and no_change
+                    and design_payload is not None
+                    and technical_payload is not None
+                ):
+                    try:
+                        validate_no_change_candidate(
+                            files,
+                            CONTRACT,
+                            inputs,
+                            {
+                                "design": design_payload,
+                                "technicalRequirements": technical_payload,
+                            },
+                        )
+                    except ProjectIOError as error:
+                        diagnostics.append(diag(error.code, str(error), error.relative_path))
 
         expected_packet: dict[str, object] | None = None
         if (
@@ -1354,7 +1394,8 @@ def main() -> int:
                         and review_payload is not None
                     )
                     files.write_atomic(REVIEW_PATH, review_payload)
-                    report = publish_owner(
+                    publisher = publish_no_change_owner if no_change else publish_owner
+                    report = publisher(
                         files,
                         CONTRACT,
                         inputs,

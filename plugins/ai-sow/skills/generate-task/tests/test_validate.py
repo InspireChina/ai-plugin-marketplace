@@ -323,6 +323,8 @@ def run_validator(
     command = [sys.executable, str(SCRIPT), "--project-root", str(root), "--mode", mode]
     if review_path is not None:
         command.extend(("--review-path", review_path))
+    if mode in {"publish", "rebind"}:
+        command.extend(("--staging-root", STAGING_ROOT))
     command.extend(extra)
     return subprocess.run(
         command,
@@ -330,6 +332,14 @@ def run_validator(
         text=True,
         check=False,
     )
+
+
+STAGING_ROOT = ".ai-sow/.stage-0123456789ab"
+
+
+def managed_path(root: Path, logical_path: str) -> Path:
+    staged = root / STAGING_ROOT / logical_path.removeprefix(".ai-sow/")
+    return staged if staged.exists() else root / logical_path
 
 
 def run_context(root: Path) -> subprocess.CompletedProcess[str]:
@@ -734,11 +744,58 @@ def test_publish_approved_preserves_exact_candidate_review_and_receipt_contract(
 
     assert result.returncode == 0, result.stdout
     assert (tmp_path / ".ai-sow/reviews/generate-task.md").read_bytes() == review
-    assert (tmp_path / ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
+    assert managed_path(tmp_path, ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
     receipt = payload(result)["receipt"]
     assert receipt["validatorContractVersion"] == "0.3"
     assert receipt["reviews"][0]["sha256"] == sha256_bytes(review)
     assert receipt["outputs"][0]["sha256"] == sha256_bytes(candidate)
+
+
+def test_publish_approved_accepts_hash_bound_no_change_candidate(tmp_path: Path) -> None:
+    candidate, _ = prepare_review_candidate(tmp_path)
+    review_path = ".ai-sow/work/generate-task/review.candidate.md"
+    reviewed = run_validator(tmp_path, "review", review_path=review_path)
+    assert reviewed.returncode == 0, reviewed.stdout
+    bind_review_packet(tmp_path)
+    published = run_validator(tmp_path, "publish-approved", review_path=review_path)
+    assert published.returncode == 0, published.stdout
+
+    previous_report = json.loads(
+        (tmp_path / ".ai-sow/validation/generate-task.json").read_text(encoding="utf-8")
+    )
+    old_story = input_hash(previous_report, "deliveryValidation")
+    publish_story(tmp_path, review=b"Story approved after wording update.\n")
+    new_story = sha256_bytes(
+        (tmp_path / ".ai-sow/validation/generate-story.json").read_bytes()
+    )
+    estimate = json.loads(candidate)
+    template_hash = sha256_bytes(
+        (tmp_path / ".ai-sow/templates/sow-template.xlsx").read_bytes()
+    )
+    write_bytes(
+        tmp_path,
+        review_path,
+        task_review(
+            estimate,
+            template_hash,
+            rebind={"old": old_story, "new": new_story},
+        ).encode(),
+    )
+    context = run_context(tmp_path)
+    assert context.returncode == 0, context.stdout
+
+    reviewed = run_validator(tmp_path, "review", review_path=review_path)
+    assert reviewed.returncode == 0, reviewed.stdout
+    bind_review_packet(tmp_path)
+    rebound = run_validator(tmp_path, "publish-approved", review_path=review_path)
+
+    assert rebound.returncode == 0, rebound.stdout
+    assert (tmp_path / ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
+    report = json.loads(
+        (tmp_path / ".ai-sow/validation/generate-task.json").read_text(encoding="utf-8")
+    )
+    assert input_hash(report, "deliveryValidation") == new_story
+    assert report["compilationReceipt"]["outputs"][0]["sha256"] == sha256_bytes(candidate)
 
 
 def test_publish_approved_rejects_packet_drift_before_formal_writes(tmp_path: Path) -> None:
@@ -826,7 +883,7 @@ def test_publish_preserves_candidate_bytes_and_exact_inputs(tmp_path: Path) -> N
     result = run_validator(tmp_path, "publish")
 
     assert result.returncode == 0, result.stdout
-    assert (tmp_path / ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
+    assert managed_path(tmp_path, ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
     receipt = payload(result)["receipt"]
     assert [entry["name"] for entry in receipt["outputs"]] == ["estimate"]  # type: ignore[index]
     assert [entry["name"] for entry in receipt["inputs"]] == [  # type: ignore[index]
@@ -1212,7 +1269,11 @@ def test_rebind_changes_story_receipt_without_changing_estimate_bytes(tmp_path: 
     candidate = prepare(tmp_path)
     published = run_validator(tmp_path, "publish")
     assert published.returncode == 0, published.stdout
-    old_report = json.loads((tmp_path / ".ai-sow/validation/generate-task.json").read_text(encoding="utf-8"))
+    old_report = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-task.json").read_text(
+            encoding="utf-8"
+        )
+    )
     old_story = input_hash(old_report, "deliveryValidation")
     publish_story(tmp_path, review=b"Story approved after wording update.\n")
     new_story = sha256_bytes((tmp_path / ".ai-sow/validation/generate-story.json").read_bytes())
@@ -1225,8 +1286,12 @@ def test_rebind_changes_story_receipt_without_changing_estimate_bytes(tmp_path: 
     )
     result = run_validator(tmp_path, "rebind")
     assert result.returncode == 0, result.stdout
-    assert (tmp_path / ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
-    rebound = json.loads((tmp_path / ".ai-sow/validation/generate-task.json").read_text(encoding="utf-8"))
+    assert managed_path(tmp_path, ".ai-sow/data/generate-task/estimate.json").read_bytes() == candidate
+    rebound = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-task.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert input_hash(rebound, "deliveryValidation") == new_story
 
 

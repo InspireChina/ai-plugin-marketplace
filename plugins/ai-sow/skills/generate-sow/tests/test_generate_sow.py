@@ -349,11 +349,11 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
     assert schema["$id"] == "urn:ai-sow:generate-sow:manifest:0.2"
 
 
-def test_beta1_project_is_not_implicitly_migrated(tmp_path: Path) -> None:
+def test_unsupported_project_version_is_rejected(tmp_path: Path) -> None:
     project = copy_project(tmp_path)
     metadata = project / ".ai-sow/project.json"
     value = json.loads(metadata.read_text(encoding="utf-8"))
-    value["pluginVersion"] = "0.1.0-beta.1"
+    value["pluginVersion"] = "9.9.9"
     metadata.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
 
     completed, result = run_generator(project)

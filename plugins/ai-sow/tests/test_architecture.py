@@ -274,15 +274,10 @@ def test_candidate_first_algorithms_remain_owner_contract_not_shared_runtime() -
         PLUGIN_ROOT / "docs" / "AI_SOW_PLUGIN_DESIGN.md"
     ).read_text(encoding="utf-8")
     context = (PLUGIN_ROOT / "docs" / "CONTEXT.md").read_text(encoding="utf-8")
-    performance_design = (
-        PLUGIN_ROOT.parents[1]
-        / "docs/superpowers/specs/2026-08-25-ai-sow-performance-optimization-design.md"
-    ).read_text(encoding="utf-8")
     runtime_text = "\n".join(
         path.read_text(encoding="utf-8") for path in python_sources(RUNTIME)
     )
     for algorithm in OWNER_REVIEW_ALGORITHMS:
-        assert algorithm in performance_design
         assert algorithm not in runtime_text
     assert "candidate-first" in design
     assert "candidate-first" in context

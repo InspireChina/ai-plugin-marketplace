@@ -386,10 +386,9 @@ def publish_owner(
     return report
 
 
-def rebind_owner(
+def _previous_owner_receipt(
     files: ProjectFiles,
     contract: OwnerContract,
-    inputs: tuple[Artifact, ...],
 ) -> dict[str, object]:
     try:
         previous_report = files.read_json(contract.validation_path)
@@ -397,7 +396,7 @@ def rebind_owner(
         raise ProjectIOError(
             "OWNER_REBIND_RECEIPT_INVALID",
             contract.validation_path,
-            "previous successful owner receipt is required for rebind",
+            "NO_CHANGE 需要上一份成功的 Owner receipt",
         ) from error
     receipt = _receipt_from_report(previous_report)
     if (
@@ -412,7 +411,7 @@ def rebind_owner(
         raise ProjectIOError(
             "OWNER_REBIND_RECEIPT_INVALID",
             contract.validation_path,
-            "previous successful owner receipt is invalid or unsupported",
+            "上一份成功的 Owner receipt 无效或不受支持",
         )
     previous_outputs = receipt["outputs"]
     assert isinstance(previous_outputs, list)
@@ -420,8 +419,18 @@ def rebind_owner(
         raise ProjectIOError(
             "OWNER_REBIND_RECEIPT_INVALID",
             contract.validation_path,
-            "previous owner output set does not match the current contract",
+            "上一份 Owner output 集合与当前合同不一致",
         )
+    return receipt
+
+
+def _verified_previous_outputs(
+    files: ProjectFiles,
+    contract: OwnerContract,
+    receipt: dict[str, object],
+) -> list[dict[str, object]]:
+    previous_outputs = receipt["outputs"]
+    assert isinstance(previous_outputs, list)
     for entry in previous_outputs:
         assert isinstance(entry, dict)
         path = str(entry["path"])
@@ -431,18 +440,82 @@ def rebind_owner(
             raise ProjectIOError(
                 "OWNER_REBIND_OUTPUT_CHANGED",
                 path,
-                "stable owner output is missing during rebind",
+                "NO_CHANGE 期间缺少稳定 Owner output",
             ) from error
         if current_hash != entry["sha256"]:
             raise ProjectIOError(
                 "OWNER_REBIND_OUTPUT_CHANGED",
                 path,
-                "stable owner output bytes changed during rebind",
+                "NO_CHANGE 期间稳定 Owner output 字节已变化",
             )
+    return [dict(entry) for entry in previous_outputs]
+
+
+def validate_no_change_candidate(
+    files: ProjectFiles,
+    contract: OwnerContract,
+    inputs: tuple[Artifact, ...],
+    candidate_outputs: dict[str, bytes],
+) -> list[dict[str, object]]:
+    """Validate an approved NO_CHANGE candidate without writing project state."""
+
+    expected_names = [name for name, _ in contract.outputs]
+    if set(candidate_outputs) != set(expected_names):
+        raise ProjectIOError(
+            "OWNER_OUTPUT_INVALID",
+            contract.validation_path,
+            "NO_CHANGE candidate 输出名与 Owner 合同不一致",
+        )
+    receipt = _previous_owner_receipt(files, contract)
+    outputs = _verified_previous_outputs(files, contract, receipt)
+    by_name = {str(entry["name"]): entry for entry in outputs}
+    for name, payload in candidate_outputs.items():
+        if by_name[name]["sha256"] != sha256_bytes(payload):
+            raise ProjectIOError(
+                "OWNER_NO_CHANGE_CANDIDATE_CHANGED",
+                str(by_name[name]["path"]),
+                "NO_CHANGE candidate 必须与稳定输出原字节一致",
+            )
+
+    current_inputs = [_input_entry(artifact) for artifact in inputs]
+    if receipt["inputs"] == current_inputs:
+        raise ProjectIOError(
+            "REBIND_INPUT_UNCHANGED",
+            contract.validation_path,
+            "NO_CHANGE 要求至少一项已绑定输入发生变化",
+        )
+    _verify_input_files(files, inputs)
+    return outputs
+
+
+def publish_no_change_owner(
+    files: ProjectFiles,
+    contract: OwnerContract,
+    inputs: tuple[Artifact, ...],
+    candidate_outputs: dict[str, bytes],
+) -> dict[str, object]:
+    outputs = validate_no_change_candidate(
+        files,
+        contract,
+        inputs,
+        candidate_outputs,
+    )
+    reviews = _file_entries(files, contract.reviews)
+    report = _report(contract, inputs, reviews, outputs)
+    files.write_atomic(contract.validation_path, canonical_json_bytes(report))
+    return report
+
+
+def rebind_owner(
+    files: ProjectFiles,
+    contract: OwnerContract,
+    inputs: tuple[Artifact, ...],
+) -> dict[str, object]:
+    receipt = _previous_owner_receipt(files, contract)
+    outputs = _verified_previous_outputs(files, contract, receipt)
 
     _verify_input_files(files, inputs)
     reviews = _file_entries(files, contract.reviews)
-    outputs = [dict(entry) for entry in previous_outputs]
     report = _report(contract, inputs, reviews, outputs)
     files.write_atomic(contract.validation_path, canonical_json_bytes(report))
     return report

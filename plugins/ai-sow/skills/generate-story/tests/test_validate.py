@@ -432,12 +432,22 @@ def run_validator(
     command = [sys.executable, str(SCRIPT), "--project-root", str(root), "--mode", mode]
     if review_path is not None:
         command.extend(("--review-path", review_path))
+    if mode in {"publish", "rebind"}:
+        command.extend(("--staging-root", STAGING_ROOT))
     return subprocess.run(
         command,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+STAGING_ROOT = ".ai-sow/.stage-0123456789ab"
+
+
+def managed_path(root: Path, logical_path: str) -> Path:
+    staged = root / STAGING_ROOT / logical_path.removeprefix(".ai-sow/")
+    return staged if staged.exists() else root / logical_path
 
 
 def run_script(script: Path, root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -625,7 +635,7 @@ def test_publish_preserves_candidate_bytes_and_exact_inputs(tmp_path: Path) -> N
     result = run_validator(tmp_path, "publish")
 
     assert result.returncode == 0, result.stdout
-    assert (tmp_path / ".ai-sow/data/generate-story/delivery.json").read_bytes() == candidate
+    assert managed_path(tmp_path, ".ai-sow/data/generate-story/delivery.json").read_bytes() == candidate
     receipt = result_payload(result)["receipt"]
     assert [entry["name"] for entry in receipt["outputs"]] == ["delivery"]  # type: ignore[index]
     assert [entry["name"] for entry in receipt["inputs"]] == [  # type: ignore[index]
@@ -1161,7 +1171,9 @@ def test_rebind_changes_design_receipt_without_changing_delivery_bytes(tmp_path:
     candidate = prepare(tmp_path)
     published = run_validator(tmp_path, "publish")
     assert published.returncode == 0, published.stdout
-    old_report = json.loads((tmp_path / ".ai-sow/validation/generate-story.json").read_text())
+    old_report = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-story.json").read_text()
+    )
     old_design = input_hash(old_report, "designValidation")
     publish_design(tmp_path, review=b"Design review approved after wording update.\n")
     new_design = sha256_bytes((tmp_path / ".ai-sow/validation/generate-design.json").read_bytes())
@@ -1175,8 +1187,10 @@ def test_rebind_changes_design_receipt_without_changing_delivery_bytes(tmp_path:
     result = run_validator(tmp_path, "rebind")
 
     assert result.returncode == 0, result.stdout
-    assert (tmp_path / ".ai-sow/data/generate-story/delivery.json").read_bytes() == candidate
-    rebound = json.loads((tmp_path / ".ai-sow/validation/generate-story.json").read_text())
+    assert managed_path(tmp_path, ".ai-sow/data/generate-story/delivery.json").read_bytes() == candidate
+    rebound = json.loads(
+        managed_path(tmp_path, ".ai-sow/validation/generate-story.json").read_text()
+    )
     assert input_hash(rebound, "designValidation") == new_design
 
 

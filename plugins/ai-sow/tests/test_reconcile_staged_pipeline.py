@@ -11,6 +11,7 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = PLUGIN_ROOT / "skills/generate-sow/fixtures/project"
 TASK_VALIDATOR = PLUGIN_ROOT / "skills/generate-task/scripts/validate.py"
+TASK_CONTEXT = PLUGIN_ROOT / "skills/generate-task/scripts/prepare_context.py"
 SOW_GENERATOR = PLUGIN_ROOT / "skills/generate-sow/scripts/generate_sow.py"
 RECONCILE = PLUGIN_ROOT / "skills/reconcile/scripts/reconcile.py"
 RUN_ID = "a1b2c3d4e5f6"
@@ -157,11 +158,33 @@ def test_no_change_owner_rebind_flows_through_flat_staging_sow_and_publisher(
             template_hash=sha256((project / TEMPLATE).read_bytes()),
         )
     )
+    prepared, prepared_result = run_cli(TASK_CONTEXT, project)
+    assert prepared.returncode == 0, prepared.stdout + prepared.stderr
+    assert prepared_result["outcome"] == "OK"
+    reviewed, reviewed_result = run_cli(
+        TASK_VALIDATOR,
+        project,
+        "--mode",
+        "review",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout + reviewed.stderr
+    packet_hash = str(reviewed_result["packetSha256"])
+    for binding_mode in ("write-reviewer", "write-approval"):
+        bound, bound_result = run_cli(
+            TASK_VALIDATOR,
+            project,
+            "--mode",
+            binding_mode,
+            "--packet-sha256",
+            packet_hash,
+        )
+        assert bound.returncode == 0, bound.stdout + bound.stderr
+        assert bound_result["outcome"] == "OK"
     baseline, baseline_result = run_cli(
         TASK_VALIDATOR,
         project,
         "--mode",
-        "publish",
+        "publish-approved",
     )
     assert baseline.returncode == 0, baseline.stdout + baseline.stderr
     assert baseline_result["outcome"] == "OK"

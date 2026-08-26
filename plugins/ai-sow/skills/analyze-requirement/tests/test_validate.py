@@ -17,6 +17,12 @@ FIXTURE = SKILL_ROOT / "fixtures/requirements.valid.json"
 REVIEW_TEMPLATE = SKILL_ROOT / "references/review-template.md"
 E2E_DESCRIPTOR = SKILL_ROOT / "fixtures/e2e-cases/explicit-architecture.json"
 SOURCE_BYTES = "客户需要统一创建、查询和维护客户档案，并要求关键字段完整可追溯。\n".encode()
+STAGING_ROOT = ".ai-sow/.stage-0123456789ab"
+
+
+def managed_path(project_root: Path, logical_path: str) -> Path:
+    staged = project_root / STAGING_ROOT / logical_path.removeprefix(".ai-sow/")
+    return staged if staged.exists() else project_root / logical_path
 
 
 def candidate_path(project_root: Path) -> Path:
@@ -24,11 +30,11 @@ def candidate_path(project_root: Path) -> Path:
 
 
 def stable_path(project_root: Path) -> Path:
-    return project_root / ".ai-sow/data/analyze-requirement/requirements.json"
+    return managed_path(project_root, ".ai-sow/data/analyze-requirement/requirements.json")
 
 
 def validation_path(project_root: Path) -> Path:
-    return project_root / ".ai-sow/validation/analyze-requirement.json"
+    return managed_path(project_root, ".ai-sow/validation/analyze-requirement.json")
 
 
 def review_path(project_root: Path) -> Path:
@@ -57,6 +63,8 @@ def run_validator(
     ]
     if review_override is not None:
         command.extend(("--review-path", review_override))
+    if mode in {"publish", "rebind"}:
+        command.extend(("--staging-root", STAGING_ROOT))
     return subprocess.run(
         command,
         capture_output=True,

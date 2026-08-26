@@ -20,9 +20,11 @@ from runtime.handoff import (
     OwnerContract,
     VALIDATOR_CONTRACT_VERSION,
     canonical_json_bytes,
+    publish_no_change_owner,
     publish_owner,
     rebind_owner,
     sha256_bytes,
+    validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
 
@@ -261,6 +263,14 @@ def stable_ids(data: dict[str, Any]) -> list[str]:
 
 def declaration(text: str, label: str) -> list[str]:
     return re.findall(rf"(?m)^{re.escape(label)}\s*:\s*(.+?)\s*$", text)
+
+
+def declares_no_change(files: ProjectFiles, review_path: str) -> bool:
+    try:
+        text = files.read_bytes(review_path).decode("utf-8")
+    except (ProjectIOError, UnicodeDecodeError):
+        return False
+    return declaration(text, "Impact") == ["NO_CHANGE"]
 
 
 def parse_questionnaire(text: str) -> tuple[list[dict[str, str]], list[tuple[str, str]]]:
@@ -507,12 +517,12 @@ def validate_review(
         diagnostics.append(diag("USER_APPROVAL_MISSING", "User Approval must be APPROVED", review_path))
     impacts = declaration(text, "Impact")
     if require_no_change and impacts != ["NO_CHANGE"]:
-        diagnostics.append(diag("REVIEW_NO_CHANGE_MISSING", "rebind requires Impact: NO_CHANGE", review_path))
+        diagnostics.append(diag("REVIEW_NO_CHANGE_MISSING", "NO_CHANGE 发布或 rebind 要求 review 声明 Impact: NO_CHANGE", review_path))
     elif not require_no_change and "NO_CHANGE" in impacts:
         diagnostics.append(
             diag(
                 "REVIEW_NO_CHANGE_MODE_INVALID",
-                "Impact: NO_CHANGE is valid only for rebind",
+                "Impact: NO_CHANGE 仅允许用于 NO_CHANGE 发布或 rebind",
                 review_path,
             )
         )
@@ -1021,6 +1031,25 @@ def main() -> int:
         return write_reviewer(args)
     if args.mode == "write-approval":
         return write_approval(args)
+    if args.mode in {"publish", "rebind"} and args.staging_root is None:
+        print(
+            json.dumps(
+                {
+                    "outcome": "BLOCKED",
+                    "summary": "Reconciliation 写入缺少 staging",
+                    "diagnostics": [{
+                        "code": "RECONCILIATION_STAGING_REQUIRED",
+                        "message": (
+                            f"`--mode {args.mode}` 仅供 reconciliation 使用，"
+                            "必须提供 `--staging-root`"
+                        ),
+                    }],
+                    "outputs": [],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 2
     review_path_diagnostics = validate_review_path(args.mode, args.review_path)
     if review_path_diagnostics:
         print(
@@ -1043,14 +1072,28 @@ def main() -> int:
         )
         schema_path = Path(__file__).resolve().parents[1] / "contracts/source-requirements.schema.json"
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        no_change = (
+            args.mode in {"review", "publish-approved", "rebind"}
+            and declares_no_change(files, args.review_path)
+        )
         relative = STABLE_PATH if args.mode == "rebind" else args.candidate
         payload, data, inputs, diagnostics = load_and_validate(
             files,
             relative,
             schema,
-            require_no_change=args.mode == "rebind",
+            require_no_change=no_change,
             review_path=args.review_path,
         )
+        if not diagnostics and no_change and payload is not None:
+            try:
+                validate_no_change_candidate(
+                    files,
+                    CONTRACT,
+                    inputs,
+                    {"requirements": payload},
+                )
+            except ProjectIOError as error:
+                diagnostics.append(diag(error.code, str(error), error.relative_path))
         packet_payload: bytes | None = None
         review_payload: bytes | None = None
         summary_payload: bytes | None = None
@@ -1130,7 +1173,8 @@ def main() -> int:
                 elif args.mode == "publish-approved":
                     assert payload is not None and review_payload is not None
                     files.write_atomic(REVIEW_PATH, review_payload)
-                    report = publish_owner(files, CONTRACT, inputs, {"requirements": payload})
+                    publisher = publish_no_change_owner if no_change else publish_owner
+                    report = publisher(files, CONTRACT, inputs, {"requirements": payload})
                 elif args.mode == "rebind":
                     report = rebind_owner(files, CONTRACT, inputs)
             except ProjectIOError as error:

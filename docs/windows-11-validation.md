@@ -11,8 +11,9 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
 ## 当前自动化能够证明什么
 
 - GitHub Actions 在 `windows-latest` 上运行根仓库测试和完整插件 pytest 测试套件。
-- 合成测试覆盖 Windows 专属决策，包括 `PATH` 分隔、`.cmd Git shim` 发现、可移植
-  验证报告写入器和重解析点（reparse point）属性拒绝。
+- Windows runner 会执行 PowerShell `uv --version` 后缀匹配回归；合成测试另覆盖重解析点
+  （reparse point）属性拒绝。当前没有独立自动化证据证明 `PATH` 分隔、`.cmd Git shim`
+  发现或可移植验证报告写入器，这些仍属于下方实机验收范围。
 - macOS 测试覆盖真实 POSIX 符号链接和竞态替换，但不会创建 NTFS 目录联接
   （NTFS junction）或原生 Windows 重解析点。
 
@@ -26,7 +27,7 @@ NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。
 | NTFS 间接引用 | 未确认 | 创建目录符号链接、NTFS 目录联接（NTFS junction）和其他可访问的重解析点形式。确认指向项目外部的 `.ai-sow/validation` 和报告目标会被拒绝，且外部目标保持不变。 |
 | 同文件系统发布 | 未确认 | 确认项目内临时目录与最终 package 的 rename、相同内容复用和不同内容拒绝覆盖在 NTFS 上行为一致。 |
 | Windows 路径 | 未确认 | 从包含非 ASCII 字符和空格的项目路径运行。另行测试长路径（long path），并记录是否启用 Windows 长路径支持。 |
-| Git 发现 | 仅合成测试 | 确认真正的 Git for Windows 和受控 `.cmd Git shim` 都能被发现，并使用预期的 optional-lock 环境设置调用。 |
+| Git 发现 | 未自动化确认 | 确认真正的 Git for Windows 和受控 `.cmd Git shim` 都能被发现，并使用预期的 optional-lock 环境设置调用。 |
 | 工具链与已安装插件 | 未确认 | 从未预装 Python、`uv` 且没有管理员权限的普通用户环境运行 `setup`，确认插件自动准备 `uv 0.11.7`、managed Python 3.12、锁定依赖和插件 `.venv`；再确认 Codex marketplace 注册、插件安装、已安装插件目录发现，以及从已安装插件而非源码 checkout 运行 `pytest`。 |
 | Codex 工作流 | 未确认 | 通过已安装插件目录，在空项目中依次运行 `setup`、五个 Owner validator 和 `generate-sow`；确认全部七个 Skill 都从该目录解析。 |
 | Excel 结果 | 未确认 | 在 Microsoft Excel Desktop 中打开生成的工作簿，使用 `F9` 计算，再执行完整计算，保存并检查公式缓存值和公式错误。 |

@@ -17,6 +17,8 @@ Codex 会为插件创建独立的安装副本。第一次运行 `setup` 时，�
 [uv](https://docs.astral.sh/uv/) 0.11.7、managed Python 3.12 和锁定依赖，并创建插件自己的
 `.venv`；BA、PM 或其他用户不需要打开终端，也不需要管理员权限。若企业网络需要授权，Codex
 只会请求完成官方下载安装所需的一次联网权限，然后自动重试。
+setup 在 macOS/Linux 实际调用 `bootstrap.sh`，在 Windows 调用 `bootstrap.ps1`。macOS 已实机
+验证；Windows 11 当前仍是 `Provisional`，完整限制见仓库根目录的平台验证状态。
 插件升级不会改动用户项目中已有的 SOW 数据。
 
 ## 怎么使用

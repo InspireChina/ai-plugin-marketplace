@@ -88,7 +88,11 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```text
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode publish-approved --candidate .ai-sow/work/generate-task/estimate.candidate.json --review-path .ai-sow/work/generate-task/review.candidate.md
    ```
-15. 直接上游 receipt 变化但专业结论不变时，review 记录 `Impact: NO_CHANGE`、变化的直接上游、旧/新 receipt hash 和点名全部 Task ID 的影响理由；同一 Reviewer PASS 且用户确认后运行 `--mode rebind`。rebind 必须证明 Estimate 稳定原字节不变。纵向试点暂保留既有 rebind Adapter；推广阶段再让普通 rebind 使用相同 packet-bound approval。
+15. 直接上游 receipt 变化但专业结论不变时，work-only review 记录
+    `Impact: NO_CHANGE`、变化的直接上游、旧/新 receipt hash 和点名全部 Task ID 的
+    影响理由，但仍使用完整 candidate-first packet 与 `publish-approved`；Estimate candidate
+    可与稳定输出原字节相同。Legacy `--mode rebind` 只作为 Reconciliation Adapter，必须携带
+    `--staging-root` 并证明 Estimate 稳定原字节不变。
 16. receipt 发布后报告完成，只推荐用户显式调用 `generate-sow`，并提示在生成前完成模板参数校准、项目元数据、合同、商业条款等 PM 补充项，然后 STOP；不得自动启动下游 Skill。
 
 ## 完成条件

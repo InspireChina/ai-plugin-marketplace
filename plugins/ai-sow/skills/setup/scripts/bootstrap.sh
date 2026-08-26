@@ -18,6 +18,13 @@ blocked() {
   exit 2
 }
 
+uv_version_matches() {
+  case "$1" in
+    "uv $UV_VERSION"|"uv $UV_VERSION "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 mkdir -p "$TOOLS_BIN" "$TOOLS_ROOT/cache" || blocked "BOOTSTRAP_DIRECTORY_FAILED" "无法创建插件隔离环境目录"
 if [ -z "${UV_CACHE_DIR:-}" ]; then
   UV_CACHE_DIR="$TOOLS_ROOT/cache"
@@ -27,12 +34,17 @@ export UV_NO_MODIFY_PATH=1
 
 UV_BIN=
 UV_SOURCE=
-if [ -x "$LOCAL_UV" ] && [ "$($LOCAL_UV --version 2>/dev/null)" = "uv $UV_VERSION" ]; then
-  UV_BIN="$LOCAL_UV"
-  UV_SOURCE="PLUGIN_LOCAL"
-elif command -v uv >/dev/null 2>&1; then
+if [ -x "$LOCAL_UV" ]; then
+  LOCAL_UV_VERSION=$($LOCAL_UV --version 2>/dev/null)
+  if uv_version_matches "$LOCAL_UV_VERSION"; then
+    UV_BIN="$LOCAL_UV"
+    UV_SOURCE="PLUGIN_LOCAL"
+  fi
+fi
+if [ -z "$UV_BIN" ] && command -v uv >/dev/null 2>&1; then
   PATH_UV=$(command -v uv)
-  if [ "$($PATH_UV --version 2>/dev/null)" = "uv $UV_VERSION" ]; then
+  PATH_UV_VERSION=$($PATH_UV --version 2>/dev/null)
+  if uv_version_matches "$PATH_UV_VERSION"; then
     UV_BIN="$PATH_UV"
     UV_SOURCE="PATH"
   fi
@@ -54,7 +66,7 @@ if [ -z "$UV_BIN" ]; then
 fi
 
 UV_VERSION_TEXT=$("$UV_BIN" --version 2>&1) || blocked "UV_CHECK_FAILED" "uv 版本检查失败"
-[ "$UV_VERSION_TEXT" = "uv $UV_VERSION" ] || blocked "UV_VERSION_INVALID" "插件运行时 uv 版本不是固定的 $UV_VERSION"
+uv_version_matches "$UV_VERSION_TEXT" || blocked "UV_VERSION_INVALID" "插件运行时 uv 版本不是固定的 $UV_VERSION"
 
 if ! "$UV_BIN" python find 3.12 >/dev/null 2>&1; then
   if ! "$UV_BIN" python install 3.12; then
