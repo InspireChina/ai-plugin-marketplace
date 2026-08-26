@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-PLUGIN_VERSION = "0.1.0-beta.2"
+PLUGIN_VERSION = "0.1.0"
 SOW_STANDARD_VERSION = "1.3"
 MANAGED_DIRECTORIES = (
     ".ai-sow/templates",

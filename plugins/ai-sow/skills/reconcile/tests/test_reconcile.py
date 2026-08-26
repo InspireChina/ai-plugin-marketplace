@@ -22,7 +22,7 @@ RUN_ID = "a1b2c3d4e5f6"
 PROJECT_VALUE = {
     "projectId": "sample-project",
     "name": "示例项目",
-    "pluginVersion": "0.1.0-beta.2",
+    "pluginVersion": "0.1.0",
     "sowStandardVersion": "1.3",
 }
 TEMPLATE_PAYLOAD = b"authoritative-template"
@@ -657,7 +657,7 @@ def build_project(
 
     fingerprint_payload = {
         "algorithm": "ai-sow-package-v1",
-        "generatorContract": "receipt-only-beta2-v1",
+        "generatorContract": "receipt-only-v1",
         "projectIdentity": {
             key: PROJECT_VALUE[key]
             for key in ("projectId", "pluginVersion", "sowStandardVersion")

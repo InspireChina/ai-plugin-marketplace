@@ -1,6 +1,6 @@
 # Windows 11 验证状态
 
-AI Plugin Marketplace 0.1.0-beta.2 对 Windows 11 的支持状态为**临时支持
+AI Plugin Marketplace 0.1.0 对 Windows 11 的支持状态为**临时支持
 （`Provisional`）**。仓库已经具备 Windows CI 和针对部分可移植分支的合成测试，但尚未
 在 Windows 11 实机上完成下方清单。CI 和合成测试是有价值的回归信号，但都不能作为
 NTFS、Codex Desktop 或 Microsoft Excel Desktop 的验收结果。

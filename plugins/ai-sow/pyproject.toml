@@ -1,6 +1,6 @@
 [project]
 name = "ai-sow-plugin-runtime"
-version = "0.1.0b2"
+version = "0.1.0"
 description = "Locked runtime dependencies for the AI SOW Codex plugin"
 requires-python = ">=3.12,<3.13"
 dependencies = [

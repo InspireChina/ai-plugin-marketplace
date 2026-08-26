@@ -2,7 +2,7 @@
 
 - 状态：当前正式合同
 - SOW 标准：v1.3
-- 插件合同版本：0.1.0-beta.2
+- 插件合同版本：0.1.0
 - 适用宿主：Codex；macOS 已实机验证，Linux 由 CI 覆盖，Windows 11 x64 当前为
   `Provisional`，尚未完成实机验收
 - 领域语义：[CONTEXT.md](CONTEXT.md)

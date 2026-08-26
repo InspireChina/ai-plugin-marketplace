@@ -24,10 +24,10 @@ SCHEMA_SHA256 = {
     "skills/analyze-requirement/contracts/source-requirements.schema.json": "70562d9dbd6ac63f86ab8271f7f216e9c49799a1a6ac4f765a4dc9a6dd736c80",
     "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
     "skills/generate-design/contracts/design.schema.json": "27acb2adb696931bc16a103603fd9bc89b6b7c9d71c65ede51708edf9554d12f",
-    "skills/generate-sow/contracts/manifest.schema.json": "b42c30a82e76709f0021caa3f7aac8bdaeb40ebb83d237f168f8f9fba8ebaee5",
+    "skills/generate-sow/contracts/manifest.schema.json": "3d5bc343164e5f9f7ce5a0962f79a13263bca402c2d09e3ab57fd5601fa042ab",
     "skills/generate-story/contracts/delivery.schema.json": "e9c99df13fdaf0f7dbef064d2935c6a9dad0668395908736465f03fc23b9dc9f",
     "skills/generate-task/contracts/estimate.schema.json": "81c456ccbd55242b5875dee98733f68d34fa68366ee52e096368d62d0ed8e3e8",
-    "skills/setup/contracts/project.schema.json": "6c10d9695de6eaffb2e1b3af79447467127c5c1e1dd4dd6ca37d788b63386e2d",
+    "skills/setup/contracts/project.schema.json": "ef74010eec8f68ad81030338daa12393caa8d27d2ca6b715933f35c35bc514d3",
 }
 
 SCHEMA_ENUMS = {
@@ -160,7 +160,7 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_manifest_identity_and_contract_version_match(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
-        release_version = "0.1.0-beta.2"
+        release_version = "0.1.0"
         manifest = json.loads(
             (plugin_root / ".codex-plugin/plugin.json").read_text()
         )
@@ -187,11 +187,11 @@ class RepositoryLayoutTests(unittest.TestCase):
         )
         self.assertRegex(
             pyproject_text,
-            r'(?ms)^\[project\].*?^version = "0\.1\.0b2"$',
+            r'(?ms)^\[project\].*?^version = "0\.1\.0"$',
         )
         self.assertRegex(
             lock_text,
-            r'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "0\.1\.0b2"$',
+            r'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "0\.1\.0"$',
         )
         self.assertEqual(project["sowStandardVersion"], "1.3")
         for relative in (

@@ -183,7 +183,7 @@ def prepare_valid(project_root: Path) -> dict[str, object]:
             {
                 "projectId": "customer-portal",
                 "name": "客户门户",
-                "pluginVersion": "0.1.0-beta.2",
+                "pluginVersion": "0.1.0",
                 "sowStandardVersion": "1.3",
             },
             ensure_ascii=False,

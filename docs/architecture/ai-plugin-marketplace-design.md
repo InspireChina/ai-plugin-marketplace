@@ -4,7 +4,7 @@
 
 ## 目标
 
-发布 AI SOW `0.1.0-beta.2` / SOW `1.3` 当前 Beta 合同，形成一个可公开发布、可继续添加插件、可由 Codex 本地安装并从已安装插件目录独立运行的 marketplace 仓库。
+发布 AI SOW `0.1.0` / SOW `1.3` 首个稳定合同，形成一个可公开发布、可继续添加插件、可由 Codex 本地安装并从已安装插件目录独立运行的 marketplace 仓库。
 
 ## 标识
 
@@ -14,7 +14,7 @@
 - 首个插件 ID 与目录名：`ai-sow`
 - 插件展示名：`AI SOW`
 - Publisher：`Yuan Li`
-- 目标预发布版本：`0.1.0-beta.2`；SOW 标准版本：`1.3`
+- 目标稳定版本：`0.1.0`；SOW 标准版本：`1.3`
 - Marketplace 条目分类：`Productivity`
 - 安装策略：`AVAILABLE`
 - 鉴权策略：`ON_INSTALL`
@@ -72,7 +72,7 @@ AI SOW 的领域实现与参考资料全部位于 `plugins/ai-sow/`：
 
 内部实施计划、本机绝对路径、运行时生成文件和 `.DS_Store` 不进入仓库的正式源代码提交。
 
-插件 manifest 名为 `ai-sow`，本次预发布版本为 `0.1.0-beta.2`，配套 SOW 标准为 `1.3`，并提供 Apache-2.0、关键词和规范化的 install-surface 文案。未知的 GitHub URL、主页、隐私条款和服务条款不使用占位值；远程仓库建立后再增加真实 HTTPS 地址。`defaultPrompt` 使用最多三个短字符串组成的数组。
+插件 manifest 名为 `ai-sow`，首个稳定版本为 `0.1.0`，配套 SOW 标准为 `1.3`，并提供 Apache-2.0、关键词和规范化的 install-surface 文案。未知的 GitHub URL、主页、隐私条款和服务条款不使用占位值；远程仓库建立后再增加真实 HTTPS 地址。`defaultPrompt` 使用最多三个短字符串组成的数组。
 
 ## 安装后运行模型
 
@@ -145,9 +145,9 @@ GitHub Actions 使用 Python 3.12 和 uv 0.11.7。测试矩阵覆盖 Ubuntu、ma
 
 - 使用 `uv sync --project plugins/ai-sow --locked` 验证锁文件。
 - 运行 AI SOW 全量 pytest。
-- 运行官方本地 plugin validator 和八个 Skill quick validator（七个主线阶段加 `reconcile`）。
+- 运行 plugin validator、仓库 validator、Marketplace 根测试与插件全量 pytest。
 - 三份 SOW 模板副本保持字节一致。
-- `0.1.0-beta.2` manifest、schema、fixture 和 setup 常量与 SOW `1.3` 一致。
+- `0.1.0` manifest、schema、fixture 和 setup 常量与 SOW `1.3` 一致。
 
 ### 3. 发布边界测试
 

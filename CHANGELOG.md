@@ -2,7 +2,7 @@
 
 所有重要的用户可见变更都记录在此。
 
-## 0.1.0-beta.2 - 未发布
+## 0.1.0 - 未发布
 
 - `setup` 新增 macOS/Linux 与 Windows 的确定性环境 bootstrap：在插件安装副本内自动准备 uv、
   managed Python 3.12、锁定依赖和 `.venv`，再执行项目初始化；BA/PM 无需管理员权限或终端
@@ -121,7 +121,7 @@
   review 和 stable output 字节，不再重放上游业务 validator 或 HLD/Go-live 门禁。
 - `generate-sow` 现在生成内容寻址且逐字节确定的自包含包，包含六份稳定 JSON、五份批准
   review、五份 receipt 和权威模板；相同包复用，不同内容 fail closed。
-- 将未发布插件的合同面统一到 `0.1.0-beta.2` / SOW `1.3`；内部原型未对外发布，
+- 将首个稳定发布合同面统一到 `0.1.0` / SOW `1.3`；内部原型未对外发布，
   因此不保留旧数据迁移器或多版兼容层。
 - 将 v1.3 XLSX 示例升级为面向 PMO 与财务评审的仿真 Brownfield 项目，使用 6 个 Epic、
   18 个 Feature、23 个 Story、46 个原子 Task、4 个集成点和 6 条假设/风险，完整展示

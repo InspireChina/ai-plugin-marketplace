@@ -377,7 +377,7 @@ def test_setup_creates_exact_minimal_project_shell(tmp_path: Path) -> None:
     assert json.loads((tmp_path / ".ai-sow/project.json").read_text()) == {
         "projectId": "bookstore-modernization",
         "name": "在线书店 2.0",
-        "pluginVersion": "0.1.0-beta.2",
+        "pluginVersion": "0.1.0",
         "sowStandardVersion": "1.3",
     }
     assert (tmp_path / ".ai-sow/templates/sow-template.xlsx").read_bytes() == TEMPLATE.read_bytes()

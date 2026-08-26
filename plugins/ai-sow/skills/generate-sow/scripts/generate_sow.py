@@ -30,9 +30,9 @@ from runtime.project_io import ProjectFiles, ProjectIOError
 from workbook import write_workbook
 
 
-PLUGIN_VERSION = "0.1.0-beta.2"
+PLUGIN_VERSION = "0.1.0"
 PACKAGE_ALGORITHM = "ai-sow-package-v1"
-GENERATOR_CONTRACT = "receipt-only-beta2-v1"
+GENERATOR_CONTRACT = "receipt-only-v1"
 PROJECT_PATH = ".ai-sow/project.json"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 OUTPUTS_PATH = ".ai-sow/outputs"
