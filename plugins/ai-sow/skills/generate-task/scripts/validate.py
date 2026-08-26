@@ -26,6 +26,7 @@ from runtime.handoff import (
     match_owner,
     publish_no_change_owner,
     publish_owner,
+    reconciliation_staging_failure,
     rebind_owner,
     sha256_bytes,
     validate_no_change_candidate,
@@ -1518,24 +1519,9 @@ def main() -> int:
         return write_reviewer(args)
     if args.mode == "write-approval":
         return write_approval(args)
-    if args.mode in {"publish", "rebind"} and args.staging_root is None:
-        print(
-            json.dumps(
-                {
-                    "outcome": "BLOCKED",
-                    "summary": "Reconciliation 写入缺少 staging",
-                    "diagnostics": [{
-                        "code": "RECONCILIATION_STAGING_REQUIRED",
-                        "message": (
-                            f"`--mode {args.mode}` 仅供 reconciliation 使用，"
-                            "必须提供 `--staging-root`"
-                        ),
-                    }],
-                    "outputs": [],
-                },
-                ensure_ascii=False,
-            )
-        )
+    staging_failure = reconciliation_staging_failure(args.mode, args.staging_root)
+    if staging_failure is not None:
+        print(json.dumps(staging_failure, ensure_ascii=False))
         return 2
     path_diagnostics = review_path_diagnostics(args.mode, args.review_path)
     if path_diagnostics:

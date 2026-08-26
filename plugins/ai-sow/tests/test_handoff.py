@@ -16,6 +16,7 @@ from runtime.handoff import (
     canonical_json_bytes,
     match_owner,
     publish_owner,
+    reconciliation_staging_failure,
     rebind_owner,
     sha256_bytes,
     validate_no_change_candidate,
@@ -60,6 +61,29 @@ def test_canonical_json_bytes_are_deterministic_utf8() -> None:
     assert left == right
     assert left.endswith(b"\n")
     assert "客户门户" in left.decode("utf-8")
+
+
+@pytest.mark.parametrize("mode", ("publish", "rebind"))
+def test_reconciliation_writes_require_staging(mode: str) -> None:
+    assert reconciliation_staging_failure(mode, None) == {
+        "outcome": "BLOCKED",
+        "summary": "Reconciliation 写入缺少 staging",
+        "diagnostics": [
+            {
+                "code": "RECONCILIATION_STAGING_REQUIRED",
+                "message": (
+                    f"`--mode {mode}` 仅供 reconciliation 使用，"
+                    "必须提供 `--staging-root`"
+                ),
+            }
+        ],
+        "outputs": [],
+    }
+
+
+def test_non_writes_and_staged_writes_pass_reconciliation_staging_gate() -> None:
+    assert reconciliation_staging_failure("check", None) is None
+    assert reconciliation_staging_failure("publish", ".ai-sow-stage") is None
 
 
 def test_publish_owner_writes_named_receipt_last_and_match_accepts_it(tmp_path: Path) -> None:

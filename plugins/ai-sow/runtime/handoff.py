@@ -58,6 +58,30 @@ class MatchResult:
     receipt: dict[str, object] | None
 
 
+def reconciliation_staging_failure(
+    mode: str,
+    staging_root: str | None,
+) -> dict[str, object] | None:
+    """Return the shared CLI failure when reconciliation writes lack staging."""
+
+    if mode not in {"publish", "rebind"} or staging_root is not None:
+        return None
+    return {
+        "outcome": "BLOCKED",
+        "summary": "Reconciliation 写入缺少 staging",
+        "diagnostics": [
+            {
+                "code": "RECONCILIATION_STAGING_REQUIRED",
+                "message": (
+                    f"`--mode {mode}` 仅供 reconciliation 使用，"
+                    "必须提供 `--staging-root`"
+                ),
+            }
+        ],
+        "outputs": [],
+    }
+
+
 def canonical_json_bytes(value: object) -> bytes:
     return (
         json.dumps(

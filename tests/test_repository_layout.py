@@ -158,6 +158,28 @@ class RepositoryLayoutTests(unittest.TestCase):
         for relative in required:
             self.assertTrue((plugin_root / relative).is_file(), relative)
 
+        for document in plugin_root.rglob("*.md"):
+            if ".venv" in document.parts:
+                continue
+            for raw_target in re.findall(
+                r"!?(?:\[[^\]]*\])\(([^)]+)\)",
+                document.read_text(encoding="utf-8"),
+            ):
+                target = raw_target.strip()
+                if target.startswith("<") and ">" in target:
+                    target = target[1 : target.index(">")]
+                else:
+                    target = target.split(maxsplit=1)[0]
+                if target.startswith(("#", "http://", "https://", "mailto:")):
+                    continue
+                target = unquote(target.split("#", 1)[0])
+                if not target:
+                    continue
+                resolved = (document.parent / target).resolve()
+                with self.subTest(document=document, target=target):
+                    self.assertTrue(resolved.is_relative_to(plugin_root.resolve()))
+                    self.assertTrue(resolved.exists(), resolved)
+
     def test_manifest_identity_and_contract_version_match(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         release_version = "0.1.0"
