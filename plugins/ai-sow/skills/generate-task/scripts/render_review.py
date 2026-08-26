@@ -78,8 +78,7 @@ def render(
     effective_start_ids = {
         identifier
         for task in tasks
-        for identifier in task.get("matchedEffectiveStartItemIds", [])
-        if isinstance(identifier, str)
+        if isinstance((identifier := task.get("matchedEffectiveStartItemId")), str)
     }
     lines = [
         "# Task 拆分评审",
@@ -182,7 +181,7 @@ def render(
                 cell(value)
                 for value in (
                     task["taskId"],
-                    joined(task.get("matchedEffectiveStartItemIds", [])),
+                    task.get("matchedEffectiveStartItemId", "NONE"),
                     task.get("workModeEvidence", {}).get("effectiveStartItemName", "NONE")
                     if isinstance(task.get("workModeEvidence"), dict)
                     else "NONE",

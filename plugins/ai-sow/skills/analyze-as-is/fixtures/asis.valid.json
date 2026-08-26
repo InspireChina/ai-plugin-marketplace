@@ -36,6 +36,7 @@
   "evidence": [
     {
       "evidenceId": "evidence-greenfield-requirement",
+      "name": "客户档案新建范围需求",
       "kind": "DOCUMENT",
       "reference": "requirements:feature-customer-profile",
       "summary": "获批业务需求确认客户档案属于新建范围，当前没有可复用产品能力。",

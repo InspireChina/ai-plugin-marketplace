@@ -5,6 +5,7 @@
     "repositorySnapshots": [
       {
         "repoId": "customer-portal",
+        "name": "客户门户仓库",
         "path": "repositories/customer-portal",
         "revision": "0123456789abcdef0123456789abcdef01234567",
         "dirty": false
@@ -13,6 +14,7 @@
     "priorSowSnapshots": [
       {
         "priorSowId": "sow-phase-one",
+        "name": "一期交付承诺",
         "file": ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md",
         "originalName": "一期交付承诺摘录（仿真）.md",
         "sha256": "a1ece6399230b553835765df654d40a08eaa0e71a988a0588cfef8e795280aea"
@@ -469,6 +471,7 @@
   "uncertainties": [
     {
       "uncertaintyId": "uncertainty-profile-alert-channel",
+      "name": "生产告警接收渠道待确认",
       "topic": "OPERATIONS_QUALITY",
       "question": "生产告警最终由邮件、工单还是值班群接收？",
       "impact": "不改变工作量，但影响运维手册中的通知路径和接收人。",
@@ -479,6 +482,7 @@
     },
     {
       "uncertaintyId": "uncertainty-erp-window",
+      "name": "ERP SIT 可用时间窗待确认",
       "topic": "INTEGRATION",
       "question": "ERP SIT 环境每日可用时间窗是否保持 09:00 至 18:00？",
       "impact": "工作量按已提供的一个联调环境估算，时间窗变化只影响排期。",
@@ -489,6 +493,7 @@
     },
     {
       "uncertaintyId": "uncertainty-payment-certification",
+      "name": "支付退款认证时间待确认",
       "topic": "INTEGRATION",
       "question": "支付网关退款认证能否在 SIT 第 2 周前完成？",
       "impact": "范围与工作量不变，延迟会影响退款联调和生产验证顺序。",
@@ -499,6 +504,7 @@
     },
     {
       "uncertaintyId": "uncertainty-invoice-quota",
+      "name": "电子发票测试配额待确认",
       "topic": "INTEGRATION",
       "question": "电子发票测试租户的每日开票配额是否为 500 张？",
       "impact": "不改变接口实现估算，但配额不足会延长批量验证周期。",
@@ -511,6 +517,7 @@
   "evidence": [
     {
       "evidenceId": "evidence-profile-component",
+      "name": "客户档案组件代码",
       "kind": "CODE",
       "reference": "customer-portal:src/profile.ts#L12",
       "summary": "代码仓库存在客户档案页面、会员主数据映射与字段校验框架。",
@@ -526,6 +533,7 @@
     },
     {
       "evidenceId": "evidence-order-service",
+      "name": "订单状态机代码",
       "kind": "CODE",
       "reference": "customer-portal:src/order/state-machine.ts#L20",
       "summary": "订单服务已有状态机、审计字段和基础查询能力。",
@@ -542,6 +550,7 @@
     },
     {
       "evidenceId": "evidence-erp-contract",
+      "name": "ERP 库存接口契约",
       "kind": "CONTRACT",
       "reference": "customer-portal:contracts/erp-inventory-v2.yaml#reserve",
       "summary": "ERP v2 契约包含库存查询、预占、释放和幂等键。",
@@ -554,6 +563,7 @@
     },
     {
       "evidenceId": "evidence-payment-contract",
+      "name": "支付退款接口契约",
       "kind": "CONTRACT",
       "reference": "customer-portal:contracts/payment-refund-v1.yaml#refund",
       "summary": "支付网关契约定义退款申请、查询和异步结果通知。",
@@ -567,6 +577,7 @@
     },
     {
       "evidenceId": "evidence-invoice-contract",
+      "name": "电子发票接口契约",
       "kind": "CONTRACT",
       "reference": "customer-portal:contracts/einvoice-v1.yaml#issue",
       "summary": "电子发票平台契约定义开票、状态查询和失败码。",
@@ -579,6 +590,7 @@
     },
     {
       "evidenceId": "evidence-platform-config",
+      "name": "生产平台配置基线",
       "kind": "CONFIGURATION",
       "reference": "customer-portal:deploy/production/values.yaml#application",
       "summary": "生产环境、流水线、身份控制和消息事件订阅均已有配置基线。",
@@ -596,6 +608,7 @@
     },
     {
       "evidenceId": "evidence-operations-assets",
+      "name": "运维与测试资产说明",
       "kind": "DOCUMENT",
       "reference": "repositories/customer-portal/docs/operations-and-test-assets.md#baseline",
       "summary": "运维文档列出统一监控接入方式、一期回归资产和现行告警渠道。",

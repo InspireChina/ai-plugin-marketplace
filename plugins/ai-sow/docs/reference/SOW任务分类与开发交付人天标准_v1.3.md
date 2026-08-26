@@ -100,7 +100,7 @@ Task 是 Story 下直接估算人天的最小明细。一行 Task 对应一个�
 | `complexity` | 是 | 正式数据只允许 `S / M / L` |
 | `complexityRationale` | S/L 必填 | 说明哪些已知事实使当前实例偏离 M 档；M 档省略 |
 | `integrationId` | 集成 Task 必填 | 内部或外部系统对接 Task 所实现的唯一 Integration；其他 Task 省略 |
-| `matchedEffectiveStartItemIds` | 条件必填 | 对应的 Effective Start ID |
+| `matchedEffectiveStartItemId` | 条件必填 | 一项足以证明工作模式或说明作用对象的 Effective Start ID |
 | `rationale` | 是 | 基础单元选择、工作范围及拆分理由 |
 
 任务族不由使用者填写。模板根据 `baseUnit → taskFamily` 的对应关系自动带出，并以只读方式显示。
@@ -311,7 +311,7 @@ S 档理由同样说明为什么明显简单于 M，例如“仅有一个只读�
 
 `调整 / 接入复用` 至少要引用一个相关的 Effective Start。`新建` 通常不需要引用，但工作本身依赖现有对象时仍然必须引用：数据迁移要引用现有数据来源，系统功能下线要引用被下线的对象，同一根因问题整改要引用受影响的现状；发布切换涉及现有运行能力时也必须引用。
 
-`调整 / 接入复用` 还必须保存结构化 `workModeEvidence`。其中 `effectiveStartItemId` 必须是 `matchedEffectiveStartItemIds` 中的一项，`effectiveStartItemName` 必须与该 Effective Start 的名称完全一致，并在 Task 名称或理由中明确出现。`接入复用` 另存非空 `projectSideWorkTypes`，枚举本项目侧实际要完成的注册、配置、封装、映射、适配、认证、租户设置、权限设置或专项验证工作，并按枚举顺序确定性生成 `projectSideWorkCommitment = 本项目负责并交付：<中文工作类型>`。此时 `workModeRationale` 必须严格等于 `<effectiveStartItemName>保持不变；<projectSideWorkCommitment>。`，不从任意自由文本猜测责任边界；任何否定、责任转移或宽泛关键词都会因不匹配而 fail closed。
+`调整 / 接入复用` 还必须保存结构化 `workModeEvidence`。其中 `effectiveStartItemId` 必须等于唯一的 `matchedEffectiveStartItemId`，`effectiveStartItemName` 必须与该 Effective Start 的名称完全一致，并在 Task 名称或理由中明确出现。`接入复用` 另存非空 `projectSideWorkTypes`，枚举本项目侧实际要完成的注册、配置、封装、映射、适配、认证、租户设置、权限设置或专项验证工作，并按枚举顺序确定性生成 `projectSideWorkCommitment = 本项目负责并交付：<中文工作类型>`。此时 `workModeRationale` 必须严格等于 `<effectiveStartItemName>保持不变；<projectSideWorkCommitment>。`，不从任意自由文本猜测责任边界；任何否定、责任转移或宽泛关键词都会因不匹配而 fail closed。
 
 区分 `调整` 和 `接入复用`，关键看是否修改已有能力本身。例如，修改现有公共服务属于“调整”；公共服务保持不变，只为当前项目配置租户、权限、映射或适配器，则属于“接入复用”。两类工作同时存在时，要拆成两个 Task。
 
@@ -469,7 +469,7 @@ Task 表只让用户选择基础单元、工作模式和复杂度，并填写工
 - Story 删除 `type`，保留明确表达 UAT 适用性的 `uatRelevant`。
 - Task 删除 `professionalDomain`、`activity` 和 `quantity`。
 - Task `workMode` 只允许 `新建 / 调整 / 接入复用`；原“采用”改名，原“替换 / 退役”不再是 Task 工作模式。
-- Task 保留或新增 `baseUnit`、`workMode`、`workModeRationale`、条件字段 `workModeEvidence`、`complexity`、条件字段 `complexityRationale`、条件字段 `integrationId`、`matchedEffectiveStartItemIds` 和 `rationale`；`workModeEvidence` 仅在调整/接入复用时存在，`complexityRationale` 仅在 S/L 时存在，`integrationId` 仅在内部或外部系统对接 Task 中存在。
+- Task 保留或新增 `baseUnit`、`workMode`、`workModeRationale`、条件字段 `workModeEvidence`、`complexity`、条件字段 `complexityRationale`、条件字段 `integrationId`、`matchedEffectiveStartItemId` 和 `rationale`；`workModeEvidence` 仅在调整/接入复用时存在，`complexityRationale` 仅在 S/L 时存在，`integrationId` 仅在内部或外部系统对接 Task 中存在。
 - Uncertainty 新增必填布尔值 `affectsEstimate`，替代从 `impact` 文本推测是否阻止估算。
 - 正式 JSON 数据不保存任务族、基础人天、复杂度系数或最终人天。
 

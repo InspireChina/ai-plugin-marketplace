@@ -14,7 +14,7 @@
       },
       "complexity": "S",
       "complexityRationale": "仅一个界面和单一路径，使用成熟组件，无复杂权限或跨界面状态恢复。",
-      "matchedEffectiveStartItemIds": ["effective-start-customer-profile"],
+      "matchedEffectiveStartItemId": "effective-start-customer-profile",
       "rationale": "调整一个可独立验收的客户档案界面实例。"
     },
     {
@@ -30,7 +30,7 @@
         "effectiveStartItemName": "可复用的客户档案框架"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-customer-profile"],
+      "matchedEffectiveStartItemId": "effective-start-customer-profile",
       "rationale": "一组围绕客户档案操作的紧密相关接口，符合单实例计数口径。"
     },
     {
@@ -50,8 +50,8 @@
       "complexity": "S",
       "complexityRationale": "同组织稳定接口、单向查询和简单字段映射，不涉及对端改造。",
       "integrationId": "integration-profile-api",
-      "matchedEffectiveStartItemIds": ["effective-start-customer-profile"],
-      "rationale": "实现一个已登记的内部出站 Integration，不包含另行开展的 SIT。"
+      "matchedEffectiveStartItemId": "effective-start-customer-profile",
+      "rationale": "实现一个已登记的内部出站集成，不包含另行开展的 SIT。"
     },
     {
       "taskId": "task-customer-profile-model",
@@ -66,7 +66,7 @@
         "effectiveStartItemName": "可复用的客户档案框架"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-customer-profile"],
+      "matchedEffectiveStartItemId": "effective-start-customer-profile",
       "rationale": "一个客户档案数据模型实例，覆盖字段、约束和审计列。"
     },
     {
@@ -78,7 +78,6 @@
       "workMode": "新建",
       "workModeRationale": "为档案 API 新增角色、权限范围和敏感字段过滤规则。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个档案 API 权限控制实例，覆盖门店、客服和会员三类主体。"
     },
     {
@@ -94,7 +93,7 @@
         "effectiveStartItemName": "既有会员主数据模型"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-member-master"],
+      "matchedEffectiveStartItemId": "effective-start-member-master",
       "rationale": "一组围绕等级规则生效的紧密相关业务操作。"
     },
     {
@@ -111,7 +110,7 @@
       },
       "complexity": "S",
       "complexityRationale": "新增两张关系清晰的历史表和唯一性约束，不涉及分区或跨库事务。",
-      "matchedEffectiveStartItemIds": ["effective-start-member-master"],
+      "matchedEffectiveStartItemId": "effective-start-member-master",
       "rationale": "一个会员等级数据模型实例。"
     },
     {
@@ -123,7 +122,6 @@
       "workMode": "新建",
       "workModeRationale": "新增门店与线上共用的价格、权益和履约方式校验交互。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个订单创建主流程界面实例，包含统一校验和错误反馈。"
     },
     {
@@ -136,7 +134,6 @@
       "workModeRationale": "新增跨渠道订单创建、价格快照、权益核验和幂等控制。",
       "complexity": "L",
       "complexityRationale": "涉及门店与线上两类渠道、四项业务校验、跨域价格权益快照和并发幂等。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个全渠道订单创建服务实例。"
     },
     {
@@ -152,7 +149,7 @@
         "effectiveStartItemName": "既有订单服务与状态机"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-order-service"],
+      "matchedEffectiveStartItemId": "effective-start-order-service",
       "rationale": "一个订单状态机调整实例，包含新增状态、命令和合法迁移。"
     },
     {
@@ -165,7 +162,6 @@
       "workModeRationale": "新增带事件编号、业务键和重放保护的订单状态事件。",
       "complexity": "L",
       "complexityRationale": "覆盖九类状态事件、顺序保证、重复消费和失败重放，并被多个下游订阅。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个订单状态事件主题及其生产消费处理实例。"
     },
     {
@@ -184,8 +180,8 @@
       },
       "complexity": "M",
       "integrationId": "integration-erp-reservation",
-      "matchedEffectiveStartItemIds": ["effective-start-erp-interface"],
-      "rationale": "实现一个已登记的内部 ERP 库存 Integration，SIT 人天由集成表公式另计。"
+      "matchedEffectiveStartItemId": "effective-start-erp-interface",
+      "rationale": "实现一个已登记的内部 ERP 库存集成，SIT 人天由集成表公式另计。"
     },
     {
       "taskId": "task-inventory-sit",
@@ -197,7 +193,6 @@
       "workModeRationale": "新增 ERP 超时、重试、重复请求和释放失败的人工验证场景。",
       "complexity": "S",
       "complexityRationale": "集中验证四个已定义异常场景，数据准备简单且无需跨设备矩阵。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个库存集成专项人工测试实例，不替代集成支持 SIT 公式。"
     },
     {
@@ -209,7 +204,6 @@
       "workMode": "新建",
       "workModeRationale": "新增门店和客服使用的退货明细、可退校验和审核反馈。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个退货申请与审核主流程界面实例。"
     },
     {
@@ -225,7 +219,7 @@
         "effectiveStartItemName": "既有订单服务与状态机"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-order-service"],
+      "matchedEffectiveStartItemId": "effective-start-order-service",
       "rationale": "一个退货领域服务调整实例。"
     },
     {
@@ -245,8 +239,8 @@
       "complexity": "L",
       "complexityRationale": "涉及外部认证、同步申请与异步回调、金额幂等、供应商错误码和认证窗口。",
       "integrationId": "integration-payment-gateway",
-      "matchedEffectiveStartItemIds": ["effective-start-payment-gateway"],
-      "rationale": "实现一个已登记的外部支付退款 Integration，外部支持成本在集成表单列展示。"
+      "matchedEffectiveStartItemId": "effective-start-payment-gateway",
+      "rationale": "实现一个已登记的外部支付退款集成，外部支持成本在集成表单列展示。"
     },
     {
       "taskId": "task-refund-security",
@@ -257,7 +251,6 @@
       "workMode": "新建",
       "workModeRationale": "新增退款回调签名、重放攻击、敏感字段和越权场景验证。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个退款链路安全与隐私测试实例。"
     },
     {
@@ -269,7 +262,6 @@
       "workMode": "新建",
       "workModeRationale": "新增门店待处理队列、缺货替代、备注和班次交接交互。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个门店接单工作台主界面实例。"
     },
     {
@@ -282,7 +274,6 @@
       "workModeRationale": "交付一期顺延的门店接单、缺货替代、权限校验和交接操作。",
       "complexity": "L",
       "complexityRationale": "涉及门店数据隔离、并发抢单、缺货替代和跨班次交接四类复杂规则。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个门店接单领域服务实例。"
     },
     {
@@ -295,7 +286,6 @@
       "workModeRationale": "新增顾客与客服共用的状态、履约节点和异常原因时间轴。",
       "complexity": "S",
       "complexityRationale": "单一只读时间轴，复用现有列表组件且无复杂编辑状态。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个订单履约轨迹界面实例。"
     },
     {
@@ -307,7 +297,6 @@
       "workMode": "新建",
       "workModeRationale": "新增订单状态事件到渠道可读轨迹的投影与延迟补偿。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个履约轨迹事件消费和投影实例。"
     },
     {
@@ -319,7 +308,6 @@
       "workMode": "新建",
       "workModeRationale": "新增每日交易归集、手续费计算、差异识别和失败重跑作业。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个按自然日调度的支付对账后台作业实例。"
     },
     {
@@ -331,7 +319,6 @@
       "workMode": "新建",
       "workModeRationale": "新增按渠道、门店和订单查看实收、退款与手续费差异的财务视图。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个支付日结差异报表实例。"
     },
     {
@@ -350,8 +337,8 @@
       },
       "complexity": "M",
       "integrationId": "integration-einvoice",
-      "matchedEffectiveStartItemIds": ["effective-start-invoice-gateway"],
-      "rationale": "实现一个已登记的外部电子发票 Integration，并单列外部支持成本。"
+      "matchedEffectiveStartItemId": "effective-start-invoice-gateway",
+      "rationale": "实现一个已登记的外部电子发票集成，并单列外部支持成本。"
     },
     {
       "taskId": "task-einvoice-status-job",
@@ -362,7 +349,6 @@
       "workMode": "新建",
       "workModeRationale": "新增开票状态轮询、失败重试、重复申请拦截和结果回写作业。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个电子发票状态补偿后台作业实例。"
     },
     {
@@ -375,7 +361,6 @@
       "workModeRationale": "新增销售、退款、优惠和未对账金额的多维指标与下钻。",
       "complexity": "L",
       "complexityRationale": "包含四类金额、日期区域渠道三维切片、逐笔下钻和财务口径校验。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个财务经营日报与指标集合实例。"
     },
     {
@@ -387,7 +372,6 @@
       "workMode": "新建",
       "workModeRationale": "新增订单、支付、退款和发票明细的清洗、关联与日汇总流程。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个财务指标数据处理流程实例。"
     },
     {
@@ -403,7 +387,7 @@
         "effectiveStartItemName": "既有生产环境与发布流水线"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-deployment-platform"],
+      "matchedEffectiveStartItemId": "effective-start-deployment-platform",
       "rationale": "一个生产运行环境配置实例。"
     },
     {
@@ -419,7 +403,7 @@
         "effectiveStartItemName": "既有生产环境与发布流水线"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-deployment-platform"],
+      "matchedEffectiveStartItemId": "effective-start-deployment-platform",
       "rationale": "一个应用构建与部署流水线调整实例。"
     },
     {
@@ -436,7 +420,7 @@
       },
       "complexity": "S",
       "complexityRationale": "三个独立布尔开关及默认值，沿用现有配置中心且无复杂灰度算法。",
-      "matchedEffectiveStartItemIds": ["effective-start-deployment-platform"],
+      "matchedEffectiveStartItemId": "effective-start-deployment-platform",
       "rationale": "一个上线功能开关配置实例。"
     },
     {
@@ -449,7 +433,7 @@
       "workModeRationale": "基于既有生产环境与发布流水线编制并执行分步切流、检查点和回滚清单。",
       "complexity": "L",
       "complexityRationale": "涉及会员、订单、四个集成链路、迁移窗口、三次继续回滚决策和多团队协同。",
-      "matchedEffectiveStartItemIds": ["effective-start-deployment-platform"],
+      "matchedEffectiveStartItemId": "effective-start-deployment-platform",
       "rationale": "一个批准上线窗口内的生产发布切换实例。"
     },
     {
@@ -462,7 +446,6 @@
       "workModeRationale": "新增切换前置条件、检查点、回滚触发器和联系人桌面演练。",
       "complexity": "S",
       "complexityRationale": "一次桌面演练和一套固定清单，不涉及额外环境或大规模数据准备。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个切换回滚清单验证实例。"
     },
     {
@@ -475,7 +458,6 @@
       "workModeRationale": "新增档案查询、订单创建和轨迹查询的峰值负载与稳定性验证。",
       "complexity": "L",
       "complexityRationale": "三条核心链路、500 TPS 峰值、两小时稳定性和容量拐点分析需要多轮调优。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个生产前性能与容量测试实例。"
     },
     {
@@ -487,7 +469,6 @@
       "workMode": "新建",
       "workModeRationale": "新增生产角色最小权限、外部证书、密钥轮换和敏感字段脱敏检查。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个生产安全与隐私验证实例。"
     },
     {
@@ -499,7 +480,6 @@
       "workMode": "新建",
       "workModeRationale": "新增档案、下单、退款、开票和对账五条生产烟测并留存证据。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个生产关键业务链路烟测实例。"
     },
     {
@@ -512,7 +492,7 @@
       "workModeRationale": "从既有会员主数据模型和既有订单服务与状态机抽取数据，执行映射、加载、校验和补偿。",
       "complexity": "L",
       "complexityRationale": "涉及两类源数据、约 1200 万订单行、历史状态映射、增量窗口和失败补偿。",
-      "matchedEffectiveStartItemIds": ["effective-start-member-master", "effective-start-order-service"],
+      "matchedEffectiveStartItemId": "effective-start-member-master",
       "rationale": "一个会员与订单迁移批次方案实例，与发布切换分别估算。"
     },
     {
@@ -525,7 +505,6 @@
       "workModeRationale": "新增全量与增量抽取、字段标准化、状态映射和失败重放流程。",
       "complexity": "L",
       "complexityRationale": "包含全量与增量两条路径、跨版本状态映射、断点续传和可重复执行控制。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个可重复执行的数据迁移处理流程实例。"
     },
     {
@@ -537,7 +516,6 @@
       "workMode": "新建",
       "workModeRationale": "新增数量、金额、业务主键、抽样字段和失败补偿核对场景。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个迁移核对与业务签署测试实例。"
     },
     {
@@ -553,7 +531,7 @@
         "effectiveStartItemName": "既有统一监控平台"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-monitoring-platform"],
+      "matchedEffectiveStartItemId": "effective-start-monitoring-platform",
       "rationale": "一个核心交易与财务作业可观测性实例。"
     },
     {
@@ -565,7 +543,6 @@
       "workMode": "新建",
       "workModeRationale": "新增 ERP、支付和发票调用的超时、限流、重试与熔断配置。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个跨外部依赖的性能与稳定性保障实例。"
     },
     {
@@ -581,7 +558,7 @@
         "effectiveStartItemName": "既有统一监控平台"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-monitoring-platform"],
+      "matchedEffectiveStartItemId": "effective-start-monitoring-platform",
       "rationale": "一个运维交接包和一次故障演练实例。"
     },
     {
@@ -593,7 +570,6 @@
       "workMode": "新建",
       "workModeRationale": "新增门店、客服和财务三类角色材料，并组织两场培训和反馈收集。",
       "complexity": "M",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个角色化用户培训与使用材料交付实例。"
     },
     {
@@ -609,7 +585,7 @@
         "effectiveStartItemName": "既有回归测试资产"
       },
       "complexity": "M",
-      "matchedEffectiveStartItemIds": ["effective-start-test-assets"],
+      "matchedEffectiveStartItemId": "effective-start-test-assets",
       "rationale": "一个 API 自动化测试框架调整实例。"
     },
     {
@@ -626,7 +602,7 @@
       },
       "complexity": "L",
       "complexityRationale": "覆盖五条跨系统链路、异步结果、失败补偿和财务金额断言，数据组合较多。",
-      "matchedEffectiveStartItemIds": ["effective-start-test-assets"],
+      "matchedEffectiveStartItemId": "effective-start-test-assets",
       "rationale": "一个核心业务自动化用例集实例。"
     },
     {
@@ -643,7 +619,7 @@
       },
       "complexity": "S",
       "complexityRationale": "仅验证两类浏览器和一种门店设备，沿用现有脚本且无新增终端。",
-      "matchedEffectiveStartItemIds": ["effective-start-test-assets"],
+      "matchedEffectiveStartItemId": "effective-start-test-assets",
       "rationale": "一个兼容性与无障碍测试矩阵实例。"
     },
     {
@@ -660,7 +636,7 @@
       },
       "complexity": "S",
       "complexityRationale": "四项工程检查均有现成步骤，只需补充新配置和日志断言。",
-      "matchedEffectiveStartItemIds": ["effective-start-test-assets"],
+      "matchedEffectiveStartItemId": "effective-start-test-assets",
       "rationale": "一个不计入 UAT 分母的工程回归测试实例。"
     }
   ]

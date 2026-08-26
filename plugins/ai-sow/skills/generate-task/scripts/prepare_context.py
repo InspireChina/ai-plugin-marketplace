@@ -68,9 +68,6 @@ def delivery_context(delivery: dict[str, Any]) -> dict[str, Any]:
             "acceptanceCriteria",
             "integrations",
             "assumptions",
-            "assumptionStories",
-            "risks",
-            "riskStories",
         )
         if key in delivery
     }

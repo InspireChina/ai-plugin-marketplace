@@ -790,6 +790,18 @@ def validate_semantics(
             if value in registry:
                 diagnostics.append(diag("ID_DUPLICATE", f"duplicate global ID: {value}"))
             registry[value] = kind
+    display_names = [
+        *[entry["name"] for entry in data["items"]],
+        *[entry["name"] for entry in data["commitments"]],
+        *[entry["name"] for entry in data["effectiveStartItems"]],
+        *[entry["name"] for entry in data["uncertainties"]],
+        *[entry["name"] for entry in data["evidence"]],
+    ]
+    for name, count in Counter(display_names).items():
+        if count > 1:
+            diagnostics.append(
+                diag("NAME_DUPLICATE", f"duplicate system-current display name: {name}")
+            )
     item_ids = {entry["asIsItemId"] for entry in data["items"]}
     commitments = {entry["commitmentId"]: entry for entry in data["commitments"]}
     commitment_ids = set(commitments)
@@ -811,6 +823,12 @@ def validate_semantics(
                 diag("TOPIC_UNCERTAINTY_REQUIRED", f"{assessment['topic']} requires an Uncertainty")
             )
     scope = data["analysisScope"]
+    for collection in ("repositorySnapshots", "priorSowSnapshots"):
+        for name, count in Counter(entry["name"] for entry in scope[collection]).items():
+            if count > 1:
+                diagnostics.append(
+                    diag("NAME_DUPLICATE", f"duplicate {collection} name: {name}")
+                )
     repo_ids = {entry["repoId"] for entry in scope["repositorySnapshots"]}
     prior_ids = {entry["priorSowId"] for entry in scope["priorSowSnapshots"]}
     if scope["mode"] == "GREENFIELD" and (repo_ids or prior_ids):

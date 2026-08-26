@@ -14,18 +14,20 @@
     "repository": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repoId", "setupRevision"],
+      "required": ["repoId", "name", "setupRevision"],
       "properties": {
         "repoId": {"description": "项目登记的代码仓库稳定标识。", "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+        "name": {"description": "面向交付清单展示的非空代码仓库名称。", "type": "string", "minLength": 1},
         "setupRevision": {"description": "现状调查绑定的仓库完整提交摘要。", "type": "string", "pattern": "^[0-9a-f]{40}$"}
       }
     },
     "priorSow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["priorSowId", "sha256"],
+      "required": ["priorSowId", "name", "sha256"],
       "properties": {
         "priorSowId": {"description": "项目登记的往期 SOW 稳定标识。", "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+        "name": {"description": "面向交付清单展示的非空往期 SOW 名称。", "type": "string", "minLength": 1},
         "sha256": {"description": "往期 SOW 原始字节的 SHA-256 摘要。", "type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     }

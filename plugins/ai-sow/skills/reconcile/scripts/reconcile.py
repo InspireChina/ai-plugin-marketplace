@@ -1966,12 +1966,12 @@ def validate_package_projection(
         )
     expected_repositories = projection_list(
         scope.get("repositorySnapshots"),
-        (("repoId", "repoId"), ("revision", "setupRevision")),
+        (("repoId", "repoId"), ("name", "name"), ("revision", "setupRevision")),
         path=f"{ASIS_PATH}#/analysisScope/repositorySnapshots",
     )
     expected_prior_sows = projection_list(
         scope.get("priorSowSnapshots"),
-        (("priorSowId", "priorSowId"), ("sha256", "sha256")),
+        (("priorSowId", "priorSowId"), ("name", "name"), ("sha256", "sha256")),
         path=f"{ASIS_PATH}#/analysisScope/priorSowSnapshots",
     )
     if (

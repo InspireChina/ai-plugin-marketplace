@@ -132,6 +132,7 @@
       "gapId": "gap-profile-api",
       "name": "集成会员主数据查询",
       "description": "会员门户通过内部接口查询统一会员号和授权范围内的档案。",
+      "assumptionId": "assumption-profile-api-availability",
       "uatRelevant": true,
       "requiredIntegrationBoundary": "END_TO_END"
     },
@@ -140,6 +141,7 @@
       "gapId": "gap-member-tier",
       "name": "计算并追溯会员等级",
       "description": "按生效规则计算等级并展示规则版本与等级历史。",
+      "assumptionId": "assumption-profile-api-availability",
       "uatRelevant": true,
       "requiredIntegrationBoundary": "NONE"
     },
@@ -164,6 +166,7 @@
       "gapId": "gap-inventory-reservation",
       "name": "预占和释放 ERP 库存",
       "description": "订单确认或取消时调用 ERP，并处理超时、重试和重复请求。",
+      "assumptionId": "assumption-erp-sit-window",
       "uatRelevant": true,
       "requiredIntegrationBoundary": "END_TO_END"
     },
@@ -180,6 +183,7 @@
       "gapId": "gap-return-refund",
       "name": "发起退款并回写结果",
       "description": "通过外部支付网关发起退款，处理异步结果并回写订单。",
+      "assumptionId": "assumption-risk-payment-certification",
       "uatRelevant": true,
       "requiredIntegrationBoundary": "END_TO_END"
     },
@@ -212,6 +216,7 @@
       "gapId": "gap-einvoice",
       "name": "申请并追踪电子发票",
       "description": "提交开票申请，查询状态并处理可重试失败。",
+      "assumptionId": "assumption-risk-invoice-certificate",
       "uatRelevant": true,
       "requiredIntegrationBoundary": "END_TO_END"
     },
@@ -236,6 +241,7 @@
       "gapId": "gap-production-scope",
       "name": "执行生产切换与回滚演练",
       "description": "按批准窗口执行分步切流，并验证回滚清单可执行。",
+      "assumptionId": "assumption-migration-freeze-window",
       "uatRelevant": false,
       "requiredIntegrationBoundary": "END_TO_END"
     },
@@ -244,6 +250,7 @@
       "gapId": "gap-production-scope",
       "name": "完成生产烟测与业务确认",
       "description": "上线后验证档案、下单、退款、开票和对账关键链路。",
+      "assumptionId": "assumption-risk-profile-alert-channel",
       "uatRelevant": true,
       "requiredIntegrationBoundary": "END_TO_END"
     },
@@ -252,6 +259,7 @@
       "gapId": "gap-data-migration",
       "name": "迁移会员与历史订单数据",
       "description": "执行抽取、映射、加载、校验和失败补偿。",
+      "assumptionId": "assumption-migration-freeze-window",
       "uatRelevant": false,
       "requiredIntegrationBoundary": "NONE"
     },
@@ -260,6 +268,7 @@
       "gapId": "gap-observability-ops",
       "name": "监控核心交易与财务作业",
       "description": "新增指标、阈值、告警和责任人看板。",
+      "assumptionId": "assumption-risk-profile-alert-channel",
       "uatRelevant": false,
       "requiredIntegrationBoundary": "NONE"
     },
@@ -301,7 +310,7 @@
       "acceptanceCriterionId": "ac-profile-visible",
       "storyId": "story-customer-profile",
       "sequence": 1,
-      "result": "用户保存档案后可以查看授权范围内的最新字段。",
+      "name": "用户保存档案后可以查看授权范围内的最新字段。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -309,7 +318,7 @@
       "acceptanceCriterionId": "ac-profile-audit",
       "storyId": "story-customer-profile",
       "sequence": 2,
-      "result": "档案变更记录包含操作者、时间和变更字段。",
+      "name": "档案变更记录包含操作者、时间和变更字段。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -317,7 +326,7 @@
       "acceptanceCriterionId": "ac-profile-api",
       "storyId": "story-profile-api",
       "sequence": 1,
-      "result": "渠道可以通过已发布 API 创建、维护和检索客户档案。",
+      "name": "渠道可以通过已发布 API 创建、维护和检索客户档案。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api"
@@ -327,7 +336,7 @@
       "acceptanceCriterionId": "ac-profile-api-security",
       "storyId": "story-profile-api",
       "sequence": 2,
-      "result": "未授权角色无法读取敏感字段且访问留痕。",
+      "name": "未授权角色无法读取敏感字段且访问留痕。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -335,7 +344,7 @@
       "acceptanceCriterionId": "ac-profile-integration",
       "storyId": "story-profile-integration",
       "sequence": 1,
-      "result": "星云会员门户可以通过内部接口检索统一会员号和档案。",
+      "name": "星云会员门户可以通过内部接口检索统一会员号和档案。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api"
@@ -345,7 +354,7 @@
       "acceptanceCriterionId": "ac-member-tier",
       "storyId": "story-member-tier",
       "sequence": 1,
-      "result": "会员等级按生效规则计算且可以追溯规则版本。",
+      "name": "会员等级按生效规则计算且可以追溯规则版本。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -353,7 +362,7 @@
       "acceptanceCriterionId": "ac-member-tier-history",
       "storyId": "story-member-tier",
       "sequence": 2,
-      "result": "等级调整后保留原等级、生效时间和调整原因。",
+      "name": "等级调整后保留原等级、生效时间和调整原因。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -361,7 +370,7 @@
       "acceptanceCriterionId": "ac-order-create",
       "storyId": "story-order-create",
       "sequence": 1,
-      "result": "门店和线上渠道通过相同校验规则创建订单。",
+      "name": "门店和线上渠道通过相同校验规则创建订单。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -369,7 +378,7 @@
       "acceptanceCriterionId": "ac-order-idempotency",
       "storyId": "story-order-create",
       "sequence": 2,
-      "result": "相同幂等键的重复请求不产生重复订单。",
+      "name": "相同幂等键的重复请求不产生重复订单。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -377,7 +386,7 @@
       "acceptanceCriterionId": "ac-order-state",
       "storyId": "story-order-state",
       "sequence": 1,
-      "result": "合法命令驱动状态变化并记录来源、时间和事件编号。",
+      "name": "合法命令驱动状态变化并记录来源、时间和事件编号。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -385,7 +394,7 @@
       "acceptanceCriterionId": "ac-inventory-reservation",
       "storyId": "story-inventory-reservation",
       "sequence": 1,
-      "result": "订单确认和取消分别完成库存预占与释放。",
+      "name": "订单确认和取消分别完成库存预占与释放。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
@@ -395,7 +404,7 @@
       "acceptanceCriterionId": "ac-inventory-retry",
       "storyId": "story-inventory-reservation",
       "sequence": 2,
-      "result": "ERP 超时重试不会产生重复预占。",
+      "name": "ERP 超时重试不会产生重复预占。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -403,7 +412,7 @@
       "acceptanceCriterionId": "ac-return-request",
       "storyId": "story-return-request",
       "sequence": 1,
-      "result": "系统拒绝超过可退数量的申请并记录审核结果。",
+      "name": "系统拒绝超过可退数量的申请并记录审核结果。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
@@ -413,7 +422,7 @@
       "acceptanceCriterionId": "ac-refund-payment",
       "storyId": "story-refund-payment",
       "sequence": 1,
-      "result": "退款结果回写订单且同一退货单不重复退款。",
+      "name": "退款结果回写订单且同一退货单不重复退款。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
@@ -423,7 +432,7 @@
       "acceptanceCriterionId": "ac-store-order",
       "storyId": "story-store-order",
       "sequence": 1,
-      "result": "授权门店可以处理本店订单并完成交接记录。",
+      "name": "授权门店可以处理本店订单并完成交接记录。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -431,7 +440,7 @@
       "acceptanceCriterionId": "ac-order-visibility",
       "storyId": "story-order-visibility",
       "sequence": 1,
-      "result": "顾客和客服看到一致的履约节点与异常原因。",
+      "name": "顾客和客服看到一致的履约节点与异常原因。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -439,7 +448,7 @@
       "acceptanceCriterionId": "ac-payment-reconciliation",
       "storyId": "story-payment-reconciliation",
       "sequence": 1,
-      "result": "前一自然日交易在 07:00 前完成对账并标识差异。",
+      "name": "前一自然日交易在 07:00 前完成对账并标识差异。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -447,7 +456,7 @@
       "acceptanceCriterionId": "ac-payment-trace",
       "storyId": "story-payment-reconciliation",
       "sequence": 2,
-      "result": "每个差异项可以追溯到订单、支付交易和退款记录。",
+      "name": "每个差异项可以追溯到订单、支付交易和退款记录。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -455,7 +464,7 @@
       "acceptanceCriterionId": "ac-einvoice",
       "storyId": "story-einvoice",
       "sequence": 1,
-      "result": "开票成功后保存发票号码和下载地址，失败时保存失败码。",
+      "name": "开票成功后保存发票号码和下载地址，失败时保存失败码。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
@@ -465,7 +474,7 @@
       "acceptanceCriterionId": "ac-einvoice-idempotency",
       "storyId": "story-einvoice",
       "sequence": 2,
-      "result": "重复提交相同开票申请不会重复开票。",
+      "name": "重复提交相同开票申请不会重复开票。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -473,7 +482,7 @@
       "acceptanceCriterionId": "ac-finance-report",
       "storyId": "story-finance-report",
       "sequence": 1,
-      "result": "财务可按日期、区域和渠道查看已定义经营指标。",
+      "name": "财务可按日期、区域和渠道查看已定义经营指标。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -481,7 +490,7 @@
       "acceptanceCriterionId": "ac-finance-drilldown",
       "storyId": "story-finance-report",
       "sequence": 2,
-      "result": "报表金额可下钻到构成订单和对账状态。",
+      "name": "报表金额可下钻到构成订单和对账状态。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -489,7 +498,7 @@
       "acceptanceCriterionId": "ac-production-preparation",
       "storyId": "story-production-preparation",
       "sequence": 1,
-      "result": "生产参数、权限、制品和功能开关通过准备检查。",
+      "name": "生产参数、权限、制品和功能开关通过准备检查。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api",
@@ -500,7 +509,7 @@
       "acceptanceCriterionId": "ac-production-cutover",
       "storyId": "story-production-cutover",
       "sequence": 1,
-      "result": "切换清单在批准窗口内完成且回滚演练有记录。",
+      "name": "切换清单在批准窗口内完成且回滚演练有记录。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api",
@@ -511,7 +520,7 @@
       "acceptanceCriterionId": "ac-production-validation",
       "storyId": "story-production-validation",
       "sequence": 1,
-      "result": "五条关键业务链路烟测通过并由业务负责人确认。",
+      "name": "五条关键业务链路烟测通过并由业务负责人确认。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api",
@@ -522,7 +531,7 @@
       "acceptanceCriterionId": "ac-data-migration",
       "storyId": "story-data-migration",
       "sequence": 1,
-      "result": "关键字段迁移前后一致率为 100%，重复业务主键为 0。",
+      "name": "关键字段迁移前后一致率为 100%，重复业务主键为 0。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -530,7 +539,7 @@
       "acceptanceCriterionId": "ac-observability",
       "storyId": "story-observability",
       "sequence": 1,
-      "result": "核心交易和财务作业指标均配置阈值、渠道与接收人。",
+      "name": "核心交易和财务作业指标均配置阈值、渠道与接收人。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -538,7 +547,7 @@
       "acceptanceCriterionId": "ac-ops-handover",
       "storyId": "story-ops-handover",
       "sequence": 1,
-      "result": "运维手册、联系人和故障演练由运维经理签收。",
+      "name": "运维手册、联系人和故障演练由运维经理签收。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -546,7 +555,7 @@
       "acceptanceCriterionId": "ac-user-training",
       "storyId": "story-user-training",
       "sequence": 1,
-      "result": "门店、客服和财务培训完成并保留材料、签到和反馈。",
+      "name": "门店、客服和财务培训完成并保留材料、签到和反馈。",
       "decisionGate": "NOT_REQUIRED",
       "approvalDecisionIds": []
     },
@@ -554,7 +563,7 @@
       "acceptanceCriterionId": "ac-test-automation",
       "storyId": "story-test-automation",
       "sequence": 1,
-      "result": "P0/P1 自动化用例全部通过且核心查询达到 500 TPS。",
+      "name": "P0/P1 自动化用例全部通过且核心查询达到 500 TPS。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api",
@@ -565,7 +574,7 @@
       "acceptanceCriterionId": "ac-test-non-uat",
       "storyId": "story-test-non-uat",
       "sequence": 1,
-      "result": "支持的浏览器和设备矩阵通过工程回归且无阻断缺陷。",
+      "name": "支持的浏览器和设备矩阵通过工程回归且无阻断缺陷。",
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api",
@@ -576,6 +585,7 @@
   "integrations": [
     {
       "integrationId": "integration-profile-api",
+      "name": "接入内部客户档案 API",
       "storyId": "story-profile-integration",
       "source": "星云会员门户",
       "target": "会员主数据服务",
@@ -591,6 +601,7 @@
     },
     {
       "integrationId": "integration-erp-reservation",
+      "name": "接入既有 ERP 库存接口",
       "storyId": "story-inventory-reservation",
       "source": "订单服务",
       "target": "ERP",
@@ -606,6 +617,7 @@
     },
     {
       "integrationId": "integration-payment-gateway",
+      "name": "接入既有支付网关租户",
       "storyId": "story-refund-payment",
       "source": "订单服务",
       "target": "支付网关",
@@ -621,6 +633,7 @@
     },
     {
       "integrationId": "integration-einvoice",
+      "name": "接入既有电子发票通道",
       "storyId": "story-einvoice",
       "source": "订单服务",
       "target": "电子发票平台",
@@ -689,56 +702,6 @@
       "responsibilityBoundary": "财务共享中心协调供应商下发证书并确认配额",
       "status": "待确认",
       "handling": "联调前确认测试配额，生产切换前完成证书装载和连通性检查"
-    }
-  ],
-  "assumptionStories": [
-    {
-      "assumptionId": "assumption-profile-api-availability",
-      "storyId": "story-profile-integration"
-    },
-    {
-      "assumptionId": "assumption-risk-profile-alert-channel",
-      "storyId": "story-profile-integration"
-    },
-    {
-      "assumptionId": "assumption-profile-api-availability",
-      "storyId": "story-member-tier"
-    },
-    {
-      "assumptionId": "assumption-risk-profile-alert-channel",
-      "storyId": "story-observability"
-    },
-    {
-      "assumptionId": "assumption-risk-profile-alert-channel",
-      "storyId": "story-production-validation"
-    },
-    {
-      "assumptionId": "assumption-erp-sit-window",
-      "storyId": "story-inventory-reservation"
-    },
-    {
-      "assumptionId": "assumption-erp-sit-window",
-      "storyId": "story-production-cutover"
-    },
-    {
-      "assumptionId": "assumption-risk-payment-certification",
-      "storyId": "story-refund-payment"
-    },
-    {
-      "assumptionId": "assumption-risk-payment-certification",
-      "storyId": "story-production-validation"
-    },
-    {
-      "assumptionId": "assumption-migration-freeze-window",
-      "storyId": "story-data-migration"
-    },
-    {
-      "assumptionId": "assumption-migration-freeze-window",
-      "storyId": "story-production-cutover"
-    },
-    {
-      "assumptionId": "assumption-risk-invoice-certificate",
-      "storyId": "story-einvoice"
     }
   ]
 }

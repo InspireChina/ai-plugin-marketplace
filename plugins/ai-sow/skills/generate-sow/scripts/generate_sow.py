@@ -464,11 +464,19 @@ def package_manifest(
         "sowStandardVersion": project["sowStandardVersion"],
         "projectMode": scope["mode"],
         "repositories": [
-            {"repoId": item["repoId"], "setupRevision": item["revision"]}
+            {
+                "repoId": item["repoId"],
+                "name": item["name"],
+                "setupRevision": item["revision"],
+            }
             for item in scope["repositorySnapshots"]
         ],
         "priorSows": [
-            {"priorSowId": item["priorSowId"], "sha256": item["sha256"]}
+            {
+                "priorSowId": item["priorSowId"],
+                "name": item["name"],
+                "sha256": item["sha256"],
+            }
             for item in scope["priorSowSnapshots"]
         ],
         "inputs": {

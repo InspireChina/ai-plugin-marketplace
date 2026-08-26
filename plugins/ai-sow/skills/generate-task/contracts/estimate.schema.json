@@ -50,7 +50,7 @@
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["taskId", "storyId", "acceptanceCriterionIds", "name", "baseUnit", "workMode", "workModeRationale", "complexity", "matchedEffectiveStartItemIds", "rationale"],
+      "required": ["taskId", "storyId", "acceptanceCriterionIds", "name", "baseUnit", "workMode", "workModeRationale", "complexity", "rationale"],
       "properties": {
         "taskId": {
           "description": "当前 Skill 创建且语义稳定的 Task ID。",
@@ -104,9 +104,9 @@
           "description": "仅集成 Task 使用且与其一对一对应的上游 Integration ID。",
           "$ref": "#/$defs/id"
         },
-        "matchedEffectiveStartItemIds": {
-          "$ref": "#/$defs/idArray",
-          "description": "投影到任务明细并与系统现状 EFFECTIVE_START 记录匹配的稳定 ID。"
+        "matchedEffectiveStartItemId": {
+          "$ref": "#/$defs/id",
+          "description": "可选：最能证明该 Task 工作模式合理性的一条 Effective Start ID；在任务明细中解析为对应名称。"
         },
         "rationale": {
           "description": "说明单实例计数边界、包含和排除范围的判断依据。",

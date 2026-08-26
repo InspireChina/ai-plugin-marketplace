@@ -542,6 +542,13 @@ def validate_business(
         if count > 1:
             diagnostics.append(diag("ID_DUPLICATE", f"duplicate stable ID: {item_id}"))
 
+    for collection in ("sourceDocuments", "normalizedItems", "epics", "features"):
+        for name, count in Counter(item["name"] for item in data[collection]).items():
+            if count > 1:
+                diagnostics.append(
+                    diag("NAME_DUPLICATE", f"duplicate {collection} name: {name}")
+                )
+
     source_ids = {item["sourceDocumentId"] for item in data["sourceDocuments"]}
     for source in data["sourceDocuments"]:
         relative = source["file"]

@@ -124,7 +124,7 @@ Windows 11 实机验收完成前不得声明为 `Verified`。
 
 ### generate-story
 
-在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再只为 `IN_SCOPE` Feature 相对 Effective Start 形成 Gap、Story 和 AC，`FULLY_COVERED` 不生成 Story。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 packet-bound `NO_CHANGE` 发布，不为实现机制新增 Gap、Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由对应 BUSINESS Story 拥有。Assumption/Risk 每个语义只保存一次，通过关系集合连接 Story。
+在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再只为 `IN_SCOPE` Feature 相对 Effective Start 形成 Gap、Story 和 AC，`FULLY_COVERED` 不生成 Story。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 packet-bound `NO_CHANGE` 发布，不为实现机制新增 Gap、Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由对应 BUSINESS Story 拥有。Assumption/Risk 每个语义只保存一次；需要表达不确定性的 Story 最多保存一个 `assumptionId`，同一条记录可被多个 Story 引用。
 
 ### generate-task
 
@@ -158,7 +158,7 @@ contract 仍为 `0.3`。
 
 ### generate-sow
 
-当前 Stage Agent 直接调用一次确定性生成器。生成器验证五个 Owner receipt、六份稳定数据、五份批准 review 与项目模板的当前 hash，并把这些获批输入确定性投影、复读和发布为工作簿及自包含交付包；普通生成不创建模型 Reviewer。As-Is 的仓库 `DOCUMENT` Evidence 通过 `repositorySnapshots` 把逻辑 `<repoId>:<anchor>` 解析为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。生成器不读取上游 schema、不重诊断上游业务语义，也不执行 Excel 公式。SIT 由集成 Task 触发，UAT 由 Story 的 `uatRelevant` 决定。
+当前 Stage Agent 直接调用一次确定性生成器。生成器验证五个 Owner receipt、六份稳定数据、五份批准 review 与项目模板的当前 hash，并把稳定 ID 关系投影为唯一、非空的名称关系，把可翻译的枚举投影为中文，再确定性复读和发布工作簿及自包含交付包；普通生成不创建模型 Reviewer。As-Is 的仓库 `DOCUMENT` Evidence 通过 `repositorySnapshots` 把逻辑 `<repoId>:<anchor>` 解析为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。生成器不读取上游 schema、不重诊断上游业务语义，也不执行 Excel 公式。SIT 由集成 Task 触发，UAT 由 Story 的 `uatRelevant` 决定。
 
 ### reconcile
 
@@ -199,15 +199,15 @@ operation 已完成；内部前向恢复前缀仍只按实际发生字节变化�
 | `01-需求` | EPIC | BUSINESS 与 TECHNICAL 联合视图 |
 | `02-子需求` | FEATURE | 最小需求范围与来源追溯 |
 | `03-SOW主表` | STORY | 可交付、可验收、可结算 |
-| `04-验收条件` | AC | 独立可观察结果 |
+| `04-验收条件` | AC | 独立可观察结果；不展示结构化 `sequence` |
 | `05-任务明细` | TASK | 一行一个基础单元实例 |
 | `06-集成点` | INTEGRATION | 顶级集成权威 |
-| `07-假设清单` | ASSUMPTION | 一项一行，多 Story 关系 |
+| `07-假设清单` | ASSUMPTION | 一项一行，供 Story 按名称单选引用 |
 | `90-系统现状` | ASIS | Topic、事实、承诺、起点、Coverage、Uncertainty、Evidence |
 | `91-项目参数` | PARAMETER | S/M/L 复杂度系数及 SIT、UAT、风险和取整参数 |
 | `92-基础人天` | BASE UNIT | 37 项基础单元、13 个任务族、逐单元标准与三个工作模式的人天列 |
 
-选填需求字段只有在内容具体时生成；省略时工作簿留空。`DESIGN_DERIVED` 理由必须关联具体决策、产生原因和缺失影响。Story 不保存类型；Task 不保存任务族、活动、数量或计算人天。模板按基础单元行和工作模式对应的人天列取得 M 档基础人天，再按项目参数中的复杂度倍率计算。
+选填需求字段只有在内容具体时生成；省略时工作簿留空。`DESIGN_DERIVED` 理由必须关联具体决策、产生原因和缺失影响。Story 不保存类型；Task 不保存任务族、活动、数量或计算人天。每个可独立引用的结构化实体同时保存必填 ID 与非空名称，关系只保存 ID；业务 Sheet 不显示稳定 ID，并按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列实际存在的层级列。稳定 JSON 的 `baseUnit` 保留基础单元 ID，任务页投影基础单元名称；每个 Task 最多保存一个 `matchedEffectiveStartItemId`，每个 Story 最多保存一个 `assumptionId`。任务页不展示集成点，集成页只在故事名称后展示唯一关联的集成任务名称；系统现状不展示证据引用。普通白色单元格可填写或选择，浅灰色派生列锁定并由公式或结构化关系生成。模板按基础单元名称和工作模式对应的人天列取得 M 档基础人天，再按项目参数中的复杂度倍率计算；生成器只接受当前模板合同，不迁移旧模板。
 
 ## 6. 发布、隔离与安全
 
@@ -224,7 +224,7 @@ operation 已完成；内部前向恢复前缀仍只按实际发生字节变化�
 
 ## 7. 验证
 
-每个 Owner 的 validator 检查自己的合同、自己创建的引用和必要上游 handoff；下游 handoff 失败只报告 missing、invalid、stale、unsupported 四类稳定错误。HLD/Go-live 只在 `generate-design` 本地判定。插件测试保持静态，不启动应用或容器。工作簿测试验证八个领域 Sheet、37 项基础单元、13 个任务族、命名 Table、公式原型、引用、可选字段留空、顶级 Integration、单行 Assumption 投影和一实例一行的 Task。
+每个 Owner 的 validator 检查自己的合同、自己创建的引用和必要上游 handoff；下游 handoff 失败只报告 missing、invalid、stale、unsupported 四类稳定错误。HLD/Go-live 只在 `generate-design` 本地判定。插件测试保持静态，不启动应用或容器。工作簿测试验证八个领域 Sheet、唯一名称、中文下拉、名称引用、列顺序、锁定与保护、37 项基础单元、13 个任务族、命名 Table、公式原型、可选字段留空、顶级 Integration、单行 Assumption 投影和一实例一行的 Task。
 
 As-Is 的 Commitment 与 `PRIOR_SOW` Evidence 使用
 `prior-sow:<priorSowId>#<anchor>`；validator 同时匹配登记 ID、逻辑 anchor 和原文件 SHA-256，

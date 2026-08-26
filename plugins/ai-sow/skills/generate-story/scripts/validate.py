@@ -625,6 +625,21 @@ def validate_semantics(
         if count > 1:
             diagnostics.append(diag("ID_DUPLICATE", f"duplicate stable ID: {value}"))
 
+    for collection in (
+        "gaps",
+        "stories",
+        "acceptanceCriteria",
+        "integrations",
+        "assumptions",
+    ):
+        for name, count in Counter(
+            entry["name"] for entry in delivery[collection]
+        ).items():
+            if count > 1:
+                diagnostics.append(
+                    diag("NAME_DUPLICATE", f"duplicate {collection} name: {name}")
+                )
+
     gap_counts = Counter(entry["featureId"] for entry in delivery["gaps"])
     for gap in delivery["gaps"]:
         feature_id = gap["featureId"]
@@ -758,24 +773,17 @@ def validate_semantics(
             if boundary == "NONE" or integration["deliveryBoundary"] != boundary:
                 diagnostics.append(diag("INTEGRATION_BOUNDARY_MISMATCH", f"Integration boundary disagrees with Story: {integration['integrationId']}"))
 
-    relation_counts: Counter[str] = Counter()
-    relation_pairs: Counter[tuple[str, str]] = Counter()
     stories_by_assumption: dict[str, list[str]] = defaultdict(list)
-    for relation in delivery["assumptionStories"]:
-        pair = (relation["assumptionId"], relation["storyId"])
-        relation_pairs[pair] += 1
-        if relation["assumptionId"] not in assumptions:
-            diagnostics.append(diag("ASSUMPTION_REF_UNKNOWN", f"unknown Assumption/Risk: {relation['assumptionId']}"))
+    for story_id, story in stories.items():
+        assumption_id = story.get("assumptionId")
+        if assumption_id is None:
+            continue
+        if assumption_id not in assumptions:
+            diagnostics.append(
+                diag("ASSUMPTION_REF_UNKNOWN", f"unknown Assumption/Risk: {assumption_id}")
+            )
         else:
-            relation_counts[relation["assumptionId"]] += 1
-            stories_by_assumption[relation["assumptionId"]].append(relation["storyId"])
-        if relation["storyId"] not in stories:
-            diagnostics.append(diag("STORY_REF_UNKNOWN", f"unknown Story: {relation['storyId']}"))
-    for pair, count in relation_pairs.items():
-        if count > 1:
-            diagnostics.append(diag("ASSUMPTION_STORY_DUPLICATE", f"duplicate Assumption/Story relation: {pair[0]}->{pair[1]}"))
-    for assumption_id in sorted(set(assumptions) - set(relation_counts)):
-        diagnostics.append(diag("ASSUMPTION_COVERAGE_MISSING", f"Assumption/Risk has no Story: {assumption_id}"))
+            stories_by_assumption[assumption_id].append(story_id)
     signatures: dict[tuple[str, ...], str] = {}
     for assumption in delivery["assumptions"]:
         signature = tuple(" ".join(str(assumption[field]).split()).casefold() for field in ("type", "name", "trigger", "responsibilityBoundary", "handling"))
@@ -914,8 +922,9 @@ def parse_hash_map(value: str) -> dict[str, str] | None:
 
 def expected_questionnaire_map(delivery: dict[str, Any], approved_defaults: set[str]) -> dict[str, tuple[str, tuple[str, ...]]]:
     relations: dict[str, list[str]] = defaultdict(list)
-    for relation in delivery["assumptionStories"]:
-        relations[relation["assumptionId"]].append(relation["storyId"])
+    for story in delivery["stories"]:
+        if assumption_id := story.get("assumptionId"):
+            relations[assumption_id].append(story["storyId"])
     result: dict[str, tuple[str, tuple[str, ...]]] = {}
     for assumption in delivery["assumptions"]:
         for question_id in QUESTION_ANCHOR_PATTERN.findall(assumption["handling"]):
@@ -998,7 +1007,11 @@ def validate_review(
         *(entry["featureId"] for entry in upstream["requirements"]["features"]),
         *(entry["featureId"] for entry in upstream["technical"]["features"]),
     }
-    relations = {(entry["assumptionId"], entry["storyId"]) for entry in delivery["assumptionStories"]}
+    relations = {
+        (entry["assumptionId"], entry["storyId"])
+        for entry in delivery["stories"]
+        if entry.get("assumptionId")
+    }
     for concern, (features, gaps, stories, assumptions) in rows.items():
         for feature_id in features:
             if feature_id not in known_features:

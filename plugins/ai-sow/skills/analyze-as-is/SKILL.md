@@ -78,7 +78,7 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 
 ## Stage 调查
 
-1. 读取四字段 `.ai-sow/project.json` 和已发布 Requirements。询问可用的本地代码库、往期 SOW、配置、部署材料和其他证据；只登记用户提供或明确授权取得的输入。仓库记录稳定 `repoId`、项目相对 path、revision 与 dirty；往期 SOW 复制到 `.ai-sow/inputs/analyze-as-is/prior-sows/` 并记录稳定 ID、原文件名和 SHA-256。依据证据确定 `GREENFIELD` 或 `BROWNFIELD`，不回写项目元数据。
+1. 读取四字段 `.ai-sow/project.json` 和已发布 Requirements。询问可用的本地代码库、往期 SOW、配置、部署材料和其他证据；只登记用户提供或明确授权取得的输入。仓库与往期 SOW 都同时记录稳定 ID 和非空名称；仓库另存项目相对 path、revision 与 dirty，往期 SOW 复制到 `.ai-sow/inputs/analyze-as-is/prior-sows/` 并记录原文件名和 SHA-256。依据证据确定 `GREENFIELD` 或 `BROWNFIELD`，不回写项目元数据。
 2. 按合同顺序评估 `SYSTEM_CONTEXT`、`CAPABILITY`、`APPLICATION`、`INTEGRATION`、`DATA`、`PLATFORM`、`SECURITY_COMPLIANCE`、`OPERATIONS_QUALITY`、`DELIVERY_CONSTRAINTS`。每个 Topic 恰有一个结论；`INSUFFICIENT_EVIDENCE` 至少关联一个 Uncertainty。
 3. 对代码库读取[CodeGraph 参考](references/codegraph.md)，依次采用 MCP、已有 CLI、项目局部 CLI、已记录静态回退。生成代码、动态分派、配置、部署和运行边界必须由直接证据佐证，否则记录 Uncertainty。
 4. 从每份往期 SOW 提取 Commitment，核对 `implementationStatus` 与 `treatment`。Commitment 的
@@ -93,7 +93,7 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
    - `SUPERSEDED` → `EXCLUDE`
 5. 为每个 BUSINESS Feature 建立一条 Coverage；无对应现状时使用 `MISSING`，不编造有效起点。
 6. 默认不启动应用、数据库或容器。静态证据无法解决会实质影响设计的重要不确定性时，读取[运行时验证参考](references/runtime-verification.md)，说明原因后仅运行目标仓库已有的最小测试或只读探针。
-7. 直接调查结束后仍有缺口时，读取[现状证据问卷](references/current-state-questionnaire.md)，只选择实际需要的问题并写入 `.ai-sow/work/analyze-as-is/questionnaire.md`。已确认回答可形成 `QUESTIONNAIRE` Evidence；`UNKNOWN` 或冲突回答形成 Uncertainty。每条 Uncertainty 必须明确 `affectsEstimate`。
+7. 直接调查结束后仍有缺口时，读取[现状证据问卷](references/current-state-questionnaire.md)，只选择实际需要的问题并写入 `.ai-sow/work/analyze-as-is/questionnaire.md`。已确认回答可形成 `QUESTIONNAIRE` Evidence；`UNKNOWN` 或冲突回答形成 Uncertainty。Item、Commitment、Effective Start、Uncertainty 和 Evidence 都同时保存稳定 ID 与非空名称；每条 Uncertainty 必须明确 `affectsEstimate`。
 8. 将完整专业结论先写入 `.ai-sow/work/analyze-as-is/asis.candidate.json`。它是 work-only candidate，不是稳定交接数据；批准前不写正式 review、稳定 As-Is 或 validation receipt。
 
 ## 候选评审与发布

@@ -108,6 +108,7 @@ def read_contract(template_path: Path) -> dict[str, Any]:
         require_headers(parameter_rows, PARAMETER_HEADERS, "ProjectParameterTable")
 
         base_units: dict[str, dict[str, Any]] = {}
+        base_unit_names: set[str] = set()
         family_names: dict[str, str] = {}
         family_ids: dict[str, str] = {}
         task_options: list[list[str]] = []
@@ -116,8 +117,12 @@ def read_contract(template_path: Path) -> dict[str, Any]:
             family_id = require_text(row, "任务族ID", subject)
             family_name = require_text(row, "任务族名称", subject)
             unit_id = require_text(row, "基础单元ID", subject)
+            unit_name = require_text(row, "基础单元名称", subject)
             if unit_id in base_units:
                 raise ValueError(f"base-unit catalog ID is duplicated: {unit_id}")
+            if unit_name in base_unit_names:
+                raise ValueError(f"base-unit catalog name is duplicated: {unit_name}")
+            base_unit_names.add(unit_name)
             if family_id in family_names and family_names[family_id] != family_name:
                 raise ValueError(f"task-family ID maps to multiple names: {family_id}")
             if family_name in family_ids and family_ids[family_name] != family_id:
@@ -135,7 +140,7 @@ def read_contract(template_path: Path) -> dict[str, Any]:
             base_units[unit_id] = {
                 "taskFamilyId": family_id,
                 "taskFamily": family_name,
-                "name": require_text(row, "基础单元名称", subject),
+                "name": unit_name,
                 "countRule": require_text(row, "计数口径", subject),
                 "includes": require_text(row, "包含内容", subject),
                 "excludes": require_text(row, "不包含内容", subject),

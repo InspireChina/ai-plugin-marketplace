@@ -20,13 +20,13 @@ STRUCTURED_REFERENCE = re.compile(
 )
 
 SCHEMA_SHA256 = {
-    "skills/analyze-as-is/contracts/asis.schema.json": "0f9421a1000b9c7c157cc34f6683954ee0c67f7f2a8d2eea2f8c7b87d759d137",
-    "skills/analyze-requirement/contracts/source-requirements.schema.json": "70562d9dbd6ac63f86ab8271f7f216e9c49799a1a6ac4f765a4dc9a6dd736c80",
+    "skills/analyze-as-is/contracts/asis.schema.json": "41532288016eb4c0b30843be6ef9df6c3786381e09353cae6bfa25c5ba49497b",
+    "skills/analyze-requirement/contracts/source-requirements.schema.json": "8ca6d9738ba0eeebe253d5d7e3bd164c019a54bc318b536012e6a6b5f3bf4e98",
     "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
-    "skills/generate-design/contracts/design.schema.json": "27acb2adb696931bc16a103603fd9bc89b6b7c9d71c65ede51708edf9554d12f",
-    "skills/generate-sow/contracts/manifest.schema.json": "3d5bc343164e5f9f7ce5a0962f79a13263bca402c2d09e3ab57fd5601fa042ab",
-    "skills/generate-story/contracts/delivery.schema.json": "e9c99df13fdaf0f7dbef064d2935c6a9dad0668395908736465f03fc23b9dc9f",
-    "skills/generate-task/contracts/estimate.schema.json": "81c456ccbd55242b5875dee98733f68d34fa68366ee52e096368d62d0ed8e3e8",
+    "skills/generate-design/contracts/design.schema.json": "a28fe5d9107f411ff582c4145e2b2e89403f4bdad09cf72f4a0d03501c2f089d",
+    "skills/generate-sow/contracts/manifest.schema.json": "568a944b9d64728b4bfd39f00c746f5fa512f19206403f778a880e8347afcf55",
+    "skills/generate-story/contracts/delivery.schema.json": "45e024da990d774e28393a224b71e20b88fbabcc448776e82cd5dce87b1ef93a",
+    "skills/generate-task/contracts/estimate.schema.json": "a1b5bbd829fc9bc5b2f3de29a0c07bd1f5daee81950cfc00fe47781701f35116",
     "skills/setup/contracts/project.schema.json": "ef74010eec8f68ad81030338daa12393caa8d27d2ca6b715933f35c35bc514d3",
 }
 
@@ -78,7 +78,7 @@ SCHEMA_ENUMS = {
     "skills/setup/contracts/project.schema.json": {},
 }
 
-TEMPLATE_SHA256 = "dc17a4ccb2902ba12379e7b964a2612d07f138a9b542cc6774bc05b4d3bf2e48"
+TEMPLATE_SHA256 = "f477338e29014b22bf81e1aa88c9c96030aa53c7d7668195431503fa9f719335"
 
 
 def enum_arrays(value: object, path: str = "$") -> dict[str, list[object]]:

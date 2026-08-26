@@ -120,9 +120,10 @@
     "repositorySnapshot": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repoId", "path", "revision", "dirty"],
+      "required": ["repoId", "name", "path", "revision", "dirty"],
       "properties": {
         "repoId": {"$ref": "#/$defs/id", "description": "本次调查内稳定识别该代码库的 ID，供 Item 与 Evidence anchor 使用。"},
+        "name": {"$ref": "#/$defs/nonEmptyString", "description": "面向评审展示的非空代码库名称。"},
         "path": {
           "anyOf": [
             {"const": "."},
@@ -137,9 +138,10 @@
     "priorSowSnapshot": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["priorSowId", "file", "originalName", "sha256"],
+      "required": ["priorSowId", "name", "file", "originalName", "sha256"],
       "properties": {
         "priorSowId": {"$ref": "#/$defs/id", "description": "本次调查内稳定识别往期 SOW 的 ID，供 Commitment 引用。"},
+        "name": {"$ref": "#/$defs/nonEmptyString", "description": "面向评审展示的非空往期 SOW 名称。"},
         "file": {
           "allOf": [
             {"$ref": "#/$defs/projectRelativePath"},
@@ -310,9 +312,10 @@
     "uncertainty": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["uncertaintyId", "topic", "question", "impact", "affectsEstimate", "owner", "recommendedHandling", "relatedFeatureIds"],
+      "required": ["uncertaintyId", "name", "topic", "question", "impact", "affectsEstimate", "owner", "recommendedHandling", "relatedFeatureIds"],
       "properties": {
         "uncertaintyId": {"$ref": "#/$defs/uncertaintyId", "description": "由 As-Is Owner 维护的未解决现状问题稳定 ID。"},
+        "name": {"$ref": "#/$defs/nonEmptyString", "description": "面向评审展示的不确定性名称。"},
         "topic": {"$ref": "#/$defs/topic", "description": "该不确定性主要阻碍形成结论的现状 Topic。"},
         "question": {"$ref": "#/$defs/nonEmptyString", "description": "需要由进一步证据或负责人回答的具体、可决策问题。"},
         "impact": {"$ref": "#/$defs/nonEmptyString", "description": "未解决答案可能改变的范围、责任、设计、交付对象或工作量。"},
@@ -325,9 +328,10 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["evidenceId", "kind", "reference", "summary", "supportsIds"],
+      "required": ["evidenceId", "name", "kind", "reference", "summary", "supportsIds"],
       "properties": {
         "evidenceId": {"$ref": "#/$defs/evidenceId", "description": "由 As-Is Owner 维护的证据索引稳定 ID。"},
+        "name": {"$ref": "#/$defs/nonEmptyString", "description": "面向评审展示的非空证据名称。"},
         "kind": {
           "type": "string",
           "enum": ["RUNTIME", "CONTRACT", "CONFIGURATION", "CODE", "DEPLOYMENT", "PRIOR_SOW", "QUESTIONNAIRE", "DOCUMENT"],

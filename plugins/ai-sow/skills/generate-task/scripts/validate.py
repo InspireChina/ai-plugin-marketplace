@@ -731,6 +731,14 @@ def validate_semantics(
     for task_id, count in Counter(task_ids).items():
         if count > 1:
             diagnostics.append(diag("ID_DUPLICATE", f"duplicate taskId: {task_id}"))
+    for name, count in Counter(task["name"] for task in estimate["tasks"]).items():
+        if count > 1:
+            diagnostics.append(
+                diag(
+                    "TASK_NAME_DUPLICATE",
+                    f"duplicate Task name, which cannot be used as an Excel reference: {name}",
+                )
+            )
     descriptions = Counter(
         (task["storyId"], " ".join(task["name"].casefold().split()))
         for task in estimate["tasks"]
@@ -797,12 +805,11 @@ def validate_semantics(
                     )
                 )
 
-        matched = task["matchedEffectiveStartItemIds"]
-        for reference in matched:
-            if reference not in effective_starts:
-                diagnostics.append(
-                    diag("EFFECTIVE_START_REF_UNKNOWN", f"unknown Effective Start: {reference}")
-                )
+        matched = task.get("matchedEffectiveStartItemId")
+        if matched is not None and matched not in effective_starts:
+            diagnostics.append(
+                diag("EFFECTIVE_START_REF_UNKNOWN", f"unknown Effective Start: {matched}")
+            )
         needs_existing = base_name in EXISTING_OBJECT_NEW_WORK or (
             base_name == "发布切换"
             and any(marker in task["workModeRationale"] for marker in EXISTING_CUTOVER_MARKERS)
@@ -819,7 +826,7 @@ def validate_semantics(
         if task["workMode"] in {"调整", "接入复用"} and isinstance(evidence, dict):
             evidence_id = evidence.get("effectiveStartItemId")
             evidence_name = evidence.get("effectiveStartItemName")
-            if evidence_id not in matched:
+            if evidence_id != matched:
                 diagnostics.append(
                     diag(
                         "WORK_MODE_EVIDENCE_REF_MISMATCH",
@@ -1065,7 +1072,11 @@ def validate_review(
         ("Complexities", {task["complexity"] for task in tasks}, "REVIEW_COMPLEXITIES_INVALID"),
         (
             "Effective Start IDs",
-            {identifier for task in tasks for identifier in task["matchedEffectiveStartItemIds"]},
+            {
+                identifier
+                for task in tasks
+                if (identifier := task.get("matchedEffectiveStartItemId")) is not None
+            },
             "REVIEW_EFFECTIVE_START_IDS_INVALID",
         ),
     )

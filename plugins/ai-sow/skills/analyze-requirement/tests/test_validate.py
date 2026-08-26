@@ -205,7 +205,7 @@ def prepare_valid(project_root: Path) -> dict[str, object]:
             {
                 "dispositionId": f"source-disposition-{item['normalizedItemId'].removeprefix('norm-')}",
                 "sourceDocumentId": item["sourceDocumentId"],
-                "sourceReference": f"业务需求/{item['title']}",
+                    "sourceReference": f"业务需求/{item['name']}",
                 "summary": item["statement"],
                 "disposition": "BUSINESS",
                 "targetIds": [item["normalizedItemId"]],
@@ -569,7 +569,7 @@ def test_owner_local_business_rules_fail_closed(
             {
                 "normalizedItemId": "norm-unused",
                 "sourceDocumentId": payload["sourceDocuments"][0]["sourceDocumentId"],
-                "title": "未使用条目",
+                "name": "未使用条目",
                 "statement": "该条目没有进入任何获批业务结论。",
             }
         )

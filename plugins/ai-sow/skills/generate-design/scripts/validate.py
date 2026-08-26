@@ -602,7 +602,7 @@ def validate_semantics(
     technical_feature_ids = {entry["featureId"] for entry in technical["features"]}
     design_item_ids = {entry["designItemId"] for entry in design["designItems"]}
     decision_ids = {entry["designDecisionId"] for entry in design["decisions"]}
-    decision_titles = {entry["designDecisionId"]: entry["title"] for entry in design["decisions"]}
+    decision_titles = {entry["designDecisionId"]: entry["name"] for entry in design["decisions"]}
     all_ids = [
         *source_epic_ids,
         *source_feature_ids,

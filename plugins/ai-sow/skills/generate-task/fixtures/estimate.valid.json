@@ -10,7 +10,6 @@
       "workModeRationale": "现状不存在客户档案入口，需要新建一个可独立验收的界面。",
       "complexity": "S",
       "complexityRationale": "仅一个界面和单一路径，使用成熟组件，无复杂权限或状态联动。",
-      "matchedEffectiveStartItemIds": [],
       "rationale": "一个客户档案界面及其直接相关状态，符合界面与交互的单实例计数口径。"
     },
     {
@@ -29,8 +28,8 @@
       },
       "complexity": "M",
       "integrationId": "integration-profile-api",
-      "matchedEffectiveStartItemIds": ["effective-start-customer-api"],
-      "rationale": "实现已登记的单一内部 Integration 方向，不包含对端系统改造。"
+      "matchedEffectiveStartItemId": "effective-start-customer-api",
+      "rationale": "实现已登记的单一内部集成方向，不包含对端系统改造。"
     },
     {
       "taskId": "task-profile-hosting-architecture",
@@ -46,7 +45,7 @@
       },
       "complexity": "L",
       "complexityRationale": "需要协调平台与交付团队，对两类托管环境、部署责任和迁移路径作出同一项系统级决策。",
-      "matchedEffectiveStartItemIds": ["effective-start-hosting-architecture"],
+      "matchedEffectiveStartItemId": "effective-start-hosting-architecture",
       "rationale": "一个需要独立批准的客户档案托管架构问题，范围不含具体实现。"
     }
   ]

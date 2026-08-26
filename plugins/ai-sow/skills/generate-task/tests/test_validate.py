@@ -255,7 +255,9 @@ def task_review(
         f"{task['integrationId']}={task['taskId']}" for task in tasks if "integrationId" in task
     )
     effective_starts = sorted(
-        {identifier for task in tasks for identifier in task["matchedEffectiveStartItemIds"]}
+        task["matchedEffectiveStartItemId"]
+        for task in tasks
+        if task.get("matchedEffectiveStartItemId")
     )
     impact = ""
     if rebind:
@@ -1033,7 +1035,7 @@ def test_rejects_unknown_effective_start_and_evidence_mismatch(tmp_path: Path) -
 
     def change(value: dict[str, object]) -> None:
         task = value["tasks"][2]  # type: ignore[index]
-        task["matchedEffectiveStartItemIds"] = ["effective-start-unknown"]
+        task["matchedEffectiveStartItemId"] = "effective-start-unknown"
         task["workModeEvidence"]["effectiveStartItemId"] = "effective-start-unknown"
 
     mutate_candidate(tmp_path, change)

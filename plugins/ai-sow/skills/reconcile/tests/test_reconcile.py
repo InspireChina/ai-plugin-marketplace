@@ -31,12 +31,14 @@ ANALYSIS_SCOPE: dict[str, Any] = {
     "repositorySnapshots": [
         {
             "repoId": "sample-repository",
+            "name": "示例代码仓库",
             "revision": "0" * 40,
         }
     ],
     "priorSowSnapshots": [
         {
             "priorSowId": "prior-sow",
+            "name": "历史一期 SOW",
             "sha256": "1" * 64,
         }
     ],
@@ -723,6 +725,7 @@ def build_project(
         "repositories": [
             {
                 "repoId": item["repoId"],
+                "name": item["name"],
                 "setupRevision": item["revision"],
             }
             for item in ANALYSIS_SCOPE["repositorySnapshots"]
@@ -730,6 +733,7 @@ def build_project(
         "priorSows": [
             {
                 "priorSowId": item["priorSowId"],
+                "name": item["name"],
                 "sha256": item["sha256"],
             }
             for item in ANALYSIS_SCOPE["priorSowSnapshots"]

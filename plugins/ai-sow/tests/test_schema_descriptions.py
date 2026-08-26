@@ -47,7 +47,6 @@ STABLE_OBJECT_DEFS = {
         "acceptanceCriterion",
         "integration",
         "assumption",
-        "assumptionStory",
     ),
     "Estimate": ("workModeEvidence", "task"),
     "Manifest": ("digest", "repository", "priorSow"),

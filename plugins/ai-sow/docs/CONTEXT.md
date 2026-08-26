@@ -12,12 +12,14 @@
 | 项目元数据 | 由 setup 初始化的 `.ai-sow/project.json`；只登记 `projectId`、`name`、`pluginVersion`、`sowStandardVersion`，不计入上述六份正式交接数据。 |
 | 数据归属 | 每项正式数据只由一个 Skill 负责。后续 Skill 只读取 `.ai-sow/data/...`，不修改上一步的文件。 |
 | 影响集协调 | 已有完整下游产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；它不拥有稳定业务数据。 |
-| 固定 ID | 使用小写 kebab-case 和对象前缀，并且在项目数据中唯一，例如 `feature-order-status`。所指内容不变时沿用原 ID，内容发生实质变化时新建 ID。 |
+| 固定 ID | 使用小写 kebab-case 和对象前缀，并且在项目数据中唯一，例如 `feature-order-status`。每个可独立引用的实体同时保存必填、非空的 `name`；所指内容不变时沿用原 ID，内容发生实质变化时新建 ID。关系字段只保存目标 ID。 |
+| Excel 展示主键 | 最终 XLSX 用唯一、非空的名称识别、选择和引用业务概念；稳定 ID 不作为业务 Sheet 的阅读字段。 |
+| 名称投影 | `generate-sow` 把稳定 ID 关系转换为名称关系，并把可翻译的机器枚举转换为中文选项；名称变化不改变结构化对象身份。 |
 | 计算依据 | `.ai-sow/templates/sow-template.xlsx`。任务规则、基础人天、复杂度、系数、公式、取整和最终人天不在 Python 或 JSON 中重复保存。 |
 | 配套 Markdown | 与当前 SOW 标准版本一致的任务分类和开发交付人天说明，用于解释分类、填写、验收和估算规则，不另设一套计算口径。 |
-| 最终 XLSX | 把六份正式数据写入模板后生成的工作簿。Excel 打开工作簿后按模板公式计算；插件不执行公式，也不读取缓存中的计算结果。 |
+| 最终 XLSX | 把六份正式数据按名称投影写入模板后生成的工作簿。Excel 打开工作簿后按模板公式计算；插件不执行公式，也不读取缓存中的计算结果。 |
 
-数组中的先后顺序就是最终展示顺序。只有 AcceptanceCriterion 使用同一 Story 内从 1 开始的连续 `sequence`；一对多关系由子项保存父项 ID，多对多关系单独保存关联记录。
+数组中的先后顺序就是最终展示顺序。只有 AcceptanceCriterion 使用同一 Story 内从 1 开始的连续 `sequence`；该字段保留在稳定 JSON 中用于确定性排序，但不显示在最终工作簿。一对多关系由子项保存父项 ID。
 
 ## 2. 处理顺序与数据路径
 
@@ -103,7 +105,7 @@ Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate �
 | AcceptanceCriterion | 一行一个可独立通过或不通过的可观察结果。描述结果，不描述实现 Task。 |
 | Integration | 独立于 Story 类型和 Task，记录一次有明确方向的系统交互；保存来源、目标、触发、`INBOUND / OUTBOUND`、目的和 `INTERNAL / EXTERNAL` 责任归属，并关联 Story。登记 Integration 不等于已经生成集成 Task。 |
 | UAT 适用性 | Story 对业务 UAT 是否适用的明确判断；不从 Story 类型或 Task 任务族推导。 |
-| 假设/风险 | 保存类型、名称、触发条件、责任边界、`已明确 / 待确认` 状态和处理方式，并通过关系行关联 Story。 |
+| 假设/风险 | 保存类型、名称、触发条件、责任边界、`已明确 / 待确认` 状态和处理方式。Story 通过可选的单个 `assumptionId` 引用足以说明其不确定性的一条记录；同一条记录可以被多个 Story 引用。 |
 
 每个 IN_SCOPE Feature 至少有一个 Gap，每个 Gap 至少有一个 Story，每个 Story 至少有一条 AC。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 packet-bound `NO_CHANGE` 发布；只有用户明确批准交付结果变化后才重新评审 Story/AC。
 
@@ -112,7 +114,7 @@ Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate �
 | 术语 | 定义 |
 |---|---|
 | Task | Story 下直接估算人天的最小明细；一行对应一个基础单元实例需要完成的全部工作。 |
-| 任务类型 | `任务族 → 基础单元` 两层目录；Task 只选择基础单元，系统根据基础单元自动确定任务族。 |
+| 任务类型 | `任务族 → 基础单元` 两层目录；稳定 JSON 保存基础单元 ID，工作簿只显示唯一的基础单元名称，并自动确定任务族。 |
 | 任务族 | 用于组织、汇总和查漏补缺的上层分类，不由 Task 人工填写，也不直接参与基础人天查找。 |
 | 基础单元 | 有明确计数口径和具体工作内容的估算对象；一个基础单元实例对应一个 Task。 |
 | 发布切换 | 一个统一窗口、统一责任范围和回滚方案的生产发布实例；上线计划、Go/No-Go、演练、实际部署/切换、检查、回滚和确认合并估算，每个 Story 最多一个。数据迁移始终独立。 |
@@ -129,7 +131,7 @@ Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate �
 | SIT 判断 | 集成 Task 触发 SIT；仅有 Integration 记录时不直接触发。 |
 | 最终人天 | XLSX 按“M档基础人天 × 复杂度系数”计算 Task 人天，并继续计算 SIT、UAT、风险、取整和总计。结构化 JSON 不保存插件计算结果。 |
 
-Task 通过 `matchedEffectiveStartItemIds` 关联 Effective Start：“调整 / 接入复用”至少引用一项；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。
+Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start：“调整 / 接入复用”必须引用一项足以证明工作模式的现状；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用一项相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。
 
 “接入复用”只有在本项目侧存在可独立估算的注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作时才成立。其 `workModeRationale` 使用固定格式 `<有效起点名称>保持不变；本项目负责并交付：<中文工作类型>。`，必须与结构化工作类型及承诺完全一致，不解析任意自由文本来判断责任。普通依赖引入、常规调用或直接按既有约定使用不单独生成 Task。任何 `affectsEstimate = true` 的未关闭 Uncertainty 都会阻止正式估算和 XLSX 生成；`impact` 只负责解释影响，不作为关键词门禁。
 
@@ -188,7 +190,7 @@ Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立
 原字节复用路径天然属于完成状态，完整发布后的复查必须返回
 `completedOperations == totalOperations`，不能把内部的 changed-prefix 计数暴露成未完成进度。
 
-`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。`90-系统现状` 使用固定九行的 `AsIsTopicTable` 和按明细数量扩展的 `AsIsDetailTable` 写入完整 As-Is；Task 页的“系统现状匹配”显示 Task 对应的 Effective Start。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 单选一个系统现状且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 不展示证据引用，并以隐藏辅助列提供有效起点名称下拉。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
 
 生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
 

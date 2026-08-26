@@ -10,6 +10,7 @@
   "architectureDeltas": [
     {
       "architectureDeltaId": "delta-customer-profile",
+      "name": "调整客户档案组件",
       "changeType": "ADJUST",
       "designItemId": "design-customer-profile",
       "effectiveStartItemIds": ["effective-start-customer-api"],
@@ -19,7 +20,7 @@
   "decisions": [
     {
       "designDecisionId": "decision-profile-api",
-      "title": "公开客户档案 API",
+      "name": "公开客户档案 API",
       "decision": "使用专用 API 边界处理客户档案操作。",
       "rationale": "UI 和未来渠道需要统一边界。",
       "designItemIds": ["design-customer-profile"],

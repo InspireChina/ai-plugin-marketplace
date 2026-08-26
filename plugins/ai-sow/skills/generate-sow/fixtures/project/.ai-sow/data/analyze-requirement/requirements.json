@@ -2,6 +2,7 @@
   "sourceDocuments": [
     {
       "sourceDocumentId": "source-document-customer-profile",
+      "name": "星云零售全渠道会员与订单服务平台升级需求简报",
       "file": ".ai-sow/inputs/analyze-requirement/customer-profile.md",
       "originalName": "星云零售全渠道会员与订单服务平台升级（仿真需求简报）.md",
       "sha256": "5b6cff6960734c079bfb099dbfc42420d03659ece09055179e5521ad6109750a"
@@ -11,73 +12,73 @@
     {
       "normalizedItemId": "norm-customer-profile",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "统一客户档案",
+      "name": "统一客户档案",
       "statement": "用户可以创建、查看和维护客户档案，渠道仅展示已授权字段。"
     },
     {
       "normalizedItemId": "norm-member-tier",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "会员等级规则",
+      "name": "会员等级规则",
       "statement": "系统按有效消费额计算会员等级，并保留规则版本与变更记录。"
     },
     {
       "normalizedItemId": "norm-customer-consent",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "会员授权沿用",
+      "name": "会员授权沿用",
       "statement": "沿用现有授权中心记录授权、撤回与查询日志，不复制授权主数据。"
     },
     {
       "normalizedItemId": "norm-order-orchestration",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "统一订单编排",
+      "name": "统一订单编排",
       "statement": "门店与线上订单使用统一校验和状态机驱动履约。"
     },
     {
       "normalizedItemId": "norm-inventory-reservation",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "ERP 库存预占",
+      "name": "ERP 库存预占",
       "statement": "订单确认前调用 ERP 完成库存预占与释放，并防止超时重试造成重复预占。"
     },
     {
       "normalizedItemId": "norm-return-refund",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "退货退款闭环",
+      "name": "退货退款闭环",
       "statement": "客服与门店发起退货后，系统核验可退数量、发起退款并回写订单。"
     },
     {
       "normalizedItemId": "norm-store-order",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "门店接单工作台",
+      "name": "门店接单工作台",
       "statement": "门店工作台展示待处理订单、缺货替代与交接信息，并按门店权限操作。"
     },
     {
       "normalizedItemId": "norm-order-visibility",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "统一订单可视",
+      "name": "统一订单可视",
       "statement": "顾客和客服查看一致的订单状态、履约节点和异常原因。"
     },
     {
       "normalizedItemId": "norm-customer-notification",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "复用客户通知",
+      "name": "复用客户通知",
       "statement": "沿用现有消息中心发送订单节点通知，本项目消费标准事件。"
     },
     {
       "normalizedItemId": "norm-payment-reconciliation",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "支付日结对账",
+      "name": "支付日结对账",
       "statement": "财务每日按渠道、门店和订单核对实收、退款与手续费差异。"
     },
     {
       "normalizedItemId": "norm-einvoice",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "电子发票处理",
+      "name": "电子发票处理",
       "statement": "订单完成后调用电子发票平台，并保存发票号码、状态与失败原因。"
     },
     {
       "normalizedItemId": "norm-finance-report",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "财务经营报表",
+      "name": "财务经营报表",
       "statement": "财务按日、区域和渠道查看销售、退款、优惠与未对账金额。"
     }
   ],

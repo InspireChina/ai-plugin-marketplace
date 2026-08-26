@@ -3,10 +3,10 @@
     "mode": "BROWNFIELD",
     "asOfDate": "2026-08-25",
     "repositorySnapshots": [
-      {"repoId": "service-api", "path": "repositories/service-api", "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "dirty": false}
+      {"repoId": "service-api", "name": "客户服务接口仓库", "path": "repositories/service-api", "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "dirty": false}
     ],
     "priorSowSnapshots": [
-      {"priorSowId": "sow-phase-one", "file": ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md", "originalName": "phase-one.md", "sha256": "6aaa4f5427e455cde2603adb68209ac6ab5a75b32c02e0da866914a757ac93b8"}
+      {"priorSowId": "sow-phase-one", "name": "一期客户档案交付范围", "file": ".ai-sow/inputs/analyze-as-is/prior-sows/sow-phase-one.md", "originalName": "phase-one.md", "sha256": "6aaa4f5427e455cde2603adb68209ac6ab5a75b32c02e0da866914a757ac93b8"}
     ],
     "includedSystems": ["Customer API（客户接口）"],
     "includedAreas": ["客户档案服务"],
@@ -72,6 +72,7 @@
   "uncertainties": [
     {
       "uncertaintyId": "uncertainty-data-retention",
+      "name": "客户档案数据保留期未明确",
       "topic": "DATA",
       "question": "客户档案适用多长的数据保留期？",
       "impact": "答案会影响存储设计和合规范围。",
@@ -84,6 +85,7 @@
   "evidence": [
     {
       "evidenceId": "evidence-customer-api-code",
+      "name": "客户档案读取组件代码",
       "kind": "CODE",
       "reference": "service-api:src/customer/profile.py#CustomerProfileReader",
       "summary": "仓库包含当前客户档案读取组件。",
@@ -91,6 +93,7 @@
     },
     {
       "evidenceId": "evidence-phase-one-sow",
+      "name": "一期忠诚度状态交付承诺",
       "kind": "PRIOR_SOW",
       "reference": "prior-sow:sow-phase-one#section=customer-profile",
       "summary": "往期 SOW 承诺增加忠诚度状态。",
@@ -98,6 +101,7 @@
     },
     {
       "evidenceId": "evidence-source-requirement",
+      "name": "客户档案源需求",
       "kind": "DOCUMENT",
       "reference": "requirements:feature-customer-profile",
       "summary": "源需求明确了客户档案范围。",

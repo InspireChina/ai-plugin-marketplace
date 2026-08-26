@@ -60,8 +60,9 @@ def stable_ids(delivery: dict[str, Any]) -> list[str]:
 
 def questionnaire_map(delivery: dict[str, Any]) -> str:
     stories: dict[str, list[str]] = defaultdict(list)
-    for relation in records(delivery, "assumptionStories"):
-        stories[relation["assumptionId"]].append(relation["storyId"])
+    for story in records(delivery, "stories"):
+        if assumption_id := story.get("assumptionId"):
+            stories[assumption_id].append(story["storyId"])
     values: list[str] = []
     for assumption in records(delivery, "assumptions"):
         for question_id in QUESTION_PATTERN.findall(assumption["handling"]):
@@ -77,7 +78,6 @@ def go_live_rows(
 ) -> list[str]:
     gaps = records(delivery, "gaps")
     stories = records(delivery, "stories")
-    relations = records(delivery, "assumptionStories")
     assumptions = {item["assumptionId"] for item in records(delivery, "assumptions")}
     gap_ids_by_feature: dict[str, list[str]] = defaultdict(list)
     for gap in gaps:
@@ -86,9 +86,10 @@ def go_live_rows(
     for story in stories:
         story_ids_by_gap[story["gapId"]].append(story["storyId"])
     assumption_ids_by_story: dict[str, list[str]] = defaultdict(list)
-    for relation in relations:
-        if relation["assumptionId"] in assumptions:
-            assumption_ids_by_story[relation["storyId"]].append(relation["assumptionId"])
+    for story in stories:
+        assumption_id = story.get("assumptionId")
+        if assumption_id in assumptions:
+            assumption_ids_by_story[story["storyId"]].append(assumption_id)
     concerns = design_context.get("goLiveConcerns")
     if not isinstance(concerns, list) or any(not isinstance(item, dict) for item in concerns):
         raise ValueError("Story context must contain fixed Go-live Concern rows")
@@ -134,8 +135,9 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
     integrations = records(delivery, "integrations")
     assumptions = records(delivery, "assumptions")
     story_assumptions: dict[str, list[str]] = defaultdict(list)
-    for relation in records(delivery, "assumptionStories"):
-        story_assumptions[relation["storyId"]].append(relation["assumptionId"])
+    for story in stories:
+        if assumption_id := story.get("assumptionId"):
+            story_assumptions[story["storyId"]].append(assumption_id)
     lines = [
         "# 交付 Story 评审",
         "",
@@ -181,7 +183,7 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
                         item["storyId"],
                         item["acceptanceCriterionId"],
                         item["sequence"],
-                        item["result"],
+                        item["name"],
                         item.get("decisionGate", ""),
                     )
                 )
@@ -191,8 +193,8 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
             "",
             "## Integration",
             "",
-            "| Integration | Story | Source | Target | Trigger | Direction | Purpose | Owner |",
-            "|---|---|---|---|---|---|---|---|",
+            "| Integration | Name | Story | Source | Target | Trigger | Direction | Purpose | Owner |",
+            "|---|---|---|---|---|---|---|---|---|",
             *(
                 [
                     "| "
@@ -200,6 +202,7 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
                         cell(item.get(key, ""))
                         for key in (
                             "integrationId",
+                            "name",
                             "storyId",
                             "source",
                             "target",
@@ -212,7 +215,7 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
                     + " |"
                     for item in integrations
                 ]
-                or ["| NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE |"]
+                or ["| NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE |"]
             ),
             "",
             "## Assumption / Risk",

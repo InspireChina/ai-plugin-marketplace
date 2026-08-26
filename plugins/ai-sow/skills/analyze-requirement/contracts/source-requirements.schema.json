@@ -61,11 +61,15 @@
     "sourceDocument": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceDocumentId", "file", "originalName", "sha256"],
+      "required": ["sourceDocumentId", "name", "file", "originalName", "sha256"],
       "properties": {
         "sourceDocumentId": {
           "$ref": "#/$defs/sourceDocumentId",
           "description": "来源文件的稳定 ID；同一内容与语义保持不变时复用。"
+        },
+        "name": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "面向业务评审展示的非空来源名称；稳定 ID 仅用于结构化追溯。"
         },
         "file": {
           "allOf": [
@@ -88,7 +92,7 @@
     "normalizedItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["normalizedItemId", "sourceDocumentId", "title", "statement"],
+      "required": ["normalizedItemId", "sourceDocumentId", "name", "statement"],
       "properties": {
         "normalizedItemId": {
           "$ref": "#/$defs/normalizedItemId",
@@ -98,7 +102,7 @@
           "$ref": "#/$defs/sourceDocumentId",
           "description": "产生当前条目的已登记来源文件 ID。"
         },
-        "title": {
+        "name": {
           "$ref": "#/$defs/nonEmptyString",
           "description": "便于评审定位的简短业务主题，不写技术实现名称。"
         },

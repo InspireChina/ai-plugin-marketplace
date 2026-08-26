@@ -64,6 +64,7 @@
   "architectureDeltas": [
     {
       "architectureDeltaId": "delta-customer-profile",
+      "name": "调整客户档案组件",
       "changeType": "ADJUST",
       "designItemId": "design-customer-profile",
       "effectiveStartItemIds": ["effective-start-customer-profile"],
@@ -71,6 +72,7 @@
     },
     {
       "architectureDeltaId": "delta-membership-rules",
+      "name": "调整会员等级规则",
       "changeType": "ADJUST",
       "designItemId": "design-membership-rules",
       "effectiveStartItemIds": ["effective-start-member-master"],
@@ -78,6 +80,7 @@
     },
     {
       "architectureDeltaId": "delta-order-domain",
+      "name": "调整订单领域服务",
       "changeType": "ADJUST",
       "designItemId": "design-order-domain",
       "effectiveStartItemIds": ["effective-start-order-service"],
@@ -85,6 +88,7 @@
     },
     {
       "architectureDeltaId": "delta-integration-adapters",
+      "name": "采用企业级集成适配层",
       "changeType": "ADOPT",
       "designItemId": "design-integration-adapters",
       "effectiveStartItemIds": [
@@ -96,6 +100,7 @@
     },
     {
       "architectureDeltaId": "delta-store-workbench",
+      "name": "新建门店接单工作台",
       "changeType": "NEW",
       "designItemId": "design-store-workbench",
       "effectiveStartItemIds": [],
@@ -103,6 +108,7 @@
     },
     {
       "architectureDeltaId": "delta-finance-services",
+      "name": "新建财务服务",
       "changeType": "NEW",
       "designItemId": "design-finance-services",
       "effectiveStartItemIds": [],
@@ -110,6 +116,7 @@
     },
     {
       "architectureDeltaId": "delta-data-migration",
+      "name": "调整数据迁移方案",
       "changeType": "ADJUST",
       "designItemId": "design-data-migration",
       "effectiveStartItemIds": [
@@ -120,6 +127,7 @@
     },
     {
       "architectureDeltaId": "delta-release-platform",
+      "name": "调整发布平台",
       "changeType": "ADJUST",
       "designItemId": "design-release-platform",
       "effectiveStartItemIds": ["effective-start-deployment-platform"],
@@ -127,6 +135,7 @@
     },
     {
       "architectureDeltaId": "delta-observability",
+      "name": "调整可观测性能力",
       "changeType": "ADJUST",
       "designItemId": "design-observability",
       "effectiveStartItemIds": ["effective-start-monitoring-platform"],
@@ -134,6 +143,7 @@
     },
     {
       "architectureDeltaId": "delta-quality",
+      "name": "调整质量验证体系",
       "changeType": "ADJUST",
       "designItemId": "design-quality",
       "effectiveStartItemIds": ["effective-start-test-assets"],
@@ -143,7 +153,7 @@
   "decisions": [
     {
       "designDecisionId": "decision-profile-api",
-      "title": "公开客户档案 API",
+      "name": "公开客户档案 API",
       "decision": "使用专用 API 边界处理档案写入、查询和授权过滤。",
       "rationale": "会员门户与后续渠道需要统一边界，且会员主数据不能直接暴露。",
       "designItemIds": ["design-customer-profile"],
@@ -154,7 +164,7 @@
     },
     {
       "designDecisionId": "decision-order-state-machine",
-      "title": "订单状态由领域服务统一编排",
+      "name": "订单状态由领域服务统一编排",
       "decision": "门店与线上订单共用一个幂等状态机，渠道只提交命令并读取轨迹。",
       "rationale": "避免渠道各自维护状态导致履约、退款与财务口径分裂。",
       "designItemIds": ["design-order-domain", "design-store-workbench"],
@@ -170,7 +180,7 @@
     },
     {
       "designDecisionId": "decision-integration-boundary",
-      "title": "复用企业级连接并隔离外部差异",
+      "name": "复用企业级连接并隔离外部差异",
       "decision": "ERP、支付和发票平台均通过项目适配层接入，外部契约不进入订单核心模型。",
       "rationale": "便于独立认证、映射、错误补偿与供应商变更。",
       "designItemIds": ["design-integration-adapters"],
@@ -193,7 +203,7 @@
     },
     {
       "designDecisionId": "decision-finance-control",
-      "title": "财务指标与对账规则同源",
+      "name": "财务指标与对账规则同源",
       "decision": "日结差异、发票状态和经营指标由同一交易明细模型派生。",
       "rationale": "避免报表与对账使用不同过滤条件，确保金额可以逐笔追溯。",
       "designItemIds": ["design-finance-services"],
@@ -208,7 +218,7 @@
     },
     {
       "designDecisionId": "decision-production-release",
-      "title": "生产切换与业务功能解耦",
+      "name": "生产切换与业务功能解耦",
       "decision": "使用功能开关、分步切流和可执行回滚清单控制上线。",
       "rationale": "降低全渠道一次性切换风险并形成可签署的生产证据。",
       "designItemIds": ["design-release-platform"],
@@ -219,7 +229,7 @@
     },
     {
       "designDecisionId": "decision-data-migration",
-      "title": "迁移与生产切换分别估算",
+      "name": "迁移与生产切换分别估算",
       "decision": "迁移包含抽取、映射、加载和校验，切换仅负责执行窗口与回滚。",
       "rationale": "防止数据工程工作被隐藏在发布任务中并便于财务核算。",
       "designItemIds": ["design-data-migration"],
@@ -233,7 +243,7 @@
     },
     {
       "designDecisionId": "decision-observability-ownership",
-      "title": "监控指标与责任人同时交付",
+      "name": "监控指标与责任人同时交付",
       "decision": "每个核心指标都登记阈值、通知渠道、接收人和处置手册。",
       "rationale": "只有指标没有责任边界无法形成可落地的运营能力。",
       "designItemIds": ["design-observability"],
@@ -244,7 +254,7 @@
     },
     {
       "designDecisionId": "decision-quality-layers",
-      "title": "按风险分层验证",
+      "name": "按风险分层验证",
       "decision": "自动化回归、人工场景、性能、安全、兼容性和生产烟测分别建账。",
       "rationale": "便于区分 UAT 分母、工程质量活动和生产验证工作量。",
       "designItemIds": ["design-quality"],

@@ -130,6 +130,7 @@ DESIGN = {
     "architectureDeltas": [
         {
             "architectureDeltaId": "delta-customer-profile",
+            "name": "客户档案组件调整",
             "changeType": "ADJUST",
             "designItemId": "design-customer-profile",
             "effectiveStartItemIds": ["effective-start-customer-api"],
@@ -139,7 +140,7 @@ DESIGN = {
     "decisions": [
         {
             "designDecisionId": "decision-profile-api",
-            "title": "公开客户档案 API",
+            "name": "公开客户档案 API",
             "decision": "使用专用 API 边界处理客户档案操作。",
             "rationale": "客户门户和未来渠道需要统一边界。",
             "designItemIds": ["design-customer-profile"],
@@ -1000,7 +1001,7 @@ def test_rejects_technical_aggregate_integration_that_repeats_related_business_t
             "acceptanceCriterionId": "ac-customer-export",
             "storyId": "story-customer-export",
             "sequence": 1,
-            "result": "客户导出可取得完整结果。",
+            "name": "客户导出可取得完整结果。",
             "decisionGate": "REQUIRED",
             "approvalDecisionIds": ["decision-profile-api"],
         }
@@ -1009,6 +1010,7 @@ def test_rejects_technical_aggregate_integration_that_repeats_related_business_t
         [
             {
                 "integrationId": "integration-customer-profile-business",
+                "name": "客户档案接口集成",
                 "storyId": "story-customer-profile",
                 "source": "Customer Portal（客户门户）",
                 "target": "Customer API（客户接口）",
@@ -1022,6 +1024,7 @@ def test_rejects_technical_aggregate_integration_that_repeats_related_business_t
             },
             {
                 "integrationId": "integration-customer-export-business",
+                "name": "客户导出接口集成",
                 "storyId": "story-customer-export",
                 "source": "Customer Portal（客户门户）",
                 "target": "Customer Export API（客户导出接口）",
@@ -1077,9 +1080,11 @@ def test_review_stable_ids_are_an_order_independent_set(tmp_path: Path) -> None:
 def test_questionnaire_story_ids_are_an_order_independent_set(tmp_path: Path) -> None:
     prepare(tmp_path, questionnaire=questionnaire_bytes())
     delivery = json.loads((tmp_path / ".ai-sow/work/generate-story/delivery.candidate.json").read_text())
-    delivery["assumptionStories"].append(
-        {"assumptionId": "assumption-profile-hosting", "storyId": "story-customer-profile"}
-    )
+    next(
+        story
+        for story in delivery["stories"]
+        if story["storyId"] == "story-customer-profile"
+    )["assumptionId"] = "assumption-profile-hosting"
     write_bytes(
         tmp_path,
         ".ai-sow/work/generate-story/delivery.candidate.json",

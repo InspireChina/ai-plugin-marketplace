@@ -76,13 +76,11 @@ def task_review(
         for task in tasks
         if "integrationId" in task
     )
-    effective_starts = sorted(
-        {
-            identifier
-            for task in tasks
-            for identifier in task["matchedEffectiveStartItemIds"]
-        }
-    )
+    effective_starts = sorted({
+        task["matchedEffectiveStartItemId"]
+        for task in tasks
+        if task.get("matchedEffectiveStartItemId")
+    })
     impact = ""
     binding = ""
     if previous_story_hash is not None and current_story_hash is not None:

@@ -2,6 +2,7 @@
   "sourceDocuments": [
     {
       "sourceDocumentId": "source-document-customer-profile",
+      "name": "客户档案需求简报",
       "file": ".ai-sow/inputs/analyze-requirement/customer-profile.md",
       "originalName": "customer-profile.md",
       "sha256": "21613a2790bebc39d5d4c1c66073d6544bfbdefd1783cefef494633e82270e20"
@@ -11,19 +12,19 @@
     {
       "normalizedItemId": "norm-customer-profile-create",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "创建客户档案",
+      "name": "创建客户档案",
       "statement": "业务人员可以登记客户的基本资料并获得唯一客户编号。"
     },
     {
       "normalizedItemId": "norm-customer-profile-view",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "查询客户档案",
+      "name": "查询客户档案",
       "statement": "获授权的业务人员可以按客户编号查询已登记的客户资料。"
     },
     {
       "normalizedItemId": "norm-customer-profile-maintain",
       "sourceDocumentId": "source-document-customer-profile",
-      "title": "维护客户资料",
+      "name": "维护客户资料",
       "statement": "业务人员可以修正客户联系方式，并保留变更责任人和变更时间。"
     }
   ],

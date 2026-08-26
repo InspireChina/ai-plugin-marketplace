@@ -3,14 +3,13 @@
   "$id": "urn:ai-sow:generate-story:delivery:0.2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["gaps", "stories", "acceptanceCriteria", "integrations", "assumptions", "assumptionStories"],
+  "required": ["gaps", "stories", "acceptanceCriteria", "integrations", "assumptions"],
   "properties": {
     "gaps": {"type": "array", "items": {"$ref": "#/$defs/gap"}, "description": "每个 IN_SCOPE Feature 相对 Effective Start 和待延续 Commitment 的可交付差距。"},
     "stories": {"type": "array", "items": {"$ref": "#/$defs/story"}, "description": "把 Delivery Gap 拆成可独立交付、验收和结算的结果型 Story。"},
     "acceptanceCriteria": {"type": "array", "items": {"$ref": "#/$defs/acceptanceCriterion"}, "description": "按 Story 有序列出的独立、可观察且可判定通过或不通过的验收结果。"},
     "integrations": {"type": "array", "items": {"$ref": "#/$defs/integration"}, "description": "有证据支持并由 Story 交付的集成边界、方向、责任与设计决策关系。"},
-    "assumptions": {"type": "array", "items": {"$ref": "#/$defs/assumption"}, "description": "影响交付的独立 Assumption 或 Risk；相同语义只保存一条。"},
-    "assumptionStories": {"type": "array", "items": {"$ref": "#/$defs/assumptionStory"}, "description": "Assumption/Risk 与一个或多个受影响 Story 的去重关系。"}
+    "assumptions": {"type": "array", "items": {"$ref": "#/$defs/assumption"}, "description": "供 Story 单项引用的 Assumption 或 Risk；同一条目可以被多个 Story 引用。"}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
@@ -37,9 +36,10 @@
     "integration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["integrationId", "storyId", "source", "target", "trigger", "direction", "purpose", "owner", "deliveryBoundary", "targetKind", "decisionIds"],
+      "required": ["integrationId", "name", "storyId", "source", "target", "trigger", "direction", "purpose", "owner", "deliveryBoundary", "targetKind", "decisionIds"],
       "properties": {
         "integrationId": {"$ref": "#/$defs/integrationId", "description": "由 Story Owner 维护并供后续 Integration Task 引用的稳定 ID。"},
+        "name": {"type": "string", "minLength": 1, "description": "面向业务评审展示的集成名称。"},
         "storyId": {"$ref": "#/$defs/storyId", "description": "交付该集成结果和责任边界的 Story ID。"},
         "source": {"type": "string", "minLength": 1, "description": "集成交换的发送方系统、组件或参与者。"},
         "target": {"type": "string", "minLength": 1, "description": "集成交换的单一接收端口、适配器、系统或提供方；横切 TECHNICAL Story 不聚合相关 BUSINESS Story 已登记的多个提供方目标。"},
@@ -61,6 +61,7 @@
         "gapId": {"$ref": "#/$defs/gapId", "description": "该 Story 独立解决的 Delivery Gap ID。"},
         "name": {"type": "string", "minLength": 1, "description": "以可交付业务或技术结果命名的 Story 标题。"},
         "description": {"type": "string", "minLength": 1, "description": "说明完成后可观察的结果与责任边界，不描述实现 Task。"},
+        "assumptionId": {"$ref": "#/$defs/assumptionId", "description": "可选：最能证明该 Story 不确定性的一条 Assumption/Risk ID；同一条目可以被多个 Story 引用。"},
         "uatRelevant": {"type": "boolean", "description": "该 Story 是否属于获批业务 UAT 分母；纯技术上线工作通常不属于。"},
         "requiredIntegrationBoundary": {"type": "string", "enum": ["NONE", "PORT_ONLY", "END_TO_END"], "description": "该 Story 是否必须交付集成，以及止于端口还是端到端目标。"}
       }
@@ -68,12 +69,12 @@
     "acceptanceCriterion": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["acceptanceCriterionId", "storyId", "sequence", "result", "decisionGate", "approvalDecisionIds"],
+      "required": ["acceptanceCriterionId", "storyId", "sequence", "name", "decisionGate", "approvalDecisionIds"],
       "properties": {
         "acceptanceCriterionId": {"$ref": "#/$defs/acceptanceCriterionId", "description": "由 Story Owner 维护并供 Task 覆盖引用的稳定 AC ID。"},
         "storyId": {"$ref": "#/$defs/storyId", "description": "该验收结果所属的 Story ID。"},
         "sequence": {"type": "integer", "minimum": 1, "description": "同一 Story 内评审和验收该结果的连续顺序。"},
-        "result": {"type": "string", "minLength": 1, "description": "可独立观察并明确判定通过或不通过的结果。"},
+        "name": {"type": "string", "minLength": 1, "description": "可独立观察并明确判定通过或不通过的验收条件名称。"},
         "decisionGate": {"type": "string", "enum": ["NOT_REQUIRED", "REQUIRED"], "description": "达成该结果是否必须先取得已列明 Design Decision 的批准。"},
         "approvalDecisionIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/designDecisionId"}, "description": "该 AC 通过前必须获批的 Design Decision ID；无需决策时为空。"}
       },
@@ -100,15 +101,6 @@
         "responsibilityBoundary": {"type": "string", "minLength": 1, "description": "明确由哪一方提供决定、证据、修复或范围变更。"},
         "status": {"type": "string", "enum": ["已明确", "待确认"], "description": "该假设或风险的责任与处置是否已经确认。"},
         "handling": {"type": "string", "minLength": 1, "description": "说明接受、缓解、升级或由 Story 解决的方式；消费问卷默认项时保留 Question ID 锚点。"}
-      }
-    },
-    "assumptionStory": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["assumptionId", "storyId"],
-      "properties": {
-        "assumptionId": {"$ref": "#/$defs/assumptionId", "description": "被关联且只保存一次的 Assumption/Risk ID。"},
-        "storyId": {"$ref": "#/$defs/storyId", "description": "受该 Assumption/Risk 影响或负责其处置的 Story ID。"}
       }
     }
   }

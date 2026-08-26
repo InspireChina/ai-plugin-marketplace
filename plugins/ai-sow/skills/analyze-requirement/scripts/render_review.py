@@ -80,7 +80,7 @@ def render(
         "|---|---|---|---|",
         *[
             f"| {cell(item['normalizedItemId'])} | {cell(item['sourceDocumentId'])} | "
-            f"{cell(item['title'])} | {cell(item['statement'])} |"
+            f"{cell(item['name'])} | {cell(item['statement'])} |"
             for item in normalized
         ],
         "",

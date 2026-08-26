@@ -63,6 +63,7 @@ def requirements_payload() -> dict[str, Any]:
         "sourceDocuments": [
             {
                 "sourceDocumentId": "source-document-customer-profile",
+                "name": "客户档案需求输入",
                 "file": ".ai-sow/inputs/analyze-requirement/customer-profile.txt",
                 "originalName": "customer-profile.txt",
                 "sha256": hashlib.sha256(SOURCE_BYTES).hexdigest(),
@@ -72,7 +73,7 @@ def requirements_payload() -> dict[str, Any]:
             {
                 "normalizedItemId": "norm-customer-profile",
                 "sourceDocumentId": "source-document-customer-profile",
-                "title": "客户档案",
+                "name": "客户档案",
                 "statement": "客户需要维护客户档案。",
             }
         ],
@@ -579,6 +580,7 @@ def test_requirement_output_structure_change_is_stale(tmp_path: Path) -> None:
     requirements["sourceDocuments"].append(
         {
             "sourceDocumentId": "source-document-late",
+            "name": "后补需求输入",
             "file": ".ai-sow/inputs/analyze-requirement/late.txt",
             "originalName": "late.txt",
             "sha256": "0" * 64,
@@ -675,6 +677,7 @@ def test_registered_repository_document_anchor_is_attested(tmp_path: Path) -> No
     payload["evidence"].append(
         {
             "evidenceId": "evidence-operations-document",
+            "name": "运维测试资产文档",
             "kind": "DOCUMENT",
             "reference": "service-api:docs/operations.md",
             "summary": "仓库文档记录了当前运维测试资产。",
@@ -778,12 +781,19 @@ def test_frozen_anchor_mutation_returns_anchor_missing(tmp_path: Path) -> None:
     mutation = next(case for case in descriptor["negativeCases"] if case["caseId"] == "N10")
     evidence_id = mutation["mutation"]["selector"]["evidenceId"]
     payload["analysisScope"]["repositorySnapshots"].append(
-        {"repoId": "customer-portal", "path": "repositories/customer-portal", "revision": "c" * 40, "dirty": False}
+        {
+            "repoId": "customer-portal",
+            "name": "客户门户代码仓库",
+            "path": "repositories/customer-portal",
+            "revision": "c" * 40,
+            "dirty": False,
+        }
     )
     (tmp_path / "repositories/customer-portal").mkdir()
     payload["evidence"].append(
         {
             "evidenceId": evidence_id,
+            "name": "冻结描述符缺失代码证据",
             "kind": "CODE",
             "reference": mutation["mutation"]["value"],
             "summary": "冻结描述符用于验证缺失代码 anchor 会被阻断。",
@@ -842,6 +852,7 @@ def test_selected_confirmed_questionnaire_compiles_to_evidence(tmp_path: Path) -
     payload["evidence"].append(
         {
             "evidenceId": "evidence-retention-decision",
+            "name": "客户档案保留期决定",
             "kind": "QUESTIONNAIRE",
             "reference": "questionnaire:data-03",
             "summary": "数据治理团队确认客户档案保留三年，自 2026-08-25 生效。",
@@ -884,6 +895,7 @@ def test_questionnaire_rejects_unknown_catalog_id_and_review_record_mismatch(tmp
     payload["evidence"].append(
         {
             "evidenceId": "evidence-fake-question",
+            "name": "未知问卷问题证据",
             "kind": "QUESTIONNAIRE",
             "reference": "questionnaire:fake-99",
             "summary": "该记录故意使用不属于权威目录的问题 ID。",
@@ -1005,6 +1017,7 @@ def test_rebind_requires_exact_stable_id_tokens(tmp_path: Path) -> None:
     payload["evidence"].append(
         {
             "evidenceId": "evidence-greenfield-requirement-extra",
+            "name": "补充业务需求证据",
             "kind": "DOCUMENT",
             "reference": "requirements:feature-customer-profile",
             "summary": "第二条证据用于验证稳定 ID 必须按完整 token 核对。",

@@ -28,9 +28,10 @@
     "architectureDelta": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["architectureDeltaId", "changeType", "designItemId", "effectiveStartItemIds", "summary"],
+      "required": ["architectureDeltaId", "name", "changeType", "designItemId", "effectiveStartItemIds", "summary"],
       "properties": {
         "architectureDeltaId": {"$ref": "#/$defs/id", "description": "稳定识别一项目标架构变化的 Design Owner ID。"},
+        "name": {"type": "string", "minLength": 1, "description": "面向评审展示的架构变化名称。"},
         "changeType": {"type": "string", "enum": ["NEW", "ADOPT", "ADJUST", "REPLACE", "RETIRE"], "description": "目标设计对现状起点采取的新建、采用、调整、替换或退役方式。"},
         "designItemId": {"$ref": "#/$defs/id", "description": "承载这项架构变化的目标 Design Item ID。"},
         "effectiveStartItemIds": {"$ref": "#/$defs/idArray", "description": "被采用或改变的 As-Is Effective Start ID；全新建设时为空。"},
@@ -46,10 +47,10 @@
     "decision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["designDecisionId", "title", "decision", "rationale", "designItemIds", "effectiveStartItemIds", "relatedFeatureIds", "decisionKind", "evidenceIds"],
+      "required": ["designDecisionId", "name", "decision", "rationale", "designItemIds", "effectiveStartItemIds", "relatedFeatureIds", "decisionKind", "evidenceIds"],
       "properties": {
         "designDecisionId": {"$ref": "#/$defs/id", "description": "由 Design Owner 维护并供派生技术需求引用的稳定决策 ID。"},
-        "title": {"type": "string", "minLength": 1, "description": "清楚概括待评审技术选择的决策标题。"},
+        "name": {"type": "string", "minLength": 1, "description": "清楚概括待评审技术选择的决策名称。"},
         "decision": {"type": "string", "minLength": 1, "description": "已经选择的具体技术边界、责任、阈值或运行方式。"},
         "rationale": {"type": "string", "minLength": 1, "description": "基于需求、现状和证据说明为何采用该选择及其取舍。"},
         "designItemIds": {"$ref": "#/$defs/nonEmptyIdArray", "description": "落实该决策的目标 Design Item ID。"},

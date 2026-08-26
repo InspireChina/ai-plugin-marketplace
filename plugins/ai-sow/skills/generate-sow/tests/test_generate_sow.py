@@ -17,6 +17,7 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = SKILL_ROOT.parents[1]
 SCRIPT = SKILL_ROOT / "scripts/generate_sow.py"
 FIXTURE = SKILL_ROOT / "fixtures/project"
+REFERENCE_WORKBOOK = PLUGIN_ROOT / "docs/reference/SOW估算与生成示例_v1.3.xlsx"
 TABLES = {
     "EpicTable",
     "FeatureTable",
@@ -91,6 +92,7 @@ def test_receipt_only_generation_is_deterministic_and_reuses_identical_package(t
     first_package = first_project / str(first_result["packagePath"])
     second_package = second_project / str(second_result["packagePath"])
     assert package_tree(first_package) == package_tree(second_package)
+    assert (first_package / "sow.xlsx").read_bytes() == REFERENCE_WORKBOOK.read_bytes()
 
     repeated, repeated_result = run_generator(first_project)
     assert repeated.returncode == 0
@@ -288,6 +290,7 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
         assert TABLES.issubset(index)
         requirements = json.loads((project / ".ai-sow/data/analyze-requirement/requirements.json").read_text())
         technical = json.loads((project / ".ai-sow/data/generate-design/requirements.json").read_text())
+        asis = json.loads((project / ".ai-sow/data/analyze-as-is/asis.json").read_text())
         delivery = json.loads((project / ".ai-sow/data/generate-story/delivery.json").read_text())
         estimate = json.loads((project / ".ai-sow/data/generate-task/estimate.json").read_text())
         expected_counts = {
@@ -309,6 +312,74 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
             ]
             if name in {"SOWStoryTable", "TaskTable"}:
                 assert formulas
+
+        def rows(table_name: str) -> list[dict[str, object]]:
+            worksheet, table = index[table_name]
+            min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+            headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+            return [
+                {
+                    str(header): worksheet.cell(row, column).value
+                    for header, column in zip(headers, range(min_col, max_col + 1), strict=True)
+                }
+                for row in range(min_row + 1, max_row + 1)
+            ]
+
+        business_headers = {
+            header
+            for table_name in TABLES
+            for header in rows(table_name)[0]
+        }
+        assert not {header for header in business_headers if header.endswith("ID")}
+        task_rows = rows("TaskTable")
+        effective_start_names = {
+            item["effectiveStartItemId"]: item["name"]
+            for item in asis["effectiveStartItems"]
+        }
+        expected_system_names = {
+            effective_start_names[task["matchedEffectiveStartItemId"]]
+            for task in estimate["tasks"]
+            if task.get("matchedEffectiveStartItemId")
+        }
+        assert {row["系统现状名称"] for row in task_rows if row["系统现状名称"]} == expected_system_names
+        assert all(not str(row["基础单元名称"]).startswith("BU-") for row in task_rows)
+
+        task_names = {task["taskId"]: task["name"] for task in estimate["tasks"]}
+        integration_rows = rows("IntegrationTable")
+        assert {row["集成任务名称"] for row in integration_rows} == {
+            task_names[next(task["taskId"] for task in estimate["tasks"] if task.get("integrationId") == integration["integrationId"])]
+            for integration in delivery["integrations"]
+        }
+        assert {row["方向"] for row in integration_rows}.issubset({"入站", "出站"})
+        assert {row["责任边界"] for row in integration_rows}.issubset({"内部", "外部"})
+        assert {row["需求类型"] for row in rows("EpicTable")}.issubset({"业务", "技术"})
+        feature_rows = rows("FeatureTable")
+        assert {row["来源类型"] for row in feature_rows}.issubset({"来源输入", "设计派生"})
+        projected_features = {row["子需求名称"]: row for row in feature_rows}
+        decision_names = {
+            decision["designDecisionId"]: decision["name"]
+            for decision in json.loads(
+                (project / ".ai-sow/data/generate-design/design.json").read_text()
+            )["decisions"]
+        }
+        for feature in technical["features"]:
+            rationale = str(projected_features[feature["name"]]["推断理由"])
+            for decision_id in feature["source"].get("designDecisionIds", []):
+                assert decision_id not in rationale
+                assert decision_names[decision_id] in rationale
+        asis_detail_rows = rows("AsIsDetailTable")
+        assert "证据引用" not in asis_detail_rows[0]
+        integration_relations = {
+            str(row["关系/流向"])
+            for row in asis_detail_rows
+            if row["记录类型"] == "现状事实" and row["分类/状态"] == "集成"
+        }
+        assert integration_relations
+        assert all("方向：入站" in value or "方向：出站" in value for value in integration_relations)
+        assert all("INBOUND" not in value and "OUTBOUND" not in value for value in integration_relations)
+        assert list(rows("AssumptionRiskTable")[0]) == [
+            "假设/风险名称", "类型", "触发条件", "责任边界", "状态", "处理方式"
+        ]
         assert workbook.calculation.calcMode == "auto"
         projected_hashes = {
             workbook["00-使用说明"].cell(row, 1).value: workbook["00-使用说明"].cell(row, 2).value
@@ -345,6 +416,22 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
         "generateTask",
     }
     assert set(manifest["validationReceipts"]) == set(manifest["reviews"])
+    assert manifest["repositories"] == [
+        {
+            "repoId": item["repoId"],
+            "name": item["name"],
+            "setupRevision": item["revision"],
+        }
+        for item in asis["analysisScope"]["repositorySnapshots"]
+    ]
+    assert manifest["priorSows"] == [
+        {
+            "priorSowId": item["priorSowId"],
+            "name": item["name"],
+            "sha256": item["sha256"],
+        }
+        for item in asis["analysisScope"]["priorSowSnapshots"]
+    ]
     schema = json.loads((SKILL_ROOT / "contracts/manifest.schema.json").read_text(encoding="utf-8"))
     assert schema["$id"] == "urn:ai-sow:generate-sow:manifest:0.2"
 
