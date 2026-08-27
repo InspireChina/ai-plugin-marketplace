@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from io import BytesIO
 from pathlib import Path
 
@@ -19,6 +20,122 @@ BOOTSTRAP_SH = SKILL_ROOT / "scripts/bootstrap.sh"
 BOOTSTRAP_PS1 = SKILL_ROOT / "scripts/bootstrap.ps1"
 TEMPLATE = SKILL_ROOT / "assets/sow-template.xlsx"
 POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
+POSIX_SHELL = "/bin/sh" if Path("/bin/sh").is_file() else None
+
+
+def _symlink_supported() -> bool:
+    """Windows only allows symlink creation under Developer Mode or elevation."""
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        try:
+            (root / "link").symlink_to(root / "target", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return False
+    return True
+
+
+requires_posix_shell = pytest.mark.skipif(
+    POSIX_SHELL is None, reason="POSIX shell is unavailable on this platform"
+)
+requires_symlinks = pytest.mark.skipif(
+    not _symlink_supported(),
+    reason="creating symlinks requires Developer Mode or elevation on this platform",
+)
+
+
+ENABLE_LONG_PATHS = SKILL_ROOT / "scripts/enable_long_paths.ps1"
+
+
+def test_long_path_remedy_requires_explicit_consent_and_elevation() -> None:
+    """启用长路径会改机器级系统策略，SKILL 必须要求先取得用户明确同意。"""
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    for required in (
+        "WINDOWS_LONG_PATH_REQUIRED",
+        "取得用户明确同意后才能执行",
+        "enable_long_paths.ps1",
+        "-Apply",
+        "管理员权限",
+    ):
+        assert required in skill
+
+    script = ENABLE_LONG_PATHS.read_text(encoding="utf-8")
+    # 不传 -Apply 只报告；写入前必须先确认已提权。
+    assert "[switch]$Apply" in script
+    assert "Test-Administrator" in script
+    apply_index = script.index("New-ItemProperty")
+    assert script.index("Test-Administrator") < apply_index
+    assert ENABLE_LONG_PATHS.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell is unavailable on this platform")
+def test_enable_long_paths_without_apply_makes_no_change() -> None:
+    result = subprocess.run(
+        [
+            str(POWERSHELL),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(ENABLE_LONG_PATHS),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["outcome"] in {"OK", "NEEDS_INPUT"}
+    if payload["outcome"] == "NEEDS_INPUT":
+        assert payload["longPathsEnabled"] is False
+        assert "明确同意" in payload["nextStep"]
+        assert result.returncode == 1
+    else:
+        assert payload["longPathsEnabled"] is True
+        assert result.returncode == 0
+
+
+def test_setup_blocks_long_project_root_before_writing_anything(tmp_path: Path) -> None:
+    """预算不足时必须 fail closed：返回结构化诊断且不创建 .ai-sow。"""
+    sys.path.insert(0, str(SKILL_ROOT.parents[1]))
+    sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+    from runtime.project_io import managed_path_budget
+    from setup import DEEPEST_MANAGED_RELATIVE_PATH
+
+    project_root = tmp_path
+    for _ in range(3):
+        project_root = project_root / ("d" * 60)
+    project_root.mkdir(parents=True)
+
+    budget = managed_path_budget(project_root)
+    if budget is None or budget >= len(DEEPEST_MANAGED_RELATIVE_PATH):
+        pytest.skip("this platform does not enforce MAX_PATH for the probe path")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--project-root",
+            str(project_root),
+            "--project-id",
+            "long-path-probe",
+            "--name",
+            "长路径探针",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["outcome"] == "BLOCKED"
+    assert [item["code"] for item in payload["diagnostics"]] == [
+        "WINDOWS_LONG_PATH_REQUIRED"
+    ]
+    assert "enable_long_paths.ps1" in payload["nextStep"]
+    assert not (project_root / ".ai-sow").exists()
 
 
 def test_skill_uses_current_stage_without_leaf_agents() -> None:
@@ -46,17 +163,60 @@ def test_bootstrap_scripts_pin_official_uv_and_avoid_admin_install() -> None:
     for text in (unix, windows):
         assert "https://astral.sh/uv/0.11.7/install" in text
         assert "UV_UNMANAGED_INSTALL" in text
-        assert "python install 3.12" in text
+        # sh 传字面量 `python install 3.12`，PowerShell 传数组 `"python", "install", "3.12"`。
+        assert re.search(r'python["\s,]+install["\s,]+3\.12', text)
         assert "sync" in text and "--locked" in text and "--python" in text
         assert "sudo" not in text.lower()
-    assert subprocess.run(
-        ["/bin/sh", "-n", str(BOOTSTRAP_SH)],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).returncode == 0
+    if POSIX_SHELL is not None:
+        assert subprocess.run(
+            [POSIX_SHELL, "-n", str(BOOTSTRAP_SH)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        ).returncode == 0
     assert r"(?:\s|$)" in windows
     assert r"(?:\\s|$)" not in windows
+
+
+def test_windows_bootstrap_is_utf8_bom_encoded_and_pins_console_encoding() -> None:
+    """Windows PowerShell 按 ANSI 代码页读取无 BOM 的 .ps1，会破坏中文诊断甚至导致解析失败。"""
+    assert BOOTSTRAP_PS1.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert not BOOTSTRAP_SH.read_bytes().startswith(b"\xef\xbb\xbf")
+    windows = BOOTSTRAP_PS1.read_text(encoding="utf-8")
+    assert "[Console]::OutputEncoding" in windows
+    assert "PYTHONUTF8" in windows
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell is unavailable on this platform")
+def test_windows_bootstrap_parses_under_powershell(tmp_path: Path) -> None:
+    probe = tmp_path / "parse-probe.ps1"
+    probe.write_text(
+        "param([string]$Path)\n"
+        "$errors = $null\n"
+        "[void][System.Management.Automation.Language.Parser]::ParseFile("
+        "$Path, [ref]$null, [ref]$errors)\n"
+        "if ($errors) { $errors | ForEach-Object { $_.Message }; exit 1 }\n",
+        encoding="ascii",
+    )
+
+    result = subprocess.run(
+        [
+            str(POWERSHELL),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(probe),
+            "-Path",
+            str(BOOTSTRAP_PS1),
+        ],
+        capture_output=True,
+        text=True, encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell is unavailable on this platform")
@@ -78,7 +238,7 @@ def test_powershell_uv_version_matcher_accepts_platform_suffix(tmp_path: Path) -
     result = subprocess.run(
         [str(POWERSHELL), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(probe)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -86,6 +246,7 @@ def test_powershell_uv_version_matcher_accepts_platform_suffix(tmp_path: Path) -
     assert result.stdout.strip().lower() == "true"
 
 
+@requires_posix_shell
 def test_unix_bootstrap_creates_plugin_venv_with_existing_uv(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     script = plugin_root / "skills/setup/scripts/bootstrap.sh"
@@ -148,7 +309,7 @@ fi
     result = subprocess.run(
         ["/bin/sh", str(script)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
         env=env,
     )
@@ -164,6 +325,7 @@ fi
     assert (plugin_root / ".venv/bin/python").is_file()
 
 
+@requires_posix_shell
 def test_unix_bootstrap_installs_private_uv_when_path_has_none(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     script = plugin_root / "skills/setup/scripts/bootstrap.sh"
@@ -247,7 +409,7 @@ cp "$FAKE_INSTALLER" "$output"
     result = subprocess.run(
         ["/bin/sh", str(script)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
         env=env,
     )
@@ -260,6 +422,7 @@ cp "$FAKE_INSTALLER" "$output"
     assert (plugin_root / ".venv/bin/python").is_file()
 
 
+@requires_posix_shell
 def test_unix_bootstrap_failure_does_not_create_project_shell(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     script = plugin_root / "skills/setup/scripts/bootstrap.sh"
@@ -300,7 +463,7 @@ exit 0
             "零预装环境",
         ],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
         env={**os.environ, "PATH": f"{fake_bin}:/usr/bin:/bin"},
     )
@@ -333,7 +496,7 @@ def run_setup(
     return subprocess.run(
         command,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
         cwd=project_root,
         env=os.environ,
@@ -374,7 +537,7 @@ def test_setup_creates_exact_minimal_project_shell(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)
     assert payload["outcome"] == "OK"
-    assert json.loads((tmp_path / ".ai-sow/project.json").read_text()) == {
+    assert json.loads((tmp_path / ".ai-sow/project.json").read_text(encoding="utf-8")) == {
         "projectId": "bookstore-modernization",
         "name": "在线书店 2.0",
         "pluginVersion": "0.1.0",
@@ -415,9 +578,9 @@ def test_incomplete_existing_project_blocks_without_repair(tmp_path: Path, missi
 def test_existing_identity_conflict_blocks(tmp_path: Path) -> None:
     assert run_setup(tmp_path).returncode == 0
     project = tmp_path / ".ai-sow/project.json"
-    value = json.loads(project.read_text())
+    value = json.loads(project.read_text(encoding="utf-8"))
     value["name"] = "其他项目"
-    project.write_text(json.dumps(value, ensure_ascii=False))
+    project.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
     result = run_setup(tmp_path)
     assert result.returncode == 2
     assert json.loads(result.stdout)["outcome"] == "BLOCKED"
@@ -449,6 +612,7 @@ def test_existing_corrupt_project_template_blocks_without_overwrite(tmp_path: Pa
     assert template.read_bytes() == b"conflict"
 
 
+@requires_symlinks
 def test_fresh_setup_rejects_symlink_in_managed_path(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside"
     outside.mkdir()

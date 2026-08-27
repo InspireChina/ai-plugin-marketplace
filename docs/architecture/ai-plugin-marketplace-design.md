@@ -13,7 +13,7 @@
 - Marketplace 展示名：`AI Plugin Marketplace`
 - 首个插件 ID 与目录名：`ai-sow`
 - 插件展示名：`AI SOW`
-- Publisher：`Yuan Li`
+- Publisher：`Inspire`
 - 目标稳定版本：`0.1.0`；SOW 标准版本：`1.3`
 - Marketplace 条目分类：`Productivity`
 - 安装策略：`AVAILABLE`
@@ -28,6 +28,7 @@
 ```text
 ai-plugin-marketplace/
 ├── .agents/plugins/marketplace.json
+├── .claude-plugin/marketplace.json
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
 │   ├── pull_request_template.md
@@ -40,6 +41,7 @@ ai-plugin-marketplace/
 ├── plugins/
 │   └── ai-sow/
 │       ├── .codex-plugin/plugin.json
+│       ├── .claude-plugin/plugin.json
 │       ├── skills/
 │       ├── docs/
 │       ├── pyproject.toml
@@ -101,7 +103,10 @@ setup 与后续 Skill 按以下规则运行脚本：
 
 ## Marketplace 元数据
 
-`.agents/plugins/marketplace.json` 包含：
+仓库同时发布两份 marketplace 目录，指向同一组插件目录。任一宿主只读取自己的那一份，
+但两份必须发布相同的插件名和相同的来源路径，由 `scripts/validate_repository.py` 强制校验。
+
+`.agents/plugins/marketplace.json`（Codex）包含：
 
 - 顶层 `name: "ai-plugin-marketplace"`
 - `interface.displayName: "AI Plugin Marketplace"`
@@ -109,11 +114,22 @@ setup 与后续 Skill 按以下规则运行脚本：
 - 本地 source：`./plugins/ai-sow`
 - 完整的 installation、authentication 和 category 字段
 
+`.claude-plugin/marketplace.json`（Claude Code）包含：
+
+- 顶层 `name: "ai-plugin-marketplace"`
+- `owner.name`
+- 一个 `ai-sow` 条目，`source` 为相对路径字符串 `./plugins/ai-sow`
+
+插件侧同样是两份 manifest：`.codex-plugin/plugin.json` 与 `.claude-plugin/plugin.json`。
+两者的 `name`、`version` 和 `description` 必须一致；Codex 特有的 `interface` 块和 Claude Code
+特有的 `homepage`/`repository`/`license` 字段各自保留。Skill 目录 `skills/<name>/SKILL.md`
+两个宿主共用，不做复制。
+
 条目顺序就是展示顺序。后续插件默认追加，不自动重排。`policy.products` 在没有明确产品限制时省略。
 
 ## 开源治理与许可证
 
-仓库和 AI SOW 插件使用 Apache License 2.0。插件包内保留独立 `LICENSE` 与 `NOTICE`，保证插件目录单独分发时仍携带授权信息。版权声明使用 `Copyright 2026 Yuan Li`。
+仓库和 AI SOW 插件使用 Apache License 2.0。插件包内保留独立 `LICENSE` 与 `NOTICE`，保证插件目录单独分发时仍携带授权信息。版权声明使用 `Copyright 2026 Inspire`。
 
 本发布将项目代码、项目原创说明、SOW 模板和示例视为同一项目的可发布资产。Python 依赖只在运行时解析，不 vendoring 到仓库；`NOTICE` 说明主要依赖及其许可证，不复制依赖源码。
 

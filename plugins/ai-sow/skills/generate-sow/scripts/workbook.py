@@ -81,6 +81,11 @@ RISKY_TEXT = re.compile(r"^[=+\-@]")
 BARE_TEXTJOIN = re.compile(r"(?<![\w.])TEXTJOIN\(")
 DETERMINISTIC_TIME = dt.datetime(2000, 1, 1, 0, 0, 0)
 DETERMINISTIC_ZIP_TIME = (2000, 1, 1, 0, 0, 0)
+# zipfile 按运行平台写入宿主标记（Unix 3 / Windows 0），openpyxl 从临时文件流出的条目还会
+# 带上该文件的权限位。两者都与输入无关，必须钉死，否则同一份已批准数据在不同平台生成的
+# 工作簿字节不同，package 复用和 manifest 绑定会失效。
+DETERMINISTIC_CREATE_SYSTEM = 3
+DETERMINISTIC_UNIX_MODE = 0o600
 
 
 def safe_text(value: object) -> object:
@@ -715,6 +720,11 @@ def verify_workbook(
         workbook.close()
 
 
+def deterministic_external_attr(external_attr: int) -> int:
+    """Keep an entry's file-type and DOS bits, but pin its Unix mode to a fixed value."""
+    return (external_attr & 0xFFFF0000) & ~(0o777 << 16) | (DETERMINISTIC_UNIX_MODE << 16)
+
+
 def normalize_xlsx(path: Path) -> None:
     """Normalize ZIP metadata so identical inputs produce identical XLSX bytes."""
     with zipfile.ZipFile(path, "r") as source:
@@ -741,8 +751,8 @@ def normalize_xlsx(path: Path) -> None:
             for name, payload, original in sorted(members, key=lambda item: item[0]):
                 entry = zipfile.ZipInfo(name, DETERMINISTIC_ZIP_TIME)
                 entry.compress_type = zipfile.ZIP_DEFLATED
-                entry.create_system = original.create_system
-                entry.external_attr = original.external_attr
+                entry.create_system = DETERMINISTIC_CREATE_SYSTEM
+                entry.external_attr = deterministic_external_attr(original.external_attr)
                 entry.flag_bits = original.flag_bits
                 target.writestr(entry, payload)
         os.replace(temporary, path)

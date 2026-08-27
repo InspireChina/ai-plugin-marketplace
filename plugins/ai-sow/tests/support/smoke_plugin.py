@@ -18,6 +18,7 @@ def run_command(command: list[str], cwd: Path) -> dict[str, object]:
         command,
         cwd=cwd,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=False,
     )
@@ -37,6 +38,16 @@ def run_command(command: list[str], cwd: Path) -> dict[str, object]:
         if isinstance(payload, dict):
             return payload
     return {"outcome": "OK", "stdout": completed.stdout}
+
+
+def plugin_uv_command(plugin_root: Path) -> str:
+    """Resolve uv the way the runtime contract does: plugin-local copy first, then PATH."""
+    local_uv = plugin_root / ".ai-sow-tools" / "bin" / (
+        "uv.exe" if os.name == "nt" else "uv"
+    )
+    if local_uv.is_file():
+        return str(local_uv)
+    return shutil.which("uv") or "uv"
 
 
 def plugin_python_command(
@@ -104,7 +115,13 @@ def run_smoke(
     greenfield.mkdir(parents=True, exist_ok=True)
 
     sync_result = run_command(
-        ["uv", "sync", "--project", str(active_plugin), "--locked"],
+        [
+            plugin_uv_command(source_plugin),
+            "sync",
+            "--project",
+            str(active_plugin),
+            "--locked",
+        ],
         cwd=greenfield,
     )
     _require_ok(sync_result, "uv sync")

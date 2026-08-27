@@ -34,6 +34,47 @@ def _is_unsafe(snapshot: os.stat_result) -> bool:
     return stat.S_ISLNK(snapshot.st_mode) or _is_reparse(snapshot)
 
 
+# 未启用长路径支持的 Windows 把路径限制在 MAX_PATH 之内。调用方用 managed_path_budget
+# 计算某个根目录还能容纳多长的相对路径，并自行决定所需长度。
+WINDOWS_MAX_PATH = 260
+_ERROR_FILENAME_EXCED_RANGE = 206
+_LONG_PATH_KEY = r"SYSTEM\CurrentControlSet\Control\FileSystem"
+
+
+def windows_long_paths_enabled() -> bool:
+    """Report whether this machine lets processes use paths beyond MAX_PATH."""
+    if os.name != "nt":
+        return True
+    try:
+        import winreg
+    except ImportError:
+        return False
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _LONG_PATH_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, "LongPathsEnabled")
+    except OSError:
+        return False
+    return bool(value)
+
+
+def managed_path_budget(root: Path) -> int | None:
+    """Return the managed-suffix length `root` still allows, or None when unlimited."""
+    if os.name != "nt" or windows_long_paths_enabled():
+        return None
+    return WINDOWS_MAX_PATH - len(str(Path(root).absolute())) - 1
+
+
+def _path_too_long(error: OSError, relative_path: str) -> "ProjectIOError | None":
+    if getattr(error, "winerror", None) != _ERROR_FILENAME_EXCED_RANGE:
+        return None
+    return ProjectIOError(
+        "PROJECT_PATH_TOO_LONG",
+        relative_path,
+        "project path exceeds the Windows MAX_PATH limit; shorten the project root "
+        "or enable Windows long path support",
+    )
+
+
 @dataclass(frozen=True)
 class ProjectFiles:
     root: Path
@@ -189,6 +230,11 @@ class ProjectFiles:
                 current.mkdir()
             except FileExistsError:
                 pass
+            except OSError as error:
+                too_long = _path_too_long(error, relative_path)
+                if too_long is None:
+                    raise
+                raise too_long from error
             snapshot = current.lstat()
             if _is_unsafe(snapshot):
                 raise ProjectIOError(
@@ -261,6 +307,11 @@ class ProjectFiles:
                 os.fsync(stream.fileno())
             os.replace(temporary, target)
             temporary = None
+        except OSError as error:
+            too_long = _path_too_long(error, relative_path)
+            if too_long is None:
+                raise
+            raise too_long from error
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)

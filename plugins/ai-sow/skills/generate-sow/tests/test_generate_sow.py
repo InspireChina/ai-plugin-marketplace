@@ -55,7 +55,7 @@ def run_generator(project: Path) -> tuple[subprocess.CompletedProcess[str], dict
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), "--project-root", str(project)],
         cwd=PLUGIN_ROOT,
-        text=True,
+        text=True, encoding="utf-8",
         capture_output=True,
         check=False,
     )
@@ -338,11 +338,11 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
     try:
         index = table_index(workbook)
         assert TABLES.issubset(index)
-        requirements = json.loads((project / ".ai-sow/data/analyze-requirement/requirements.json").read_text())
-        technical = json.loads((project / ".ai-sow/data/generate-design/requirements.json").read_text())
-        asis = json.loads((project / ".ai-sow/data/analyze-as-is/asis.json").read_text())
-        delivery = json.loads((project / ".ai-sow/data/generate-story/delivery.json").read_text())
-        estimate = json.loads((project / ".ai-sow/data/generate-task/estimate.json").read_text())
+        requirements = json.loads((project / ".ai-sow/data/analyze-requirement/requirements.json").read_text(encoding="utf-8"))
+        technical = json.loads((project / ".ai-sow/data/generate-design/requirements.json").read_text(encoding="utf-8"))
+        asis = json.loads((project / ".ai-sow/data/analyze-as-is/asis.json").read_text(encoding="utf-8"))
+        delivery = json.loads((project / ".ai-sow/data/generate-story/delivery.json").read_text(encoding="utf-8"))
+        estimate = json.loads((project / ".ai-sow/data/generate-task/estimate.json").read_text(encoding="utf-8"))
         expected_counts = {
             "EpicTable": len(requirements["epics"]) + len(technical["epics"]),
             "FeatureTable": len(requirements["features"]) + len(technical["features"]),
@@ -410,7 +410,7 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
         decision_names = {
             decision["designDecisionId"]: decision["name"]
             for decision in json.loads(
-                (project / ".ai-sow/data/generate-design/design.json").read_text()
+                (project / ".ai-sow/data/generate-design/design.json").read_text(encoding="utf-8")
             )["decisions"]
         }
         for feature in technical["features"]:

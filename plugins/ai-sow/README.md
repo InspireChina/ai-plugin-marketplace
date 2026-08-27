@@ -1,6 +1,6 @@
 # AI SOW
 
-AI SOW 是一个 Codex 插件，用于把需求材料和系统现状整理成可评审、可追溯的
+AI SOW 是一个 Codex 与 Claude Code 插件，用于把需求材料和系统现状整理成可评审、可追溯的
 工作说明书（SOW）。它不会一次性自动生成结果，而是按阶段推进：插件先整理草稿，
 对应角色与 AI 协作调整并确认，通过后再进入下一阶段。
 
@@ -10,21 +10,38 @@ BA 先处理业务需求，TL 再完成系统分析、设计、交付拆分和�
 
 ## 前置条件
 
-- 支持本地 marketplace 的 Codex
+- 支持本地 marketplace 的 Codex 或 Claude Code
 - 首次运行环境自举时可访问 Astral 官方下载源
+- Windows 上：项目路径短于 97 个字符，或已启用长路径支持（见下）
 
-Codex 会为插件创建独立的安装副本。第一次运行 `setup` 时，插件会自动准备
+宿主会为插件创建独立的安装副本。第一次运行 `setup` 时，插件会自动准备
 [uv](https://docs.astral.sh/uv/) 0.11.7、managed Python 3.12 和锁定依赖，并创建插件自己的
-`.venv`；BA、PM 或其他用户不需要打开终端，也不需要管理员权限。若企业网络需要授权，Codex
+`.venv`；BA、PM 或其他用户不需要打开终端，也不需要管理员权限。若企业网络需要授权，宿主
 只会请求完成官方下载安装所需的一次联网权限，然后自动重试。
 setup 在 macOS/Linux 实际调用 `bootstrap.sh`，在 Windows 调用 `bootstrap.ps1`。macOS 已实机
 验证；Windows 11 当前仍是 `Provisional`，完整限制见
 [插件运行时环境合同](references/runtime-environment.md)。
 插件升级不会改动用户项目中已有的 SOW 数据。
 
+### Windows 路径长度
+
+未启用长路径支持的 Windows 把路径限制在 260 个字符内。本插件最深的受管路径需要 162 个
+字符，因此项目根目录必须短于 97 个字符。放在 `C:\work\<项目名>` 这类较短路径下通常没有
+问题，深层的 `OneDrive`、部门共享目录或多层业务目录则容易超限。
+
+超限时 `setup` 会在创建任何文件之前停止，并返回 `WINDOWS_LONG_PATH_REQUIRED`，不会留下
+半成品 `.ai-sow`。此时有两个选择：
+
+1. 把项目移动到更短的路径（推荐，不影响本机其他程序）；
+2. 启用 Windows 长路径支持。
+
+第二个选择会修改本机系统策略并影响所有程序，需要管理员权限。插件不会自行执行：它会先
+说明影响并征求你的同意，得到明确同意后才由你在管理员 PowerShell 中运行插件提供的
+`skills/setup/scripts/enable_long_paths.ps1 -Apply`。启用后重启会话再重新运行 `setup`。
+
 ## 怎么使用
 
-在需要编制 SOW 的项目根目录中打开 Codex，然后直接用自然语言调用 AI SOW。正常使用
+在需要编制 SOW 的项目根目录中打开 Codex 或 Claude Code，然后直接用自然语言调用 AI SOW。正常使用
 不需要手工寻找或运行插件中的 Python 脚本。
 
 第一次开始时可以说：
@@ -141,7 +158,7 @@ SOW package 复读和完整 packet，再由一个 Reviewer 审查并一次批准
 6. `generate-task`
 7. `generate-sow`
 
-这些名称用于让 Codex 选择正确的插件能力。实际使用时可以直接说“初始化项目”“分析需求”
+这些名称用于让宿主选择正确的插件能力。实际使用时可以直接说“初始化项目”“分析需求”
 或“继续下一阶段”，不需要记住英文名称。`generate-task` 与 `generate-sow` 之间还需要由
 PM 补充人员和迭代计划；支持这项工作的 Skill 尚在规划中，不属于当前七个 Skill。
 

@@ -1,0 +1,10 @@
+# 仓库统一使用 LF。Windows 上 Git 默认 core.autocrlf=true，克隆后会把整棵树转成 CRLF：
+# bootstrap.sh 变成 CRLF 脚本无法执行，schema 与 canonical JSON 的字节改变会让已提交的
+# SHA-256 断言和 packet 绑定全部失效。这里显式固定行尾，不依赖每台机器的 Git 配置。
+* text=auto eol=lf
+
+# 二进制资产不做行尾或编码转换。
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.ico binary

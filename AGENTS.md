@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-本文件适用于整个仓库。仓库用于发布可审查、可独立安装的 Codex 插件；当前插件是 `plugins/ai-sow/`。
+本文件适用于整个仓库。仓库用于发布可审查、可独立安装的 Codex 与 Claude Code 插件；当前插件是 `plugins/ai-sow/`。
 
 - 开始修改前先阅读根目录 `README.md` 和 `CONTRIBUTING.md`，并检查工作区状态和最近提交。
 - 修改 marketplace 布局、安装方式或发布边界时，读取 `docs/architecture/ai-plugin-marketplace-design.md`。

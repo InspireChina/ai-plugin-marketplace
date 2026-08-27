@@ -118,6 +118,32 @@ def dependency_edges() -> set[tuple[str, str, str]]:
     return edges
 
 
+def _writes_to_stdout(tree: ast.AST) -> bool:
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "print"
+        for node in ast.walk(tree)
+    )
+
+
+def test_skill_entry_scripts_pin_utf8_standard_streams() -> None:
+    """Windows 控制台代码页不是 UTF-8，未固定编码的脚本会输出调用方无法解码的字节。"""
+    unpinned: list[str] = []
+    for path in python_sources(PLUGIN_ROOT / "skills"):
+        if path.parent.name != "scripts":
+            continue
+        source = path.read_text(encoding="utf-8")
+        if not _writes_to_stdout(ast.parse(source)):
+            continue
+        if (
+            'sys.stdout.reconfigure(encoding="utf-8")' not in source
+            or 'sys.stderr.reconfigure(encoding="utf-8")' not in source
+        ):
+            unpinned.append(str(path.relative_to(PLUGIN_ROOT)))
+    assert unpinned == []
+
+
 def test_runtime_has_only_two_technical_modules() -> None:
     assert {path.name for path in RUNTIME.glob("*.py")} == {
         "__init__.py",

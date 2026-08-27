@@ -38,7 +38,7 @@ class PluginSmokeTests(unittest.TestCase):
             self.assertTrue(Path(report["workbookPath"]).is_file())
 
             setup_project = json.loads(
-                (Path(report["greenfieldProject"]) / ".ai-sow/project.json").read_text()
+                (Path(report["greenfieldProject"]) / ".ai-sow/project.json").read_text(encoding="utf-8")
             )
             self.assertEqual(
                 setup_project,

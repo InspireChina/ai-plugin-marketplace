@@ -1,9 +1,9 @@
-# AI SOW Codex 插件方案
+# AI SOW 插件方案
 
 - 状态：当前正式合同
 - SOW 标准：v1.3
 - 插件合同版本：0.1.0
-- 适用宿主：Codex；macOS 已实机验证，Linux 由 CI 覆盖，Windows 11 x64 当前为
+- 适用宿主：Codex 与 Claude Code；macOS 已实机验证，Linux 由 CI 覆盖，Windows 11 x64 当前为
   `Provisional`，尚未完成实机验收
 - 领域语义：[CONTEXT.md](CONTEXT.md)
 - 计算权威：[sow-template.xlsx](../skills/setup/assets/sow-template.xlsx)
@@ -94,7 +94,7 @@ plugins/ai-sow/
 使用 `bootstrap.ps1`。它只复用精确 uv 0.11.7；缺失或版本不同时以 Astral 官方固定版本 standalone
 installer 安装到插件安装副本；随后复用或自动安装 managed Python 3.12，以锁定文件创建插件 `.venv`
 并复核依赖，再用该 Python 调用 setup Module。用户无需管理员权限、终端操作或技术安装步骤；网络/
-权限不足时在任何项目写入前 fail closed，并由 Stage 通过 Codex 权限机制自动重试。后续 Skill 直接使用
+权限不足时在任何项目写入前 fail closed，并由 Stage 通过宿主权限机制自动重试。后续 Skill 直接使用
 该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四字段项目元数据、
 复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发
 或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动

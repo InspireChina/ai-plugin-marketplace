@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ai-plugin-marketplace",
+  "description": "面向实用、可评审 AI 工作流的开源插件市场。",
+  "owner": {
+    "name": "Inspire"
+  },
+  "plugins": [
+    {
+      "name": "ai-sow",
+      "source": "./plugins/ai-sow",
+      "description": "分析范围并生成可评审的 SOW 工作簿。",
+      "category": "productivity",
+      "keywords": [
+        "sow",
+        "requirements",
+        "estimation",
+        "delivery"
+      ]
+    }
+  ]
+}

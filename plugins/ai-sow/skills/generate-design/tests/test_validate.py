@@ -291,7 +291,7 @@ def run_validator(
     return subprocess.run(
         command,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -308,7 +308,7 @@ def run_context(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(CONTEXT_SCRIPT), "--project-root", str(root)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -317,7 +317,7 @@ def run_renderer(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(RENDER_SCRIPT), "--project-root", str(root)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -464,13 +464,13 @@ def test_prepare_context_closes_business_asis_uncertainty_start_and_source_ancho
         "effectiveStart",
         "sourceAnchors",
     ]
-    business = json.loads((context_root / "business-requirements.json").read_text())
+    business = json.loads((context_root / "business-requirements.json").read_text(encoding="utf-8"))
     assert business["features"] == REQUIREMENTS["features"]
     assert set(business) == {"epics", "features"}
-    starts = json.loads((context_root / "effective-start.json").read_text())
+    starts = json.loads((context_root / "effective-start.json").read_text(encoding="utf-8"))
     assert starts["effectiveStartItems"] == ASIS["effectiveStartItems"]
     assert set(starts) == {"effectiveStartItems", "items", "commitments"}
-    anchors = json.loads((context_root / "source-anchors.json").read_text())
+    anchors = json.loads((context_root / "source-anchors.json").read_text(encoding="utf-8"))
     assert anchors["sourceDocuments"][0]["sourceDocumentId"] == (
         "source-document-customer-profile"
     )
@@ -571,7 +571,7 @@ def test_review_mode_binds_both_candidates_without_formal_writes(tmp_path: Path)
     assert result.returncode == 0, result.stdout
     assert payload(result)["outcome"] == "REVIEW_REQUIRED"
     packet = json.loads(
-        (tmp_path / ".ai-sow/work/generate-design/review-packet.json").read_text()
+        (tmp_path / ".ai-sow/work/generate-design/review-packet.json").read_text(encoding="utf-8")
     )
     assert packet["algorithm"] == "ai-sow-owner-review-packet-v1"
     assert packet["review"]["sha256"] == sha256_bytes(review)
@@ -840,7 +840,7 @@ def test_failed_publish_preserves_both_existing_stable_outputs(tmp_path: Path) -
     assert (tmp_path / ".ai-sow/data/generate-design/design.json").read_bytes() == stable_design
     assert (tmp_path / ".ai-sow/data/generate-design/requirements.json").read_bytes() == stable_technical
     report = json.loads(
-        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text(encoding="utf-8")
     )
     assert report["passed"] is False and "compilationReceipt" not in report
 
@@ -873,12 +873,12 @@ def test_routes_four_handoff_failures_without_candidate_replay(
     elif failure == "stale":
         output.write_bytes(output.read_bytes() + b" ")
     else:
-        report = json.loads(validation.read_text())
+        report = json.loads(validation.read_text(encoding="utf-8"))
         if failure == "invalid":
             report["passed"] = False
         else:
             report["compilationReceipt"]["validatorContractVersion"] = "99"
-        validation.write_text(json.dumps(report))
+        validation.write_text(json.dumps(report), encoding="utf-8")
     write_bytes(tmp_path, ".ai-sow/work/generate-design/design.candidate.json", b"not-json")
 
     result = run_validator(tmp_path)
@@ -1023,7 +1023,7 @@ def test_rejects_incomplete_ten_concern_go_live_matrix(tmp_path: Path) -> None:
 def test_rejects_review_id_drift(tmp_path: Path) -> None:
     prepare(tmp_path)
     review = tmp_path / ".ai-sow/reviews/generate-design.md"
-    review.write_text(review.read_text().replace("design-customer-profile", "design-other", 1))
+    review.write_text(review.read_text(encoding="utf-8").replace("design-customer-profile", "design-other", 1), encoding="utf-8")
 
     result = run_validator(tmp_path)
 
@@ -1042,7 +1042,7 @@ def test_rebind_updates_both_upstreams_without_changing_either_output(tmp_path: 
     published = run_validator(tmp_path, "publish")
     assert published.returncode == 0, published.stdout
     old_report = json.loads(
-        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text(encoding="utf-8")
     )
     old_hashes = {
         "oldRequirements": input_hash(old_report, "requirementsValidation"),
@@ -1071,7 +1071,7 @@ def test_rebind_updates_both_upstreams_without_changing_either_output(tmp_path: 
     assert managed_path(tmp_path, ".ai-sow/data/generate-design/design.json").read_bytes() == design_bytes
     assert managed_path(tmp_path, ".ai-sow/data/generate-design/requirements.json").read_bytes() == technical_bytes
     rebound = json.loads(
-        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text(encoding="utf-8")
     )
     assert input_hash(rebound, "requirementsValidation") == new_requirements
     assert input_hash(rebound, "asIsValidation") == new_asis
@@ -1082,7 +1082,7 @@ def test_rebind_rejects_changed_stable_output_bytes(tmp_path: Path) -> None:
     published = run_validator(tmp_path, "publish")
     assert published.returncode == 0, published.stdout
     old_report = json.loads(
-        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text()
+        managed_path(tmp_path, ".ai-sow/validation/generate-design.json").read_text(encoding="utf-8")
     )
     old_hashes = {
         "oldRequirements": input_hash(old_report, "requirementsValidation"),

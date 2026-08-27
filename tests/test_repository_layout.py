@@ -143,6 +143,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         required = [
             ".codex-plugin/plugin.json",
+            ".claude-plugin/plugin.json",
             "pyproject.toml",
             "uv.lock",
             "README.md",
@@ -184,22 +185,22 @@ class RepositoryLayoutTests(unittest.TestCase):
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         release_version = "0.1.0"
         manifest = json.loads(
-            (plugin_root / ".codex-plugin/plugin.json").read_text()
+            (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
         )
         schema = json.loads(
-            (plugin_root / "skills/setup/contracts/project.schema.json").read_text()
+            (plugin_root / "skills/setup/contracts/project.schema.json").read_text(encoding="utf-8")
         )
         project = json.loads(
             (
                 plugin_root
                 / "skills/generate-sow/fixtures/project/.ai-sow/project.json"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         package_schema = json.loads(
-            (plugin_root / "skills/generate-sow/contracts/manifest.schema.json").read_text()
+            (plugin_root / "skills/generate-sow/contracts/manifest.schema.json").read_text(encoding="utf-8")
         )
-        pyproject_text = (plugin_root / "pyproject.toml").read_text()
-        lock_text = (plugin_root / "uv.lock").read_text()
+        pyproject_text = (plugin_root / "pyproject.toml").read_text(encoding="utf-8")
+        lock_text = (plugin_root / "uv.lock").read_text(encoding="utf-8")
         self.assertEqual(manifest["name"], "ai-sow")
         self.assertEqual(manifest["version"], release_version)
         self.assertEqual(schema["properties"]["pluginVersion"]["const"], release_version)
@@ -266,10 +267,10 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_task_estimation_contract_has_no_removed_shape_or_modes(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         delivery = json.loads(
-            (plugin_root / "skills/generate-story/contracts/delivery.schema.json").read_text()
+            (plugin_root / "skills/generate-story/contracts/delivery.schema.json").read_text(encoding="utf-8")
         )
         estimate = json.loads(
-            (plugin_root / "skills/generate-task/contracts/estimate.schema.json").read_text()
+            (plugin_root / "skills/generate-task/contracts/estimate.schema.json").read_text(encoding="utf-8")
         )
         self.assertNotIn("type", delivery["$defs"]["story"]["properties"])
         task_properties = estimate["$defs"]["task"]["properties"]
@@ -306,6 +307,18 @@ class RepositoryLayoutTests(unittest.TestCase):
             manifest["interface"]["longDescription"],
             *manifest["interface"]["defaultPrompt"],
         ]
+        claude_manifest = json.loads(
+            (REPO_ROOT / "plugins/ai-sow/.claude-plugin/plugin.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        claude_marketplace = json.loads(
+            (REPO_ROOT / ".claude-plugin/marketplace.json").read_text(encoding="utf-8")
+        )
+        visible_values.append(claude_manifest["description"])
+        visible_values.extend(
+            entry["description"] for entry in claude_marketplace["plugins"]
+        )
         for value in visible_values:
             self.assertRegex(value, HAN_CHARACTER)
 
@@ -363,7 +376,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             cwd=REPO_ROOT,
             check=True,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
         )
         for relative in completed.stdout.splitlines():
             document = REPO_ROOT / relative
@@ -399,6 +412,100 @@ class RepositoryLayoutTests(unittest.TestCase):
             "codex plugin marketplace remove ai-plugin-marketplace",
         ):
             self.assertIn(command, text)
+
+    def test_repository_pins_line_endings_for_windows_checkouts(self) -> None:
+        """Git for Windows defaults to core.autocrlf=true; a CRLF checkout breaks
+        bootstrap.sh and changes the schema bytes the SHA-256 assertions pin."""
+        attributes = REPO_ROOT / ".gitattributes"
+        self.assertTrue(attributes.is_file(), attributes)
+        self.assertIn("* text=auto eol=lf", attributes.read_text(encoding="utf-8"))
+
+        probes = (
+            "plugins/ai-sow/skills/setup/scripts/bootstrap.sh",
+            "plugins/ai-sow/skills/setup/contracts/project.schema.json",
+            "plugins/ai-sow/skills/setup/assets/sow-template.xlsx",
+        )
+        completed = subprocess.run(
+            ["git", "check-attr", "eol", "binary", "--", *probes],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        resolved = completed.stdout
+        for relative in probes[:2]:
+            self.assertIn(f"{relative}: eol: lf", resolved)
+        self.assertIn(f"{probes[2]}: binary: set", resolved)
+
+        for relative in probes[:2]:
+            self.assertNotIn(b"\r\n", (REPO_ROOT / relative).read_bytes(), relative)
+
+    def test_publisher_identity_is_uniform(self) -> None:
+        publisher = "Inspire"
+        codex = json.loads(
+            (REPO_ROOT / "plugins/ai-sow/.codex-plugin/plugin.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        claude = json.loads(
+            (REPO_ROOT / "plugins/ai-sow/.claude-plugin/plugin.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        marketplace = json.loads(
+            (REPO_ROOT / ".claude-plugin/marketplace.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(codex["author"]["name"], publisher)
+        self.assertEqual(codex["interface"]["developerName"], publisher)
+        self.assertEqual(claude["author"]["name"], publisher)
+        self.assertEqual(marketplace["owner"]["name"], publisher)
+
+        for relative in ("NOTICE", "plugins/ai-sow/NOTICE"):
+            notice = (REPO_ROOT / relative).read_text(encoding="utf-8")
+            self.assertIn(f"Copyright 2026 {publisher}", notice, relative)
+
+    def test_public_readme_documents_claude_code_lifecycle(self) -> None:
+        text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        for command in (
+            "/plugin marketplace add InspireChina/ai-plugin-marketplace",
+            "/plugin install ai-sow@ai-plugin-marketplace",
+            "/plugin marketplace update ai-plugin-marketplace",
+            "/plugin uninstall ai-sow@ai-plugin-marketplace",
+            "/plugin marketplace remove ai-plugin-marketplace",
+        ):
+            self.assertIn(command, text)
+
+    def test_claude_marketplace_matches_codex_marketplace(self) -> None:
+        claude = json.loads(
+            (REPO_ROOT / ".claude-plugin/marketplace.json").read_text(encoding="utf-8")
+        )
+        codex = json.loads(
+            (REPO_ROOT / ".agents/plugins/marketplace.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(claude["name"], codex["name"])
+        self.assertTrue(claude["owner"]["name"].strip())
+        self.assertEqual(
+            {entry["name"] for entry in claude["plugins"]},
+            {entry["name"] for entry in codex["plugins"]},
+        )
+        ai_sow_entries = [
+            entry for entry in claude["plugins"] if entry.get("name") == "ai-sow"
+        ]
+        self.assertEqual(len(ai_sow_entries), 1)
+        self.assertEqual(ai_sow_entries[0]["source"], "./plugins/ai-sow")
+
+    def test_plugin_manifests_declare_one_release_identity(self) -> None:
+        plugin_root = REPO_ROOT / "plugins/ai-sow"
+        codex = json.loads(
+            (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
+        )
+        claude = json.loads(
+            (plugin_root / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
+        )
+        for field in ("name", "version", "description"):
+            self.assertEqual(codex[field], claude[field], field)
+        self.assertEqual(claude["name"], "ai-sow")
 
     def test_readme_distinguishes_verified_and_provisional_platforms(self) -> None:
         text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
@@ -557,7 +664,7 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_marketplace_points_to_ai_sow(self) -> None:
         marketplace = json.loads(
-            (REPO_ROOT / ".agents/plugins/marketplace.json").read_text()
+            (REPO_ROOT / ".agents/plugins/marketplace.json").read_text(encoding="utf-8")
         )
         self.assertEqual(marketplace["name"], "ai-plugin-marketplace")
         self.assertEqual(
@@ -590,7 +697,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             [sys.executable, str(REPO_ROOT / "scripts/validate_repository.py")],
             cwd=REPO_ROOT,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             check=False,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)

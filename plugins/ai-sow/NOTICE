@@ -1,5 +1,5 @@
 AI Plugin Marketplace
-Copyright 2026 Yuan Li
+Copyright 2026 Inspire
 
 AI SOW uses jsonschema and openpyxl at runtime and pytest for development.
 Those dependencies are resolved separately under their respective licenses;

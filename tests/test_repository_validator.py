@@ -11,8 +11,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.validate_repository import (
     validate_ai_sow_release,
+    validate_claude_marketplace,
     validate_marketplace,
+    validate_marketplace_parity,
     validate_plugin_manifest,
+    validate_plugin_manifest_parity,
+    validate_publisher_identity,
     validate_repository,
 )
 
@@ -25,6 +29,17 @@ AI_SOW_ENTRY = {
 }
 
 
+def claude_entry(entry: dict[str, object]) -> dict[str, object]:
+    """Project a Codex marketplace entry onto its Claude Code equivalent."""
+    source = entry.get("source")
+    path = source.get("path") if isinstance(source, dict) else source
+    return {
+        "name": entry["name"],
+        "source": path,
+        "description": f"{entry['name']} 插件",
+    }
+
+
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
@@ -32,10 +47,18 @@ def write_json(path: Path, value: object) -> None:
 
 def write_plugin(root: Path, name: str, version: str) -> Path:
     plugin_root = root / "plugins" / name
+    manifest = {
+        "name": name,
+        "version": version,
+        "description": f"{name} 插件",
+        "author": {"name": "Inspire"},
+        "skills": "./skills",
+    }
     write_json(
         plugin_root / ".codex-plugin/plugin.json",
-        {"name": name, "version": version, "skills": "./skills"},
+        {**manifest, "interface": {"developerName": "Inspire"}},
     )
+    write_json(plugin_root / ".claude-plugin/plugin.json", manifest)
     (plugin_root / "skills").mkdir(parents=True)
     return plugin_root
 
@@ -78,6 +101,14 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
             "name": "ai-plugin-marketplace",
             "interface": {"displayName": "AI Plugin Marketplace"},
             "plugins": entries,
+        },
+    )
+    write_json(
+        root / ".claude-plugin/marketplace.json",
+        {
+            "name": "ai-plugin-marketplace",
+            "owner": {"name": "Inspire"},
+            "plugins": [claude_entry(entry) for entry in entries],
         },
     )
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
@@ -199,7 +230,8 @@ class RepositoryValidatorTests(unittest.TestCase):
             )
 
             self.assertIn(
-                "sample-plugin: plugin version must use MAJOR.MINOR.PATCH semver",
+                "sample-plugin (.codex-plugin/plugin.json): plugin version must use "
+                "MAJOR.MINOR.PATCH semver",
                 validate_repository(root),
             )
 
@@ -227,7 +259,7 @@ class RepositoryValidatorTests(unittest.TestCase):
 
             self.assertEqual(validate_plugin_manifest(root, plugin_root), [])
             self.assertIn(
-                "AI SOW plugin version must be 0.1.0",
+                "AI SOW plugin version in .codex-plugin/plugin.json must be 0.1.0",
                 validate_ai_sow_release(root, plugin_root),
             )
 
@@ -237,19 +269,19 @@ class RepositoryValidatorTests(unittest.TestCase):
                 "manifest missing",
                 ".codex-plugin/plugin.json",
                 None,
-                "invalid AI SOW plugin manifest:",
+                "invalid AI SOW plugin manifest .codex-plugin/plugin.json:",
             ),
             (
                 "manifest malformed",
                 ".codex-plugin/plugin.json",
                 "{",
-                "invalid AI SOW plugin manifest:",
+                "invalid AI SOW plugin manifest .codex-plugin/plugin.json:",
             ),
             (
                 "manifest non-UTF-8",
                 ".codex-plugin/plugin.json",
                 b"\xff",
-                "invalid AI SOW plugin manifest:",
+                "invalid AI SOW plugin manifest .codex-plugin/plugin.json:",
             ),
             (
                 "fixture missing",
@@ -334,6 +366,124 @@ class RepositoryValidatorTests(unittest.TestCase):
             self.assertIn(
                 "missing release file: plugins/ai-sow/tests/support/smoke_plugin.py",
                 validate_ai_sow_release(root, plugin_root),
+            )
+
+
+    def test_claude_marketplace_requires_owner_and_resolvable_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write_plugin(root, "ai-sow", "0.1.0")
+            write_json(
+                root / ".claude-plugin/marketplace.json",
+                {
+                    "name": "ai-plugin-marketplace",
+                    "plugins": [
+                        {"name": "ai-sow", "source": "./plugins/ai-sow"},
+                        {"name": "alias", "source": "./plugins/ai-sow"},
+                        {"name": "missing", "source": "./plugins/missing"},
+                        {"name": "escaping", "source": "../outside"},
+                    ],
+                },
+            )
+
+            errors = validate_claude_marketplace(root)
+            self.assertIn("Claude marketplace owner must declare a name", errors)
+            self.assertIn(
+                "Claude marketplace plugin alias name must match source directory ai-sow",
+                errors,
+            )
+            self.assertIn(
+                "Claude marketplace plugin missing source directory is missing",
+                errors,
+            )
+            self.assertIn(
+                "Claude marketplace plugin escaping path escapes the repository",
+                errors,
+            )
+
+    def test_marketplace_parity_detects_diverging_plugin_sets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write_plugin(root, "ai-sow", "0.1.0")
+            write_plugin(root, "sample-plugin", "1.2.3")
+            write_json(
+                root / ".agents/plugins/marketplace.json",
+                {
+                    "name": "ai-plugin-marketplace",
+                    "interface": {"displayName": "AI Plugin Marketplace"},
+                    "plugins": [AI_SOW_ENTRY],
+                },
+            )
+            write_json(
+                root / ".claude-plugin/marketplace.json",
+                {
+                    "name": "ai-plugin-marketplace",
+                    "owner": {"name": "Inspire"},
+                    "plugins": [
+                        claude_entry(AI_SOW_ENTRY),
+                        {"name": "sample-plugin", "source": "./plugins/sample-plugin"},
+                    ],
+                },
+            )
+
+            errors = validate_marketplace_parity(root)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("sample-plugin@plugins/sample-plugin", errors[0])
+
+    def test_plugin_manifest_parity_detects_release_identity_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_plugin(root, "ai-sow", "0.1.0")
+            self.assertEqual(validate_plugin_manifest_parity(plugin_root), [])
+
+            write_json(
+                plugin_root / ".claude-plugin/plugin.json",
+                {"name": "ai-sow", "version": "9.9.9", "description": "漂移"},
+            )
+
+            self.assertEqual(
+                validate_plugin_manifest_parity(plugin_root),
+                [
+                    "Codex and Claude plugin manifests disagree on version",
+                    "Codex and Claude plugin manifests disagree on description",
+                    "Codex and Claude plugin manifests disagree on author",
+                ],
+            )
+
+
+    def test_publisher_identity_must_be_uniform_across_host_manifests(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            initialize_repository(root, [AI_SOW_ENTRY])
+            self.assertEqual(validate_publisher_identity(root, plugin_root), [])
+
+            write_json(
+                plugin_root / ".claude-plugin/plugin.json",
+                {
+                    "name": "ai-sow",
+                    "version": "0.1.0",
+                    "description": "ai-sow 插件",
+                    "author": {"name": "Someone Else"},
+                },
+            )
+            write_json(
+                root / ".claude-plugin/marketplace.json",
+                {
+                    "name": "ai-plugin-marketplace",
+                    "plugins": [claude_entry(AI_SOW_ENTRY)],
+                },
+            )
+
+            errors = validate_publisher_identity(root, plugin_root)
+            self.assertIn(
+                ".claude-plugin/plugin.json author.name must be Inspire, "
+                "found 'Someone Else'",
+                errors,
+            )
+            self.assertIn(
+                ".claude-plugin/marketplace.json owner.name must be Inspire, found None",
+                errors,
             )
 
 

@@ -22,11 +22,31 @@ MANAGED_DIRECTORIES = (
 PROJECT_PATH = ".ai-sow/project.json"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 
+# Windows 控制台默认使用本地代码页（如 cp936），会把中文结构化输出写成非 UTF-8 字节。
+# 调用方按 UTF-8 读取 stdout/stderr，这里显式固定编码，与 POSIX 行为保持一致。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.project_io import (
+    WINDOWS_MAX_PATH,
+    ProjectFiles,
+    ProjectIOError,
+    managed_path_budget,
+)
+
+# 本插件已知最深的受管相对路径：staging 前缀 + SOW package 目录 + 最长的 sources 叶子文件。
+# 路径布局属于本 Skill 的知识，不放进共享 runtime。
+DEEPEST_MANAGED_RELATIVE_PATH = (
+    ".ai-sow/.stage-0123456789ab"
+    "/outputs/sow-sha256-" + "0" * 64
+    + "/sources/data/analyze-requirement/requirements.json"
+)
 
 
 class BlockedError(ValueError):
@@ -144,6 +164,33 @@ def main() -> int:
     skill_root = Path(__file__).resolve().parents[1]
     asset_path = skill_root / "assets" / "sow-template.xlsx"
     schema_path = skill_root / "contracts" / "project.schema.json"
+
+    budget = managed_path_budget(args.project_root)
+    required = len(DEEPEST_MANAGED_RELATIVE_PATH)
+    if budget is not None and budget < required:
+        emit(
+            "BLOCKED",
+            "项目根目录过长：未启用长路径支持时无法创建本插件的受管输出路径",
+            diagnostics=[
+                {
+                    "code": "WINDOWS_LONG_PATH_REQUIRED",
+                    "message": (
+                        f"当前项目根目录还剩 {budget} 个字符，最深的受管路径需要 {required} 个。"
+                        "继续初始化会在生成阶段以 WinError 206 失败。"
+                    ),
+                    "path": ".",
+                }
+            ],
+            nextStep=(
+                "两个可选方案，任选其一后重新调用 setup："
+                f"（1）把项目移动到长度不超过 {WINDOWS_MAX_PATH - required - 1} 个字符的路径；"
+                "（2）启用 Windows 长路径支持——这会修改本机系统策略且需要管理员权限，"
+                "必须先向用户说明影响并获得明确同意，再运行 "
+                "skills/setup/scripts/enable_long_paths.ps1 -Apply。"
+            ),
+        )
+        return 2
+
     try:
         template_bytes = asset_path.read_bytes()
         verify_template_round_trip(template_bytes, openpyxl)

@@ -35,7 +35,7 @@ def run_approval(owner: str, project_root: Path, packet_sha256: str) -> subproce
             "--packet-sha256",
             packet_sha256,
         ],
-        text=True,
+        text=True, encoding="utf-8",
         capture_output=True,
         check=False,
     )
@@ -53,7 +53,7 @@ def run_reviewer(owner: str, project_root: Path, packet_sha256: str) -> subproce
             "--packet-sha256",
             packet_sha256,
         ],
-        text=True,
+        text=True, encoding="utf-8",
         capture_output=True,
         check=False,
     )
@@ -73,7 +73,7 @@ def run_legacy_write_mode(
             "--mode",
             mode,
         ],
-        text=True,
+        text=True, encoding="utf-8",
         capture_output=True,
         check=False,
     )

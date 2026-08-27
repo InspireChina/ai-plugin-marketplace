@@ -4,6 +4,52 @@
 
 ## 0.1.0 - 未发布
 
+- 发布者标识统一为 `Inspire`：Codex manifest 的 `author.name` 与 `interface.developerName`、
+  Claude manifest 的 `author.name`、Claude marketplace 的 `owner.name`，以及根目录和插件目录
+  `NOTICE` 的版权声明。`scripts/validate_repository.py` 新增 `validate_publisher_identity`
+  强制这四个宿主可见字段一致，插件 manifest 的 `author` 也纳入双 manifest 一致性检查。
+
+- `setup` 新增 Windows 长路径前置检查与经用户同意的补救路径。未启用长路径支持时 Windows 把
+  路径限制在 260 字符内，而最深的受管路径需要 162 字符，项目根目录必须短于 97 字符。setup
+  现在在写入任何文件前计算预算，不足时返回 `WINDOWS_LONG_PATH_REQUIRED` 并且不创建
+  `.ai-sow`；`runtime/project_io.py` 另把写入期的 `ERROR_FILENAME_EXCED_RANGE` 转换成
+  `PROJECT_PATH_TOO_LONG`。新增 `skills/setup/scripts/enable_long_paths.ps1`：不带 `-Apply`
+  只报告状态，带 `-Apply` 时必须已提权才会写入 `LongPathsEnabled`。该脚本修改机器级系统
+  策略，`SKILL.md` 要求 Stage 先说明影响并取得用户明确同意，不得静默执行或绕过 UAC。
+
+- 新增 Claude Code 作为第二个宿主：仓库发布 `.claude-plugin/marketplace.json`，插件发布
+  `plugins/ai-sow/.claude-plugin/plugin.json`，与既有 Codex manifest 并存并指向同一份
+  `skills/`。两套 manifest 的插件集合、来源路径、`name`、`version` 和 `description` 由
+  `scripts/validate_repository.py` 强制保持一致；README 同时给出两个宿主的安装、更新和
+  卸载命令。
+- 修复 Windows 结构化输出乱码：所有写 stdout 的 Skill 脚本在输出前把 stdout/stderr 固定为
+  UTF-8，`bootstrap.ps1` 固定 `[Console]::OutputEncoding` 并置 `PYTHONUTF8=1`。此前在
+  cp936 等非 UTF-8 代码页上，`OK`/`BLOCKED` JSON 中的中文会以本地代码页字节送出，调用方
+  按 UTF-8 解码后得到乱码，阻塞诊断实际不可读。
+- 修复 `bootstrap.ps1` 在 Windows PowerShell 5.1 下无法解析：该文件含中文但未带 UTF-8 BOM，
+  5.1 会按 ANSI 代码页解码，在中文 Windows 上直接产生语法错误，Windows setup 入口无法启动。
+  现以 UTF-8 带 BOM 保存，并加回归测试锁定该编码与实际解析结果。
+- 加固 `bootstrap.ps1` 与 `bootstrap.sh` 的诊断对等：补齐 `BOOTSTRAP_DIRECTORY_FAILED` 和
+  `PYTHON_CHECK_FAILED`，把原生命令的启动失败和 stderr 输出隔离成退出码，避免在
+  `$ErrorActionPreference = "Stop"` 下抛出未捕获异常、绕过结构化 `BLOCKED` 契约；
+  下载官方安装器时显式启用 TLS 1.2，并把本进程 `$PSHOME\Modules` 前置到 `PSModulePath`，
+  以免从 PowerShell 7 会话继承的模块路径让 5.1 加载到不兼容内置模块。
+- 修复测试套件的 Windows 可移植性：补齐 56 处 `read_text`/`write_text` 的显式 UTF-8 编码，
+  29 处 `subprocess` 调用固定按 UTF-8 解码子进程输出，仓库验证器的路径诊断改用 POSIX 分隔符，
+  独立副本冒烟检查按运行时合同优先解析插件私有 `uv` 而不是要求它位于 PATH。
+  `.gitignore` 新增 `.ai-sow-tools/`，避免 bootstrap 下载的工具链留在工作区。
+- 新增 `.gitattributes` 统一以 LF 检出。Git for Windows 默认 `core.autocrlf=true`，此前在
+  Windows 上克隆会把整棵树转成 CRLF，使 `bootstrap.sh` 变成无法执行的 CRLF 脚本，并改变
+  schema 与 canonical JSON 的字节，导致已提交的 SHA-256 断言和 packet 绑定失效。
+- 修复 XLSX 生成在不同操作系统间不可复现：`normalize_xlsx` 此前沿用原始 ZIP 条目的
+  `create_system` 和 Unix 权限位，这两个字段由运行平台而非输入决定，使同一份已批准数据在
+  Windows 和 macOS 上产生不同的 `sow.xlsx` 字节，破坏 package 复用与 manifest 绑定。现固定
+  为 Unix 宿主标记和 `0o600` 权限位；macOS 输出字节不变，Windows 结果与之对齐。
+- `analyze-requirement` 测试改用 `write_bytes` 写 reviewer/approval sidecar，与其他四个 Owner
+  一致；此前的 `write_text` 在 Windows 上会把结尾 `\n` 翻译成 `\r\n`，破坏 canonical JSON 绑定。
+- 依赖 POSIX shell 或符号链接创建权限的测试改为按能力跳过，使 Windows 上缺失的平台能力
+  显式可见，而不是表现为失败。
+
 - 优化 SOW Excel 可用性：业务 Sheet 只展示唯一、非空的名称，稳定 ID 继续保存在 JSON；可翻译
   的枚举和下拉统一使用中文，层级列按需求、子需求、故事、验收条件、任务及其他信息排列。
 - `04-验收条件` 隐藏结构化顺序；`05-任务明细` 以基础单元名称和“关联现状条目”选择任务依据，

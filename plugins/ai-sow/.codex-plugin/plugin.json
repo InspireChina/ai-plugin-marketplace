@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "根据需求和系统现状创建可评审、可追溯的 AI 辅助 SOW 工作簿。",
   "author": {
-    "name": "Yuan Li"
+    "name": "Inspire"
   },
   "license": "Apache-2.0",
   "keywords": [
@@ -17,7 +17,7 @@
     "displayName": "AI SOW",
     "shortDescription": "分析范围并生成可评审的 SOW 工作簿。",
     "longDescription": "七个主线阶段依次完成需求、现状、设计、交付、估算和 SOW 生成；一个维护 Skill 负责已发布链路的整体影响复核。",
-    "developerName": "Yuan Li",
+    "developerName": "Inspire",
     "category": "Productivity",
     "capabilities": [
       "Read",

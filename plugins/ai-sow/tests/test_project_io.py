@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable
@@ -13,6 +14,24 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.project_io import ProjectFiles, ProjectIOError, ProjectView
+
+
+def _symlink_supported() -> bool:
+    """Windows only allows symlink creation under Developer Mode or elevation."""
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        try:
+            (root / "link").symlink_to(root / "target", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return False
+    return True
+
+
+SYMLINK_SUPPORTED = _symlink_supported()
+requires_symlinks = pytest.mark.skipif(
+    not SYMLINK_SUPPORTED,
+    reason="creating symlinks requires Developer Mode or elevation on this platform",
+)
 
 
 def test_project_files_read_write_and_resolve_relative_paths(tmp_path: Path) -> None:
@@ -58,6 +77,7 @@ def test_project_files_reject_invalid_relative_paths(tmp_path: Path, relative: s
     assert raised.value.code == "PROJECT_PATH_INVALID"
 
 
+@requires_symlinks
 def test_project_files_reject_symlink_in_managed_path(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside"
     outside.mkdir()
@@ -95,7 +115,7 @@ def test_project_files_requires_existing_regular_directory_root(tmp_path: Path) 
         ProjectFiles.open(missing)
     assert raised.value.code == "PROJECT_ROOT_INVALID"
     file_root = tmp_path / "file"
-    file_root.write_text(json.dumps({}))
+    file_root.write_text(json.dumps({}), encoding="utf-8")
     with pytest.raises(ProjectIOError):
         ProjectFiles.open(file_root)
 
@@ -287,6 +307,7 @@ def test_project_view_rejects_staging_root_on_another_filesystem(
     assert raised.value.code == "STAGING_ROOT_INVALID"
 
 
+@requires_symlinks
 def test_project_view_rejects_missing_or_symlinked_staging_parent(
     tmp_path: Path,
 ) -> None:
@@ -303,6 +324,7 @@ def test_project_view_rejects_missing_or_symlinked_staging_parent(
     assert list(outside.iterdir()) == []
 
 
+@requires_symlinks
 def test_project_view_rejects_file_or_symlink_staging_root(tmp_path: Path) -> None:
     base = ProjectFiles.open(tmp_path)
     stage_parent = base.ensure_dir(".ai-sow")
@@ -322,6 +344,7 @@ def test_project_view_rejects_file_or_symlink_staging_root(tmp_path: Path) -> No
     assert list(outside.iterdir()) == []
 
 
+@requires_symlinks
 def test_project_view_rejects_unsafe_paths_in_both_layers(tmp_path: Path) -> None:
     base = ProjectFiles.open(tmp_path)
     base.ensure_dir(".ai-sow")

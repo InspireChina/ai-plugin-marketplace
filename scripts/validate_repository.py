@@ -13,6 +13,12 @@ from pathlib import Path
 RELEASE_VERSION = "0.1.0"
 PYTHON_RUNTIME_VERSION = "0.1.0"
 SOW_STANDARD_VERSION = "1.3"
+MARKETPLACE_NAME = "ai-plugin-marketplace"
+PUBLISHER_NAME = "Inspire"
+CODEX_MARKETPLACE = ".agents/plugins/marketplace.json"
+CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
+CODEX_PLUGIN_MANIFEST = ".codex-plugin/plugin.json"
+CLAUDE_PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
 SEMVER = re.compile(
     r"^(0|[1-9]\d*)\."
     r"(0|[1-9]\d*)\."
@@ -58,7 +64,7 @@ def _inside(path: Path, root: Path) -> bool:
 
 def validate_marketplace(repo_root: Path) -> list[str]:
     errors: list[str] = []
-    path = repo_root / ".agents/plugins/marketplace.json"
+    path = repo_root / CODEX_MARKETPLACE
     try:
         data = load_json(path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -66,8 +72,8 @@ def validate_marketplace(repo_root: Path) -> list[str]:
     if not isinstance(data, dict):
         return ["marketplace manifest must be a JSON object"]
 
-    if data.get("name") != "ai-plugin-marketplace":
-        errors.append("marketplace name must be ai-plugin-marketplace")
+    if data.get("name") != MARKETPLACE_NAME:
+        errors.append(f"marketplace name must be {MARKETPLACE_NAME}")
     interface = data.get("interface")
     if not isinstance(interface, dict) or interface.get("displayName") != "AI Plugin Marketplace":
         errors.append("marketplace displayName must be AI Plugin Marketplace")
@@ -137,11 +143,130 @@ def validate_marketplace(repo_root: Path) -> list[str]:
     return errors
 
 
-def validate_plugin_manifest(repo_root: Path, plugin_path: Path) -> list[str]:
+def _claude_marketplace_source(entry: dict[str, object]) -> str | None:
+    """Return a Claude marketplace entry's local source path, if it declares one."""
+    source = entry.get("source")
+    if isinstance(source, str):
+        return source
+    if isinstance(source, dict) and source.get("source") == "local":
+        path = source.get("path")
+        return path if isinstance(path, str) else None
+    return None
+
+
+def validate_claude_marketplace(repo_root: Path) -> list[str]:
+    """Validate the Claude Code marketplace directory published alongside the Codex one."""
+    errors: list[str] = []
+    path = repo_root / CLAUDE_MARKETPLACE
+    try:
+        data = load_json(path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"invalid Claude marketplace manifest: {exc}"]
+    if not isinstance(data, dict):
+        return ["Claude marketplace manifest must be a JSON object"]
+
+    if data.get("name") != MARKETPLACE_NAME:
+        errors.append(f"Claude marketplace name must be {MARKETPLACE_NAME}")
+    owner = data.get("owner")
+    if not isinstance(owner, dict) or not str(owner.get("name") or "").strip():
+        errors.append("Claude marketplace owner must declare a name")
+
+    plugins = data.get("plugins")
+    if not isinstance(plugins, list) or not plugins:
+        return [*errors, "Claude marketplace plugins must be a non-empty array"]
+
+    names: set[str] = set()
+    for index, entry in enumerate(plugins):
+        if not isinstance(entry, dict):
+            errors.append(f"Claude marketplace plugin entry {index} must be an object")
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str) or not name.strip():
+            errors.append(f"Claude marketplace plugin entry {index} must have a name")
+        elif name in names:
+            errors.append(f"duplicate Claude marketplace plugin name: {name}")
+        else:
+            names.add(name)
+        source_path = _claude_marketplace_source(entry)
+        if source_path is None:
+            errors.append(
+                f"Claude marketplace plugin {name or index} must declare a local source"
+            )
+            continue
+        if not _inside(repo_root / source_path, repo_root):
+            errors.append(
+                f"Claude marketplace plugin {name or index} path escapes the repository"
+            )
+            continue
+        source_directory = repo_root / source_path
+        if not source_directory.is_dir():
+            errors.append(
+                f"Claude marketplace plugin {name or index} source directory is missing"
+            )
+        elif isinstance(name, str) and name != source_directory.name:
+            errors.append(
+                f"Claude marketplace plugin {name} name must match source directory "
+                f"{source_directory.name}"
+            )
+    return errors
+
+
+def validate_marketplace_parity(repo_root: Path) -> list[str]:
+    """Both marketplace directories must publish the same plugins from the same paths."""
+    try:
+        codex = load_json(repo_root / CODEX_MARKETPLACE)
+        claude = load_json(repo_root / CLAUDE_MARKETPLACE)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"cannot compare marketplace manifests: {exc}"]
+    if not isinstance(codex, dict) or not isinstance(claude, dict):
+        return ["marketplace manifests must both be JSON objects"]
+
+    def codex_entries(data: dict[str, object]) -> set[tuple[str, str]]:
+        plugins = data.get("plugins")
+        if not isinstance(plugins, list):
+            return set()
+        result: set[tuple[str, str]] = set()
+        for entry in plugins:
+            if not isinstance(entry, dict):
+                continue
+            source = entry.get("source")
+            path = source.get("path") if isinstance(source, dict) else None
+            if isinstance(entry.get("name"), str) and isinstance(path, str):
+                result.add((entry["name"], path.lstrip("./")))
+        return result
+
+    def claude_entries(data: dict[str, object]) -> set[tuple[str, str]]:
+        plugins = data.get("plugins")
+        if not isinstance(plugins, list):
+            return set()
+        result: set[tuple[str, str]] = set()
+        for entry in plugins:
+            if not isinstance(entry, dict):
+                continue
+            path = _claude_marketplace_source(entry)
+            if isinstance(entry.get("name"), str) and isinstance(path, str):
+                result.add((entry["name"], path.lstrip("./")))
+        return result
+
+    errors: list[str] = []
+    if codex.get("name") != claude.get("name"):
+        errors.append("Codex and Claude marketplace names must match")
+    missing = codex_entries(codex) ^ claude_entries(claude)
+    if missing:
+        rendered = ", ".join(sorted(f"{name}@{path}" for name, path in missing))
+        errors.append(f"Codex and Claude marketplaces publish different plugins: {rendered}")
+    return errors
+
+
+def validate_plugin_manifest(
+    repo_root: Path,
+    plugin_path: Path,
+    manifest_relative: str = CODEX_PLUGIN_MANIFEST,
+) -> list[str]:
     errors: list[str] = []
     if not _inside(plugin_path, repo_root):
         return ["plugin path escapes the repository"]
-    manifest_path = plugin_path / ".codex-plugin/plugin.json"
+    manifest_path = plugin_path / manifest_relative
     try:
         data = load_json(manifest_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -153,15 +278,67 @@ def validate_plugin_manifest(repo_root: Path, plugin_path: Path) -> list[str]:
     version = data.get("version")
     if not isinstance(version, str) or not SEMVER.fullmatch(version):
         errors.append("plugin version must use MAJOR.MINOR.PATCH semver")
-    for key in ("skills", "mcpServers"):
-        relative = data.get(key)
-        if relative is None:
+    for key in ("skills", "commands", "agents", "hooks", "mcpServers"):
+        declared = data.get(key)
+        if declared is None:
             continue
-        if not isinstance(relative, str) or not relative.strip():
-            errors.append(f"manifest {key} path must be a non-empty string")
+        relatives = declared if isinstance(declared, list) else [declared]
+        for relative in relatives:
+            if not isinstance(relative, str) or not relative.strip():
+                errors.append(f"manifest {key} path must be a non-empty string")
+                continue
+            if not _inside(plugin_path / relative, plugin_path):
+                errors.append(f"manifest {key} path escapes the plugin")
+    return errors
+
+
+def validate_plugin_manifest_parity(plugin_path: Path) -> list[str]:
+    """Codex and Claude plugin manifests must declare the same release identity."""
+    manifests: dict[str, dict[str, object]] = {}
+    for relative in (CODEX_PLUGIN_MANIFEST, CLAUDE_PLUGIN_MANIFEST):
+        try:
+            data = load_json(plugin_path / relative)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return [f"invalid plugin manifest {relative}: {exc}"]
+        if not isinstance(data, dict):
+            return [f"plugin manifest {relative} must be a JSON object"]
+        manifests[relative] = data
+
+    codex = manifests[CODEX_PLUGIN_MANIFEST]
+    claude = manifests[CLAUDE_PLUGIN_MANIFEST]
+    return [
+        f"Codex and Claude plugin manifests disagree on {field}"
+        for field in ("name", "version", "description", "author")
+        if codex.get(field) != claude.get(field)
+    ]
+
+
+def validate_publisher_identity(repo_root: Path, plugin_root: Path) -> list[str]:
+    """Every host-visible publisher field must name the same publisher."""
+    errors: list[str] = []
+    sources = (
+        (CODEX_PLUGIN_MANIFEST, plugin_root / CODEX_PLUGIN_MANIFEST, ("author", "name")),
+        (
+            CODEX_PLUGIN_MANIFEST,
+            plugin_root / CODEX_PLUGIN_MANIFEST,
+            ("interface", "developerName"),
+        ),
+        (CLAUDE_PLUGIN_MANIFEST, plugin_root / CLAUDE_PLUGIN_MANIFEST, ("author", "name")),
+        (CLAUDE_MARKETPLACE, repo_root / CLAUDE_MARKETPLACE, ("owner", "name")),
+    )
+    for label, path, keys in sources:
+        try:
+            document = load_json(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            errors.append(f"invalid publisher source {label}: {exc}")
             continue
-        if not _inside(plugin_path / relative, plugin_path):
-            errors.append(f"manifest {key} path escapes the plugin")
+        value: object = document
+        for key in keys:
+            value = value.get(key) if isinstance(value, dict) else None
+        if value != PUBLISHER_NAME:
+            errors.append(
+                f"{label} {'.'.join(keys)} must be {PUBLISHER_NAME}, found {value!r}"
+            )
     return errors
 
 
@@ -175,20 +352,22 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     )
     for path in required:
         if not path.is_file():
-            errors.append(f"missing release file: {path.relative_to(repo_root)}")
+            errors.append(f"missing release file: {path.relative_to(repo_root).as_posix()}")
     if (repo_root / "scripts" / "smoke_plugin.py").exists():
         errors.append("AI SOW smoke implementation must be plugin-scoped")
 
-    manifest_path = plugin_root / ".codex-plugin/plugin.json"
-    try:
-        manifest = load_json(manifest_path)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        errors.append(f"invalid AI SOW plugin manifest: {exc}")
-    else:
+    for relative in (CODEX_PLUGIN_MANIFEST, CLAUDE_PLUGIN_MANIFEST):
+        try:
+            manifest = load_json(plugin_root / relative)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            errors.append(f"invalid AI SOW plugin manifest {relative}: {exc}")
+            continue
         if not isinstance(manifest, dict):
-            errors.append("invalid AI SOW plugin manifest: expected a JSON object")
+            errors.append(
+                f"invalid AI SOW plugin manifest {relative}: expected a JSON object"
+            )
         elif manifest.get("version") != RELEASE_VERSION:
-            errors.append(f"AI SOW plugin version must be {RELEASE_VERSION}")
+            errors.append(f"AI SOW plugin version in {relative} must be {RELEASE_VERSION}")
 
     project_path = (
         plugin_root / "skills/generate-sow/fixtures/project/.ai-sow/project.json"
@@ -244,7 +423,7 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
 def _marketplace_plugin_paths(repo_root: Path) -> list[tuple[str, Path]]:
     """Return valid local marketplace plugin names and paths for manifest checks."""
     try:
-        data = load_json(repo_root / ".agents/plugins/marketplace.json")
+        data = load_json(repo_root / CODEX_MARKETPLACE)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return []
     plugins = data.get("plugins") if isinstance(data, dict) else None
@@ -289,7 +468,7 @@ def validate_public_tree(repo_root: Path) -> list[str]:
         return [f"cannot enumerate tracked files: {exc}"]
     for path in files:
         if ".DS_Store" in path.name:
-            errors.append(f"tracked macOS metadata: {path.relative_to(repo_root)}")
+            errors.append(f"tracked macOS metadata: {path.relative_to(repo_root).as_posix()}")
         if path.suffix.lower() not in TEXT_SUFFIXES or not path.is_file():
             continue
         try:
@@ -297,11 +476,11 @@ def validate_public_tree(repo_root: Path) -> list[str]:
         except UnicodeDecodeError:
             continue
         if home_prefix in text:
-            errors.append(f"tracked local absolute path: {path.relative_to(repo_root)}")
+            errors.append(f"tracked local absolute path: {path.relative_to(repo_root).as_posix()}")
         for forbidden in FORBIDDEN_PUBLIC_TEXT:
             if forbidden in text:
                 errors.append(
-                    f"tracked forbidden public text in {path.relative_to(repo_root)}: "
+                    f"tracked forbidden public text in {path.relative_to(repo_root).as_posix()}: "
                     f"{forbidden}"
                 )
     return errors
@@ -311,12 +490,19 @@ def validate_repository(repo_root: Path) -> list[str]:
     repo_root = repo_root.resolve()
     plugin_root = repo_root / "plugins/ai-sow"
     errors = validate_marketplace(repo_root)
+    errors.extend(validate_claude_marketplace(repo_root))
+    errors.extend(validate_marketplace_parity(repo_root))
     for name, path in _marketplace_plugin_paths(repo_root):
+        for relative in (CODEX_PLUGIN_MANIFEST, CLAUDE_PLUGIN_MANIFEST):
+            errors.extend(
+                f"{name} ({relative}): {error}"
+                for error in validate_plugin_manifest(repo_root, path, relative)
+            )
         errors.extend(
-            f"{name}: {error}"
-            for error in validate_plugin_manifest(repo_root, path)
+            f"{name}: {error}" for error in validate_plugin_manifest_parity(path)
         )
     errors.extend(validate_ai_sow_release(repo_root, plugin_root))
+    errors.extend(validate_publisher_identity(repo_root, plugin_root))
     errors.extend(validate_public_tree(repo_root))
     return errors
 

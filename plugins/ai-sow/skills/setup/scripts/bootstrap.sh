@@ -14,7 +14,7 @@ INSTALLER="$TOOLS_ROOT/install-uv.sh"
 blocked() {
   code=$1
   summary=$2
-  printf '%s\n' "{\"outcome\":\"BLOCKED\",\"summary\":\"$summary\",\"diagnostics\":[{\"code\":\"$code\",\"message\":\"$summary\"}],\"nextStep\":\"Codex 需要获得一次必要的联网或文件写入权限后自动重试；用户无需手工安装或执行命令。\"}"
+  printf '%s\n' "{\"outcome\":\"BLOCKED\",\"summary\":\"$summary\",\"diagnostics\":[{\"code\":\"$code\",\"message\":\"$summary\"}],\"nextStep\":\"当前 Agent 需要获得一次必要的联网或文件写入权限后自动重试；用户无需手工安装或执行命令。\"}"
   exit 2
 }
 

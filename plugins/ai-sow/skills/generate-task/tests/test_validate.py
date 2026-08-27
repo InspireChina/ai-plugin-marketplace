@@ -331,7 +331,7 @@ def run_validator(
     return subprocess.run(
         command,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -348,7 +348,7 @@ def run_context(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(CONTEXT_SCRIPT), "--project-root", str(root)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -357,7 +357,7 @@ def run_renderer(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(RENDER_SCRIPT), "--project-root", str(root)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 

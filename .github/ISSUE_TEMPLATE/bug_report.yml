@@ -31,7 +31,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Include OS, Codex, Python, and uv versions.
+      description: Include OS, host (Codex or Claude Code), Python, and uv versions.
     validations:
       required: true
   - type: checkboxes

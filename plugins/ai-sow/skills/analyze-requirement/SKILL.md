@@ -42,7 +42,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 ## 当前任务与 Reviewer
 
-- 当前 Stage Agent 就是当前 Codex task，也是本 Skill 的唯一用户接口：直接与用户协作，完成来源登记、业务分析、问卷关闭、candidate、确定性 review 投影、机械校验和最多一次整体修复。不要为 Stage 工作另派 Agent。
+- 当前 Stage Agent 就是当前宿主 task，也是本 Skill 的唯一用户接口：直接与用户协作，完成来源登记、业务分析、问卷关闭、candidate、确定性 review 投影、机械校验和最多一次整体修复。不要为 Stage 工作另派 Agent。
 - 只有 candidate 通过机械校验并形成 hash-bound `review-packet.json` 后，才创建一个 fresh Reviewer Agent。Reviewer 不继承当前完整聊天，只读取 packet、其中绑定的 candidate、context、review、risk summary 和项目内来源；它只返回 `PASS` 或带证据 findings，不修改文件。
 - 同一次调用最多创建一个 Reviewer。第一次有 findings 时，Stage 进行一次整体修复：重新检查全部来源、业务范围、关系、问卷处置和稳定 ID，而不是只改被点名字段；随后重建 context、review 与 packet，并交给同一 Reviewer 完整复审。第二次仍有 findings 时返回 `BLOCKED` 并停止。
 - 确定性脚本是机械门禁，不是 Agent。原样报告 outcome、diagnostics、hash 与 receipt，不解释或放宽失败。

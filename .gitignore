@@ -16,6 +16,8 @@
 # Python, uv, test, and coverage state
 .venv/
 **/.venv/
+.ai-sow-tools/
+**/.ai-sow-tools/
 __pycache__/
 **/__pycache__/
 .pytest_cache/

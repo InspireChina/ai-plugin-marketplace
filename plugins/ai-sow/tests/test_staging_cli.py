@@ -122,7 +122,7 @@ def test_review_override_blocks_before_staging_view_or_candidate_read(
             review_path,
         ],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 

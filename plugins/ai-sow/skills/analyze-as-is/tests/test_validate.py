@@ -247,7 +247,7 @@ def run_validator(
     return subprocess.run(
         command,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -269,7 +269,7 @@ def run_context(project_root: Path) -> subprocess.CompletedProcess[str]:
             str(project_root),
         ],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -283,7 +283,7 @@ def run_renderer(project_root: Path) -> subprocess.CompletedProcess[str]:
             str(project_root),
         ],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -342,7 +342,7 @@ def codes(result: subprocess.CompletedProcess[str]) -> set[str]:
 
 def validation_report(project_root: Path) -> dict[str, Any]:
     return json.loads(
-        managed_path(project_root, ".ai-sow/validation/analyze-as-is.json").read_text()
+        managed_path(project_root, ".ai-sow/validation/analyze-as-is.json").read_text(encoding="utf-8")
     )
 
 
@@ -527,7 +527,7 @@ def test_requirement_handoff_reports_only_four_stable_errors(
         requirements = tmp_path / ".ai-sow/data/analyze-requirement/requirements.json"
         requirements.write_bytes(requirements.read_bytes() + b" ")
     else:
-        report = json.loads(report_path.read_text())
+        report = json.loads(report_path.read_text(encoding="utf-8"))
         report["compilationReceipt"]["validatorContractVersion"] = "0.2"
         report_path.write_text(json.dumps(report), encoding="utf-8")
 
@@ -543,7 +543,7 @@ def test_requirement_handoff_reports_only_four_stable_errors(
 def test_requirement_handoff_rejects_tampered_empty_input_set(tmp_path: Path) -> None:
     prepare_greenfield(tmp_path)
     report_path = tmp_path / ".ai-sow/validation/analyze-requirement.json"
-    report = json.loads(report_path.read_text())
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     report["compilationReceipt"]["inputs"] = []
     report_path.write_text(json.dumps(report), encoding="utf-8")
 
@@ -556,7 +556,7 @@ def test_requirement_handoff_rejects_tampered_empty_input_set(tmp_path: Path) ->
 def test_requirement_handoff_rejects_extra_missing_input_as_invalid(tmp_path: Path) -> None:
     prepare_greenfield(tmp_path)
     report_path = tmp_path / ".ai-sow/validation/analyze-requirement.json"
-    report = json.loads(report_path.read_text())
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     report["compilationReceipt"]["inputs"].append(
         {
             "name": "extra",
@@ -576,7 +576,7 @@ def test_requirement_handoff_rejects_extra_missing_input_as_invalid(tmp_path: Pa
 def test_requirement_output_structure_change_is_stale(tmp_path: Path) -> None:
     prepare_greenfield(tmp_path)
     requirements_path = tmp_path / ".ai-sow/data/analyze-requirement/requirements.json"
-    requirements = json.loads(requirements_path.read_text())
+    requirements = json.loads(requirements_path.read_text(encoding="utf-8"))
     requirements["sourceDocuments"].append(
         {
             "sourceDocumentId": "source-document-late",
@@ -597,7 +597,7 @@ def test_requirement_output_structure_change_is_stale(tmp_path: Path) -> None:
 def test_invalid_report_owner_precedes_changed_output(tmp_path: Path) -> None:
     prepare_greenfield(tmp_path)
     report_path = tmp_path / ".ai-sow/validation/analyze-requirement.json"
-    report = json.loads(report_path.read_text())
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     report["owner"] = "wrong-owner"
     report_path.write_text(json.dumps(report), encoding="utf-8")
     requirements = tmp_path / ".ai-sow/data/analyze-requirement/requirements.json"

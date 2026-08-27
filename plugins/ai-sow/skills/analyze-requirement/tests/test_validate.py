@@ -68,7 +68,7 @@ def run_validator(
     return subprocess.run(
         command,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -77,7 +77,7 @@ def run_context(project_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(CONTEXT_SCRIPT), "--project-root", str(project_root)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -86,7 +86,7 @@ def run_renderer(project_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(RENDER_SCRIPT), "--project-root", str(project_root)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -256,20 +256,22 @@ def bind_review_packet(project_root: Path) -> str:
     )
     for filename, algorithm, decision in bindings:
         path = project_root / ".ai-sow/work/analyze-requirement" / filename
-        path.write_text(
-            json.dumps(
-                {
-                    "algorithm": algorithm,
-                    "decision": decision,
-                    "owner": "analyze-requirement",
-                    "packetSha256": packet_hash,
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
+        # 必须写字节：write_text 在 Windows 上会把 "\n" 翻译成 "\r\n"，破坏 canonical JSON。
+        path.write_bytes(
+            (
+                json.dumps(
+                    {
+                        "algorithm": algorithm,
+                        "decision": decision,
+                        "owner": "analyze-requirement",
+                        "packetSha256": packet_hash,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8")
         )
     return packet_hash
 
@@ -464,7 +466,7 @@ def test_publish_preserves_candidate_bytes_and_writes_receipt_0_3(tmp_path: Path
 
     assert result.returncode == 0, result.stdout
     assert stable_path(tmp_path).read_bytes() == candidate
-    report = json.loads(validation_path(tmp_path).read_text())
+    report = json.loads(validation_path(tmp_path).read_text(encoding="utf-8"))
     receipt = report["compilationReceipt"]
     assert report["owner"] == "analyze-requirement"
     assert receipt["algorithm"] == "ai-sow-owner-v1"
@@ -532,7 +534,7 @@ def test_publish_requires_reviewer_pass_and_user_approval(tmp_path: Path) -> Non
     codes = {item["code"] for item in diagnostics(result)}
     assert {"REVIEW_NOT_PASSED", "USER_APPROVAL_MISSING"}.issubset(codes)
     assert not stable_path(tmp_path).exists()
-    report = json.loads(validation_path(tmp_path).read_text())
+    report = json.loads(validation_path(tmp_path).read_text(encoding="utf-8"))
     assert report["passed"] is False
     assert "compilationReceipt" not in report
 
@@ -612,7 +614,7 @@ def test_questionnaire_approved_default_is_valid_and_hash_bound(tmp_path: Path) 
     result = run_validator(tmp_path, "publish")
 
     assert result.returncode == 0, result.stdout
-    receipt = json.loads(validation_path(tmp_path).read_text())["compilationReceipt"]
+    receipt = json.loads(validation_path(tmp_path).read_text(encoding="utf-8"))["compilationReceipt"]
     declaration = next(item for item in receipt["inputs"] if item["name"] == "questionnaire")
     assert declaration["kind"] == "QUESTIONNAIRE_PRESENCE"
     assert declaration["sha256"] == hashlib.sha256(questionnaire.read_bytes()).hexdigest()
@@ -751,7 +753,7 @@ def test_rebind_updates_questionnaire_and_review_without_changing_stable_bytes(t
 
     assert result.returncode == 0, result.stdout
     assert stable_path(tmp_path).read_bytes() == stable_before
-    receipt = json.loads(validation_path(tmp_path).read_text())["compilationReceipt"]
+    receipt = json.loads(validation_path(tmp_path).read_text(encoding="utf-8"))["compilationReceipt"]
     assert next(item for item in receipt["inputs"] if item["name"] == "questionnaire")[
         "sha256"
     ] == hashlib.sha256(questionnaire.read_bytes()).hexdigest()
@@ -769,7 +771,7 @@ def test_failed_publish_preserves_last_stable_output_and_writes_failure_report(t
 
     assert result.returncode == 2
     assert stable_path(tmp_path).read_bytes() == stable_before
-    report = json.loads(validation_path(tmp_path).read_text())
+    report = json.loads(validation_path(tmp_path).read_text(encoding="utf-8"))
     assert report["passed"] is False
     assert "compilationReceipt" not in report
 

@@ -27,7 +27,7 @@ outcome 与 diagnostics，不拆成多条模型驱动的环境命令，也不为
 3. 以锁定文件创建或复用 `<plugin-root>/.venv`，复核 Python 版本以及 `jsonschema`、`openpyxl` import；
 4. 环境有效后立即调用同目录 `setup.py` 完成项目初始化与复读。
 
-用户无需手工安装 Python、uv 或依赖，也无需复制、理解或执行命令。缺少联网或插件缓存写权限时，Stage 说明一次必要权限的目的并使用 Codex 的权限机制自动重试同一 bootstrap；不得要求 BA、PM 打开终端处理。联网或平台能力确实不可用时，原样返回 bootstrap 的 `BLOCKED` diagnostics，且不得先创建 `.ai-sow`。
+用户无需手工安装 Python、uv 或依赖，也无需复制、理解或执行命令。缺少联网或插件缓存写权限时，Stage 说明一次必要权限的目的并使用宿主的权限机制自动重试同一 bootstrap；不得要求 BA、PM 打开终端处理。联网或平台能力确实不可用时，原样返回 bootstrap 的 `BLOCKED` diagnostics，且不得先创建 `.ai-sow`。
 
 ## 初始化与验证
 
@@ -51,6 +51,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>/scripts/bootst
 
 bootstrap 在锁定同步与依赖复核后，直接使用刚建立的插件 `.venv` Python 执行
 `"<skill-root>/scripts/setup.py"`；Stage 不再单独执行或复读这些内部步骤。
+
+## Windows 长路径
+
+`setup.py` 在写入任何文件前先检查项目根目录的路径预算。未启用长路径支持的 Windows 把路径
+限制在 260 个字符内，而本插件最深的受管路径需要 162 个字符，因此项目根目录必须短于 97 个
+字符。预算不足时 setup 返回 `WINDOWS_LONG_PATH_REQUIRED` 并且不创建 `.ai-sow`。
+
+出现该 diagnostics 时，当前 Stage Agent 必须把两个方案原样交给用户选择，不得自行决定：
+
+1. 把项目移动到更短的路径；
+2. 启用 Windows 长路径支持。
+
+第二个方案会修改机器级系统策略（`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`
+的 `LongPathsEnabled`），影响本机所有程序，并需要管理员权限。Stage 必须先说明这两点影响，
+取得用户明确同意后才能执行；未获同意时不得运行带 `-Apply` 的命令。
+
+只读检查当前状态（不修改任何内容）：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>/scripts/enable_long_paths.ps1"
+```
+
+用户明确同意后，由用户在管理员 PowerShell 中执行：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>/scripts/enable_long_paths.ps1" -Apply
+```
+
+脚本幂等：已启用时直接返回 `OK`；未提权时返回 `BLOCKED` 且不做任何修改，Stage 不得尝试
+绕过 UAC 提示。启用成功后需要重启当前会话，再重新调用 `setup`。
 
 脚本只维护：
 

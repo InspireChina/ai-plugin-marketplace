@@ -43,7 +43,7 @@ def run_cli(script: Path, project: Path, *args: str) -> tuple[subprocess.Complet
         [sys.executable, str(script), "--project-root", str(project), *args],
         cwd=PLUGIN_ROOT,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
     return completed, json.loads(completed.stdout)

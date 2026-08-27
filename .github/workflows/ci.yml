@@ -26,6 +26,5 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: uv sync --project plugins/ai-sow --locked
       - run: uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow/skills -q
-      - if: matrix.os == 'ubuntu-latest'
-        run: uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
+      - run: uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
       - run: python scripts/validate_repository.py

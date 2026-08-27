@@ -438,7 +438,7 @@ def run_validator(
     return subprocess.run(
         command,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -455,7 +455,7 @@ def run_script(script: Path, root: Path, *arguments: str) -> subprocess.Complete
     return subprocess.run(
         [sys.executable, str(script), "--project-root", str(root), *arguments],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=False,
     )
 
@@ -663,7 +663,7 @@ def test_review_mode_writes_bound_story_packet_without_formal_publication(tmp_pa
     assert result.returncode == 0, result.stdout
     assert result_payload(result)["outcome"] == "REVIEW_REQUIRED"
     packet = json.loads(
-        (tmp_path / ".ai-sow/work/generate-story/review-packet.json").read_text()
+        (tmp_path / ".ai-sow/work/generate-story/review-packet.json").read_text(encoding="utf-8")
     )
     assert packet["algorithm"] == "ai-sow-owner-review-packet-v1"
     assert packet["candidateOutputs"] == [
@@ -781,12 +781,12 @@ def test_routes_three_owner_handoff_failures_without_candidate_replay(
     elif failure == "stale":
         output.write_bytes(output.read_bytes() + b" ")
     else:
-        report = json.loads(validation.read_text())
+        report = json.loads(validation.read_text(encoding="utf-8"))
         if failure == "invalid":
             report["passed"] = False
         else:
             report["compilationReceipt"]["validatorContractVersion"] = "99"
-        validation.write_text(json.dumps(report))
+        validation.write_text(json.dumps(report), encoding="utf-8")
     write_bytes(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", b"not-json")
 
     result = run_validator(tmp_path)
@@ -848,7 +848,7 @@ def test_prepare_context_projects_relevant_design_decisions(tmp_path: Path) -> N
 
     assert result.returncode == 0, result.stdout
     fragment = json.loads(
-        (tmp_path / ".ai-sow/work/generate-story/context/design.json").read_text()
+        (tmp_path / ".ai-sow/work/generate-story/context/design.json").read_text(encoding="utf-8")
     )
     assert fragment["decisions"] == DESIGN["decisions"]
 
@@ -1070,7 +1070,7 @@ def test_review_stable_ids_are_an_order_independent_set(tmp_path: Path) -> None:
     expected = ", ".join(stable_ids(delivery))
     reordered = ", ".join(reversed(stable_ids(delivery)))
     review = tmp_path / ".ai-sow/reviews/generate-story.md"
-    review.write_text(review.read_text().replace(f"Stable IDs: {expected}", f"Stable IDs: {reordered}"))
+    review.write_text(review.read_text(encoding="utf-8").replace(f"Stable IDs: {expected}", f"Stable IDs: {reordered}"), encoding="utf-8")
 
     result = run_validator(tmp_path)
 
@@ -1079,7 +1079,7 @@ def test_review_stable_ids_are_an_order_independent_set(tmp_path: Path) -> None:
 
 def test_questionnaire_story_ids_are_an_order_independent_set(tmp_path: Path) -> None:
     prepare(tmp_path, questionnaire=questionnaire_bytes())
-    delivery = json.loads((tmp_path / ".ai-sow/work/generate-story/delivery.candidate.json").read_text())
+    delivery = json.loads((tmp_path / ".ai-sow/work/generate-story/delivery.candidate.json").read_text(encoding="utf-8"))
     next(
         story
         for story in delivery["stories"]
@@ -1136,11 +1136,11 @@ def test_rejects_in_scope_concern_without_delivery_mapping(tmp_path: Path) -> No
     prepare(tmp_path)
     review = tmp_path / ".ai-sow/reviews/generate-story.md"
     review.write_text(
-        review.read_text().replace(
+        review.read_text(encoding="utf-8").replace(
             "| PRODUCTION_SCOPE | IN_SCOPE | feature-profile-api | gap-profile-api | "
             "story-profile-api | — |",
             "| PRODUCTION_SCOPE | IN_SCOPE | — | — | — | — |",
-        )
+        ), encoding="utf-8"
     )
 
     result = run_validator(tmp_path)
@@ -1153,12 +1153,12 @@ def test_accepts_concern_mapped_only_through_assumption_story_gap(tmp_path: Path
     prepare(tmp_path)
     review = tmp_path / ".ai-sow/reviews/generate-story.md"
     review.write_text(
-        review.read_text().replace(
+        review.read_text(encoding="utf-8").replace(
             "| PRODUCTION_SCOPE | IN_SCOPE | feature-profile-api | gap-profile-api | "
             "story-profile-api | — |",
             "| PRODUCTION_SCOPE | IN_SCOPE | feature-customer-profile | gap-customer-profile | "
             "— | assumption-profile-hosting |",
-        )
+        ), encoding="utf-8"
     )
 
     result = run_validator(tmp_path)
@@ -1177,7 +1177,7 @@ def test_rebind_changes_design_receipt_without_changing_delivery_bytes(tmp_path:
     published = run_validator(tmp_path, "publish")
     assert published.returncode == 0, published.stdout
     old_report = json.loads(
-        managed_path(tmp_path, ".ai-sow/validation/generate-story.json").read_text()
+        managed_path(tmp_path, ".ai-sow/validation/generate-story.json").read_text(encoding="utf-8")
     )
     old_design = input_hash(old_report, "designValidation")
     publish_design(tmp_path, review=b"Design review approved after wording update.\n")
@@ -1194,7 +1194,7 @@ def test_rebind_changes_design_receipt_without_changing_delivery_bytes(tmp_path:
     assert result.returncode == 0, result.stdout
     assert managed_path(tmp_path, ".ai-sow/data/generate-story/delivery.json").read_bytes() == candidate
     rebound = json.loads(
-        managed_path(tmp_path, ".ai-sow/validation/generate-story.json").read_text()
+        managed_path(tmp_path, ".ai-sow/validation/generate-story.json").read_text(encoding="utf-8")
     )
     assert input_hash(rebound, "designValidation") == new_design
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "ai-sow",
+  "version": "0.1.0",
+  "description": "根据需求和系统现状创建可评审、可追溯的 AI 辅助 SOW 工作簿。",
+  "author": {
+    "name": "Inspire"
+  },
+  "homepage": "https://github.com/InspireChina/ai-plugin-marketplace/tree/main/plugins/ai-sow",
+  "repository": "https://github.com/InspireChina/ai-plugin-marketplace",
+  "license": "Apache-2.0",
+  "keywords": [
+    "sow",
+    "requirements",
+    "estimation",
+    "delivery"
+  ]
+}
