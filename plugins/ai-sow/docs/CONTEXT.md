@@ -78,7 +78,7 @@ Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。
 | Topic Assessment | 每次 As-Is 对九个 Topic 各给出且只给出一条评估：系统边界与参与方、能力与流程、应用与组件、集成与外部依赖、数据与存储、平台/环境与部署、安全与合规、运维与质量、交付与约束。状态为 `ASSESSED / NOT_APPLICABLE / INSUFFICIENT_EVIDENCE`。 |
 | As-Is Item | 已存在或实际运行的 `CAPABILITY / COMPONENT / INTEGRATION / DATA_ASSET / INFRASTRUCTURE / CONTROL / PROCESS / CONSTRAINT` 当前事实。 |
 | Commitment | 从往期 SOW 等有效承诺提取的 `ADD / REPLACE / RETIRE` 变化；同时记录 `implementationStatus`（实现对账结果）与 `treatment`（范围处理方式）。 |
-| Effective Start | 项目预计有效起点，只能由当前 Item 与 `EXPECTED_BEFORE_START` Commitment 组成。 |
+| Effective Start | 设计与 Task 共用的项目起点基线，只能由当前 Item 与 `EXPECTED_BEFORE_START` Commitment 组成；ArchitectureDelta、ScopeDecision 和 Task 工作模式都引用同一条起点记录。 |
 | Carry-forward | `treatment = CARRY_FORWARD` 的未完成承诺；进入 Coverage、设计和 Story gap，属于本期仍需交付的范围，不是 Effective Start。 |
 | As-Is Coverage | 对每个来源 Feature 给出 `COMPLETE / PARTIAL / MISSING`、相关有效起点和理由。`MISSING` 是合法事实。 |
 | Evidence | 后续判断所需的依据。问卷中已经确认的答案整理为 `QUESTIONNAIRE` Evidence；正式数据不保存完整工具输出、源码、凭证、绝对路径或缓存。 |
@@ -90,6 +90,8 @@ Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。
 | Go-live Assessment | 上线批准门禁。固定处置生产范围、环境配置、部署切换回滚、数据迁移、生产验证、可观测性、运维移交、上线后支持、用户赋能和遗留退役十项 Concern，并明确责任边界和依据。 |
 
 As-Is 不要求所有工具使用同一种中间数据格式，也不限定必须使用某种调查工具。调查顺序为：先看仓库和文档，再看接口约定、配置、部署和运行证据，最后通过定向问卷补充信息。完整调查过程保留在该 Skill 自己的 work 目录中；正式 `asis.json` 只保存后续步骤确实需要的结论。
+
+`As-Is Item` 只陈述调查截止日期已经存在或实际运行的事实；`Effective Start` 才是下游设计和估算使用的统一基线。它的名称必须唯一，摘要必须具体说明项目开工时可以依赖的对象、能力与边界。As-Is 不预先保存 Task 工作模式：同一项 Effective Start 对不同基础单元可能分别支持“调整”“接入复用”或仍需“新建”，该判断只由 `generate-task` 结合当前 Task 完成。
 
 `.ai-sow/reviews/generate-design.md` 以精确 `PASSED` 声明和固定七列矩阵保存两个批准门禁。它不是第七份正式 JSON；门禁语义只由 `generate-design` validator 判断并绑定到 receipt。`generate-story`、`generate-task` 和 `generate-sow` 只匹配当前 Design handoff，不复制或重放 HLD/Go-live 业务判断。
 Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate 写入唯一
@@ -131,7 +133,7 @@ Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate �
 | SIT 判断 | 集成 Task 触发 SIT；仅有 Integration 记录时不直接触发。 |
 | 最终人天 | XLSX 按“M档基础人天 × 复杂度系数”计算 Task 人天，并继续计算 SIT、UAT、风险、取整和总计。结构化 JSON 不保存插件计算结果。 |
 
-Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start：“调整 / 接入复用”必须引用一项足以证明工作模式的现状；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用一项相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。
+Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start：“调整 / 接入复用”必须引用一项足以证明工作模式的现状；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用一项相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。工作簿把该引用显示为“关联现状条目”，名称直接来自 `90-系统现状` 的可见明细表，不使用隐藏辅助名单。
 
 “接入复用”只有在本项目侧存在可独立估算的注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作时才成立。其 `workModeRationale` 使用固定格式 `<有效起点名称>保持不变；本项目负责并交付：<中文工作类型>。`，必须与结构化工作类型及承诺完全一致，不解析任意自由文本来判断责任。普通依赖引入、常规调用或直接按既有约定使用不单独生成 Task。任何 `affectsEstimate = true` 的未关闭 Uncertainty 都会阻止正式估算和 XLSX 生成；`impact` 只负责解释影响，不作为关键词门禁。
 
@@ -190,7 +192,7 @@ Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立
 原字节复用路径天然属于完成状态，完整发布后的复查必须返回
 `completedOperations == totalOperations`，不能把内部的 changed-prefix 计数暴露成未完成进度。
 
-`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 单选一个系统现状且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 不展示证据引用，并以隐藏辅助列提供有效起点名称下拉。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 通过“关联现状条目”单选一个可见 Effective Start 且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 只保留一张 Effective Start 明细表，展示“主题名称 / 现状条目名称 / 现状描述 / 起点可用性”，主题和起点可用性使用下拉，整页可手工填写且不启用保护。任务下拉直接引用该可见名称列，不再使用隐藏辅助名单。Excel 内的系统现状修订不回写稳定 JSON、评审或 manifest。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
 
 生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
 

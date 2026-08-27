@@ -10,7 +10,7 @@ from openpyxl.utils import range_boundaries
 GENERATE_SOW_TEMPLATE = Path(__file__).resolve().parents[1] / "fixtures/project/.ai-sow/templates/sow-template.xlsx"
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 REFERENCE_WORKBOOK = SKILL_ROOT.parent.parent / "docs/reference/SOW估算与生成示例_v1.3.xlsx"
-EXPECTED_SHA256 = "f477338e29014b22bf81e1aa88c9c96030aa53c7d7668195431503fa9f719335"
+EXPECTED_SHA256 = "21770912dab3d2717d7d40440e61b19bb694fc4b611755d01394b825625bd6fa"
 EXPECTED_SHEETS = [
     "00-使用说明",
     "01-需求",
@@ -30,11 +30,10 @@ EXPECTED_HEADERS = {
     "FeatureTable": ["需求名称", "子需求名称", "场景/范围描述", "涉及系统/数据", "约束/NFR", "来源类型", "推断理由"],
     "SOWStoryTable": ["需求名称", "子需求名称", "故事名称", "UAT适用", "验收条件", "任务明细", "人天", "关联假设/风险名称", "假设/风险状态"],
     "AcceptanceCriterionTable": ["需求名称", "子需求名称", "故事名称", "验收条件名称"],
-    "TaskTable": ["需求名称", "子需求名称", "故事名称", "任务名称", "基础单元名称", "任务族", "工作模式", "工作模式理由", "复杂度", "复杂度理由", "系统现状名称", "判断依据与备注", "基础人天", "复杂度倍率", "人天小计"],
+    "TaskTable": ["需求名称", "子需求名称", "故事名称", "任务名称", "基础单元名称", "任务族", "工作模式", "工作模式理由", "复杂度", "复杂度理由", "关联现状条目", "判断依据与备注", "基础人天", "复杂度倍率", "人天小计"],
     "IntegrationTable": ["需求名称", "子需求名称", "故事名称", "集成任务名称", "来源", "目标", "触发条件", "方向", "业务目的", "责任边界", "工作模式", "复杂度", "支持单价", "SIT人天"],
     "AssumptionRiskTable": ["假设/风险名称", "类型", "触发条件", "责任边界", "状态", "处理方式"],
-    "AsIsTopicTable": ["主题名称", "评估状态", "结论", "当前事实数", "承诺数", "有效起点数", "未决数"],
-    "AsIsDetailTable": ["主题名称", "记录类型", "记录名称", "分类/状态", "摘要/理由", "关系/流向", "关联对象"],
+    "AsIsDetailTable": ["主题名称", "现状条目名称", "现状描述", "起点可用性"],
 }
 FORMULA_COLUMNS = {
     "SOWStoryTable": {"需求名称", "验收条件", "任务明细", "人天", "假设/风险状态"},
@@ -43,7 +42,7 @@ FORMULA_COLUMNS = {
     "IntegrationTable": {"需求名称", "子需求名称", "工作模式", "复杂度", "支持单价", "SIT人天"},
 }
 RELATION_COLUMNS = {"IntegrationTable": {"故事名称", "集成任务名称"}}
-PROTECTED_SHEETS = {"03-SOW主表", "04-验收条件", "05-任务明细", "06-集成点", "20-项目汇总", "90-系统现状"}
+PROTECTED_SHEETS = {"03-SOW主表", "04-验收条件", "05-任务明细", "06-集成点", "20-项目汇总"}
 
 
 def workbook_signature(path: Path) -> tuple[list[str], dict[str, str], int]:
@@ -96,7 +95,7 @@ def test_skill_local_template_copies_match_the_authoritative_fingerprint() -> No
     assert hashlib.sha256(GENERATE_SOW_TEMPLATE.read_bytes()).hexdigest() == EXPECTED_SHA256
     sheets, tables, formulas = workbook_signature(GENERATE_SOW_TEMPLATE)
     assert len(sheets) == 12
-    assert len(tables) == 12
+    assert len(tables) == 11
     assert formulas == 142
 
 
@@ -124,11 +123,13 @@ def test_dropdowns_are_name_based_and_chinese() -> None:
         ("05-任务明细", "E5:E504", 'INDIRECT("\'92-基础人天\'!$D$5:$D$41")'),
         ("05-任务明细", "G5:G504", '"新建,调整,接入复用"'),
         ("05-任务明细", "I5:I504", '"S,M,L"'),
-        ("05-任务明细", "K5:K504", 'INDIRECT("\'90-系统现状\'!$H$18:$H$1017")'),
+        ("05-任务明细", "K5:K504", 'INDIRECT("AsIsDetailTable[现状条目名称]")'),
         ("06-集成点", "H5:H104", '"入站,出站"'),
         ("06-集成点", "J5:J104", '"内部,外部"'),
         ("07-假设清单", "B5:B104", '"假设,风险"'),
         ("07-假设清单", "E5:E104", '"已明确,待确认"'),
+        ("90-系统现状", "A5:A1004", '"系统边界与参与方,能力与流程,应用与组件,集成与外部依赖,数据与存储,平台、环境与部署,安全与合规,运维与质量,交付与约束"'),
+        ("90-系统现状", "D5:D1004", '"当前已存在,预计开工前具备"'),
     }
     for path in (GENERATE_SOW_TEMPLATE, REFERENCE_WORKBOOK):
         workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
@@ -151,6 +152,7 @@ def test_formula_and_relation_columns_are_gray_locked_and_sheets_protected() -> 
             for sheet_name in PROTECTED_SHEETS:
                 assert workbook[sheet_name].protection.sheet is True
             assert workbook["07-假设清单"].protection.sheet is False
+            assert workbook["90-系统现状"].protection.sheet is False
             for table_name in (
                 "EpicTable",
                 "FeatureTable",
@@ -172,6 +174,22 @@ def test_formula_and_relation_columns_are_gray_locked_and_sheets_protected() -> 
                         assert cell.fill.fgColor.rgb[-6:] == "FFFFFF"
                 if locked:
                     assert worksheet.protection.sheet is True
+            asis_sheet = workbook["90-系统现状"]
+            assert asis_sheet["A2"].protection.locked is False
+            assert asis_sheet["A2"].fill.fgColor.rgb[-6:] == "FFFFFF"
+            table = asis_sheet.tables["AsIsDetailTable"]
+            min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+            headers = [
+                asis_sheet.cell(min_row, column).value
+                for column in range(min_col, max_col + 1)
+            ]
+            for row in range(min_row + 1, max_row + 1):
+                for offset, header in enumerate(headers):
+                    cell = asis_sheet.cell(row, min_col + offset)
+                    assert cell.protection.locked is False
+                    assert cell.fill.fill_type == "solid"
+                    expected_fill = "FFF2CC" if header in {"主题名称", "起点可用性"} else "FFFFFF"
+                    assert cell.fill.fgColor.rgb[-6:] == expected_fill
         finally:
             workbook.close()
 
@@ -181,9 +199,10 @@ def test_all_visible_text_is_vertically_centered_and_summary_status_is_readable(
         workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
         try:
             for worksheet in workbook.worksheets:
-                assert worksheet.freeze_panes == (
-                    None if worksheet.title == "00-使用说明" else "A4"
+                expected_freeze = None if worksheet.title == "00-使用说明" else (
+                    "A5" if worksheet.title == "90-系统现状" else "A4"
                 )
+                assert worksheet.freeze_panes == expected_freeze
                 for row in worksheet.iter_rows():
                     for cell in row:
                         if cell.value is not None:
@@ -206,7 +225,7 @@ def test_all_visible_text_is_vertically_centered_and_summary_status_is_readable(
 def test_technical_keys_are_hidden_and_business_tables_do_not_expose_ids() -> None:
     workbook = openpyxl.load_workbook(REFERENCE_WORKBOOK, data_only=False, read_only=False)
     try:
-        assert workbook["90-系统现状"].column_dimensions["H"].hidden is True
+        assert workbook["90-系统现状"].column_dimensions["H"].hidden is not True
         assert workbook["91-项目参数"].column_dimensions["A"].hidden is True
         assert workbook["92-基础人天"].column_dimensions["A"].hidden is True
         assert workbook["92-基础人天"].column_dimensions["C"].hidden is True

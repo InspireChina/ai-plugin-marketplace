@@ -96,6 +96,8 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 7. 直接调查结束后仍有缺口时，读取[现状证据问卷](references/current-state-questionnaire.md)，只选择实际需要的问题并写入 `.ai-sow/work/analyze-as-is/questionnaire.md`。已确认回答可形成 `QUESTIONNAIRE` Evidence；`UNKNOWN` 或冲突回答形成 Uncertainty。Item、Commitment、Effective Start、Uncertainty 和 Evidence 都同时保存稳定 ID 与非空名称；每条 Uncertainty 必须明确 `affectsEstimate`。
 8. 将完整专业结论先写入 `.ai-sow/work/analyze-as-is/asis.candidate.json`。它是 work-only candidate，不是稳定交接数据；批准前不写正式 review、稳定 As-Is 或 validation receipt。
 
+`As-Is Item` 只记录调查截止日期已经存在或实际运行的事实。`Effective Start` 是 Design 与 Task 共用的项目起点基线；名称必须唯一，摘要必须具体点明项目开工时可以依赖的对象、能力和边界，并通过 `sourceItemIds`、`commitmentIds` 追溯事实或开工前承诺。本 Skill 不为 Effective Start 预判 Task 工作模式。
+
 ## 候选评审与发布
 
 Stage 先确定性准备 Owner-local closure 并投影 review：

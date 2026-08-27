@@ -26,7 +26,6 @@ TABLES = {
     "TaskTable",
     "IntegrationTable",
     "AssumptionRiskTable",
-    "AsIsTopicTable",
     "AsIsDetailTable",
 }
 SPEC = importlib.util.spec_from_file_location("generate_sow_script", SCRIPT)
@@ -34,6 +33,7 @@ assert SPEC is not None and SPEC.loader is not None
 GENERATOR = importlib.util.module_from_spec(SPEC)
 sys.path.insert(0, str(SCRIPT.parent))
 SPEC.loader.exec_module(GENERATOR)
+WORKBOOK = sys.modules["workbook"]
 
 
 def test_skill_uses_current_stage_without_leaf_agents() -> None:
@@ -77,6 +77,56 @@ def table_index(workbook: openpyxl.Workbook) -> dict[str, tuple[object, object]]
         for worksheet in workbook.worksheets
         for name in worksheet.tables
     }
+
+
+def test_as_is_projection_distinguishes_current_and_expected_start_availability() -> None:
+    rows = WORKBOOK.build_asis_detail_rows(
+        {
+            "items": [
+                {
+                    "asIsItemId": "ASI-001",
+                    "summary": "当前已有客户查询接口",
+                }
+            ],
+            "commitments": [
+                {
+                    "commitmentId": "COM-001",
+                    "summary": "统一认证改造完成",
+                }
+            ],
+            "effectiveStartItems": [
+                {
+                    "topic": "APPLICATION",
+                    "name": "客户查询服务",
+                    "summary": "不应优先展示的聚合摘要",
+                    "sourceItemIds": ["ASI-001"],
+                    "commitmentIds": [],
+                },
+                {
+                    "topic": "SECURITY_COMPLIANCE",
+                    "name": "统一认证能力",
+                    "summary": "不应优先展示的聚合摘要",
+                    "sourceItemIds": [],
+                    "commitmentIds": ["COM-001"],
+                },
+            ],
+        }
+    )
+
+    assert rows == [
+        {
+            "主题名称": "应用与组件",
+            "现状条目名称": "客户查询服务",
+            "现状描述": "当前已有客户查询接口",
+            "起点可用性": "当前已存在",
+        },
+        {
+            "主题名称": "安全与合规",
+            "现状条目名称": "统一认证能力",
+            "现状描述": "预计开工前：统一认证改造完成",
+            "起点可用性": "预计开工前具备",
+        },
+    ]
 
 
 def test_receipt_only_generation_is_deterministic_and_reuses_identical_package(tmp_path: Path) -> None:
@@ -299,6 +349,7 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
             "SOWStoryTable": len(delivery["stories"]),
             "AcceptanceCriterionTable": len(delivery["acceptanceCriteria"]),
             "TaskTable": len(estimate["tasks"]),
+            "AsIsDetailTable": len(asis["effectiveStartItems"]),
         }
         for name, expected in expected_counts.items():
             worksheet, table = index[name]
@@ -341,7 +392,7 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
             for task in estimate["tasks"]
             if task.get("matchedEffectiveStartItemId")
         }
-        assert {row["系统现状名称"] for row in task_rows if row["系统现状名称"]} == expected_system_names
+        assert {row["关联现状条目"] for row in task_rows if row["关联现状条目"]} == expected_system_names
         assert all(not str(row["基础单元名称"]).startswith("BU-") for row in task_rows)
 
         task_names = {task["taskId"]: task["name"] for task in estimate["tasks"]}
@@ -368,18 +419,41 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
                 assert decision_id not in rationale
                 assert decision_names[decision_id] in rationale
         asis_detail_rows = rows("AsIsDetailTable")
-        assert "证据引用" not in asis_detail_rows[0]
-        integration_relations = {
-            str(row["关系/流向"])
-            for row in asis_detail_rows
-            if row["记录类型"] == "现状事实" and row["分类/状态"] == "集成"
+        assert list(asis_detail_rows[0]) == [
+            "主题名称", "现状条目名称", "现状描述", "起点可用性"
+        ]
+        assert {row["现状条目名称"] for row in asis_detail_rows} == {
+            entry["name"] for entry in asis["effectiveStartItems"]
         }
-        assert integration_relations
-        assert all("方向：入站" in value or "方向：出站" in value for value in integration_relations)
-        assert all("INBOUND" not in value and "OUTBOUND" not in value for value in integration_relations)
+        assert {row["起点可用性"] for row in asis_detail_rows} == {"当前已存在"}
+        item_summaries = {entry["asIsItemId"]: entry["summary"] for entry in asis["items"]}
+        first_start = asis["effectiveStartItems"][0]
+        first_row = next(
+            row for row in asis_detail_rows
+            if row["现状条目名称"] == first_start["name"]
+        )
+        assert first_row["现状描述"] == "、".join(
+            item_summaries[item_id] for item_id in first_start["sourceItemIds"]
+        )
         assert list(rows("AssumptionRiskTable")[0]) == [
             "假设/风险名称", "类型", "触发条件", "责任边界", "状态", "处理方式"
         ]
+        asis_sheet = workbook["90-系统现状"]
+        assert asis_sheet.protection.sheet is False
+        assert asis_sheet["A2"].protection.locked is False
+        assert asis_sheet["A2"].fill.fgColor.rgb[-6:] == "FFFFFF"
+        _, table = index["AsIsDetailTable"]
+        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+        headers = [
+            asis_sheet.cell(min_row, column).value
+            for column in range(min_col, max_col + 1)
+        ]
+        for row in range(min_row + 1, max_row + 1):
+            for offset, header in enumerate(headers):
+                cell = asis_sheet.cell(row, min_col + offset)
+                assert cell.protection.locked is False
+                expected_fill = "FFF2CC" if header in {"主题名称", "起点可用性"} else "FFFFFF"
+                assert cell.fill.fgColor.rgb[-6:] == expected_fill
         assert workbook.calculation.calcMode == "auto"
         projected_hashes = {
             workbook["00-使用说明"].cell(row, 1).value: workbook["00-使用说明"].cell(row, 2).value

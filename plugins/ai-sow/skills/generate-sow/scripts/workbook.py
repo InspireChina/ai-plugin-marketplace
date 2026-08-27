@@ -8,12 +8,12 @@ import re
 import tempfile
 import unicodedata
 import zipfile
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import openpyxl
 from openpyxl.formula.translate import Translator
+from openpyxl.styles import PatternFill, Protection
 from openpyxl.utils import get_column_letter, range_boundaries
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.worksheet.filters import AutoFilter
@@ -37,57 +37,13 @@ FEATURE_SOURCE_LABELS = {
     "DESIGN_DERIVED": "设计派生",
 }
 DIRECTION_LABELS = {"INBOUND": "入站", "OUTBOUND": "出站"}
-ASIS_STATUS_LABELS = {
-    "ASSESSED": "已评估",
-    "NOT_APPLICABLE": "不适用",
-    "INSUFFICIENT_EVIDENCE": "证据不足",
+ASIS_START_AVAILABILITY_LABELS = {
+    "CURRENT": "当前已存在",
+    "EXPECTED_BEFORE_START": "预计开工前具备",
 }
-ASIS_RECORD_TYPE_LABELS = {
-    "CURRENT_FACT": "现状事实",
-    "COMMITMENT": "既有承诺",
-    "EFFECTIVE_START": "有效起点",
-    "COVERAGE": "子需求覆盖",
-    "UNCERTAINTY": "未决事项",
-    "EVIDENCE": "证据",
-}
-ITEM_TYPE_LABELS = {
-    "CAPABILITY": "能力",
-    "COMPONENT": "组件",
-    "INTEGRATION": "集成",
-    "DATA_ASSET": "数据资产",
-    "INFRASTRUCTURE": "基础设施",
-    "CONTROL": "控制",
-    "PROCESS": "流程",
-    "CONSTRAINT": "约束",
-}
-COMMITMENT_STATUS_LABELS = {
-    "IMPLEMENTED": "已实现",
-    "PARTIAL": "部分实现",
-    "NOT_IMPLEMENTED": "未实现",
-    "UNVERIFIED": "未验证",
-    "SUPERSEDED": "已替代",
-}
-COMMITMENT_TREATMENT_LABELS = {
-    "CURRENT_BASELINE": "当前基线",
-    "EXPECTED_BEFORE_START": "预计开工前完成",
-    "CARRY_FORWARD": "延续交付",
-    "EXCLUDE": "排除",
-    "NEEDS_DECISION": "待决策",
-}
-CHANGE_TYPE_LABELS = {"ADD": "新增", "REPLACE": "替换", "RETIRE": "退役"}
-COVERAGE_STATUS_LABELS = {"COMPLETE": "完整", "PARTIAL": "部分", "MISSING": "缺失"}
-EVIDENCE_KIND_LABELS = {
-    "RUNTIME": "运行验证",
-    "CONTRACT": "接口契约",
-    "CONFIGURATION": "配置",
-    "CODE": "代码",
-    "DEPLOYMENT": "部署",
-    "PRIOR_SOW": "往期 SOW",
-    "QUESTIONNAIRE": "问卷",
-    "DOCUMENT": "文档",
-}
-RUNTIME_OUTCOME_LABELS = {"PASSED": "通过", "FAILED": "失败", "BLOCKED": "受阻"}
-ASIS_TABLES = {"AsIsTopicTable", "AsIsDetailTable"}
+ASIS_TABLES = {"AsIsDetailTable"}
+ASIS_DROPDOWN_HEADERS = {"主题名称", "起点可用性"}
+ASIS_INPUT_LIMIT = 1000
 TABLES = (
     "EpicTable",
     "FeatureTable",
@@ -96,7 +52,6 @@ TABLES = (
     "TaskTable",
     "IntegrationTable",
     "AssumptionRiskTable",
-    "AsIsTopicTable",
     "AsIsDetailTable",
 )
 FORMULA_HEADERS = {
@@ -110,22 +65,17 @@ TABLE_HEADERS = {
     "FeatureTable": ["需求名称", "子需求名称", "场景/范围描述", "涉及系统/数据", "约束/NFR", "来源类型", "推断理由"],
     "SOWStoryTable": ["需求名称", "子需求名称", "故事名称", "UAT适用", "验收条件", "任务明细", "人天", "关联假设/风险名称", "假设/风险状态"],
     "AcceptanceCriterionTable": ["需求名称", "子需求名称", "故事名称", "验收条件名称"],
-    "TaskTable": ["需求名称", "子需求名称", "故事名称", "任务名称", "基础单元名称", "任务族", "工作模式", "工作模式理由", "复杂度", "复杂度理由", "系统现状名称", "判断依据与备注", "基础人天", "复杂度倍率", "人天小计"],
+    "TaskTable": ["需求名称", "子需求名称", "故事名称", "任务名称", "基础单元名称", "任务族", "工作模式", "工作模式理由", "复杂度", "复杂度理由", "关联现状条目", "判断依据与备注", "基础人天", "复杂度倍率", "人天小计"],
     "IntegrationTable": ["需求名称", "子需求名称", "故事名称", "集成任务名称", "来源", "目标", "触发条件", "方向", "业务目的", "责任边界", "工作模式", "复杂度", "支持单价", "SIT人天"],
     "AssumptionRiskTable": ["假设/风险名称", "类型", "触发条件", "责任边界", "状态", "处理方式"],
-    "AsIsTopicTable": ["主题名称", "评估状态", "结论", "当前事实数", "承诺数", "有效起点数", "未决数"],
-    "AsIsDetailTable": ["主题名称", "记录类型", "记录名称", "分类/状态", "摘要/理由", "关系/流向", "关联对象"],
+    "AsIsDetailTable": ["主题名称", "现状条目名称", "现状描述", "起点可用性"],
 }
-ASIS_NAME_HELPER_COLUMN = 8
-ASIS_NAME_HELPER_START_ROW = 18
-ASIS_NAME_HELPER_LIMIT = 1000
 PROTECTED_SHEETS = {
     "03-SOW主表",
     "04-验收条件",
     "05-任务明细",
     "06-集成点",
     "20-项目汇总",
-    "90-系统现状",
 }
 RISKY_TEXT = re.compile(r"^[=+\-@]")
 BARE_TEXTJOIN = re.compile(r"(?<![\w.])TEXTJOIN\(")
@@ -205,191 +155,35 @@ def topic_label(topic: object) -> object:
     return display_text(TOPIC_LABELS.get(str(topic), str(topic) if topic is not None else ""))
 
 
-def build_asis_topic_rows(asis: dict[str, Any]) -> list[dict[str, object]]:
-    assessments = {
-        entry["topic"]: entry
-        for entry in asis["topicAssessments"]
-    }
-    counts = {
-        "items": Counter(entry["topic"] for entry in asis["items"]),
-        "commitments": Counter(entry["topic"] for entry in asis["commitments"]),
-        "effectiveStartItems": Counter(
-            entry["topic"] for entry in asis["effectiveStartItems"]
-        ),
-        "uncertainties": Counter(entry["topic"] for entry in asis["uncertainties"]),
-    }
-    rows: list[dict[str, object]] = []
-    for topic, label in TOPIC_LABELS.items():
-        assessment = assessments.get(topic, {})
-        rows.append(
-            {
-                "主题名称": label,
-                "评估状态": localized(assessment.get("status", ""), ASIS_STATUS_LABELS),
-                "结论": display_text(assessment.get("summary", "")),
-                "当前事实数": counts["items"][topic],
-                "承诺数": counts["commitments"][topic],
-                "有效起点数": counts["effectiveStartItems"][topic],
-                "未决数": counts["uncertainties"][topic],
-            }
-        )
-    return rows
-
-
 def build_asis_detail_rows(
     asis: dict[str, Any],
-    feature_names: dict[str, str],
 ) -> list[dict[str, object]]:
-    entity_topics = {
-        entry[id_field]: entry["topic"]
-        for collection, id_field in (
-            (asis["items"], "asIsItemId"),
-            (asis["commitments"], "commitmentId"),
-            (asis["effectiveStartItems"], "effectiveStartItemId"),
-            (asis["uncertainties"], "uncertaintyId"),
-        )
-        for entry in collection
+    item_summaries = {
+        entry["asIsItemId"]: entry["summary"]
+        for entry in asis["items"]
     }
-    display_names = {
-        **{
-            entry["repoId"]: entry["name"]
-            for entry in asis["analysisScope"]["repositorySnapshots"]
-        },
-        **{
-            entry["priorSowId"]: entry["name"]
-            for entry in asis["analysisScope"]["priorSowSnapshots"]
-        },
-        **{entry["asIsItemId"]: entry["name"] for entry in asis["items"]},
-        **{entry["commitmentId"]: entry["name"] for entry in asis["commitments"]},
-        **{
-            entry["effectiveStartItemId"]: entry["name"]
-            for entry in asis["effectiveStartItems"]
-        },
-        **{entry["uncertaintyId"]: entry["name"] for entry in asis["uncertainties"]},
-        **{entry["evidenceId"]: entry["name"] for entry in asis["evidence"]},
-        **feature_names,
+    commitment_summaries = {
+        entry["commitmentId"]: entry["summary"]
+        for entry in asis["commitments"]
     }
-
-    def names_for(references: list[object]) -> object:
-        resolved: list[object] = []
-        for reference in references:
-            key = str(reference)
-            if key not in display_names:
-                raise ValueError(f"display name is missing for reference: {key}")
-            resolved.append(display_names[key])
-        return joined(resolved)
-
     rows: list[dict[str, object]] = []
-    for entry in asis["items"]:
-        relation = ""
-        if entry["itemType"] == "INTEGRATION":
-            relation = " | ".join(
-                (
-                    f"{entry.get('source', '')} → {entry.get('target', '')}",
-                    f"触发：{entry.get('trigger', '')}",
-                    f"方向：{localized(entry.get('direction'), DIRECTION_LABELS)}",
-                    f"目的：{entry.get('purpose', '')}",
-                    f"责任：{entry.get('owner', '')}",
-                )
-            )
-        rows.append(
-            {
-                "主题名称": topic_label(entry["topic"]),
-                "记录类型": ASIS_RECORD_TYPE_LABELS["CURRENT_FACT"],
-                "记录名称": display_text(entry["name"]),
-                "分类/状态": localized(entry["itemType"], ITEM_TYPE_LABELS),
-                "摘要/理由": display_text(entry["summary"]),
-                "关系/流向": display_text(relation),
-                "关联对象": names_for(entry["repositoryIds"]),
-            }
-        )
-    for entry in asis["commitments"]:
-        rows.append(
-            {
-                "主题名称": topic_label(entry["topic"]),
-                "记录类型": ASIS_RECORD_TYPE_LABELS["COMMITMENT"],
-                "记录名称": display_text(entry["name"]),
-                "分类/状态": display_text(
-                    f"{COMMITMENT_STATUS_LABELS[entry['implementationStatus']]} / "
-                    f"{COMMITMENT_TREATMENT_LABELS[entry['treatment']]}"
-                ),
-                "摘要/理由": display_text(entry["summary"]),
-                "关系/流向": localized(entry["changeType"], CHANGE_TYPE_LABELS),
-                "关联对象": names_for(
-                    [
-                        entry["priorSowId"],
-                        *entry["affectedItemIds"],
-                        *entry["relatedFeatureIds"],
-                    ]
-                ),
-            }
-        )
     for entry in asis["effectiveStartItems"]:
+        summaries = [
+            item_summaries[item_id]
+            for item_id in entry["sourceItemIds"]
+        ]
+        summaries.extend(
+            f"预计开工前：{commitment_summaries[commitment_id]}"
+            for commitment_id in entry["commitmentIds"]
+        )
         rows.append(
             {
                 "主题名称": topic_label(entry["topic"]),
-                "记录类型": ASIS_RECORD_TYPE_LABELS["EFFECTIVE_START"],
-                "记录名称": display_text(entry["name"]),
-                "分类/状态": localized(entry["itemType"], ITEM_TYPE_LABELS),
-                "摘要/理由": display_text(entry["summary"]),
-                "关系/流向": "",
-                "关联对象": names_for(
-                    [*entry["sourceItemIds"], *entry["commitmentIds"]]
-                ),
-            }
-        )
-    for entry in asis["coverage"]:
-        rows.append(
-            {
-                "主题名称": "子需求覆盖",
-                "记录类型": ASIS_RECORD_TYPE_LABELS["COVERAGE"],
-                "记录名称": display_text(feature_names[entry["featureId"]]),
-                "分类/状态": localized(entry["status"], COVERAGE_STATUS_LABELS),
-                "摘要/理由": display_text(entry["rationale"]),
-                "关系/流向": "",
-                "关联对象": names_for(
-                    [
-                        *entry["effectiveStartItemIds"],
-                        *entry["commitmentIds"],
-                        *entry["uncertaintyIds"],
-                    ]
-                ),
-            }
-        )
-    for entry in asis["uncertainties"]:
-        rows.append(
-            {
-                "主题名称": topic_label(entry["topic"]),
-                "记录类型": ASIS_RECORD_TYPE_LABELS["UNCERTAINTY"],
-                "记录名称": display_text(entry["name"]),
-                "分类/状态": display_text(entry["recommendedHandling"]),
-                "摘要/理由": display_text(entry["impact"]),
-                "关系/流向": display_text(entry["owner"]),
-                "关联对象": names_for(entry["relatedFeatureIds"]),
-            }
-        )
-    for entry in asis["evidence"]:
-        topic = next(
-            (
-                entity_topics[supported_id]
-                for supported_id in entry["supportsIds"]
-                if supported_id in entity_topics
-            ),
-            "",
-        )
-        rows.append(
-            {
-                "主题名称": topic_label(topic),
-                "记录类型": ASIS_RECORD_TYPE_LABELS["EVIDENCE"],
-                "记录名称": display_text(entry["name"]),
-                "分类/状态": display_text(
-                    f"{EVIDENCE_KIND_LABELS[entry['kind']]} / "
-                    f"{RUNTIME_OUTCOME_LABELS[entry['runtimeOutcome']]}"
-                    if entry["kind"] == "RUNTIME"
-                    else EVIDENCE_KIND_LABELS[entry["kind"]]
-                ),
-                "摘要/理由": display_text(entry["summary"]),
-                "关系/流向": "",
-                "关联对象": names_for(entry["supportsIds"]),
+                "现状条目名称": display_text(entry["name"]),
+                "现状描述": joined(summaries) if summaries else display_text(entry["summary"]),
+                "起点可用性": ASIS_START_AVAILABILITY_LABELS[
+                    "EXPECTED_BEFORE_START" if entry["commitmentIds"] else "CURRENT"
+                ],
             }
         )
     return rows
@@ -514,7 +308,7 @@ def build_rows(
                 "工作模式理由": entry["workModeRationale"],
                 "复杂度": entry["complexity"],
                 "复杂度理由": entry.get("complexityRationale", ""),
-                "系统现状名称": effective_start_names[entry["matchedEffectiveStartItemId"]]
+                "关联现状条目": effective_start_names[entry["matchedEffectiveStartItemId"]]
                 if entry.get("matchedEffectiveStartItemId")
                 else "",
                 "判断依据与备注": entry["rationale"],
@@ -545,30 +339,8 @@ def build_rows(
             }
             for entry in delivery["assumptions"]
         ],
-        "AsIsTopicTable": build_asis_topic_rows(asis),
-        "AsIsDetailTable": build_asis_detail_rows(
-            asis,
-            {feature_id: entry["name"] for feature_id, entry in features.items()},
-        ),
+        "AsIsDetailTable": build_asis_detail_rows(asis),
     }
-
-
-def fill_effective_start_name_helper(workbook: Any, asis: dict[str, Any]) -> list[object]:
-    names = [display_text(entry["name"]) for entry in asis["effectiveStartItems"]]
-    if len(names) > ASIS_NAME_HELPER_LIMIT:
-        raise ValueError("effective start name helper exceeds template capacity")
-    worksheet = workbook["90-系统现状"]
-    for row in range(
-        ASIS_NAME_HELPER_START_ROW,
-        ASIS_NAME_HELPER_START_ROW + ASIS_NAME_HELPER_LIMIT,
-    ):
-        worksheet.cell(row, ASIS_NAME_HELPER_COLUMN).value = None
-    for offset, name in enumerate(names):
-        cell = worksheet.cell(ASIS_NAME_HELPER_START_ROW + offset, ASIS_NAME_HELPER_COLUMN)
-        cell.value = name
-        if isinstance(name, str):
-            cell.data_type = "s"
-    return names
 
 
 def table_index(workbook: Any) -> dict[str, tuple[Any, Any]]:
@@ -582,6 +354,23 @@ def table_index(workbook: Any) -> dict[str, tuple[Any, Any]]:
     if missing:
         raise ValueError(f"template tables are missing: {missing}")
     return found
+
+
+def enable_asis_manual_editing(workbook: Any) -> None:
+    worksheet = workbook["90-系统现状"]
+    worksheet.protection.sheet = False
+    editable_fill = PatternFill(fill_type="solid", fgColor="FFFFFF")
+    worksheet["A2"].protection = Protection(locked=False)
+    worksheet["A2"].fill = copy.copy(editable_fill)
+    for table_name in ASIS_TABLES:
+        table_worksheet, table = table_index(workbook)[table_name]
+        if table_worksheet is not worksheet:
+            raise ValueError(f"As-Is table is on the wrong worksheet: {table_name}")
+        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+        for row in range(min_row + 1, max_row + 1):
+            for column in range(min_col, max_col + 1):
+                cell = worksheet.cell(row, column)
+                cell.protection = Protection(locked=False)
 
 
 def base_unit_name_map(workbook: Any) -> dict[str, str]:
@@ -828,7 +617,6 @@ def verify_workbook(
     expected: dict[str, list[dict[str, object]]],
     contract: dict[str, dict[str, object]],
     input_hashes: dict[str, str],
-    effective_start_names: list[object],
 ) -> None:
     workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
     try:
@@ -885,29 +673,33 @@ def verify_workbook(
                 raise ValueError(f"autoFilter is missing: {table_name}")
             if table.autoFilter is not None and table.autoFilter.ref != table.ref:
                 raise ValueError(f"autoFilter range mismatch: {table_name}")
-        topic_sheet, topic_table = index["AsIsTopicTable"]
-        detail_sheet, detail_table = index["AsIsDetailTable"]
-        if topic_sheet is detail_sheet:
-            topic_min_col, topic_min_row, topic_max_col, topic_max_row = range_boundaries(topic_table.ref)
-            detail_min_col, detail_min_row, detail_max_col, detail_max_row = range_boundaries(detail_table.ref)
-            if not (
-                topic_max_col < detail_min_col
-                or detail_max_col < topic_min_col
-                or topic_max_row < detail_min_row
-                or detail_max_row < topic_min_row
-            ):
-                raise ValueError("As-Is tables overlap")
         asis_sheet = workbook["90-系统现状"]
-        if not asis_sheet.column_dimensions[
-            get_column_letter(ASIS_NAME_HELPER_COLUMN)
-        ].hidden:
-            raise ValueError("effective start name helper is visible")
-        actual_names = [
-            asis_sheet.cell(ASIS_NAME_HELPER_START_ROW + offset, ASIS_NAME_HELPER_COLUMN).value
-            for offset in range(len(effective_start_names))
+        if asis_sheet.protection.sheet:
+            raise ValueError("As-Is worksheet must allow manual editing")
+        if asis_sheet["A2"].protection.locked:
+            raise ValueError("As-Is scope summary must allow manual editing")
+        if (
+            asis_sheet["A2"].fill.fill_type != "solid"
+            or asis_sheet["A2"].fill.fgColor.rgb[-6:] != "FFFFFF"
+        ):
+            raise ValueError("As-Is scope summary must use the editable fill")
+        table_sheet, table = index["AsIsDetailTable"]
+        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+        headers = [
+            str(table_sheet.cell(min_row, column).value)
+            for column in range(min_col, max_col + 1)
         ]
-        if actual_names != effective_start_names:
-            raise ValueError("effective start name helper mismatch")
+        for row in range(min_row + 1, max_row + 1):
+            for offset, header in enumerate(headers):
+                cell = table_sheet.cell(row, min_col + offset)
+                if cell.protection.locked:
+                    raise ValueError(f"As-Is cell is not editable: {cell.coordinate}")
+                expected_fill = "FFF2CC" if header in ASIS_DROPDOWN_HEADERS else "FFFFFF"
+                if (
+                    cell.fill.fill_type != "solid"
+                    or cell.fill.fgColor.rgb[-6:] != expected_fill
+                ):
+                    raise ValueError(f"As-Is editable cell has the wrong fill: {cell.coordinate}")
         for sheet_name in PROTECTED_SHEETS:
             if not workbook[sheet_name].protection.sheet:
                 raise ValueError(f"worksheet protection is missing: {sheet_name}")
@@ -971,16 +763,16 @@ def write_workbook(
         workbook.calculation = CalcProperties()
     try:
         table_index(workbook)
+        enable_asis_manual_editing(workbook)
         rows = build_rows(data, base_unit_name_map(workbook))
-        if len(rows["AsIsTopicTable"]) != len(TOPIC_LABELS):
-            raise ValueError("AsIsTopicTable must contain exactly nine topics")
+        if len(rows["AsIsDetailTable"]) > ASIS_INPUT_LIMIT:
+            raise ValueError("As-Is detail table exceeds template capacity")
         contract = projection_contract(workbook)
         clear_orphan_table_formulas(workbook)
         fill_asis_header(workbook, data["asis"])
         fill_input_hashes(workbook, input_hashes)
         for table_name in TABLES:
             fill_table(workbook, table_name, rows[table_name])
-        effective_start_names = fill_effective_start_name_helper(workbook, data["asis"])
         workbook.calculation.calcMode = "auto"
         workbook.calculation.calcOnSave = True
         workbook.calculation.forceFullCalc = True
@@ -991,4 +783,4 @@ def write_workbook(
     finally:
         workbook.close()
     normalize_xlsx(output_path)
-    verify_workbook(output_path, rows, contract, input_hashes, effective_start_names)
+    verify_workbook(output_path, rows, contract, input_hashes)
