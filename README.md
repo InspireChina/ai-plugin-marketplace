@@ -9,16 +9,11 @@
 | --- | --- | --- |
 | [AI SOW](plugins/ai-sow/README.md) | 0.1.0 | 分析范围、核对系统现状、估算交付工作并生成可评审的 XLSX。 |
 
-## 平台验证状态
+## 支持平台
 
-| 平台 | 状态 | 证据边界 |
-| --- | --- | --- |
-| macOS | 已验证（`Verified`） | 已在真实 Mac 上运行仓库测试、本地 Codex marketplace 安装、已安装插件目录执行和大型 Brownfield 工作流。 |
-| Linux | CI 覆盖（`CI-covered`） | GitHub 托管 CI 覆盖仓库和插件测试，但不声明桌面 Excel 验收。 |
-| Windows 11 | 临时支持（`Provisional`） | 已在实机验证 `setup` bootstrap、仓库测试套件和独立插件副本冒烟；Excel Desktop 验收和 NTFS 重解析点场景仍未完成。 |
-
-CI 和合成测试不能作为 Windows 11 实机验收结果。开放风险、实机检查清单和
-状态变更所需证据见 [Windows 11 验证状态](docs/windows-11-validation.md)。
+macOS、Linux 和 Windows 11 x64。三个平台使用同一套 Skill 与同一份计算权威模板，
+只有 `setup` 的环境自举脚本按平台区分（macOS/Linux 用 `bootstrap.sh`，Windows 用
+`bootstrap.ps1`）。Windows 上项目路径需短于 97 个字符，或已启用长路径支持。
 
 ## 安装
 

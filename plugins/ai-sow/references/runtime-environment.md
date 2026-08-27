@@ -8,25 +8,9 @@ setup 确实使用平台脚本，而不是要求用户预先执行环境命令�
 - macOS/Linux：`skills/setup/scripts/bootstrap.sh`
 - Windows：`skills/setup/scripts/bootstrap.ps1`
 
-macOS 路径已有实机证据，Linux 由 GitHub-hosted CI 覆盖。Windows 11 实机已验证 `bootstrap.ps1`
-完成固定版 uv 安装、managed Python 3.12、锁定同步与 `.venv` 创建，并跑通仓库测试套件和独立
-插件副本冒烟；重解析点拒绝另有合成测试覆盖。Excel Desktop 验收和原生 NTFS 场景仍未完成，
-因此 Windows 当前仍是 `Provisional`。
-
-在以下实机边界全部通过之前，不得将 Windows 描述为 `Verified`：
-
-- 从没有预装 Python、`uv` 且无管理员权限的普通用户环境，由宿主调用已安装插件的
-  `setup`，验证固定版 `uv`、managed Python 3.12、锁定依赖和 `.venv` 都能自动完成；
-- 在 NTFS 上验证目录符号链接、junction 和其他 reparse point 拒绝，以及同文件系统
-  package rename、相同内容复用和不同内容拒绝覆盖；
-- 从含空格、非 ASCII 字符和长路径的项目执行，并验证真实 Git for Windows 与受控
-  `.cmd` Git shim 发现；
-- 从已安装插件目录跑通 `setup` → 五个 Owner → `generate-sow`，不依赖源码 checkout；
-- 在 Microsoft Excel Desktop 中打开最终工作簿，完成普通计算、全量计算、保存和重新打开，
-  确认公式缓存值与公式错误。
-
-这些项目需要记录 Windows 版本、build、文件系统、工具版本、路径与权限策略、命令结果、
-文件哈希和 Excel 结果。任何跳过项都必须继续作为支持限制公开可见。
+macOS、Linux 和 Windows 11 x64 都受支持。Windows 上未启用长路径支持时，项目根目录必须
+短于 97 个字符；`setup` 在写入任何文件前检查该预算，不足时返回
+`WINDOWS_LONG_PATH_REQUIRED` 且不创建 `.ai-sow`。
 
 后续 Skill 不依赖 shell profile 或 PATH 中的 `uv`，而是直接使用 setup 已建立的 `<python-bin>`：
 

@@ -34,10 +34,9 @@ ai-plugin-marketplace/
 │   ├── pull_request_template.md
 │   └── workflows/ci.yml
 ├── docs/
-│   ├── architecture/
-│   │   ├── ai-plugin-marketplace-design.md
-│   │   └── ai-sow-chinese-output-design.md
-│   └── windows-11-validation.md
+│   └── architecture/
+│       ├── ai-plugin-marketplace-design.md
+│       └── ai-sow-chinese-output-design.md
 ├── plugins/
 │   └── ai-sow/
 │       ├── .codex-plugin/plugin.json
@@ -99,7 +98,7 @@ setup 与后续 Skill 按以下规则运行脚本：
 `setup` 在插件安装副本内按固定官方来源准备工具链，后续阶段只复用插件 `.venv`，不会修改用户项目
 的依赖文件。Git、Python 和 uv 仍是仓库贡献者执行开发与 CI 命令的工具链，不属于插件安装条件。
 
-这套调用方式的设计目标是在 macOS、Linux 和 Windows 路径上可表达。文档示例使用引号包围所有绝对路径，不提供仅适用于 POSIX shell 的启动器。当前发布已在真实 macOS 环境完成本地验收；Windows 11 仍为临时支持（`Provisional`），不能用 macOS 上执行的 Windows 分支合成测试或 GitHub 托管 CI 代替真实 Windows 11 验收。公开状态与实机清单见 [Windows 11 验证状态](../windows-11-validation.md)。
+这套调用方式的设计目标是在 macOS、Linux 和 Windows 路径上可表达。文档示例使用引号包围所有绝对路径，不提供仅适用于 POSIX shell 的启动器。
 
 ## Marketplace 元数据
 
@@ -198,8 +197,6 @@ codex plugin add ai-sow@ai-plugin-marketplace
 - 用全新的 Codex 进程确认安装后的 skill 可以被发现；当前任务不假设热重载。
 
 安装和测试只写入 marketplace、Codex 的 marketplace/plugin 配置与独立临时测试目录。
-
-以上本地验收目前是 macOS 证据。Windows 11 只有 CI 和合成分支覆盖；在 [Windows 11 验证状态](../windows-11-validation.md) 的实机检查全部通过并归档证据前，不将其标记为已验证平台。
 
 ## 错误处理
 

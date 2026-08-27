@@ -68,7 +68,7 @@
   PATH 中的 uv；根 README、插件 README、架构、领域上下文、安全支持版本与运行时合同同步区分
   普通用户和仓库贡献者的工具链。
 - setup bootstrap 接受 `uv 0.11.7` 后的合法平台/安装来源后缀，避免 Homebrew 等发行形式被误判；
-  文档明确 macOS/Linux 的 shell 入口、Windows PowerShell 入口及 Windows `Provisional` 证据边界。
+  文档明确 macOS/Linux 的 shell 入口与 Windows PowerShell 入口。
 - `analyze-requirement` 新增 work-only 来源处置闭包：完整来源中的决策相关陈述必须分类为
   `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`，由确定性 context、review 与 packet
   绑定；技术输入不会污染 BUSINESS 稳定 JSON，跨域边界必须映射全部受影响的 Epic/Feature。

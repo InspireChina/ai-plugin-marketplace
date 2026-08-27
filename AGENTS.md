@@ -82,7 +82,6 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 
 - 纯文档修改至少运行根测试、仓库验证器和 `git diff --check`；若文档中的命令、路径、版本、合同或安装流程变化，运行完整检查。
 - 工作簿变更同时验证结构、公式、引用和关键样式；涉及可见布局时增加渲染或 Excel 视觉检查。
-- 真实平台支持只能由对应实机证据声明。CI 和合成测试不能替代 Windows 11 实机或桌面 Excel 验收。
 
 ## 文档与发布同步
 

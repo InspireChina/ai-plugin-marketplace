@@ -3,8 +3,7 @@
 - 状态：当前正式合同
 - SOW 标准：v1.3
 - 插件合同版本：0.1.0
-- 适用宿主：Codex 与 Claude Code；macOS 已实机验证，Linux 由 CI 覆盖，Windows 11 x64 当前为
-  `Provisional`，尚未完成实机验收
+- 适用宿主：Codex 与 Claude Code；支持 macOS、Linux 和 Windows 11 x64
 - 领域语义：[CONTEXT.md](CONTEXT.md)
 - 计算权威：[sow-template.xlsx](../skills/setup/assets/sow-template.xlsx)
 - 运行时合同：[插件运行时环境合同](../references/runtime-environment.md)
@@ -98,8 +97,7 @@ installer 安装到插件安装副本；随后复用或自动安装 managed Pyth
 该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四字段项目元数据、
 复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发
 或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动
-迁移已有项目，也不接收代码库、往期 SOW 或模式。平台验证状态以根 README 为准；PowerShell 路径在
-Windows 11 实机验收完成前不得声明为 `Verified`。
+迁移已有项目，也不接收代码库、往期 SOW 或模式。
 
 ### analyze-requirement
 

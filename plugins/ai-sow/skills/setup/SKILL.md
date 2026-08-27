@@ -45,9 +45,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-root>/scripts/bootst
   -ProjectRoot "<project-root>" -ProjectId <stable-id> -Name <name>
 ```
 
-两条命令都是 setup 的实际平台入口。macOS 已完成实机验证；Windows PowerShell 路径在
-[插件运行时环境合同](../../references/runtime-environment.md)列出的实机验收完成前保持
-`Provisional`，不得把 CI 或合成测试描述成 Windows 实机认证。
+两条命令都是 setup 的实际平台入口。
 
 bootstrap 在锁定同步与依赖复核后，直接使用刚建立的插件 `.venv` Python 执行
 `"<skill-root>/scripts/setup.py"`；Stage 不再单独执行或复读这些内部步骤。

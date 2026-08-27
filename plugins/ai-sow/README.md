@@ -18,9 +18,8 @@ BA 先处理业务需求，TL 再完成系统分析、设计、交付拆分和�
 [uv](https://docs.astral.sh/uv/) 0.11.7、managed Python 3.12 和锁定依赖，并创建插件自己的
 `.venv`；BA、PM 或其他用户不需要打开终端，也不需要管理员权限。若企业网络需要授权，宿主
 只会请求完成官方下载安装所需的一次联网权限，然后自动重试。
-setup 在 macOS/Linux 实际调用 `bootstrap.sh`，在 Windows 调用 `bootstrap.ps1`。macOS 已实机
-验证；Windows 11 当前仍是 `Provisional`，完整限制见
-[插件运行时环境合同](references/runtime-environment.md)。
+setup 在 macOS/Linux 实际调用 `bootstrap.sh`，在 Windows 调用 `bootstrap.ps1`，
+完整运行时约定见[插件运行时环境合同](references/runtime-environment.md)。
 插件升级不会改动用户项目中已有的 SOW 数据。
 
 ### Windows 路径长度

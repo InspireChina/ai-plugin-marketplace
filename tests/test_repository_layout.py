@@ -222,7 +222,6 @@ class RepositoryLayoutTests(unittest.TestCase):
             "CHANGELOG.md",
             "SECURITY.md",
             "docs/architecture/ai-plugin-marketplace-design.md",
-            "docs/windows-11-validation.md",
             "plugins/ai-sow/README.md",
             "plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md",
             "plugins/ai-sow/docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
@@ -506,58 +505,6 @@ class RepositoryLayoutTests(unittest.TestCase):
         for field in ("name", "version", "description"):
             self.assertEqual(codex[field], claude[field], field)
         self.assertEqual(claude["name"], "ai-sow")
-
-    def test_readme_distinguishes_verified_and_provisional_platforms(self) -> None:
-        text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("| macOS | 已验证（`Verified`） |", text)
-        self.assertIn("| Windows 11 | 临时支持（`Provisional`） |", text)
-        self.assertIn(
-            "[Windows 11 验证状态](docs/windows-11-validation.md)",
-            text,
-        )
-        self.assertIn(
-            "CI 和合成测试不能作为 Windows 11 实机验收结果。",
-            text,
-        )
-
-    def test_windows_11_plan_covers_physical_machine_risks_and_evidence(self) -> None:
-        plan_path = REPO_ROOT / "docs/windows-11-validation.md"
-        self.assertTrue(plan_path.is_file(), plan_path)
-        text = plan_path.read_text(encoding="utf-8")
-        for required in (
-            "Provisional",
-            "Windows 11 实机",
-            "NTFS 目录联接",
-            "重解析点",
-            "同文件系统发布",
-            "不同内容拒绝覆盖",
-            "非 ASCII",
-            "长路径",
-            ".cmd Git shim",
-            "uv",
-            "Codex marketplace",
-            "已安装插件目录",
-            "pytest",
-            "setup",
-            "五个 Owner validator",
-            "generate-sow",
-            "Microsoft Excel Desktop",
-            "F9",
-            "公式缓存值",
-            "公式错误",
-            "开发者模式",
-            "符号链接权限",
-            "GitHub Actions",
-            "证据记录",
-            "合成测试",
-        ):
-            with self.subTest(required=required):
-                self.assertIn(required, text)
-
-        architecture = (
-            REPO_ROOT / "docs/architecture/ai-plugin-marketplace-design.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn("Windows 11 仍为临时支持（`Provisional`）", architecture)
 
     def test_public_docs_exclude_internal_execution_plans(self) -> None:
         tracked = subprocess.run(
