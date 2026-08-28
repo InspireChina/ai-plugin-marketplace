@@ -17,6 +17,7 @@ from openpyxl.styles import PatternFill, Protection
 from openpyxl.utils import get_column_letter, range_boundaries
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.worksheet.filters import AutoFilter
+from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.table import TableFormula
 
 
@@ -94,8 +95,18 @@ def safe_text(value: object) -> object:
     return value
 
 
-def normalize_table_formula(formula: str) -> str:
+def formula_text(value: object) -> str:
+    """Return a formula's text without discarding legacy array metadata."""
+    if isinstance(value, ArrayFormula):
+        value = value.text
+    if not isinstance(value, str):
+        raise TypeError("formula value is not text")
+    return value
+
+
+def normalize_table_formula(formula: object) -> str:
     """Serialize table references and future functions in OOXML form."""
+    formula = formula_text(formula)
     parts = formula.split('"')
     for index in range(0, len(parts), 2):
         parts[index] = parts[index].replace("@", "[#This Row],")
@@ -465,20 +476,28 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
         )
     prototypes = [worksheet.cell(prototype_row, column) for column in range(min_col, max_col + 1)]
     formulas = {
-        offset: normalize_table_formula(cell.value)
+        offset: (
+            normalize_table_formula(cell.value),
+            isinstance(cell.value, ArrayFormula),
+        )
         for offset, cell in enumerate(prototypes)
-        if cell.data_type == "f" and isinstance(cell.value, str)
+        if cell.data_type == "f" and isinstance(cell.value, (str, ArrayFormula))
     }
     expected_formula_headers = FORMULA_HEADERS.get(table_name, set())
     actual_formula_headers = {headers[offset] for offset in formulas}
     if actual_formula_headers != expected_formula_headers:
         raise ValueError(f"formula prototype mismatch in {table_name}")
     for column_offset, column in enumerate(table.tableColumns):
-        formula = formulas.get(column_offset)
+        specification = formulas.get(column_offset)
+        if specification is None:
+            column.calculatedColumnFormula = None
+            continue
+        formula, is_array = specification
         column.calculatedColumnFormula = (
-            TableFormula(attr_text=formula.removeprefix("="))
-            if formula is not None
-            else None
+            TableFormula(
+                array=True if is_array else None,
+                attr_text=formula.removeprefix("="),
+            )
         )
 
     physical_rows = rows if rows else [{}]
@@ -495,10 +514,16 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
             cell = worksheet.cell(row, min_col + column_offset)
             copy_style(prototypes[column_offset], cell)
             if column_offset in formulas:
-                cell.value = Translator(
-                    formulas[column_offset],
+                formula, is_array = formulas[column_offset]
+                translated = Translator(
+                    formula,
                     origin=prototypes[column_offset].coordinate,
                 ).translate_formula(cell.coordinate)
+                cell.value = (
+                    ArrayFormula(ref=cell.coordinate, text=translated)
+                    if is_array
+                    else translated
+                )
             else:
                 value = None if not rows else safe_text(payload.get(header, ""))
                 cell.value = value
@@ -554,8 +579,17 @@ def projection_contract(workbook: Any) -> dict[str, dict[str, object]]:
         for offset, header in enumerate(headers):
             cell = worksheet.cell(min_row + 1, min_col + offset)
             styles[str(header)] = style_signature(cell)
-            if cell.data_type == "f" and isinstance(cell.value, str):
-                formulas[str(header)] = (cell.coordinate, normalize_table_formula(cell.value))
+            if cell.data_type == "f" and isinstance(cell.value, (str, ArrayFormula)):
+                formula = normalize_table_formula(cell.value)
+                if "_xlfn._xlws." in formula:
+                    raise ValueError(
+                        f"unsupported dynamic worksheet formula in {table_name}.{header}"
+                    )
+                formulas[str(header)] = (
+                    cell.coordinate,
+                    formula,
+                    isinstance(cell.value, ArrayFormula),
+                )
         contract[table_name] = {
             "headers": headers,
             "formulas": formulas,
@@ -635,12 +669,27 @@ def verify_workbook(
                     if style_signature(cell) != styles[header]:
                         raise ValueError(f"prototype style changed in {table_name}.{header}")
                     if header in formulas:
-                        origin, prototype = formulas[header]
+                        origin, prototype, is_array = formulas[header]
                         expected_formula = Translator(
                             prototype,
                             origin=origin,
                         ).translate_formula(cell.coordinate)
-                        if cell.value != expected_formula or cell.data_type != "f":
+                        actual_formula = (
+                            formula_text(cell.value)
+                            if isinstance(cell.value, (str, ArrayFormula))
+                            else None
+                        )
+                        formula_kind_matches = (
+                            isinstance(cell.value, ArrayFormula)
+                            and cell.value.ref == cell.coordinate
+                            if is_array
+                            else isinstance(cell.value, str)
+                        )
+                        if (
+                            actual_formula != expected_formula
+                            or cell.data_type != "f"
+                            or not formula_kind_matches
+                        ):
                             raise ValueError(f"formula mismatch in {table_name}.{header}")
                     else:
                         expected_value = None if not rows else safe_text(payload.get(header, ""))
@@ -658,6 +707,14 @@ def verify_workbook(
             }
             if calculated_headers != FORMULA_HEADERS.get(table_name, set()):
                 raise ValueError(f"calculated column mismatch in {table_name}")
+            formula_columns = {
+                column.name: column.calculatedColumnFormula
+                for column in table.tableColumns
+                if column.calculatedColumnFormula is not None
+            }
+            for header, (_, _, is_array) in formulas.items():
+                if (formula_columns[header].array is True) != is_array:
+                    raise ValueError(f"calculated column array mismatch in {table_name}.{header}")
             if table_name in ASIS_TABLES and table.autoFilter is None:
                 raise ValueError(f"autoFilter is missing: {table_name}")
             if table.autoFilter is not None and table.autoFilter.ref != table.ref:
@@ -690,8 +747,13 @@ def verify_workbook(
                 ):
                     raise ValueError(f"As-Is editable cell has the wrong fill: {cell.coordinate}")
         for sheet_name in PROTECTED_SHEETS:
-            if not workbook[sheet_name].protection.sheet:
+            protection = workbook[sheet_name].protection
+            if not protection.sheet:
                 raise ValueError(f"worksheet protection is missing: {sheet_name}")
+            if protection.formatColumns or protection.formatRows:
+                raise ValueError(f"worksheet dimensions are locked: {sheet_name}")
+            if not protection.formatCells:
+                raise ValueError(f"worksheet cell formatting is unlocked: {sheet_name}")
         worksheet = workbook["00-使用说明"]
         actual_hashes = {
             str(worksheet.cell(row, 1).value): worksheet.cell(row, 2).value

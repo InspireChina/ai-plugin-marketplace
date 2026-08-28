@@ -11,6 +11,7 @@ from pathlib import Path
 import openpyxl
 import pytest
 from openpyxl.utils import range_boundaries
+from openpyxl.worksheet.formula import ArrayFormula
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -363,6 +364,29 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
             ]
             if name in {"SOWStoryTable", "TaskTable"}:
                 assert formulas
+
+        story_sheet, story_table = index["SOWStoryTable"]
+        min_col, min_row, max_col, max_row = range_boundaries(story_table.ref)
+        story_headers = [
+            str(story_sheet.cell(min_row, column).value)
+            for column in range(min_col, max_col + 1)
+        ]
+        story_columns = {column.name: column for column in story_table.tableColumns}
+        for header in ("验收条件", "任务明细"):
+            column = min_col + story_headers.index(header)
+            calculated = story_columns[header].calculatedColumnFormula
+            assert calculated is not None
+            assert calculated.array is True
+            assert "_xlfn._xlws." not in calculated.text
+            for row in range(min_row + 1, max_row + 1):
+                cell = story_sheet.cell(row, column)
+                formula = cell.value
+                assert isinstance(formula, ArrayFormula)
+                assert formula.ref == cell.coordinate
+                assert isinstance(formula.text, str)
+                assert f"C{row}" in formula.text
+                assert '"• "&' in formula.text
+                assert "_xlfn._xlws." not in formula.text
 
         def rows(table_name: str) -> list[dict[str, object]]:
             worksheet, table = index[table_name]

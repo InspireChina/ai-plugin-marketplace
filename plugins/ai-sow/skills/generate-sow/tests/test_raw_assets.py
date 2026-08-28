@@ -5,12 +5,13 @@ from pathlib import Path
 
 import openpyxl
 from openpyxl.utils import range_boundaries
+from openpyxl.worksheet.formula import ArrayFormula
 
 
 GENERATE_SOW_TEMPLATE = Path(__file__).resolve().parents[1] / "fixtures/project/.ai-sow/templates/sow-template.xlsx"
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 REFERENCE_WORKBOOK = SKILL_ROOT.parent.parent / "docs/reference/SOW估算与生成示例_v1.3.xlsx"
-EXPECTED_SHA256 = "21770912dab3d2717d7d40440e61b19bb694fc4b611755d01394b825625bd6fa"
+EXPECTED_SHA256 = "6d3e97f08c98139a2f64502460c4bb88265b8aca572e991f9c662016edfa6049"
 EXPECTED_SHEETS = [
     "00-使用说明",
     "01-需求",
@@ -150,7 +151,11 @@ def test_formula_and_relation_columns_are_gray_locked_and_sheets_protected() -> 
         workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
         try:
             for sheet_name in PROTECTED_SHEETS:
-                assert workbook[sheet_name].protection.sheet is True
+                protection = workbook[sheet_name].protection
+                assert protection.sheet is True
+                assert protection.formatColumns is False
+                assert protection.formatRows is False
+                assert protection.formatCells is True
             assert workbook["07-假设清单"].protection.sheet is False
             assert workbook["90-系统现状"].protection.sheet is False
             for table_name in (
@@ -190,6 +195,35 @@ def test_formula_and_relation_columns_are_gray_locked_and_sheets_protected() -> 
                     assert cell.fill.fill_type == "solid"
                     expected_fill = "FFF2CC" if header in {"主题名称", "起点可用性"} else "FFFFFF"
                     assert cell.fill.fgColor.rgb[-6:] == expected_fill
+        finally:
+            workbook.close()
+
+
+def test_sow_story_aggregations_use_excel_2019_compatible_array_formulas() -> None:
+    for path in (GENERATE_SOW_TEMPLATE, REFERENCE_WORKBOOK):
+        workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
+        try:
+            worksheet, cells = table_body_cells(workbook, "SOWStoryTable")
+            expected_sources = {
+                "验收条件": "AcceptanceCriterionTable[验收条件名称]",
+                "任务明细": "TaskTable[任务名称]",
+            }
+            for header, source in expected_sources.items():
+                formula = cells[header].value
+                assert isinstance(formula, ArrayFormula)
+                assert formula.ref == cells[header].coordinate
+                assert isinstance(formula.text, str)
+                assert "_xlfn.TEXTJOIN" in formula.text
+                assert "_xlfn._xlws." not in formula.text
+                assert f'"• "&{source}' in formula.text
+
+            table = worksheet.tables["SOWStoryTable"]
+            columns = {column.name: column for column in table.tableColumns}
+            for header in expected_sources:
+                calculated = columns[header].calculatedColumnFormula
+                assert calculated is not None
+                assert calculated.array is True
+                assert "_xlfn._xlws." not in calculated.text
         finally:
             workbook.close()
 
@@ -234,8 +268,11 @@ def test_technical_keys_are_hidden_and_business_tables_do_not_expose_ids() -> No
         for worksheet in workbook.worksheets:
             for row in worksheet.iter_rows():
                 for cell in row:
-                    if cell.data_type == "f" and isinstance(cell.value, str):
-                        assert "#REF!" not in cell.value
+                    if cell.data_type == "f":
+                        formula = cell.value.text if isinstance(cell.value, ArrayFormula) else cell.value
+                        assert isinstance(formula, str)
+                        assert "#REF!" not in formula
+                        assert "_xlfn._xlws." not in formula
     finally:
         workbook.close()
 

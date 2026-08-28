@@ -78,7 +78,7 @@ SCHEMA_ENUMS = {
     "skills/setup/contracts/project.schema.json": {},
 }
 
-TEMPLATE_SHA256 = "21770912dab3d2717d7d40440e61b19bb694fc4b611755d01394b825625bd6fa"
+TEMPLATE_SHA256 = "6d3e97f08c98139a2f64502460c4bb88265b8aca572e991f9c662016edfa6049"
 
 
 def enum_arrays(value: object, path: str = "$") -> dict[str, list[object]]:
