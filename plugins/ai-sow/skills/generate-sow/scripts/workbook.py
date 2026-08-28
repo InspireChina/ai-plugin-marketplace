@@ -752,6 +752,8 @@ def verify_workbook(
                 raise ValueError(f"worksheet protection is missing: {sheet_name}")
             if protection.formatColumns or protection.formatRows:
                 raise ValueError(f"worksheet dimensions are locked: {sheet_name}")
+            if protection.autoFilter or protection.sort:
+                raise ValueError(f"worksheet filtering or sorting is locked: {sheet_name}")
             if not protection.formatCells:
                 raise ValueError(f"worksheet cell formatting is unlocked: {sheet_name}")
         worksheet = workbook["00-使用说明"]

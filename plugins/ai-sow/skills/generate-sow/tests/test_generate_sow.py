@@ -463,6 +463,14 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
         assert asis_sheet.protection.sheet is False
         assert asis_sheet["A2"].protection.locked is False
         assert asis_sheet["A2"].fill.fgColor.rgb[-6:] == "FFFFFF"
+        for sheet_name in WORKBOOK.PROTECTED_SHEETS:
+            protection = workbook[sheet_name].protection
+            assert protection.sheet is True
+            assert protection.formatColumns is False
+            assert protection.formatRows is False
+            assert protection.autoFilter is False
+            assert protection.sort is False
+            assert protection.formatCells is True
         _, table = index["AsIsDetailTable"]
         min_col, min_row, max_col, max_row = range_boundaries(table.ref)
         headers = [

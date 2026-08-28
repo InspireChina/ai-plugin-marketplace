@@ -11,7 +11,7 @@ from openpyxl.worksheet.formula import ArrayFormula
 GENERATE_SOW_TEMPLATE = Path(__file__).resolve().parents[1] / "fixtures/project/.ai-sow/templates/sow-template.xlsx"
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 REFERENCE_WORKBOOK = SKILL_ROOT.parent.parent / "docs/reference/SOW估算与生成示例_v1.3.xlsx"
-EXPECTED_SHA256 = "6d3e97f08c98139a2f64502460c4bb88265b8aca572e991f9c662016edfa6049"
+EXPECTED_SHA256 = "6c90f4782acf7b1beb372a7b5f8aa78079f677160c39349bf561883b5592bfa0"
 EXPECTED_SHEETS = [
     "00-使用说明",
     "01-需求",
@@ -155,6 +155,8 @@ def test_formula_and_relation_columns_are_gray_locked_and_sheets_protected() -> 
                 assert protection.sheet is True
                 assert protection.formatColumns is False
                 assert protection.formatRows is False
+                assert protection.autoFilter is False
+                assert protection.sort is False
                 assert protection.formatCells is True
             assert workbook["07-假设清单"].protection.sheet is False
             assert workbook["90-系统现状"].protection.sheet is False
