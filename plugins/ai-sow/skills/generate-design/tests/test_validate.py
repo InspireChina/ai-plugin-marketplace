@@ -408,6 +408,83 @@ def test_renderer_owns_candidate_structure_counts(tmp_path: Path) -> None:
     assert "must not manually state candidate object counts" in blocked.stdout
 
 
+def test_renderer_requires_explicit_boundary_for_overlapping_technical_features(
+    tmp_path: Path,
+) -> None:
+    prepare(tmp_path)
+    (tmp_path / ".ai-sow/reviews/generate-design.md").unlink()
+    context = run_context(tmp_path)
+    assert context.returncode == 0, context.stdout
+    mutate_json(
+        tmp_path,
+        ".ai-sow/work/generate-design/requirements.candidate.json",
+        lambda value: value["features"].append(
+            {
+                "featureId": "feature-profile-environment",
+                "epicId": "epic-platform",
+                "name": "客户档案环境配置",
+                "description": "交付客户档案 API 的环境配置结果。",
+                "source": {
+                    "type": "SOURCE_INPUT",
+                    "sourceDocumentIds": ["source-document-customer-profile"],
+                    "sourceReferences": ["section:technical-platform"],
+                },
+            }
+        ),
+    )
+    mutate_json(
+        tmp_path,
+        ".ai-sow/work/generate-design/design.candidate.json",
+        lambda value: value["scopeDecisions"].append(
+            {
+                "featureId": "feature-profile-environment",
+                "decision": "IN_SCOPE",
+                "rationale": "环境配置需要独立验收。",
+                "designItemIds": ["design-customer-profile"],
+                "effectiveStartItemIds": [],
+                "requiredIntegrationBoundary": "NONE",
+                "requiredDecisionKinds": [],
+            }
+        ),
+    )
+    write_review_source(tmp_path)
+
+    blocked = run_renderer(tmp_path)
+
+    assert blocked.returncode == 2
+    assert "feature-profile-api" in blocked.stdout
+    assert "feature-profile-environment" in blocked.stdout
+
+    mutate_json(
+        tmp_path,
+        ".ai-sow/work/generate-design/review-source.json",
+        lambda value: value.update(
+            {
+                "featureBoundaryReview": [
+                    {
+                        "featureIds": [
+                            "feature-profile-api",
+                            "feature-profile-environment",
+                        ],
+                        "nonOverlapRationale": (
+                            "前者验收 API 业务操作边界，后者只验收环境配置就绪结果。"
+                        ),
+                    }
+                ]
+            }
+        ),
+    )
+
+    rendered = run_renderer(tmp_path)
+
+    assert rendered.returncode == 0, rendered.stdout
+    review = (
+        tmp_path / ".ai-sow/work/generate-design/review.candidate.md"
+    ).read_text(encoding="utf-8")
+    assert "## Feature Boundary Review" in review
+    assert "前者验收 API 业务操作边界" in review
+
+
 def bind_review_packet(root: Path) -> str:
     packet = (root / ".ai-sow/work/generate-design/review-packet.json").read_bytes()
     digest = sha256_bytes(packet)
@@ -1144,6 +1221,8 @@ def test_skill_defines_review_candidate_publish_stop_flow() -> None:
         "不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema",
         "不得手写 Design Item、Architecture Delta",
         "`Structure Counts`",
+        "featureBoundaryReview",
+        "可独立验收的非重叠结果",
     ):
         assert required in contract
     for forbidden in ("Worker", "Validator", "Orchestrator"):

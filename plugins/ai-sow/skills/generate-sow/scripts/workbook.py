@@ -163,29 +163,13 @@ def topic_label(topic: object) -> object:
 def build_asis_detail_rows(
     asis: dict[str, Any],
 ) -> list[dict[str, object]]:
-    item_summaries = {
-        entry["asIsItemId"]: entry["summary"]
-        for entry in asis["items"]
-    }
-    commitment_summaries = {
-        entry["commitmentId"]: entry["summary"]
-        for entry in asis["commitments"]
-    }
     rows: list[dict[str, object]] = []
     for entry in asis["effectiveStartItems"]:
-        summaries = [
-            item_summaries[item_id]
-            for item_id in entry["sourceItemIds"]
-        ]
-        summaries.extend(
-            f"预计开工前：{commitment_summaries[commitment_id]}"
-            for commitment_id in entry["commitmentIds"]
-        )
         rows.append(
             {
                 "主题名称": topic_label(entry["topic"]),
                 "现状条目名称": display_text(entry["name"]),
-                "现状描述": joined(summaries) if summaries else display_text(entry["summary"]),
+                "现状描述": display_text(entry["summary"]),
                 "起点可用性": ASIS_START_AVAILABILITY_LABELS[
                     "EXPECTED_BEFORE_START" if entry["commitmentIds"] else "CURRENT"
                 ],

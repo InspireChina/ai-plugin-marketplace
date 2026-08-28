@@ -77,12 +77,85 @@ def required_text(source: dict[str, Any], key: str) -> str:
     value = source.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"review source requires non-empty {key}")
-    if MANUAL_COUNT_PATTERN.search(value):
+    if match := MANUAL_COUNT_PATTERN.search(value):
         raise ValueError(
             f"review source {key} must not manually state candidate object counts; "
-            "renderer owns Structure Counts"
+            f"matched {match.group(0)!r}; renderer owns Structure Counts"
         )
     return value
+
+
+def overlapping_technical_feature_pairs(
+    design: dict[str, Any],
+    technical: dict[str, Any],
+) -> set[tuple[str, str]]:
+    technical_ids = {
+        entry["featureId"] for entry in objects(technical, "features")
+    }
+    scopes = [
+        entry
+        for entry in objects(design, "scopeDecisions")
+        if entry.get("decision") == "IN_SCOPE"
+        and entry.get("featureId") in technical_ids
+        and entry.get("designItemIds")
+    ]
+    pairs: set[tuple[str, str]] = set()
+    for index, left in enumerate(scopes):
+        left_items = set(left["designItemIds"])
+        for right in scopes[index + 1:]:
+            right_items = set(right["designItemIds"])
+            if left_items <= right_items or right_items <= left_items:
+                pairs.add(tuple(sorted((left["featureId"], right["featureId"]))))
+    return pairs
+
+
+def feature_boundary_rows(
+    design: dict[str, Any],
+    technical: dict[str, Any],
+    source: dict[str, Any],
+) -> list[str]:
+    expected = overlapping_technical_feature_pairs(design, technical)
+    reviews = source.get("featureBoundaryReview", [])
+    if not isinstance(reviews, list) or any(not isinstance(entry, dict) for entry in reviews):
+        raise ValueError("review source featureBoundaryReview must be an object array")
+    provided: dict[tuple[str, str], str] = {}
+    for entry in reviews:
+        feature_ids = entry.get("featureIds")
+        rationale = entry.get("nonOverlapRationale")
+        if (
+            not isinstance(feature_ids, list)
+            or len(feature_ids) != 2
+            or any(not isinstance(feature_id, str) for feature_id in feature_ids)
+            or len(set(feature_ids)) != 2
+            or not isinstance(rationale, str)
+            or not rationale.strip()
+        ):
+            raise ValueError(
+                "each featureBoundaryReview entry requires two unique featureIds "
+                "and a non-empty nonOverlapRationale"
+            )
+        pair = tuple(sorted(feature_ids))
+        if pair not in expected:
+            raise ValueError(
+                "featureBoundaryReview names a pair without overlapping Design Item sets: "
+                + ", ".join(pair)
+            )
+        if pair in provided:
+            raise ValueError(
+                "duplicate featureBoundaryReview pair: " + ", ".join(pair)
+            )
+        provided[pair] = rationale
+    missing = sorted(expected - set(provided))
+    if missing:
+        raise ValueError(
+            "featureBoundaryReview must explain independently verifiable, non-overlapping "
+            "outcomes for: "
+            + "; ".join(" <-> ".join(pair) for pair in missing)
+        )
+    return [
+        "| " + " | ".join((cell(pair[0]), cell(pair[1]), cell(provided[pair]))) + " |"
+        for pair in sorted(provided)
+    ] or ["| NONE | NONE | NONE |"]
 
 
 def render(
@@ -114,6 +187,7 @@ def render(
         f"technicalFeatures={len(objects(technical, 'features'))}"
     )
     concerns = objects(source, "concerns")
+    boundary_rows = feature_boundary_rows(design, technical, source)
     rows = []
     for concern in concerns:
         rows.append(
@@ -159,6 +233,12 @@ def render(
         "## Scope",
         "",
         required_text(source, "scopeReview"),
+        "",
+        "## Feature Boundary Review",
+        "",
+        "| Feature A | Feature B | 非重叠交付边界 |",
+        "|---|---|---|",
+        *boundary_rows,
         "",
         "## TECHNICAL requirements",
         "",

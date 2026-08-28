@@ -719,8 +719,6 @@ def validate_semantics(
         if story_id not in stories:
             diagnostics.append(diag("INTEGRATION_STORY_REF_UNKNOWN", f"unknown Story: {story_id}"))
         integrations_by_story[story_id].append(integration)
-        if not integration["decisionIds"]:
-            diagnostics.append(diag("INTEGRATION_DECISION_REQUIRED", f"Integration requires a Design Decision: {integration['integrationId']}"))
         for decision_id in integration["decisionIds"]:
             decision = decisions.get(decision_id)
             if decision is None:

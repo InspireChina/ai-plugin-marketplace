@@ -122,6 +122,23 @@ QUESTION_IDS = {
     *(f"del-{index:02d}" for index in range(1, 7)),
 }
 ANCHOR_KINDS = {"CODE", "CONTRACT", "CONFIGURATION", "DEPLOYMENT"}
+STABLE_DISPLAY_ID_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9-])(?:effective-start|commitment|uncertainty|evidence|asis)-"
+    r"[a-z0-9]+(?:-[a-z0-9]+)*(?![A-Za-z0-9-])"
+)
+COMMITMENT_TOKEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9-])commitment-[a-z0-9]+(?:-[a-z0-9]+)*(?![A-Za-z0-9-])"
+)
+EVIDENCE_TOKEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9-])evidence-[a-z0-9]+(?:-[a-z0-9]+)*(?![A-Za-z0-9-])"
+)
+COUNT_ENUMERATION_PATTERN = re.compile(
+    r"(?P<count>\d+|[零一二两三四五六七八九十]+)\s*(?:类|项|个|份)"
+    r"[^：:。；\r\n]{0,16}[：:]\s*(?P<items>[^。；\r\n]+)"
+)
+QUANTITATIVE_METRIC_PATTERN = re.compile(
+    r"(?P<count>\d[\d,]*)\s*(?:个|份|条)?\s*(?P<label>文件|节点|边)"
+)
 
 REQUIREMENT_CONTRACT = OwnerContract(
     subject="analyze-requirement",
@@ -144,6 +161,105 @@ def diag(code: str, message: str, path: str = "") -> dict[str, object]:
     if path:
         value["path"] = path
     return value
+
+
+def chinese_count(value: str) -> int | None:
+    if value.isdigit():
+        return int(value)
+    digits = {
+        "零": 0,
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+    }
+    if value == "十":
+        return 10
+    if "十" in value:
+        left, right = value.split("十", 1)
+        if (left and left not in digits) or (right and right not in digits):
+            return None
+        return (digits[left] if left else 1) * 10 + (digits[right] if right else 0)
+    if len(value) == 1 and value in digits:
+        return digits[value]
+    return None
+
+
+def narrative_values(data: dict[str, Any]) -> list[tuple[str, str]]:
+    fields = {
+        "topicAssessments": ("summary",),
+        "items": ("summary",),
+        "commitments": ("summary",),
+        "effectiveStartItems": ("summary",),
+        "coverage": ("rationale",),
+        "uncertainties": ("question", "impact", "recommendedHandling"),
+        "evidence": ("summary",),
+    }
+    values: list[tuple[str, str]] = []
+    for collection, names in fields.items():
+        for index, entry in enumerate(data[collection]):
+            for name in names:
+                value = entry.get(name)
+                if isinstance(value, str):
+                    values.append((f"{collection}[{index}].{name}", value))
+    return values
+
+
+def validate_narrative_consistency(data: dict[str, Any]) -> list[dict[str, object]]:
+    diagnostics: list[dict[str, object]] = []
+    narratives = narrative_values(data)
+    for path, value in narratives:
+        for match in COUNT_ENUMERATION_PATTERN.finditer(value):
+            expected = chinese_count(match.group("count"))
+            if re.search(r"(?:以及|和|及)", match.group("items")):
+                continue
+            items = [
+                item.strip()
+                for item in match.group("items").split("、")
+                if item.strip()
+            ]
+            if expected is not None and len(items) > 1 and expected != len(items):
+                diagnostics.append(
+                    diag(
+                        "COUNT_WORD_MISMATCH",
+                        f"declared {expected} entries but enumerated {len(items)}",
+                        path,
+                    )
+                )
+
+    evidence_ids = {entry["evidenceId"] for entry in data["evidence"]}
+    metrics: dict[tuple[str, str], set[int]] = defaultdict(set)
+    for evidence in data["evidence"]:
+        for match in QUANTITATIVE_METRIC_PATTERN.finditer(evidence["summary"]):
+            metrics[(evidence["evidenceId"], match.group("label"))].add(
+                int(match.group("count").replace(",", ""))
+            )
+    for _, value in narratives:
+        referenced = evidence_ids.intersection(EVIDENCE_TOKEN_PATTERN.findall(value))
+        if not referenced:
+            continue
+        claims = [
+            (match.group("label"), int(match.group("count").replace(",", "")))
+            for match in QUANTITATIVE_METRIC_PATTERN.finditer(value)
+        ]
+        for evidence_id in referenced:
+            for label, count in claims:
+                metrics[(evidence_id, label)].add(count)
+    for (evidence_id, label), values in sorted(metrics.items()):
+        if len(values) > 1:
+            diagnostics.append(
+                diag(
+                    "CROSS_OBJECT_NUMBER_DRIFT",
+                    f"{evidence_id} has inconsistent {label} counts: {sorted(values)}",
+                )
+            )
+    return diagnostics
 
 
 def parse_args() -> argparse.Namespace:
@@ -815,6 +931,8 @@ def validate_semantics(
     start_ids = {entry["effectiveStartItemId"] for entry in data["effectiveStartItems"]}
     uncertainties = {entry["uncertaintyId"]: entry for entry in data["uncertainties"]}
     uncertainty_ids = set(uncertainties)
+    evidence_ids = {entry["evidenceId"] for entry in data["evidence"]}
+    display_ids = item_ids | commitment_ids | start_ids | uncertainty_ids | evidence_ids
     topics = tuple(entry["topic"] for entry in data["topicAssessments"])
     if topics != EXPECTED_TOPICS:
         diagnostics.append(
@@ -828,6 +946,21 @@ def validate_semantics(
         if assessment["status"] == "INSUFFICIENT_EVIDENCE" and not assessment["uncertaintyIds"]:
             diagnostics.append(
                 diag("TOPIC_UNCERTAINTY_REQUIRED", f"{assessment['topic']} requires an Uncertainty")
+            )
+    assessments_by_topic = {
+        entry["topic"]: set(entry["uncertaintyIds"])
+        for entry in data["topicAssessments"]
+    }
+    for uncertainty in data["uncertainties"]:
+        if uncertainty["uncertaintyId"] not in assessments_by_topic.get(
+            uncertainty["topic"], set()
+        ):
+            diagnostics.append(
+                diag(
+                    "UNCERTAINTY_TOPIC_UNLINKED",
+                    "Uncertainty must be listed by its matching Topic: "
+                    f"{uncertainty['uncertaintyId']}",
+                )
             )
     scope = data["analysisScope"]
     for collection in ("repositorySnapshots", "priorSowSnapshots"):
@@ -891,6 +1024,14 @@ def validate_semantics(
                 diagnostics.append(
                     diag("EFFECTIVE_START_COMMITMENT_INELIGIBLE", f"ineligible Commitment: {reference}")
                 )
+        if display_ids.intersection(STABLE_DISPLAY_ID_PATTERN.findall(start["summary"])):
+            diagnostics.append(
+                diag(
+                    "DISPLAY_SUMMARY_STABLE_ID",
+                    "Effective Start summary must use display names instead of stable IDs: "
+                    f"{start['effectiveStartItemId']}",
+                )
+            )
     for uncertainty in data["uncertainties"]:
         add_unknown_references(
             diagnostics, uncertainty["relatedFeatureIds"], feature_ids,
@@ -924,6 +1065,18 @@ def validate_semantics(
                 diagnostics.append(
                     diag("COMMITMENT_COVERAGE_FEATURE_MISMATCH", f"unrelated Commitment: {reference}")
                 )
+        cited_commitments = commitment_ids.intersection(
+            COMMITMENT_TOKEN_PATTERN.findall(coverage["rationale"])
+        )
+        unlisted_commitments = cited_commitments - set(coverage["commitmentIds"])
+        if unlisted_commitments:
+            diagnostics.append(
+                diag(
+                    "COVERAGE_RATIONALE_CITES_UNLISTED_COMMITMENT",
+                    "Coverage rationale cites Commitment IDs absent from commitmentIds: "
+                    + ", ".join(sorted(unlisted_commitments)),
+                )
+            )
     for commitment_id, commitment in commitments.items():
         for feature_id in commitment["relatedFeatureIds"]:
             coverage = coverage_by_feature.get(feature_id)
@@ -992,6 +1145,7 @@ def validate_semantics(
                 diagnostics.append(
                     diag("GREENFIELD_ITEM_EVIDENCE_INVALID", f"invalid Greenfield Evidence: {item_id}")
                 )
+    diagnostics.extend(validate_narrative_consistency(data))
     return diagnostics
 
 

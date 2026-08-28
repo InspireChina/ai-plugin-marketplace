@@ -24,7 +24,7 @@
 | Rationale | 建议为何最符合现有业务证据，以及采用它的影响 |
 | Answer | 用户回填的选择或文字答案 |
 | Status | `OPEN`、`ANSWERED`、`APPROVED_DEFAULT` 或 `CLOSED` |
-| Blocking | `YES` 或 `NO`，并说明判定依据 |
+| Blocking | 精确使用 `YES：<非空理由>` 或 `NO：<非空理由>`；全角或半角冒号均可 |
 | Decision date | 用户确认答案或默认处理的日期 |
 | Decision evidence | 可复核的评审记录或用户确认摘要；不得只写“已批准” |
 | Disposition | `INCORPORATED_BUSINESS:<epic-or-feature-id>`、`ASSUMPTION_CANDIDATE` 或 `NO_CHANGE` |

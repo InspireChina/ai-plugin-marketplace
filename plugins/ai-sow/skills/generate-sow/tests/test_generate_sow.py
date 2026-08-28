@@ -98,14 +98,14 @@ def test_as_is_projection_distinguishes_current_and_expected_start_availability(
                 {
                     "topic": "APPLICATION",
                     "name": "客户查询服务",
-                    "summary": "不应优先展示的聚合摘要",
+                    "summary": "项目开工时可依赖客户查询接口，但不含客户档案修改能力。",
                     "sourceItemIds": ["ASI-001"],
                     "commitmentIds": [],
                 },
                 {
                     "topic": "SECURITY_COMPLIANCE",
                     "name": "统一认证能力",
-                    "summary": "不应优先展示的聚合摘要",
+                    "summary": "项目开工时预计可依赖统一认证能力，但不含生产租户授权。",
                     "sourceItemIds": [],
                     "commitmentIds": ["COM-001"],
                 },
@@ -117,13 +117,13 @@ def test_as_is_projection_distinguishes_current_and_expected_start_availability(
         {
             "主题名称": "应用与组件",
             "现状条目名称": "客户查询服务",
-            "现状描述": "当前已有客户查询接口",
+            "现状描述": "项目开工时可依赖客户查询接口，但不含客户档案修改能力。",
             "起点可用性": "当前已存在",
         },
         {
             "主题名称": "安全与合规",
             "现状条目名称": "统一认证能力",
-            "现状描述": "预计开工前：统一认证改造完成",
+            "现状描述": "项目开工时预计可依赖统一认证能力，但不含生产租户授权。",
             "起点可用性": "预计开工前具备",
         },
     ]
@@ -426,15 +426,12 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
             entry["name"] for entry in asis["effectiveStartItems"]
         }
         assert {row["起点可用性"] for row in asis_detail_rows} == {"当前已存在"}
-        item_summaries = {entry["asIsItemId"]: entry["summary"] for entry in asis["items"]}
         first_start = asis["effectiveStartItems"][0]
         first_row = next(
             row for row in asis_detail_rows
             if row["现状条目名称"] == first_start["name"]
         )
-        assert first_row["现状描述"] == "、".join(
-            item_summaries[item_id] for item_id in first_start["sourceItemIds"]
-        )
+        assert first_row["现状描述"] == first_start["summary"]
         assert list(rows("AssumptionRiskTable")[0]) == [
             "假设/风险名称", "类型", "触发条件", "责任边界", "状态", "处理方式"
         ]

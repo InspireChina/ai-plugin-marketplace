@@ -15,10 +15,10 @@ MCP 不能为当前代码库提供可用图时，用 `command -v codegraph`（PO
 ```text
 "<existing-cli-absolute>" --version
 "<existing-cli-absolute>" status "<repo-path>"
-"<existing-cli-absolute>" files "<repo-path>"
+"<existing-cli-absolute>" files --path "<repo-path>"
 ```
 
-PowerShell 使用调用运算符，例如 `& "<existing-cli-absolute>" status "<repo-path>"`。若代码库尚未初始化或索引不可用，先执行 `"<existing-cli-absolute>" init "<repo-path>"`（PowerShell：`& "<existing-cli-absolute>" init "<repo-path>"`），然后用同一绝对路径再次执行 `status` 和 `files`。现有 CLI 产生可用图时选择 `CODEGRAPH_CLI`；只有找不到 executable，或初始化/索引后仍没有可用图时，才进入项目局部安装。命令不同则先读取 `codegraph help`。
+PowerShell 使用调用运算符，例如 `& "<existing-cli-absolute>" status "<repo-path>"`。CodeGraph CLI 1.5.0 的 `files` 只接受 `-p/--path`，不接受仓库位置参数；其他版本以已安装 CLI 的 `help files` 为准。若代码库尚未初始化或索引不可用，先执行 `"<existing-cli-absolute>" init "<repo-path>"`（PowerShell：`& "<existing-cli-absolute>" init "<repo-path>"`），然后用同一绝对路径再次执行 `status` 和 `files --path`。现有 CLI 产生可用图时选择 `CODEGRAPH_CLI`；只有找不到 executable，或初始化/索引后仍没有可用图时，才进入项目局部安装。
 
 ### 3. 项目局部安装和索引
 
@@ -53,7 +53,7 @@ env CODEGRAPH_INSTALL_DIR="<tooling-absolute>/codegraph" \
 
 Windows 无 npm 时，不执行官方 `install.ps1` 作为本轮局部安装路径，因为它会持久修改用户 `PATH`。记录局部安装无法安全完成及 npm 探测结果，然后进入 `STATIC_FALLBACK`；只有用户明确要求持久安装时才使用该安装器。
 
-安装成功后使用同一个绝对 CLI 路径初始化本次调查需要的代码库索引，并运行 `<local-cli> status <repo-path>` 与 `<local-cli> files <repo-path>`。成功时选择 `CODEGRAPH_LOCAL`；安装、初始化和索引日志保存在 tooling 或相邻工作记录中。
+安装成功后使用同一个绝对 CLI 路径初始化本次调查需要的代码库索引，并运行 `<local-cli> status <repo-path>` 与 `<local-cli> files --path <repo-path>`。成功时选择 `CODEGRAPH_LOCAL`；安装、初始化和索引日志保存在 tooling 或相邻工作记录中。
 
 ### 4. 已记录静态回退
 

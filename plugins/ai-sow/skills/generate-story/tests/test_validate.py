@@ -951,6 +951,32 @@ def test_rejects_integration_boundary_mismatch(tmp_path: Path) -> None:
     assert "INTEGRATION_BOUNDARY_MISMATCH" in codes(result)
 
 
+def test_accepts_integration_without_typed_design_decision_when_reason_is_explicit(
+    tmp_path: Path,
+) -> None:
+    delivery = fixture("delivery.valid.json")
+    delivery["integrations"][0]["decisionIds"] = []
+    delivery["integrations"][0]["decisionRationale"] = (
+        "该集成只落实已批准 Story 的实现边界，不引入需要类型化批准的设计选择。"
+    )
+    prepare(tmp_path, delivery=delivery)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_integration_without_decision_requires_structured_reason(tmp_path: Path) -> None:
+    delivery = fixture("delivery.valid.json")
+    delivery["integrations"][0]["decisionIds"] = []
+    prepare(tmp_path, delivery=delivery)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "SCHEMA_INVALID" in codes(result)
+
+
 def test_rejects_technical_aggregate_integration_that_repeats_related_business_targets(
     tmp_path: Path,
 ) -> None:
@@ -1220,6 +1246,8 @@ def test_skill_uses_review_candidate_publish_and_stop_flow() -> None:
         "Concern -> Feature -> Gap -> Story/Assumption/Risk",
         "已批准的 Story/AC 是业务交付合同",
         "不得为实现机制创建 Gap、Story 或 AC",
+        "decisionRationale",
+        "纯实现集成",
     ):
         assert required in contract
 
@@ -1233,6 +1261,7 @@ def test_review_template_documents_complete_stable_ids_and_rebind_declarations()
         "Previous Receipt SHA-256: generate-design=<old-hash>",
         "Current Receipt SHA-256: generate-design=<new-hash>",
         "Impact Rationale: gap-example、story-example、ac-example、integration-example、assumption-example",
+        "decisionRationale",
     ):
         assert required in template
 

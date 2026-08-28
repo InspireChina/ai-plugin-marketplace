@@ -200,29 +200,31 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
             "",
             "## Integration",
             "",
-            "| Integration | Name | Story | Source | Target | Trigger | Direction | Purpose | Owner |",
-            "|---|---|---|---|---|---|---|---|---|",
+            "| Integration | Name | Story | Source | Target | Trigger | Direction | Purpose | Owner | Design Decisions | Decision Rationale |",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
             *(
                 [
                     "| "
                     + " | ".join(
-                        cell(item.get(key, ""))
-                        for key in (
-                            "integrationId",
-                            "name",
-                            "storyId",
-                            "source",
-                            "target",
-                            "trigger",
-                            "direction",
-                            "purpose",
-                            "owner",
+                        cell(value)
+                        for value in (
+                            item.get("integrationId", ""),
+                            item.get("name", ""),
+                            item.get("storyId", ""),
+                            item.get("source", ""),
+                            item.get("target", ""),
+                            item.get("trigger", ""),
+                            item.get("direction", ""),
+                            item.get("purpose", ""),
+                            item.get("owner", ""),
+                            joined(item.get("decisionIds", [])),
+                            item.get("decisionRationale", "—"),
                         )
                     )
                     + " |"
                     for item in integrations
                 ]
-                or ["| NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE |"]
+                or ["| NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE |"]
             ),
             "",
             "## Assumption / Risk",

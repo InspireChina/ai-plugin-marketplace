@@ -8,7 +8,7 @@
 
 ## 九个 Topic
 
-按合同顺序说明九个 Topic 的状态、结论和关联 Uncertainty。
+按合同顺序说明九个 Topic 的状态、结论和关联 Uncertainty。Topic 摘要只陈述结论与边界并指向 Evidence；计数、清单和索引统计只在 Evidence 摘要或对应工作记录中维护一份权威陈述，不在 Topic、Evidence 与工作记录之间复制。
 
 ## Item
 
@@ -69,3 +69,5 @@ User Approval: APPROVED
 ## Reviewer 检查清单
 
 Reviewer 对当前完整 packet 逐项确认：九个 Topic 恰好各一条；`INSUFFICIENT_EVIDENCE` 均关联 Uncertainty；每条 Uncertainty 明确 `affectsEstimate`；Effective Start 只由当前 Item 和 `EXPECTED_BEFORE_START` Commitment 组成；每个 BUSINESS Feature 有 Coverage；Commitment 实现状态、处置与 Coverage 一致；选中问卷被逐条原样消费；每个现状声明有允许的项目相对 Evidence anchor 或明确 Uncertainty；packet、review 和稳定候选中均不包含源码或完整工具输出、凭据、本机绝对路径、未授权 repository 或 prior SOW 内容。
+
+Finding 严重度下限：只报告违反合同的事实与证据不符、内部矛盾或误述、结构或引用违规、追溯断裂和隐私越界。不报告单纯措辞偏好、可读性建议、可选补充细节、没有形成冲突断言的描述简略，或对技术方案的个人偏好。

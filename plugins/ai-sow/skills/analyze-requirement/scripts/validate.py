@@ -427,7 +427,7 @@ def validate_questionnaire(
             diagnostics.append(
                 diag(
                     "QUESTIONNAIRE_BLOCKING_INVALID",
-                    f"{question_id} Blocking must be YES or NO followed by a non-empty rationale",
+                    f"{question_id} Blocking must use YES：<理由> or NO：<理由>",
                     QUESTIONNAIRE_PATH,
                 )
             )

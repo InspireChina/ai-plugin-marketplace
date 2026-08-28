@@ -355,7 +355,7 @@ def test_review_projects_design_input_and_cross_domain_scope_boundary(tmp_path: 
     ("mutation", "expected"),
     (
         ("design-target", "SOURCE_DISPOSITION_INVALID"),
-        ("boundary-normalized-target", "SOURCE_DISPOSITION_BOUNDARY_TARGET_INVALID"),
+        ("boundary-normalized-target", "SOURCE_DISPOSITION_INVALID"),
         ("business-uncovered", "SOURCE_DISPOSITION_BUSINESS_UNCOVERED"),
     ),
 )
@@ -681,6 +681,35 @@ def test_questionnaire_field_grammar_fails_closed(
     assert code in {item["code"] for item in diagnostics(result)}
 
 
+def test_questionnaire_blocking_diagnostic_shows_canonical_format(tmp_path: Path) -> None:
+    payload = prepare_valid(tmp_path)
+    questionnaire = tmp_path / ".ai-sow/reviews/analyze-requirement-questionnaire.md"
+    questionnaire.write_text(
+        questionnaire_record().replace(
+            "| Blocking | NO：已确认不阻塞 |",
+            "| Blocking | NO —— 已确认不阻塞 |",
+        ),
+        encoding="utf-8",
+    )
+    review_path(tmp_path).write_text(
+        approved_review(
+            payload,
+            questionnaire=".ai-sow/reviews/analyze-requirement-questionnaire.md",
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_validator(tmp_path, "check")
+
+    diagnostic = next(
+        item
+        for item in diagnostics(result)
+        if item["code"] == "QUESTIONNAIRE_BLOCKING_INVALID"
+    )
+    assert "YES：<理由>" in diagnostic["message"]
+    assert "NO：<理由>" in diagnostic["message"]
+
+
 def test_questionnaire_not_required_rejects_existing_questionnaire(tmp_path: Path) -> None:
     prepare_valid(tmp_path)
     questionnaire = tmp_path / ".ai-sow/reviews/analyze-requirement-questionnaire.md"
@@ -980,8 +1009,16 @@ def test_skill_contract_requires_full_source_disposition_and_direct_skill_paths(
         "SCOPE_BOUNDARY",
         "EXCLUDED",
         "每条会影响业务范围、结果、规则、验收意图、方案边界或交付边界的明确来源陈述",
+        "每个 `normalizedItem` 都必须由至少一条 `BUSINESS` 处置",
+        "不能绑定 `norm-*`",
+        "YES：<非空理由>",
         "不得运行 `git status`",
         "不得复读 `scripts/*.py` 实现",
         '"<skill-root>/contracts/source-requirements.schema.json"',
     ):
         assert required in contract
+    questionnaire = (
+        SKILL_ROOT / "references/requirement-clarification-questionnaire.md"
+    ).read_text(encoding="utf-8")
+    assert "YES：<非空理由>" in questionnaire
+    assert "NO：<非空理由>" in questionnaire

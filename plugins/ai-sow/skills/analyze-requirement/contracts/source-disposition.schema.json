@@ -26,6 +26,10 @@
       "type": "string",
       "pattern": "^(?:norm|epic|feature)-[a-z0-9]+(?:-[a-z0-9]+)*$"
     },
+    "scopeBoundaryTargetId": {
+      "type": "string",
+      "pattern": "^(?:epic|feature)-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
     "item": {
       "type": "object",
       "additionalProperties": false,
@@ -78,7 +82,14 @@
         },
         {
           "if": {"properties": {"disposition": {"const": "SCOPE_BOUNDARY"}}},
-          "then": {"properties": {"targetIds": {"minItems": 1}}}
+          "then": {
+            "properties": {
+              "targetIds": {
+                "minItems": 1,
+                "items": {"$ref": "#/$defs/scopeBoundaryTargetId"}
+              }
+            }
+          }
         },
         {
           "if": {

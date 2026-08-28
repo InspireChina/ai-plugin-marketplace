@@ -358,6 +358,9 @@ def test_review_template_has_complete_contract() -> None:
         "Reviewer: PASS", "User Approval: APPROVED",
     ):
         assert declaration in text
+    assert "Finding 严重度下限" in text
+    assert "只报告违反合同" in text
+    assert "只在 Evidence 摘要或对应工作记录中维护一份权威陈述" in text
 
 
 @pytest.mark.parametrize("fixture", ["greenfield", "brownfield"])
@@ -647,6 +650,56 @@ def test_owner_local_relations_fail_closed(tmp_path: Path, mutation: str, expect
         payload["commitments"][0]["implementationStatus"] = "IMPLEMENTED"
     else:
         payload["evidence"][0]["supportsIds"] = ["asis-unknown"]
+    write_candidate(tmp_path, payload)
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert expected in codes(result)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    (
+        ("uncertainty-topic-backlink", "UNCERTAINTY_TOPIC_UNLINKED"),
+        (
+            "coverage-rationale-commitment",
+            "COVERAGE_RATIONALE_CITES_UNLISTED_COMMITMENT",
+        ),
+        ("count-word", "COUNT_WORD_MISMATCH"),
+        ("cross-object-number", "CROSS_OBJECT_NUMBER_DRIFT"),
+        ("effective-start-stable-id", "DISPLAY_SUMMARY_STABLE_ID"),
+    ),
+)
+def test_narrative_consistency_checks_fail_closed(
+    tmp_path: Path,
+    mutation: str,
+    expected: str,
+) -> None:
+    payload = prepare_brownfield(tmp_path)
+    if mutation == "uncertainty-topic-backlink":
+        payload["topicAssessments"][4]["status"] = "ASSESSED"
+        payload["topicAssessments"][4]["uncertaintyIds"] = []
+    elif mutation == "coverage-rationale-commitment":
+        payload["coverage"][0]["commitmentIds"] = []
+        payload["coverage"][0]["rationale"] = (
+            "当前 API 可复用，但 commitment-loyalty-profile 仍属于延续范围。"
+        )
+    elif mutation == "count-word":
+        payload["topicAssessments"][2]["summary"] = (
+            "已核对四类材料：源码、配置、部署、契约、工作流、脚本。"
+        )
+    elif mutation == "cross-object-number":
+        payload["evidence"][0]["summary"] = (
+            "CodeGraph 索引覆盖 120 个文件和 800 个节点。"
+        )
+        payload["topicAssessments"][2]["summary"] = (
+            "evidence-customer-api-code 显示 CodeGraph 索引覆盖 121 个文件和 800 个节点。"
+        )
+    else:
+        payload["effectiveStartItems"][0]["summary"] = (
+            "项目开工时可依赖 asis-customer-api，但不含写入能力。"
+        )
     write_candidate(tmp_path, payload)
 
     result = run_validator(tmp_path, "check")
@@ -1284,4 +1337,6 @@ def test_reviewer_contract_catches_professional_evidence_privacy_failure() -> No
     assert "Reviewer" in skill and "证据边界" in skill
     assert "复用外层当前 Stage、一个 Reviewer 和一次 hash-bound 用户批准" in skill
     assert "确定性 Owner 命令由外层 Stage 直接调用" in skill
+    assert "## 机械门禁输入合同" in skill
+    assert "项目根下的相对子目录" in skill
     assert "单一 Worker、Reviewer、Validator" not in skill

@@ -78,7 +78,7 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 
 ## Stage 调查
 
-1. 读取四字段 `.ai-sow/project.json` 和已发布 Requirements。询问可用的本地代码库、往期 SOW、配置、部署材料和其他证据；只登记用户提供或明确授权取得的输入。仓库与往期 SOW 都同时记录稳定 ID 和非空名称；仓库另存项目相对 path、revision 与 dirty，往期 SOW 复制到 `.ai-sow/inputs/analyze-as-is/prior-sows/` 并记录原文件名和 SHA-256。依据证据确定 `GREENFIELD` 或 `BROWNFIELD`，不回写项目元数据。
+1. 读取四字段 `.ai-sow/project.json` 和已发布 Requirements。询问可用的本地代码库、往期 SOW、配置、部署材料和其他证据；只登记用户提供或明确授权取得的输入。仓库与往期 SOW 都同时记录稳定 ID 和非空名称；仓库另存项目相对 path、revision 与 dirty，往期 SOW 复制到 `.ai-sow/inputs/analyze-as-is/prior-sows/` 并记录原文件名和 SHA-256。`repositorySnapshot.path` 只允许 `.` 或项目根下的相对子目录；代码库位于项目根之外时，把经授权的只读快照复制到项目子目录后登记，不能保存绝对路径、`..`、符号链接或 NTFS junction。依据证据确定 `GREENFIELD` 或 `BROWNFIELD`，不回写项目元数据。
 2. 按合同顺序评估 `SYSTEM_CONTEXT`、`CAPABILITY`、`APPLICATION`、`INTEGRATION`、`DATA`、`PLATFORM`、`SECURITY_COMPLIANCE`、`OPERATIONS_QUALITY`、`DELIVERY_CONSTRAINTS`。每个 Topic 恰有一个结论；`INSUFFICIENT_EVIDENCE` 至少关联一个 Uncertainty。
 3. 对代码库读取[CodeGraph 参考](references/codegraph.md)，依次采用 MCP、已有 CLI、项目局部 CLI、已记录静态回退。生成代码、动态分派、配置、部署和运行边界必须由直接证据佐证，否则记录 Uncertainty。
 4. 从每份往期 SOW 提取 Commitment，核对 `implementationStatus` 与 `treatment`。Commitment 的
@@ -97,6 +97,10 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 8. 将完整专业结论先写入 `.ai-sow/work/analyze-as-is/asis.candidate.json`。它是 work-only candidate，不是稳定交接数据；批准前不写正式 review、稳定 As-Is 或 validation receipt。
 
 `As-Is Item` 只记录调查截止日期已经存在或实际运行的事实。`Effective Start` 是 Design 与 Task 共用的项目起点基线；名称必须唯一，摘要必须具体点明项目开工时可以依赖的对象、能力和边界，并通过 `sourceItemIds`、`commitmentIds` 追溯事实或开工前承诺。本 Skill 不为 Effective Start 预判 Task 工作模式。
+
+## 机械门禁输入合同
+
+在生成评审前一次性自检全部候选：Item、Commitment、Effective Start、Uncertainty 与 Evidence 的显示名跨集合唯一；每条 Uncertainty 被同 Topic 的 `uncertaintyIds` 反向列出；`IMPLEMENTED` Commitment 至少关联一个 Item；Commitment 的每个 `relatedFeatureId` 都在对应 Coverage 的 `commitmentIds` 中，`NEEDS_DECISION` 与 `UNVERIFIED` 另有 Coverage→Uncertainty 决策链；Coverage 理由出现的 `commitment-*` 必须属于本行 `commitmentIds`。Evidence anchor 必须解析到单个文件，目录不构成证据。候选中的显式“几类/几项/几个/几份”枚举与同一 Evidence 的文件、节点、边数量必须内部一致；Effective Start 可见摘要使用名称和业务语言，不写 `asis-*`、`commitment-*` 等稳定 ID。
 
 ## 候选评审与发布
 
@@ -122,7 +126,7 @@ Stage 先确定性准备 Owner-local closure 并投影 review：
 
 脚本校验有效 Requirement handoff、As-Is Schema、Owner-local ID/关系、九个 Topic、登记输入、Evidence anchor、问卷消费和 review 机械合同，再写 work-only `risk-summary.md` 与 canonical `review-packet.json`。packet 算法固定为 `ai-sow-owner-review-packet-v1`，绑定 named inputs、candidate、context manifest/fragments、review、risk summary 及其 SHA-256；返回 `REVIEW_REQUIRED`。此步骤不写正式 data、review 或 validation report。
 
-只创建一个 fresh-context Reviewer。Reviewer 对照登记输入、Evidence anchor、问卷、Schema 和[评审模板](references/review-template.md)完整审查当前 packet。`PASS` 时 Stage 只运行“精确 Reviewer 绑定”命令写 canonical `.ai-sow/work/analyze-as-is/reviewer.json`，使用 `ai-sow-owner-reviewer-v1` 并绑定精确 packet SHA-256。findings 只允许 Stage 做一次整体修复；修复必须重新核对九个 Topic、全部新增或变化的 Item/Commitment/Effective Start/Coverage/Uncertainty/Evidence、问卷消费和隐私边界，再重新生成 context、review、risk summary 与新 packet，由同一 Reviewer 完整复审。第二次仍有 findings 时返回 `BLOCKED`，不写 Reviewer sidecar 或任何正式路径。
+只创建一个 fresh-context Reviewer。Reviewer 对照登记输入、Evidence anchor、问卷、Schema 和[评审模板](references/review-template.md)完整审查当前 packet，并采用模板中的 finding 严重度下限。`PASS` 时 Stage 只运行“精确 Reviewer 绑定”命令写 canonical `.ai-sow/work/analyze-as-is/reviewer.json`，使用 `ai-sow-owner-reviewer-v1` 并绑定精确 packet SHA-256。findings 只允许 Stage 做一次整体修复；修复必须重新核对九个 Topic、全部新增或变化的 Item/Commitment/Effective Start/Coverage/Uncertainty/Evidence、问卷消费和隐私边界，再重新生成 context、review、risk summary 与新 packet，由同一 Reviewer 完整复审。第二次仍有 findings 时返回 `BLOCKED`，不写 Reviewer sidecar 或任何正式路径。
 
 Reviewer `PASS` 后，Stage 向用户展示 Owner、packet path、精确 SHA-256、risk summary 和正式目标路径。只有用户明确批准该精确 packet，才写 canonical `.ai-sow/work/analyze-as-is/approval.json`，使用 `ai-sow-owner-approval-v1` 并绑定相同 packet SHA-256，然后只运行：
 

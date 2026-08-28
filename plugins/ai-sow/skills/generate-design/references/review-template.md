@@ -3,9 +3,18 @@
 当前 Stage 先把以下内容写入 work-only
 `.ai-sow/work/generate-design/review-source.json`，再由 `render_review.py` 与两份 candidate
 确定性投影本评审。source 顶层只使用 `targetDesign`、`architectureDeltaReview`、
-`designDecisionReview`、`scopeReview`、`technicalRequirementsReview` 与 `concerns`；前五项为
+`designDecisionReview`、`scopeReview`、`technicalRequirementsReview`、`featureBoundaryReview` 与 `concerns`；前五项为
 非空中文说明，且不得手写 candidate 对象数量；对象数量由 renderer 从两份 candidate
-确定性投影为唯一 `Structure Counts` 声明。`concerns` 每行使用：
+确定性投影为唯一 `Structure Counts` 声明。`featureBoundaryReview` 只在两个 `IN_SCOPE` TECHNICAL Feature 的 Design Item 集合相同或存在包含关系时逐对生成：
+
+```json
+{
+  "featureIds": ["feature-api", "feature-environment"],
+  "nonOverlapRationale": "前者验收 API 业务操作边界，后者只验收环境配置就绪结果。"
+}
+```
+
+没有重叠 Feature 对时使用空数组或省略该字段。`concerns` 每行使用：
 
 ```json
 {
@@ -42,6 +51,10 @@ Structure Counts: designItems=1, architectureDeltas=1, decisions=1, scopeDecisio
 ## Scope
 
 为每个 BUSINESS 与 TECHNICAL Feature 给出唯一 Scope Decision，并说明 Design Item、Effective Start、集成边界和所需决策类别。
+
+## Feature Boundary Review
+
+renderer 根据 Scope Decision 自动找出 Design Item 集合相同或包含的 `IN_SCOPE` TECHNICAL Feature 对，并要求 `featureBoundaryReview` 逐对说明可独立验收的非重叠结果；缺失或多余的 Feature 对都会阻塞评审投影。
 
 ## TECHNICAL requirements
 

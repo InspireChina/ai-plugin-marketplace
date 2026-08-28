@@ -451,7 +451,7 @@ Task 表只让用户选择基础单元、工作模式和复杂度，并填写工
 
 ### 12.5 系统现状表
 
-`90-系统现状` 是设计和 Task 共用的项目起点投影，只保留一张四列明细表：`主题名称 / 现状条目名称 / 现状描述 / 起点可用性`。主题名称从九个 As-Is Topic 中选择；起点可用性只允许“当前已存在”或“预计开工前具备”。名称在表内保持唯一，现状描述说明当前或开工前可依赖的对象、能力和边界。稳定 JSON 继续保存 Item、Commitment、Effective Start、Coverage、Uncertainty 和 Evidence；这些审计与门禁结构不在最终 Excel 展开。
+`90-系统现状` 是设计和 Task 共用的项目起点投影，只保留一张四列明细表：`主题名称 / 现状条目名称 / 现状描述 / 起点可用性`。主题名称从九个 As-Is Topic 中选择；起点可用性只允许“当前已存在”或“预计开工前具备”。名称在表内保持唯一，现状描述直接采用 Effective Start 自身摘要，说明当前或开工前可依赖的对象、能力和边界，不用来源 Item/Commitment 摘要重新拼接。稳定 JSON 继续保存 Item、Commitment、Effective Start、Coverage、Uncertainty 和 Evidence；这些审计与门禁结构不在最终 Excel 展开。
 
 ## 13. 现有模板怎么调整
 

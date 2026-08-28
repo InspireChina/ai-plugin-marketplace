@@ -17,7 +17,7 @@ Stable IDs: gap-example, story-example, ac-example, integration-example, assumpt
 
 ## Integration
 
-列出 Integration 的 source、target、trigger、direction、purpose、owner、delivery boundary、target kind 和 Design Decision 引用。逐项确认每个 `requiredIntegrationBoundary != NONE` 的 Story 至少有一条边界一致的 Integration；共享适配能力不能替代各交付 Story 自身的可验收集成结果。反向检查带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Story：它只能拥有独立可验收的项目侧共享适配器/控制端口，不得把两个或更多相关 BUSINESS Story 已登记的提供方 target 聚合成重复端到端 Integration，也不得用 AC 重复声明这些业务调用的映射、幂等、重试、异常处置或核对。
+列出 Integration 的 source、target、trigger、direction、purpose、owner、delivery boundary、target kind、Design Decision 引用和可选 `decisionRationale`。有类型化 Design Decision 时逐项核对它关联当前 Story Feature；`decisionIds` 为空时，确认 `decisionRationale` 具体说明该集成为何只是无需类型化批准的实现边界。逐项确认每个 `requiredIntegrationBoundary != NONE` 的 Story 至少有一条边界一致的 Integration；共享适配能力不能替代各交付 Story 自身的可验收集成结果。反向检查带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Story：它只能拥有独立可验收的项目侧共享适配器/控制端口，不得把两个或更多相关 BUSINESS Story 已登记的提供方 target 聚合成重复端到端 Integration，也不得用 AC 重复声明这些业务调用的映射、幂等、重试、异常处置或核对。
 
 ## Assumption / Risk
 

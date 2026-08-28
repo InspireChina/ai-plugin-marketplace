@@ -71,13 +71,13 @@ Stage 开始完整分析前必须读取：
 
 1. 只在 `.ai-sow/inputs/analyze-requirement/` 登记用户提供的来源，保存稳定 `sourceDocumentId`、项目相对路径、原文件名和 SHA-256；稳定数据不保存来源原文。
 2. 在分解 BUSINESS candidate 前先通读全部已登记来源，为每条会影响业务范围、结果、规则、验收意图、方案边界或交付边界的明确来源陈述建立 work-only `.ai-sow/work/analyze-requirement/source-disposition.json`。每条陈述只采用一种处置：
-   - `BUSINESS`：进入 BUSINESS normalized item，并至少绑定一个对应 `norm-*`；
+   - `BUSINESS`：进入 BUSINESS normalized item，并至少绑定一个对应 `norm-*`；每个 `normalizedItem` 都必须由至少一条 `BUSINESS` 处置追回来源原文，问卷答案不能绕过来源形成新的 normalized item；
    - `DESIGN_INPUT`：保留来源定位与摘要，交给 `generate-design` 形成 `SOURCE_INPUT` TECHNICAL 需求，本阶段不创建 TECHNICAL Epic/Feature；
-   - `SCOPE_BOUNDARY`：明确“不替换、沿用、仅集成”等范围边界，并绑定全部受影响的 BUSINESS Epic/Feature，不能只挂在其中一个领域；
+   - `SCOPE_BOUNDARY`：明确“不替换、沿用、仅集成”等范围边界，并只绑定全部受影响的 BUSINESS Epic/Feature，不能绑定 `norm-*`，也不能只挂在其中一个领域；
    - `EXCLUDED`：来源明确不进入当前交付，写清排除理由且不绑定 BUSINESS ID。
 3. `source-disposition.json` 不是稳定业务 JSON，不是第七份交接数据；它只用于证明本次完整来源分析、确定性 review 投影和 Reviewer packet 绑定。来源同一句同时包含业务结果和技术边界时，应拆成两个处置条目，不能用 `DESIGN_INPUT` 掩盖业务范围，也不能把技术实现伪装成 BUSINESS。
 4. 只分析业务结果、参与者、范围、规则、优先级、验收意图、冲突和未知项。明确技术内容通过 `DESIGN_INPUT` 保留在已登记来源中，不产出 TECHNICAL Epic/Feature。
-5. 信息缺口会改变业务结论时，按问卷参考维护 `.ai-sow/reviews/analyze-requirement-questionnaire.md`。`Blocking: YES` 必须在创建 Reviewer 前成为 `CLOSED`；非阻塞默认只有用户明确接受后才可为字段完整的 `APPROVED_DEFAULT` 与 `ASSUMPTION_CANDIDATE`。
+5. 信息缺口会改变业务结论时，按问卷参考维护 `.ai-sow/reviews/analyze-requirement-questionnaire.md`。`Blocking` 精确使用 `YES：<非空理由>` 或 `NO：<非空理由>`；`Blocking: YES` 必须在创建 Reviewer 前成为 `CLOSED`，非阻塞默认只有用户明确接受后才可为字段完整的 `APPROVED_DEFAULT` 与 `ASSUMPTION_CANDIDATE`。
 6. 用户答案改变业务结论时，先更新完整 BUSINESS candidate 与完整来源处置表；来源文档、`normalizedItems`、Epic 和 Feature 都必须同时保存稳定 ID 与非空名称。不要把开放问题、猜测或技术答案包装成稳定业务结论。
 
 critical questionnaire 未关闭时，不运行 `prepare_context.py`，不创建 Reviewer，也不写任何正式 review、data 或 validation 路径。

@@ -91,7 +91,7 @@ Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。
 
 As-Is 不要求所有工具使用同一种中间数据格式，也不限定必须使用某种调查工具。调查顺序为：先看仓库和文档，再看接口约定、配置、部署和运行证据，最后通过定向问卷补充信息。完整调查过程保留在该 Skill 自己的 work 目录中；正式 `asis.json` 只保存后续步骤确实需要的结论。
 
-`As-Is Item` 只陈述调查截止日期已经存在或实际运行的事实；`Effective Start` 才是下游设计和估算使用的统一基线。它的名称必须唯一，摘要必须具体说明项目开工时可以依赖的对象、能力与边界。As-Is 不预先保存 Task 工作模式：同一项 Effective Start 对不同基础单元可能分别支持“调整”“接入复用”或仍需“新建”，该判断只由 `generate-task` 结合当前 Task 完成。
+`As-Is Item` 只陈述调查截止日期已经存在或实际运行的事实；`Effective Start` 才是下游设计和估算使用的统一基线。它的名称必须唯一，摘要必须具体说明项目开工时可以依赖的对象、能力与边界。仓库快照只登记 `.` 或项目根下的相对子目录；项目外代码库先复制经授权的只读快照到项目子目录，稳定数据不保存绝对路径、父目录跳转或间接链接。As-Is 不预先保存 Task 工作模式：同一项 Effective Start 对不同基础单元可能分别支持“调整”“接入复用”或仍需“新建”，该判断只由 `generate-task` 结合当前 Task 完成。
 
 `.ai-sow/reviews/generate-design.md` 以精确 `PASSED` 声明和固定七列矩阵保存两个批准门禁。它不是第七份正式 JSON；门禁语义只由 `generate-design` validator 判断并绑定到 receipt。`generate-story`、`generate-task` 和 `generate-sow` 只匹配当前 Design handoff，不复制或重放 HLD/Go-live 业务判断。
 Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate 写入唯一
@@ -192,7 +192,7 @@ Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立
 原字节复用路径天然属于完成状态，完整发布后的复查必须返回
 `completedOperations == totalOperations`，不能把内部的 changed-prefix 计数暴露成未完成进度。
 
-`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 通过“关联现状条目”单选一个可见 Effective Start 且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 只保留一张 Effective Start 明细表，展示“主题名称 / 现状条目名称 / 现状描述 / 起点可用性”，主题和起点可用性使用下拉，整页可手工填写且不启用保护。任务下拉直接引用该可见名称列，不再使用隐藏辅助名单。Excel 内的系统现状修订不回写稳定 JSON、评审或 manifest。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 通过“关联现状条目”单选一个可见 Effective Start 且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 只保留一张 Effective Start 明细表，展示“主题名称 / 现状条目名称 / 现状描述 / 起点可用性”，其中现状描述直接投影 Effective Start 自身的 `summary`，不以来源 Item/Commitment 摘要重建开工边界；主题和起点可用性使用下拉，整页可手工填写且不启用保护。任务下拉直接引用该可见名称列，不再使用隐藏辅助名单。Excel 内的系统现状修订不回写稳定 JSON、评审或 manifest。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
 
 生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
 

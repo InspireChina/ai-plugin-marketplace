@@ -4,6 +4,20 @@
 
 ## 0.1.0 - 未发布
 
+- 修复 `90-系统现状` 的开工基线投影：`现状描述` 现在直接使用 Effective Start 自身的 `summary`，
+  不再拼接调查截止日期的 Item 与开工前 Commitment 摘要，避免“当前不存在”与“预计开工前具备”
+  在同一行互相矛盾，并阻止稳定 ID 经来源摘要泄漏到业务 Sheet。
+- 收紧 Owner 生成前合同：`SCOPE_BOUNDARY` 的 Schema 与 validator 统一只接受 BUSINESS
+  Epic/Feature；需求问卷 diagnostics 给出 `YES：<理由> / NO：<理由>` 精确格式；As-Is 新增
+  Uncertainty→Topic 反向关联、Coverage 理由引用、枚举数词、Evidence 数量漂移和可见摘要 ID
+  检查，把可确定的问题从高成本 Reviewer 前移到机械门禁。
+- `analyze-as-is` 评审模板采用合同 finding 严重度下限，并规定 Topic 不复制 Evidence/工作记录的
+  计数与清单；CodeGraph CLI 1.5.0 的 `files` 示例改用 `--path`。文档同时公开仓库快照必须位于
+  项目根内的当前约束和项目内只读快照做法。
+- 修复 Story Integration 的跨 Owner 无解状态：没有类型化 Design Decision 的纯实现集成允许空
+  `decisionIds`，但必须提供结构化 `decisionRationale`；存在决策时继续要求它关联当前 Story
+  Feature。Design review renderer 另要求共享相同或包含 Design Item 集合的 `IN_SCOPE`
+  TECHNICAL Feature 逐对说明可独立验收的非重叠边界。
 - 发布者标识统一为 `Inspire`：Codex manifest 的 `author.name` 与 `interface.developerName`、
   Claude manifest 的 `author.name`、Claude marketplace 的 `owner.name`，以及根目录和插件目录
   `NOTICE` 的版权声明。`scripts/validate_repository.py` 新增 `validate_publisher_identity`

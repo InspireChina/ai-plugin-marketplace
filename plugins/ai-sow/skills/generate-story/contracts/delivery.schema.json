@@ -49,8 +49,18 @@
         "owner": {"type": "string", "enum": ["INTERNAL", "EXTERNAL"], "description": "对目标边界、接入条件和运行结果负责的一方。"},
         "deliveryBoundary": {"type": "string", "enum": ["PORT_ONLY", "END_TO_END"], "description": "Story 交付止于稳定端口还是覆盖到目标系统或提供方的端到端结果。"},
         "targetKind": {"type": "string", "enum": ["PORT", "ADAPTER", "SYSTEM", "PROVIDER"], "description": "用于澄清交付目标是端口、适配器、完整系统还是外部提供方。"},
-        "decisionIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/designDecisionId"}, "description": "批准该集成边界或目标的 Design Decision ID。"}
-      }
+        "decisionIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/designDecisionId"}, "description": "批准该集成边界或目标的 Design Decision ID；没有类型化设计义务时可为空。"},
+        "decisionRationale": {"type": "string", "minLength": 1, "description": "仅当 decisionIds 为空时必填，说明该集成为何不需要类型化 Design Decision。"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"decisionIds": {"maxItems": 0}},
+            "required": ["decisionIds"]
+          },
+          "then": {"required": ["decisionRationale"]}
+        }
+      ]
     },
     "story": {
       "type": "object",
