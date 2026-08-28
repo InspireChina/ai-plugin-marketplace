@@ -30,7 +30,7 @@ REQUIREMENT_CONTRACT = OwnerContract(
 )
 ASIS_CONTRACT = OwnerContract(
     subject="analyze-as-is",
-    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.2",),
     validation_path=".ai-sow/validation/analyze-as-is.json",
     reviews=(("approvedReview", ".ai-sow/reviews/analyze-as-is.md"),),
     outputs=(("asIs", ".ai-sow/data/analyze-as-is/asis.json"),),
@@ -540,6 +540,7 @@ def test_prepare_context_closes_business_asis_uncertainty_start_and_source_ancho
         "uncertainties",
         "effectiveStart",
         "sourceAnchors",
+        "claims",
     ]
     business = json.loads((context_root / "business-requirements.json").read_text(encoding="utf-8"))
     assert business["features"] == REQUIREMENTS["features"]

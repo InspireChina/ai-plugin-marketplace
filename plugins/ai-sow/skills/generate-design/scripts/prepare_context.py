@@ -21,8 +21,11 @@ for import_root in (SCRIPT_ROOT, PLUGIN_ROOT):
         sys.path.insert(0, str(import_root))
 
 import validate as design_validator
+from runtime.claims import claim_metrics
+from runtime.controls import owner_control
 from runtime.handoff import canonical_json_bytes, sha256_bytes
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import prepare_claims
 
 
 CONTEXT_ROOT = ".ai-sow/work/generate-design/context"
@@ -33,6 +36,7 @@ FRAGMENT_SPECS = (
     ("uncertainties", f"{CONTEXT_ROOT}/uncertainties.json"),
     ("effectiveStart", f"{CONTEXT_ROOT}/effective-start.json"),
     ("sourceAnchors", f"{CONTEXT_ROOT}/source-anchors.json"),
+    ("claims", ".ai-sow/work/generate-design/claims.json"),
 )
 
 
@@ -42,6 +46,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--staging-root")
+    parser.add_argument("--candidate", default=".ai-sow/work/generate-design/design.candidate.json")
+    parser.add_argument("--requirements-candidate", default=".ai-sow/work/generate-design/requirements.candidate.json")
     return parser.parse_args()
 
 
@@ -169,12 +175,22 @@ def main() -> int:
                 prior_sow_paths=prior_sow_paths,
             ),
         }
+        claims = prepare_claims(
+            files,
+            args.project_root,
+            design_validator.SUBJECT,
+            (("design", args.candidate), ("technicalRequirements", args.requirements_candidate)),
+            ".ai-sow/work/generate-design/claims.json",
+            validation_path=design_validator.VALIDATION_PATH,
+            anchor_documents=(source_anchors,),
+        )
         fragments = {
             "businessRequirements": business,
             "asIsCoverage": coverage,
             "uncertainties": uncertainties,
             "effectiveStart": effective_start,
             "sourceAnchors": source_anchors,
+            "claims": claims,
         }
         fragment_entries: list[dict[str, object]] = []
         for name, path in FRAGMENT_SPECS:
@@ -200,6 +216,10 @@ def main() -> int:
                 design_validator.input_entry(artifact) for artifact in inputs
             ],
             "owner": design_validator.SUBJECT,
+            "ownerControl": owner_control(
+                files.read_json(design_validator.PROJECT_PATH), design_validator.SUBJECT
+            ),
+            "claimMetrics": claim_metrics(claims),
             "selectedEffectiveStartItemIds": sorted(
                 entry["effectiveStartItemId"]
                 for entry in list_at(asis, "effectiveStartItems")

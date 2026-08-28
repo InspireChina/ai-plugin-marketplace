@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import validate as asis_validator
+from jsonschema import Draft202012Validator
+from project_facts import ALL_FAMILIES, build_repo_facts
 
 
 # Windows 控制台默认使用本地代码页（如 cp936），会把中文结构化输出写成非 UTF-8 字节。
@@ -21,15 +23,24 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.handoff import Artifact, canonical_json_bytes, sha256_bytes
+from runtime.claims import build_claims, claim_metrics, validate_claims
+from runtime.controls import owner_control
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import cached_verified_claims, existing_claims
 
 
 CONTEXT_ROOT = ".ai-sow/work/analyze-as-is/context"
 MANIFEST_PATH = f"{CONTEXT_ROOT}/manifest.json"
+PREMISES_PATH = ".ai-sow/work/analyze-as-is/premises.json"
+REPO_FACTS_PATH = ".ai-sow/work/analyze-as-is/repo-facts.json"
+CLAIMS_PATH = ".ai-sow/work/analyze-as-is/claims.json"
 FRAGMENT_SPECS = (
     ("requirements", f"{CONTEXT_ROOT}/requirements.json"),
     ("investigationScope", f"{CONTEXT_ROOT}/investigation-scope.json"),
     ("evidenceInventory", f"{CONTEXT_ROOT}/evidence-inventory.json"),
+    ("premises", PREMISES_PATH),
+    ("repoFacts", REPO_FACTS_PATH),
+    ("claims", CLAIMS_PATH),
 )
 
 
@@ -125,6 +136,51 @@ def main() -> int:
         requirements = files.read_json(asis_validator.REQUIREMENTS_PATH)
         if not isinstance(requirements, dict):
             raise ValueError("Requirements must be a JSON object")
+        premises = files.read_json(PREMISES_PATH)
+        premises_schema = json.loads(
+            (PLUGIN_ROOT / "contracts/review-premises.schema.json").read_text(encoding="utf-8")
+        )
+        premise_errors = sorted(
+            Draft202012Validator(premises_schema).iter_errors(premises),
+            key=lambda error: tuple(str(part) for part in error.absolute_path),
+        )
+        if premise_errors:
+            raise ValueError(
+                "premises.json is invalid: "
+                + "; ".join(error.message for error in premise_errors)
+            )
+        assert isinstance(premises, dict)
+        families = premises["factFamilies"]
+        if not isinstance(families, list) or not set(families).issubset(ALL_FAMILIES):
+            raise ValueError("premises.json factFamilies are invalid")
+        repo_facts = build_repo_facts(
+            args.project_root,
+            candidate,
+            tuple(str(family) for family in families),
+        )
+        previous_verified = cached_verified_claims(
+            files,
+            CLAIMS_PATH,
+            asis_validator.VALIDATION_PATH,
+        )
+        previous_claims = existing_claims(files, CLAIMS_PATH)
+        claims = build_claims(
+            asis_validator.SUBJECT,
+            (("asis", candidate), ("premises", premises), ("repoFacts", repo_facts)),
+            project_root=args.project_root,
+            previous_verified=previous_verified,
+            previous_claims=previous_claims,
+        )
+        claim_diagnostics = validate_claims(
+            claims,
+            asis_validator.SUBJECT,
+            {"asis": candidate, "premises": premises, "repoFacts": repo_facts},
+        )
+        if claim_diagnostics:
+            raise ValueError(f"claims.json is invalid: {claim_diagnostics}")
+        files.write_atomic(PREMISES_PATH, canonical_json_bytes(premises))
+        files.write_atomic(REPO_FACTS_PATH, canonical_json_bytes(repo_facts))
+        files.write_atomic(CLAIMS_PATH, canonical_json_bytes(claims))
         scope = candidate["analysisScope"]
         fragments: dict[str, object] = {
             "requirements": {
@@ -141,6 +197,9 @@ def main() -> int:
                 "registeredRepositories": scope["repositorySnapshots"],
                 "registeredPriorSows": scope["priorSowSnapshots"],
             },
+            "premises": premises,
+            "repoFacts": repo_facts,
+            "claims": claims,
         }
         fragment_entries: list[dict[str, object]] = []
         for name, path in FRAGMENT_SPECS:
@@ -159,6 +218,10 @@ def main() -> int:
             "fragments": fragment_entries,
             "inputArtifacts": [input_entry(artifact) for artifact in inputs],
             "owner": asis_validator.SUBJECT,
+            "ownerControl": owner_control(
+                files.read_json(asis_validator.PROJECT_PATH), asis_validator.SUBJECT
+            ),
+            "claimMetrics": claim_metrics(claims),
             "selectedEvidenceIds": [
                 entry["evidenceId"] for entry in candidate["evidence"]
             ],
@@ -166,8 +229,9 @@ def main() -> int:
                 entry["topic"] for entry in candidate["topicAssessments"]
             ],
             "selectionRule": (
-                "九个 Topic 全量披露；登记 repository/prior SOW 与 Evidence 只保存 inventory、"
-                "项目相对 anchor 和 hash，正文与工具输出按需读取。"
+                "九个 Topic 全量表态；只对方案前提证明为估算相关的 Topic 深挖。"
+                "登记 repository/prior SOW 与 Evidence 只保存 inventory、项目相对 anchor 和 hash，"
+                "正文与工具输出按需读取；断言按 claims.json 独立核验。"
             ),
         }
         files.write_atomic(MANIFEST_PATH, canonical_json_bytes(manifest))

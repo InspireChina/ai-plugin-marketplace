@@ -40,6 +40,7 @@ class OwnerContract:
     validation_path: str
     reviews: tuple[tuple[str, str], ...]
     outputs: tuple[tuple[str, str], ...]
+    claims_path: str | None = None
 
     def __post_init__(self) -> None:
         if not self.subject or not self.contract_ids or not self.validation_path:
@@ -142,25 +143,47 @@ def _file_entries(
     ]
 
 
+def _receipt_verified_claims(
+    files: ProjectFiles,
+    contract: OwnerContract,
+) -> list[dict[str, object]] | None:
+    if contract.claims_path is None:
+        return None
+    try:
+        value = files.read_json(contract.claims_path)
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            return []
+        raise
+    from runtime.claims import verified_claims
+
+    return verified_claims(value)
+
+
 def _report(
+    files: ProjectFiles,
     contract: OwnerContract,
     inputs: tuple[Artifact, ...],
     reviews: list[dict[str, object]],
     outputs: list[dict[str, object]],
 ) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "algorithm": ALGORITHM,
+        "subject": contract.subject,
+        "validatorContractVersion": VALIDATOR_CONTRACT_VERSION,
+        "contractIds": list(contract.contract_ids),
+        "inputs": [_input_entry(artifact) for artifact in inputs],
+        "reviews": reviews,
+        "outputs": outputs,
+    }
+    cached = _receipt_verified_claims(files, contract)
+    if cached is not None:
+        receipt["verifiedClaims"] = cached
     return {
         "owner": contract.subject,
         "passed": True,
         "diagnostics": [],
-        "compilationReceipt": {
-            "algorithm": ALGORITHM,
-            "subject": contract.subject,
-            "validatorContractVersion": VALIDATOR_CONTRACT_VERSION,
-            "contractIds": list(contract.contract_ids),
-            "inputs": [_input_entry(artifact) for artifact in inputs],
-            "reviews": reviews,
-            "outputs": outputs,
-        },
+        "compilationReceipt": receipt,
     }
 
 
@@ -202,7 +225,7 @@ def _receipt_from_report(report: object) -> dict[str, object] | None:
     ):
         return None
     receipt = report["compilationReceipt"]
-    if set(receipt) != {
+    required_fields = {
         "algorithm",
         "subject",
         "validatorContractVersion",
@@ -210,6 +233,10 @@ def _receipt_from_report(report: object) -> dict[str, object] | None:
         "inputs",
         "reviews",
         "outputs",
+    }
+    if frozenset(receipt) not in {
+        frozenset(required_fields),
+        frozenset(required_fields | {"verifiedClaims"}),
     }:
         return None
     if not isinstance(receipt["contractIds"], list):
@@ -223,6 +250,31 @@ def _receipt_from_report(report: object) -> dict[str, object] | None:
             _valid_file_entry(entry) for entry in receipt[key]
         ):
             return None
+    if "verifiedClaims" in receipt and (
+        not isinstance(receipt["verifiedClaims"], list)
+        or not all(
+            isinstance(entry, dict)
+            and set(entry)
+            == {
+                "claimId",
+                "textSha256",
+                "anchorPath",
+                "anchorSha256",
+                "verdict",
+                "verifiedBy",
+                "verifierModel",
+            }
+            and isinstance(entry["claimId"], str)
+            and _is_hash(entry["textSha256"])
+            and isinstance(entry["anchorPath"], str)
+            and _is_hash(entry["anchorSha256"])
+            and entry["verdict"] == "PASS"
+            and isinstance(entry["verifiedBy"], str)
+            and isinstance(entry["verifierModel"], str)
+            for entry in receipt["verifiedClaims"]
+        )
+    ):
+        return None
     return receipt
 
 
@@ -403,7 +455,7 @@ def publish_owner(
         {"name": name, "path": path, "sha256": sha256_bytes(candidate_outputs[name])}
         for name, path in contract.outputs
     ]
-    report = _report(contract, inputs, reviews, outputs)
+    report = _report(files, contract, inputs, reviews, outputs)
     for name, path in contract.outputs:
         files.write_atomic(path, candidate_outputs[name])
     files.write_atomic(contract.validation_path, canonical_json_bytes(report))
@@ -525,7 +577,7 @@ def publish_no_change_owner(
         candidate_outputs,
     )
     reviews = _file_entries(files, contract.reviews)
-    report = _report(contract, inputs, reviews, outputs)
+    report = _report(files, contract, inputs, reviews, outputs)
     files.write_atomic(contract.validation_path, canonical_json_bytes(report))
     return report
 
@@ -540,6 +592,6 @@ def rebind_owner(
 
     _verify_input_files(files, inputs)
     reviews = _file_entries(files, contract.reviews)
-    report = _report(contract, inputs, reviews, outputs)
+    report = _report(files, contract, inputs, reviews, outputs)
     files.write_atomic(contract.validation_path, canonical_json_bytes(report))
     return report

@@ -20,14 +20,14 @@ STRUCTURED_REFERENCE = re.compile(
 )
 
 SCHEMA_SHA256 = {
-    "skills/analyze-as-is/contracts/asis.schema.json": "41532288016eb4c0b30843be6ef9df6c3786381e09353cae6bfa25c5ba49497b",
+    "skills/analyze-as-is/contracts/asis.schema.json": "d728e3ed26f6361b990a153c912c8e6d2eed475e753f54348f4ae87a7739f8c5",
     "skills/analyze-requirement/contracts/source-requirements.schema.json": "8ca6d9738ba0eeebe253d5d7e3bd164c019a54bc318b536012e6a6b5f3bf4e98",
     "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
     "skills/generate-design/contracts/design.schema.json": "a28fe5d9107f411ff582c4145e2b2e89403f4bdad09cf72f4a0d03501c2f089d",
     "skills/generate-sow/contracts/manifest.schema.json": "568a944b9d64728b4bfd39f00c746f5fa512f19206403f778a880e8347afcf55",
-    "skills/generate-story/contracts/delivery.schema.json": "04cfc549cc61ec6d39080735f19dd7e68246d47df7be34f07948faf0f167e0d6",
+    "skills/generate-story/contracts/delivery.schema.json": "fcd0e1549aa7a222649b8fb02c741619378afe632f34c66edc470caf05cfb3f0",
     "skills/generate-task/contracts/estimate.schema.json": "a1b5bbd829fc9bc5b2f3de29a0c07bd1f5daee81950cfc00fe47781701f35116",
-    "skills/setup/contracts/project.schema.json": "ef74010eec8f68ad81030338daa12393caa8d27d2ca6b715933f35c35bc514d3",
+    "skills/setup/contracts/project.schema.json": "76de2afbaaa8e1edecec8199e849adf04c4966883067e272d9838d2bd4537639",
 }
 
 SCHEMA_ENUMS = {
@@ -35,7 +35,7 @@ SCHEMA_ENUMS = {
         "$.$defs.analysisScope.properties.mode": ["GREENFIELD", "BROWNFIELD"],
         "$.$defs.topic": ["SYSTEM_CONTEXT", "CAPABILITY", "APPLICATION", "INTEGRATION", "DATA", "PLATFORM", "SECURITY_COMPLIANCE", "OPERATIONS_QUALITY", "DELIVERY_CONSTRAINTS"],
         "$.$defs.itemType": ["CAPABILITY", "COMPONENT", "INTEGRATION", "DATA_ASSET", "INFRASTRUCTURE", "CONTROL", "PROCESS", "CONSTRAINT"],
-        "$.$defs.topicAssessment.properties.status": ["ASSESSED", "NOT_APPLICABLE", "INSUFFICIENT_EVIDENCE"],
+        "$.$defs.topicAssessment.properties.status": ["RELEVANT_INVESTIGATED", "RELEVANT_INSUFFICIENT_EVIDENCE", "BOUNDARY_DECLARED", "NOT_APPLICABLE"],
         "$.$defs.item.properties.direction": ["INBOUND", "OUTBOUND"],
         "$.$defs.commitment.properties.changeType": ["ADD", "REPLACE", "RETIRE"],
         "$.$defs.commitment.properties.implementationStatus": ["IMPLEMENTED", "PARTIAL", "NOT_IMPLEMENTED", "UNVERIFIED", "SUPERSEDED"],
@@ -75,7 +75,10 @@ SCHEMA_ENUMS = {
         "$.$defs.task.allOf[0].if.properties.complexity": ["S", "L"],
         "$.$defs.task.allOf[1].if.properties.workMode": ["调整", "接入复用"],
     },
-    "skills/setup/contracts/project.schema.json": {},
+    "skills/setup/contracts/project.schema.json": {
+        "$.$defs.ownerControl.properties.investigationMode": ["hypothesis", "exhaustive"],
+        "$.$defs.ownerControl.properties.reviewDepth": ["mechanical", "factual", "full"],
+    },
 }
 
 TEMPLATE_SHA256 = "6c90f4782acf7b1beb372a7b5f8aa78079f677160c39349bf561883b5592bfa0"

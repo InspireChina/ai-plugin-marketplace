@@ -5,11 +5,11 @@
 `ai-sow-owner-reviewer-v1` 和 `ai-sow-owner-approval-v1` sidecar 同时绑定当前
 `ai-sow-owner-review-packet-v1` packet 后才具有授权效力；批准前不得写正式 review。
 
-## Feature → Gap → Story
+## Feature → Story
 
-逐项说明每个 `IN_SCOPE` Feature 相对 Effective Start 的 Gap、纳入的 `CARRY_FORWARD` Commitment 及结果型 Story；`FULLY_COVERED / OUT_OF_SCOPE` 不生成 Gap。
+逐项说明每个 `IN_SCOPE` Feature 相对 Effective Start 的差值、AC 的 `gapRationale`、逐条纳入的 `CARRY_FORWARD` Commitment 及结果型 Story；`FULLY_COVERED / OUT_OF_SCOPE` 不生成 Story。
 
-Stable IDs: gap-example, story-example, ac-example, integration-example, assumption-example
+Stable IDs: story-example, ac-example, integration-example, assumption-example
 
 ## Acceptance Criteria
 
@@ -37,20 +37,20 @@ Questionnaire Map: ARQ-001=assumption-example->story-example
 
 ## 上线映射
 
-恰好列出十个 Concern。`IN_SCOPE` 行必须映射到当前交付的 Feature、Gap 以及 Story 或 Assumption/Risk；不适用项明确责任边界和依据。
+恰好列出十个 Concern。`IN_SCOPE` 行必须映射到当前交付的 Feature 以及 Story 或 Assumption/Risk；不适用项明确责任边界和依据。
 
-| Concern | Disposition | Feature IDs | Gap IDs | Story IDs | Assumption/Risk IDs | 责任边界 | 依据 |
-|---|---|---|---|---|---|---|---|
-| PRODUCTION_SCOPE | IN_SCOPE | feature-example | gap-example | story-example | — | 项目负责获批生产交付，客户负责生产审批。 | 已批准技术范围要求该能力达到生产可用。 |
-| ENVIRONMENT_CONFIGURATION | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| DEPLOYMENT_CUTOVER_ROLLBACK | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| DATA_MIGRATION | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| PRODUCTION_VALIDATION | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| OBSERVABILITY | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| OPERATIONS_HANDOVER | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| POST_GO_LIVE_SUPPORT | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| USER_ENABLEMENT | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
-| LEGACY_RETIREMENT | NOT_APPLICABLE | — | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| Concern | Disposition | Feature IDs | Story IDs | Assumption/Risk IDs | 责任边界 | 依据 |
+|---|---|---|---|---|---|---|
+| PRODUCTION_SCOPE | IN_SCOPE | feature-example | story-example | — | 项目负责获批生产交付，客户负责生产审批。 | 已批准技术范围要求该能力达到生产可用。 |
+| ENVIRONMENT_CONFIGURATION | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| DEPLOYMENT_CUTOVER_ROLLBACK | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| DATA_MIGRATION | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| PRODUCTION_VALIDATION | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| OBSERVABILITY | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| OPERATIONS_HANDOVER | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| POST_GO_LIVE_SUPPORT | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| USER_ENABLEMENT | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
+| LEGACY_RETIREMENT | NOT_APPLICABLE | — | — | — | 本项目不负责该关注点。 | 已确认与当前范围无关。 |
 
 Go-live Mapping: PASSED
 
@@ -66,5 +66,5 @@ Impact: NO_CHANGE
 Upstream: generate-design
 Previous Receipt SHA-256: generate-design=<old-hash>
 Current Receipt SHA-256: generate-design=<new-hash>
-Impact Rationale: gap-example、story-example、ac-example、integration-example、assumption-example 均确认不受影响。
+Impact Rationale: story-example、ac-example、integration-example、assumption-example 均确认不受影响。
 ```

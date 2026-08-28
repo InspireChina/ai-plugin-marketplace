@@ -25,6 +25,8 @@ for import_root in (SCRIPT_ROOT, PLUGIN_ROOT):
         sys.path.insert(0, str(import_root))
 
 from review_gates import validate_design_gates
+from runtime.diagnostics import diagnostic as diag
+from runtime.controls import validate_manifest_controls
 from runtime.handoff import (
     Artifact,
     MatchResult,
@@ -40,6 +42,7 @@ from runtime.handoff import (
     validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import validate_review_artifacts
 
 
 SUBJECT = "generate-design"
@@ -69,7 +72,9 @@ CONTEXT_FRAGMENT_SPECS = (
     ("uncertainties", ".ai-sow/work/generate-design/context/uncertainties.json"),
     ("effectiveStart", ".ai-sow/work/generate-design/context/effective-start.json"),
     ("sourceAnchors", ".ai-sow/work/generate-design/context/source-anchors.json"),
+    ("claims", ".ai-sow/work/generate-design/claims.json"),
 )
+CLAIMS_PATH = ".ai-sow/work/generate-design/claims.json"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-owner-reviewer-v1"
 APPROVAL_ALGORITHM = "ai-sow-owner-approval-v1"
@@ -121,7 +126,7 @@ REQUIREMENT_CONTRACT = OwnerContract(
 )
 ASIS_CONTRACT = OwnerContract(
     subject="analyze-as-is",
-    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.2",),
     validation_path=ASIS_VALIDATION_PATH,
     reviews=(("approvedReview", ASIS_REVIEW_PATH),),
     outputs=(("asIs", ASIS_PATH),),
@@ -132,14 +137,8 @@ CONTRACT = OwnerContract(
     validation_path=VALIDATION_PATH,
     reviews=(("approvedReview", REVIEW_PATH),),
     outputs=(("design", DESIGN_PATH), ("technicalRequirements", TECHNICAL_PATH)),
+    claims_path=CLAIMS_PATH,
 )
-
-
-def diag(code: str, message: str, path: str = "") -> dict[str, object]:
-    value: dict[str, object] = {"code": code, "message": message}
-    if path:
-        value["path"] = path
-    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -1008,9 +1007,11 @@ def context_packet_entry(
     assert manifest is not None and manifest_payload is not None
     expected_fields = {
         "algorithm",
+        "claimMetrics",
         "fragments",
         "inputArtifacts",
         "owner",
+        "ownerControl",
         "selectedEffectiveStartItemIds",
         "selectedFeatureIds",
     }
@@ -1038,6 +1039,16 @@ def context_packet_entry(
                 CONTEXT_MANIFEST_PATH,
             )
         )
+    diagnostics.extend(
+        validate_manifest_controls(
+            files,
+            manifest,
+            owner=SUBJECT,
+            project_path=PROJECT_PATH,
+            claims_path=CLAIMS_PATH,
+            manifest_path=CONTEXT_MANIFEST_PATH,
+        )
+    )
     if manifest.get("inputArtifacts") != [input_entry(artifact) for artifact in inputs]:
         diagnostics.append(
             diag(
@@ -1288,6 +1299,24 @@ def main() -> int:
                         diagnostics.append(diag(error.code, str(error), error.relative_path))
 
         expected_packet: dict[str, object] | None = None
+        if (
+            not diagnostics
+            and args.mode == "review"
+            and design_payload is not None
+            and technical_payload is not None
+            and design is not None
+            and technical is not None
+            and asis is not None
+        ):
+            diagnostics.extend(
+                validate_review_artifacts(
+                    files,
+                    args.project_root,
+                    SUBJECT,
+                    CLAIMS_PATH,
+                    {"design": design, "technicalRequirements": technical},
+                )
+            )
         if (
             not diagnostics
             and args.mode in {"review", "publish-approved"}

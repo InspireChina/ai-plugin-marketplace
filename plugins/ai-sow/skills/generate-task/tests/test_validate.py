@@ -62,9 +62,9 @@ DESIGN = {"decisions": [], "scopeDecisions": []}
 TECHNICAL = {"features": []}
 DELIVERY = {
     "stories": [
-        {"storyId": "story-customer-profile"},
-        {"storyId": "story-profile-api"},
-        {"storyId": "story-profile-hosting-discovery"},
+        {"storyId": "story-customer-profile", "featureId": "feature-customer-profile"},
+        {"storyId": "story-profile-api", "featureId": "feature-profile-api"},
+        {"storyId": "story-profile-hosting-discovery", "featureId": "feature-customer-profile"},
     ],
     "acceptanceCriteria": [
         {"acceptanceCriterionId": "ac-profile-visible", "storyId": "story-customer-profile"},
@@ -93,7 +93,7 @@ REQUIREMENT_CONTRACT = OwnerContract(
 )
 ASIS_CONTRACT = OwnerContract(
     subject="analyze-as-is",
-    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.2",),
     validation_path=".ai-sow/validation/analyze-as-is.json",
     reviews=(("approvedReview", ".ai-sow/reviews/analyze-as-is.md"),),
     outputs=(("asIs", ".ai-sow/data/analyze-as-is/asis.json"),),
@@ -113,7 +113,7 @@ DESIGN_CONTRACT = OwnerContract(
 )
 STORY_CONTRACT = OwnerContract(
     subject="generate-story",
-    contract_ids=("urn:ai-sow:generate-story:delivery:0.2",),
+    contract_ids=("urn:ai-sow:generate-story:delivery:0.4",),
     validation_path=".ai-sow/validation/generate-story.json",
     reviews=(("approvedReview", ".ai-sow/reviews/generate-story.md"),),
     outputs=(("delivery", ".ai-sow/data/generate-story/delivery.json"),),
@@ -453,6 +453,17 @@ def test_check_accepts_story_task_ac_modes_complexity_and_integration(tmp_path: 
     assert not (tmp_path / ".ai-sow/validation/generate-task.json").exists()
 
 
+def test_rejects_task_trace_that_cannot_reach_feature(tmp_path: Path) -> None:
+    delivery = copy.deepcopy(DELIVERY)
+    delivery["stories"][0].pop("featureId")  # type: ignore[index]
+    prepare(tmp_path, delivery=delivery)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "TASK_TRACE_UNREACHABLE" in codes(result)
+
+
 def test_prepare_context_writes_owner_local_reference_closure_without_calculation_values(
     tmp_path: Path,
 ) -> None:
@@ -483,6 +494,7 @@ def test_prepare_context_writes_owner_local_reference_closure_without_calculatio
         ".ai-sow/work/generate-task/context/as-is.json",
         ".ai-sow/work/generate-task/context/technical-requirements.json",
         ".ai-sow/work/generate-task/context/template-catalog.json",
+        ".ai-sow/work/generate-task/claims.json",
     ]
     assert manifest["selectedEffectiveStartItemIds"] == [
         "effective-start-customer-api",
@@ -544,7 +556,7 @@ def test_prepare_context_accepts_repository_anchored_document_evidence(
 
 def test_context_closure_includes_related_design_decision_and_evidence() -> None:
     delivery = {
-        "gaps": [{"featureId": "feature-customer-profile"}],
+        "stories": [{"featureId": "feature-customer-profile"}],
         "integrations": [{"decisionIds": ["decision-profile-api"]}],
     }
     design = {
@@ -652,6 +664,7 @@ def test_review_mode_writes_hash_bound_packet_without_formal_publication(tmp_pat
         "asIs",
         "technicalRequirements",
         "templateCatalog",
+        "claims",
     ]
     assert packet["riskSummary"]["sha256"] == sha256_bytes(risk_path.read_bytes())
     assert "Task Count: 3" in risk_path.read_text(encoding="utf-8")

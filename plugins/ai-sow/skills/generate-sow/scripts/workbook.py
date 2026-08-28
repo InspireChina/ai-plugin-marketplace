@@ -230,7 +230,6 @@ def build_rows(
     estimate = data["estimate"]
     epics = {entry["epicId"]: entry for entry in requirements["epics"]}
     features = {entry["featureId"]: entry for entry in requirements["features"]}
-    gaps = {entry["gapId"]: entry for entry in delivery["gaps"]}
     stories = {entry["storyId"]: entry for entry in delivery["stories"]}
     assumptions = {entry["assumptionId"]: entry for entry in delivery["assumptions"]}
     decision_names = {
@@ -283,7 +282,7 @@ def build_rows(
         ],
         "SOWStoryTable": [
             {
-                "子需求名称": features[gaps[entry["gapId"]]["featureId"]]["name"],
+                "子需求名称": features[entry["featureId"]]["name"],
                 "故事名称": entry["name"],
                 "UAT适用": "是" if entry["uatRelevant"] else "否",
                 "关联假设/风险名称": assumptions[entry["assumptionId"]]["name"]

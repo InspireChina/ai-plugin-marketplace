@@ -5,7 +5,7 @@ description: 当已评审的业务需求、技术需求、现状和目标设计�
 
 # 生成交付 Story
 
-把每个范围内 Feature 相对于 Effective Start 的差距分解为 Story、AC、Integration、Assumption 和 Risk。
+把每个范围内 Feature 相对于 Effective Start 的差值直接分解为 Story、AC、Integration、Assumption 和 Risk；Delivery 不再保存中间 Gap 实体。
 
 执行前读取并遵守[输出语言合同](../../references/output-language.md)。业务自由文本使用简体中文；合同 token 保持原值。
 按[插件运行时环境合同](../../references/runtime-environment.md)从 `<plugin-root>` 解析当前平台的 `<python-bin>`；后续命令直接使用 setup 已建立的插件 `.venv`。
@@ -46,6 +46,8 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
 
+开始专业工作前读取插件级[上下文纪律](../../references/context-discipline.md)、[降本评审合同](../../references/review-acceleration.md)与[模型路由](../../references/model-routing.md)。共享合同取代下文遗留的整体自由修复和携带完整历史复审做法；Story/AC 的业务所有权不变。
+
 ## 工作流
 
 1. 当前 Stage Agent 是本 Skill 的唯一用户接口和专业执行者，不创建 Worker 或 Validator Agent。先运行 Owner-local context compiler；它用公共 matcher 验证 Requirement、As-Is 和 Design 三个 receipt，并只投影 ScopeDecision、Feature、相关 Design Decision、Effective Start、问卷决定、固定 Go-live Concern 以及关联 Commitment/Evidence/Uncertainty。任一 handoff 为 missing、invalid、stale 或 unsupported 时，报告对应 Owner Skill 并停止。不得调用上游 validator，不得重新执行 Design 的 HLD/Go-live 门禁，也不得重诊断 Requirement 问卷终态或 As-Is 内部实体：
@@ -54,16 +56,16 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    "<python-bin>" "<skill-root>/scripts/prepare_context.py" --project-root .
    ```
 2. 当前 Stage Agent 先读 `.ai-sow/work/generate-story/context/manifest.json`，再只读取其中点名的四个 fragment、固定 Schema `<skill-root>/contracts/delivery.schema.json` 和[评审模板](references/review-template.md)。closure 成功后按该精确路径读取 Schema 一次；不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema，也不得读取 fixture/test 代替合同。BUSINESS 与 TECHNICAL requirements 仅在当前内存中联合，不写 merged requirements。对每个已批准的 `APPROVED_DEFAULT / ASSUMPTION_CANDIDATE` Question ID 恰好生成一个 Assumption，其 `handling` 保留 `analyze-requirement-questionnaire#<Question-ID>` 锚点并至少关联一个 Story。`CLOSED / INCORPORATED_BUSINESS:<stable-id>` 与 `CLOSED / NO_CHANGE` 不生成 Assumption。
-3. 对每个 `IN_SCOPE` Feature，用目标结果减去其 Coverage 所连接的 Effective Start，形成 Delivery Gap。把相关 `CARRY_FORWARD` Commitment 纳入差距，不能当作基线。`FULLY_COVERED` Feature 不生成 Gap 或 Story；其完整性已由设计门禁中的 Effective Start、Evidence 和理由证明。
-   已批准的 Story/AC 是业务交付合同。Task 可实施性反馈经 `generate-design` 细化实现机制、但未改变用户批准的交付结果时，保持 Delivery 原字节并走 packet-bound `Impact: NO_CHANGE` 发布；不得为实现机制创建 Gap、Story 或 AC。只有上游 Owner 经用户明确批准改变可独立验收的交付结果后，才按 `Impact: CHANGED` 重新评审 Story/AC。
-4. 对每个 `IN_SCOPE` 生产上线 TECHNICAL Feature 形成完整 Delivery Gap，并优先拆成“上线准备”“发布切换”“生产验证与运维移交”三个结果型核心 Story；旧功能下线条件适用时单独生成 Story，不与发布切换合并。每个上线 Story 通常设置 `uatRelevant = false`，只有确实属于业务 UAT 分母且获得评审确认时才能设为 `true`。
-5. 对每个 `IN_SCOPE` 数据迁移 TECHNICAL Feature 单独生成 Gap 和迁移 Story。迁移 Feature、Gap 和 Story 不得归入生产上线 Feature；发布切换只能把已完成的迁移结果写成前置条件或 AC，不能吞并迁移交付范围。
+3. 对每个 `IN_SCOPE` Feature，用目标结果减去其 Coverage 所连接的 Effective Start，直接形成一个或多个结果型 Story；每个 Story 只归属一个 Feature。每条 AC 用 `gapRationale` 引用相关 `effectiveStartItemId`，或在 Coverage 为 `MISSING` 时明确不存在有效起点；相关 `CARRY_FORWARD` Commitment 逐条写入 `carryForwardCommitmentIds`，不能当作基线。`FULLY_COVERED` Feature 不生成 Story；其完整性已由设计门禁中的 Effective Start、Evidence 和理由证明。
+   已批准的 Story/AC 是业务交付合同。Task 可实施性反馈经 `generate-design` 细化实现机制、但未改变用户批准的交付结果时，保持 Delivery 原字节并走 packet-bound `Impact: NO_CHANGE` 发布；不得为实现机制创建 Story 或 AC。只有上游 Owner 经用户明确批准改变可独立验收的交付结果后，才按 `Impact: CHANGED` 重新评审 Story/AC。
+4. 对每个 `IN_SCOPE` 生产上线 TECHNICAL Feature 优先拆成“上线准备”“发布切换”“生产验证与运维移交”三个结果型核心 Story；旧功能下线条件适用时单独生成 Story，不与发布切换合并。每个上线 Story 通常设置 `uatRelevant = false`，只有确实属于业务 UAT 分母且获得评审确认时才能设为 `true`。
+5. 对每个 `IN_SCOPE` 数据迁移 TECHNICAL Feature 单独生成迁移 Story。迁移 Feature 和 Story 不得归入生产上线 Feature；发布切换只能把已完成的迁移结果写成前置条件或 AC，不能吞并迁移交付范围。
 6. `POST_GO_LIVE_SUPPORT` 只能形成明确的合同边界、Assumption/Risk，或已经批准且可验收的具体交付工作；不得生成泛化“上线后支持”、驻场、待命容量或 24×7 支持 Story。若输入明确购买专职驻场、固定班次、待命容量或 24×7 支持，停止 Story 分解并返回 `generate-design`：由其登记 `affectsEstimate = true` 的 Uncertainty，转入独立服务容量模型或单独支持 SOW，在责任方带回获批容量估算或明确排除决定前保持 `BLOCKED`。UAT 缺陷责任、变更请求和支持边界写入 AC、Assumption/Risk 与责任边界，不生成开放式缺陷 Story。
-7. 将其余差距拆成结果明确、可独立交付、验收和结算的 Story。Story 不保存类型；前端、后端、数据、集成、测试、迁移、调研等工作性质由后续 Task 表达。重要 Uncertainty 需要交付工作解决时创建具有明确问题和结论的 Story；否则形成带 trigger、handling 和 responsibility boundary 的 Assumption 或 Risk。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有存在可独立验收、独立估算的共享边界或控制结果时才形成单独 Story；其 Story/AC 不得再次聚合相关 BUSINESS Story 已拥有的外部目标，也不得重述这些业务调用的字段映射、业务幂等、重试、异常处置或核对结果。提供方端到端结果继续由各 BUSINESS Story 拥有；共享使能 Story 只面向单一项目侧适配器/控制端口并验收公共合同。若无法证明独立的非重叠结果，返回 `generate-design` 收敛 Feature/Scope，而不是制造重复交付。
+7. 将其余差值拆成结果明确、可独立交付、验收和结算的 Story。Story 不保存类型；前端、后端、数据、集成、测试、迁移、调研等工作性质由后续 Task 表达。重要 Uncertainty 需要交付工作解决时创建具有明确问题和结论的 Story；否则形成带 trigger、handling 和 responsibility boundary 的 Assumption 或 Risk。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有存在可独立验收、独立估算的共享边界或控制结果时才形成单独 Story；其 Story/AC 不得再次聚合相关 BUSINESS Story 已拥有的外部目标，也不得重述这些业务调用的字段映射、业务幂等、重试、异常处置或核对结果。提供方端到端结果由一个 BUSINESS Story 首次拥有，其他 Story 必须显式引用该 producing Story，不得复制能力。若无法证明独立的非重叠结果，返回 `generate-design` 并报告 `FEATURE_OVERLAP_SUSPECTED`，由其收敛 Feature/Scope。
 8. 为每个 Story 编写有序 AC；每条 AC 是独立可观察、可通过或不通过的结果，不描述实现 Task。上线 AC 必须明确前置条件、成功判定、失败或回滚边界以及责任方；数据迁移 AC 与发布切换 AC 分开。
 9. 把有证据支持的 Integration 作为顶级权威实体写入 `integrations`。每条 Integration 有唯一 `integrationId` 和非空 `name`，并明确 `storyId`、source、target、trigger、direction、purpose、owner 与交付边界。存在批准该边界、目标或类型化义务的 Design Decision 时，`decisionIds` 只引用其 `relatedFeatureIds` 包含当前 Story Feature 的决策；纯实现集成没有类型化 Design Decision 时允许空数组，但必须填写非空 `decisionRationale` 说明为何不需要类型化批准。每个 `requiredIntegrationBoundary` 非 `NONE` 的 Story 至少关联一条边界完全一致的 Integration；即使多个 Feature 复用同一适配能力，也不得只挂到共享使能 Story，必须分别表达各交付 Story 的可验收端口或端到端结果。反过来，共享 TECHNICAL Story 的 Integration 也不得把两个或更多相关 BUSINESS Story 已登记的 target 聚合为一个重复端到端边界；共享目标必须是一个独立的项目侧适配器或控制端口。Integration 不依赖 Story 类型，登记关系也不表示已经决定生成集成 Task；是否需要交付内部或外部系统对接工作由 `generate-task` 判断。
 10. 把每个 Assumption 或 Risk 作为 `assumptions` 中的一条独立记录，相同语义只保留一行。需要表达不确定性的 Story 通过单个 `assumptionId` 选择一条足以说明该 Story 不确定性的记录；同一条记录可以被多个 Story 引用，不为每个 Story 复制同一假设。
-11. 当前 Stage Agent 在 `.ai-sow/work/generate-story/delivery.candidate.json` 保存专业分解，再用确定性 renderer 整体生成 `.ai-sow/work/generate-story/review.candidate.md`；不得手写或局部修补投影。投影覆盖 Gap、Story、AC、Integration、Assumption/Risk、问卷消费和 `Concern -> Feature -> Gap -> Story/Assumption/Risk`，并确认上线准备、发布切换、生产验证与运维移交、条件适用的下线、独立数据迁移、UAT 分母和支持边界无遗漏或重复：
+11. 当前 Stage Agent 在 `.ai-sow/work/generate-story/delivery.candidate.json` 保存专业分解，再用确定性 renderer 整体生成 `.ai-sow/work/generate-story/review.candidate.md`；不得手写或局部修补投影。投影覆盖 Feature、Story、AC、Integration、Assumption/Risk、问卷消费和 `Concern -> Feature -> Story/Assumption/Risk`，并确认上线准备、发布切换、生产验证与运维移交、条件适用的下线、独立数据迁移、UAT 分母和支持边界无遗漏或重复：
 
    ```text
    "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root . --candidate .ai-sow/work/generate-story/delivery.candidate.json --output .ai-sow/work/generate-story/review.candidate.md
@@ -73,7 +75,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```text
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
    ```
-13. 只创建一个不继承当前完整聊天的 fresh-context Reviewer。Reviewer 只读 packet、candidate、review、risk summary、评审模板和 packet 点名的 fragment；不运行机械校验、不修改成果、不代替用户批准。finding 只允许当前 Stage Agent 完成一次整体修复，重新检查全部新增/变化 Gap、Story、AC、Integration、Assumption/Risk、问卷和十项上线映射，整体重跑 renderer/`review` 后交回同一 Reviewer 完整复审；第二次仍不通过则 `BLOCKED`。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical work-only sidecar：
+13. 只创建一个不继承当前完整聊天的 fresh-context Reviewer。Reviewer 只读 packet、candidate、review、risk summary、评审模板和 packet 点名的 fragment；不运行机械校验、不修改成果、不代替用户批准。finding 只允许当前 Stage Agent 完成一次整体修复，重新检查全部新增/变化 Feature 映射、Story、AC、Integration、Assumption/Risk、问卷和十项上线映射，整体重跑 renderer/`review` 后交回同一 Reviewer 完整复审；第二次仍不通过则 `BLOCKED`。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical work-only sidecar：
 
    ```json
    {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"generate-story","packetSha256":"<packet-sha256>"}
@@ -93,12 +95,12 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 ## 完成条件
 
-每个范围内 Feature 恰有可追溯 Gap，每个 Gap 至少关联一个 Story，每个 Story 至少有一条 AC；横切 TECHNICAL Feature 若形成共享使能 Story，必须证明它与相关 BUSINESS Story 的提供方目标和端到端结果不重叠；范围内生产上线完整覆盖上线准备、发布切换、生产验证与运维移交，适用时单列旧功能下线；数据迁移使用独立 Feature、Gap 和 Story；上线 Story 的 UAT 分母、上线后支持边界及 UAT 缺陷/变更责任均有明确评审结论。每条有依据的 Integration 都作为独立记录关联一个 Story；每个 Assumption/Risk 只保存一次并用关系集合连接 Story。存在问卷时，每个 `APPROVED_DEFAULT` 都完整映射到一个稳定 Assumption 和至少一个 Story，且 `handling` 保留 Question ID 锚点；问卷本身仍是人类评审状态，不成为第七份稳定 JSON。Delivery 原字节发布并签发 receipt 后只推荐 `generate-task` 并停止。
+每个需要新增交付的范围内 Feature 至少关联一个 Story，每个 Story 至少有一条 AC；每条 AC 都说明相对 Effective Start 的差值并逐条承接相关 `CARRY_FORWARD` Commitment。`FULLY_COVERED` Feature 不制造 Story。横切 TECHNICAL Feature 若形成共享使能 Story，必须证明它与相关 BUSINESS Story 的提供方目标和端到端结果不重叠；范围内生产上线完整覆盖上线准备、发布切换、生产验证与运维移交，适用时单列旧功能下线；数据迁移使用独立 Feature 和 Story；上线 Story 的 UAT 分母、上线后支持边界及 UAT 缺陷/变更责任均有明确评审结论。每条有依据的 Integration 都作为独立记录关联一个 Story；每个 Assumption/Risk 只保存一次并用关系集合连接 Story。存在问卷时，每个 `APPROVED_DEFAULT` 都完整映射到一个稳定 Assumption 和至少一个 Story，且 `handling` 保留 Question ID 锚点；问卷本身仍是人类评审状态，不成为第七份稳定 JSON。Delivery 原字节发布并签发 receipt 后只推荐 `generate-task` 并停止。
 
 ## Reconciliation Adapter
 
 仅当用户显式调用 `ai-sow:reconcile` 且提供 `Reconciliation Run ID`、整体 review SHA-256 与项目内
-staging root 时，本 Skill 作为 Story Owner Adapter 运行。它继续独占 Gap、Story、AC、Integration、
+staging root 时，本 Skill 作为 Story Owner Adapter 运行。它继续独占 Story、AC、Integration、
 Assumption、Risk、候选编译、`check/publish/rebind` 与写集合，但复用 reconciliation 的外层当前
 Stage、一个 Reviewer 和一次 hash-bound 用户批准；确定性 Owner 命令由外层当前 Stage 直接调用。技术实现或 Task 细化未改变业务交付结果
 时必须 `NO_CHANGE`，Delivery 原字节复用；只有整体 review 精确列出业务结果与 Story/AC diff，

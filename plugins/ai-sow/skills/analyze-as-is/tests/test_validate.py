@@ -14,6 +14,7 @@ PLUGIN_ROOT = Path(__file__).parents[3]
 SKILL_ROOT = Path(__file__).parents[1]
 SCRIPT = SKILL_ROOT / "scripts/validate.py"
 CONTEXT_SCRIPT = SKILL_ROOT / "scripts/prepare_context.py"
+FACTS_SCRIPT = SKILL_ROOT / "scripts/project_facts.py"
 RENDER_SCRIPT = SKILL_ROOT / "scripts/render_review.py"
 GREENFIELD_FIXTURE = SKILL_ROOT / "fixtures/asis.valid.json"
 BROWNFIELD_FIXTURE = SKILL_ROOT / "fixtures/asis.brownfield.valid.json"
@@ -200,6 +201,7 @@ def prepare_greenfield(project_root: Path) -> dict[str, Any]:
     publish_requirement(project_root)
     payload = json.loads(GREENFIELD_FIXTURE.read_text(encoding="utf-8"))
     write_json(project_root, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
+    write_premises(project_root)
     write_bytes(project_root, ".ai-sow/reviews/analyze-as-is.md", approved_review(payload).encode())
     return payload
 
@@ -220,8 +222,39 @@ def prepare_brownfield(project_root: Path) -> dict[str, Any]:
     )
     payload = json.loads(BROWNFIELD_FIXTURE.read_text(encoding="utf-8"))
     write_json(project_root, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
+    write_premises(project_root)
     write_bytes(project_root, ".ai-sow/reviews/analyze-as-is.md", approved_review(payload).encode())
     return payload
+
+
+def write_premises(project_root: Path) -> None:
+    write_json(
+        project_root,
+        ".ai-sow/work/analyze-as-is/premises.json",
+        {
+            "algorithm": "ai-sow-review-premises-v1",
+            "owner": "analyze-as-is",
+            "hypothesis": "沿用已确认的客户档案起点并补齐目标能力。",
+            "factFamilies": [
+                "modules",
+                "deploymentResources",
+                "criticalConfiguration",
+                "springProfiles",
+                "migrationTables",
+                "ciWorkflows",
+            ],
+            "premises": [
+                {
+                    "premiseId": "premise-existing-customer-start",
+                    "text": "已登记现状足以作为客户档案工作的起点。",
+                    "falsificationMethod": "核对登记仓库和往期承诺。",
+                    "verdict": "SUPPORTED",
+                    "impact": "可继续形成现状起点与差异。",
+                    "anchorPaths": [],
+                }
+            ],
+        },
+    )
 
 
 def run_validator(
@@ -284,6 +317,16 @@ def run_renderer(project_root: Path) -> subprocess.CompletedProcess[str]:
         ],
         capture_output=True,
         text=True, encoding="utf-8",
+        check=False,
+    )
+
+
+def run_project_facts(project_root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(FACTS_SCRIPT), "--project-root", str(project_root)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -462,7 +505,7 @@ def test_publish_preserves_candidate_bytes_and_binds_named_inputs(tmp_path: Path
     assert managed_path(tmp_path, ".ai-sow/data/analyze-as-is/asis.json").read_bytes() == candidate
     receipt = validation_report(tmp_path)["compilationReceipt"]
     assert receipt["validatorContractVersion"] == "0.3"
-    assert receipt["contractIds"] == ["urn:ai-sow:analyze-as-is:asis:0.1"]
+    assert receipt["contractIds"] == ["urn:ai-sow:analyze-as-is:asis:0.2"]
     assert {entry["name"] for entry in receipt["inputs"]} == {
         "project", "requirementsValidation", "requirements",
         "repository:service-api", "priorSow:sow-phase-one",
@@ -678,7 +721,7 @@ def test_narrative_consistency_checks_fail_closed(
 ) -> None:
     payload = prepare_brownfield(tmp_path)
     if mutation == "uncertainty-topic-backlink":
-        payload["topicAssessments"][4]["status"] = "ASSESSED"
+        payload["topicAssessments"][4]["status"] = "RELEVANT_INVESTIGATED"
         payload["topicAssessments"][4]["uncertaintyIds"] = []
     elif mutation == "coverage-rationale-commitment":
         payload["coverage"][0]["commitmentIds"] = []
@@ -898,7 +941,7 @@ def test_selected_questionnaire_unknown_requires_linked_uncertainty(tmp_path: Pa
 
 def test_selected_confirmed_questionnaire_compiles_to_evidence(tmp_path: Path) -> None:
     payload = prepare_brownfield(tmp_path)
-    payload["topicAssessments"][4]["status"] = "ASSESSED"
+    payload["topicAssessments"][4]["status"] = "RELEVANT_INVESTIGATED"
     payload["topicAssessments"][4]["uncertaintyIds"] = []
     payload["coverage"][0]["uncertaintyIds"] = []
     payload["uncertainties"] = []
@@ -1136,6 +1179,9 @@ def test_prepare_context_writes_owner_local_evidence_closure(tmp_path: Path) -> 
         "requirements",
         "investigationScope",
         "evidenceInventory",
+        "premises",
+        "repoFacts",
+        "claims",
     ]
     assert manifest["selectedTopicIds"] == [
         "SYSTEM_CONTEXT",
@@ -1154,6 +1200,44 @@ def test_prepare_context_writes_owner_local_evidence_closure(tmp_path: Path) -> 
     assert str(tmp_path) not in serialized
     assert "class CustomerProfileReader" not in serialized
     assert "Phase one prior SOW fixture" not in serialized
+
+
+def test_project_facts_projects_selected_families_without_source_content(tmp_path: Path) -> None:
+    prepare_brownfield(tmp_path)
+    repo = tmp_path / "repositories/service-api"
+    (repo / ".github/workflows").mkdir(parents=True)
+    (repo / "deploy").mkdir()
+    (repo / "db").mkdir()
+    (repo / "application.yml").write_text(
+        "outbox.relay.strategy: scheduler\nspring.profiles.active: stub\n",
+        encoding="utf-8",
+    )
+    (repo / "deploy/jobs.yaml").write_text(
+        "kind: Job\nmetadata:\n  name: migrate\n---\nkind: CronJob\nmetadata:\n  name: sweep\n",
+        encoding="utf-8",
+    )
+    (repo / "db/V1.sql").write_text(
+        "create table outbox_event(id bigint);\n",
+        encoding="utf-8",
+    )
+    (repo / ".github/workflows/ci.yml").write_text(
+        "jobs:\n  test:\n    runs-on: ubuntu-latest\n",
+        encoding="utf-8",
+    )
+
+    result = run_project_facts(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    facts = json.loads(
+        (tmp_path / ".ai-sow/work/analyze-as-is/repo-facts.json").read_text(encoding="utf-8")
+    )
+    projected = facts["repositories"][0]["facts"]
+    assert projected["deploymentResources"]["counts"] == {"CronJob": 1, "Job": 1}
+    assert projected["criticalConfiguration"]["values"][0]["value"] == "scheduler"
+    assert projected["springProfiles"]["values"][0]["value"] == "stub"
+    assert projected["migrationTables"]["tables"][0]["table"] == "outbox_event"
+    assert projected["ciWorkflows"]["workflows"][0]["jobs"] == ["test"]
+    assert "create table" not in json.dumps(facts)
 
 
 def test_review_mode_writes_bound_packet_without_formal_publication(tmp_path: Path) -> None:

@@ -1,0 +1,1 @@
+{"findingId":"A-02","category":"A","expectedLayer":"script","expectedCode":"ABSOLUTE_CLAIM_UNANCHORED","path":"/items/0/summary","text":"迁移脚本中唯一配置的 outbox 表名是 outbox_events。"}

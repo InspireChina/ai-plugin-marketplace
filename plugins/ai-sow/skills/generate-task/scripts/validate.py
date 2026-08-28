@@ -24,6 +24,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+from runtime.diagnostics import diagnostic as diag
+from runtime.controls import validate_manifest_controls
 from runtime.handoff import (
     Artifact,
     MatchResult,
@@ -39,6 +41,7 @@ from runtime.handoff import (
     validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import validate_review_artifacts
 
 
 SUBJECT = "generate-task"
@@ -74,7 +77,9 @@ CONTEXT_FRAGMENT_SPECS = (
     ("asIs", ".ai-sow/work/generate-task/context/as-is.json"),
     ("technicalRequirements", ".ai-sow/work/generate-task/context/technical-requirements.json"),
     ("templateCatalog", ".ai-sow/work/generate-task/context/template-catalog.json"),
+    ("claims", ".ai-sow/work/generate-task/claims.json"),
 )
+CLAIMS_PATH = ".ai-sow/work/generate-task/claims.json"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-owner-reviewer-v1"
 APPROVAL_ALGORITHM = "ai-sow-owner-approval-v1"
@@ -144,7 +149,7 @@ REQUIREMENT_CONTRACT = OwnerContract(
 )
 ASIS_CONTRACT = OwnerContract(
     subject="analyze-as-is",
-    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.2",),
     validation_path=ASIS_VALIDATION_PATH,
     reviews=(("approvedReview", ASIS_REVIEW_PATH),),
     outputs=(("asIs", ASIS_PATH),),
@@ -161,7 +166,7 @@ DESIGN_CONTRACT = OwnerContract(
 )
 STORY_CONTRACT = OwnerContract(
     subject="generate-story",
-    contract_ids=("urn:ai-sow:generate-story:delivery:0.2",),
+    contract_ids=("urn:ai-sow:generate-story:delivery:0.4",),
     validation_path=DELIVERY_VALIDATION_PATH,
     reviews=(("approvedReview", DELIVERY_REVIEW_PATH),),
     outputs=(("delivery", DELIVERY_PATH),),
@@ -172,14 +177,8 @@ CONTRACT = OwnerContract(
     validation_path=VALIDATION_PATH,
     reviews=(("approvedReview", REVIEW_PATH),),
     outputs=(("estimate", STABLE_PATH),),
+    claims_path=CLAIMS_PATH,
 )
-
-
-def diag(code: str, message: str, path: str = "") -> dict[str, object]:
-    value: dict[str, object] = {"code": code, "message": message}
-    if path:
-        value["path"] = path
-    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -798,6 +797,7 @@ def validate_semantics(
                     )
                 )
 
+        trace_reaches_feature = False
         for criterion_id in task["acceptanceCriterionIds"]:
             criterion = criteria.get(criterion_id)
             if criterion is None:
@@ -811,6 +811,15 @@ def validate_semantics(
                         f"Task and Acceptance Criterion must share a Story: {task_id}/{criterion_id}",
                     )
                 )
+            elif story_id in stories and isinstance(stories[story_id].get("featureId"), str):
+                trace_reaches_feature = True
+        if story_id in stories and not trace_reaches_feature:
+            diagnostics.append(
+                diag(
+                    "TASK_TRACE_UNREACHABLE",
+                    f"Task cannot trace through a same-Story AC to a Feature: {task_id}",
+                )
+            )
 
         matched = task.get("matchedEffectiveStartItemId")
         if matched is not None and matched not in effective_starts:
@@ -1311,9 +1320,11 @@ def context_packet_entry(
     assert manifest is not None and manifest_payload is not None
     if set(manifest) != {
         "algorithm",
+        "claimMetrics",
         "fragments",
         "inputArtifacts",
         "owner",
+        "ownerControl",
         "selectedEffectiveStartItemIds",
         "selectedFeatureIds",
     }:
@@ -1340,6 +1351,16 @@ def context_packet_entry(
                 CONTEXT_MANIFEST_PATH,
             )
         )
+    diagnostics.extend(
+        validate_manifest_controls(
+            files,
+            manifest,
+            owner=SUBJECT,
+            project_path=PROJECT_PATH,
+            claims_path=CLAIMS_PATH,
+            manifest_path=CONTEXT_MANIFEST_PATH,
+        )
+    )
     if manifest.get("inputArtifacts") != [input_entry(artifact) for artifact in inputs]:
         diagnostics.append(
             diag(
@@ -1623,6 +1644,21 @@ def main() -> int:
                     except ProjectIOError as error:
                         diagnostics.append(diag(error.code, str(error), error.relative_path))
         expected_packet: dict[str, object] | None = None
+        if (
+            not diagnostics
+            and args.mode == "review"
+            and payload is not None
+            and estimate is not None
+        ):
+            diagnostics.extend(
+                validate_review_artifacts(
+                    files,
+                    args.project_root,
+                    SUBJECT,
+                    CLAIMS_PATH,
+                    {"estimate": estimate},
+                )
+            )
         if (
             not diagnostics
             and args.mode in {"review", "publish-approved"}

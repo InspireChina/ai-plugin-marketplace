@@ -1,0 +1,7 @@
+{
+  "source": "Windows E2E 2026-08-27..28",
+  "totalFindings": 26,
+  "categories": {"A": 11, "B": 6, "C": 3, "D": 5, "E": 1},
+  "claudeRoutes": {"factual": "Haiku 4.5", "diff": "Sonnet 5", "judgment": "Opus"},
+  "codexRoutes": {"factual": "gpt-5.6-luna/low", "diff": "gpt-5.6-terra/high", "judgment": "gpt-5.6-sol/max"}
+}

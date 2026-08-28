@@ -1,0 +1,1 @@
+{"findingId":"B-03","category":"B","expectedLayer":"script","expectedCode":"PATCH_CLOSURE_UNSYNCED","path":"/coverage/0/rationale","text":"字符串 replace 后把 CARRY_FORWARD 论证挂到了全新地址变更事件。"}

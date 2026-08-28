@@ -23,7 +23,7 @@
 - 每个插件必须自包含于 `plugins/<plugin-name>/`，运行时不得读取 marketplace 根目录或其他插件的文件。
 - 插件的依赖、资产、运行时代码、文档和测试都放在插件目录内；独立复制后的插件必须仍可运行。
 - marketplace 条目、插件目录名和 `.codex-plugin/plugin.json` 中的名称保持一致。
-- AI SOW 脚本不跨 Skill import，也不读取其他 Skill 的 schema、fixture、test、asset、reference 或 script。插件级公共 runtime 最终只允许 `runtime/handoff.py` 与 `runtime/project_io.py` 两个纯技术 module；不得新增共享业务 Schema、业务编译器、通用 Owner runner 或配置驱动业务引擎。
+- AI SOW 脚本不跨 Skill import，也不读取其他 Skill 的 schema、fixture、test、asset、reference 或 script。插件作为一个安装单元，可由五个 Owner 共同复用 `runtime/` 中不拥有稳定业务数据的机械校验、claims、patch、诊断、控制项、handoff 与项目 I/O；公共实现必须 Owner-agnostic，不得演化为共享业务编译器、通用 Owner runner 或配置驱动业务引擎。各 Owner 的稳定业务 Schema、专业 renderer 与数据所有权仍保持 Skill-local；跨 Owner 共用的 review/premise Schema 放在插件级 `contracts/`。
 - HLD/Go-live 只由 `generate-design` 的 Skill-local `scripts/review_gates.py` 拥有并校验；下游只匹配 Design handoff receipt，不复制或重放该业务门禁。
 - Skill 命令从已加载 `SKILL.md` 的位置解析插件路径，不依赖源码 checkout 的绝对路径。
 

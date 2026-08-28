@@ -46,6 +46,8 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
 
+开始专业工作前读取插件级[上下文纪律](../../references/context-discipline.md)、[降本评审合同](../../references/review-acceleration.md)与[模型路由](../../references/model-routing.md)。共享合同取代下文遗留的整体自由修复和携带完整历史复审做法；Owner、packet 与用户批准边界不变。
+
 本 Skill 只写以下 owned artifacts：
 
 - `.ai-sow/work/analyze-as-is/**`
@@ -78,10 +80,11 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 
 ## Stage 调查
 
-1. 读取四字段 `.ai-sow/project.json` 和已发布 Requirements。询问可用的本地代码库、往期 SOW、配置、部署材料和其他证据；只登记用户提供或明确授权取得的输入。仓库与往期 SOW 都同时记录稳定 ID 和非空名称；仓库另存项目相对 path、revision 与 dirty，往期 SOW 复制到 `.ai-sow/inputs/analyze-as-is/prior-sows/` 并记录原文件名和 SHA-256。`repositorySnapshot.path` 只允许 `.` 或项目根下的相对子目录；代码库位于项目根之外时，把经授权的只读快照复制到项目子目录后登记，不能保存绝对路径、`..`、符号链接或 NTFS junction。依据证据确定 `GREENFIELD` 或 `BROWNFIELD`，不回写项目元数据。
-2. 按合同顺序评估 `SYSTEM_CONTEXT`、`CAPABILITY`、`APPLICATION`、`INTEGRATION`、`DATA`、`PLATFORM`、`SECURITY_COMPLIANCE`、`OPERATIONS_QUALITY`、`DELIVERY_CONSTRAINTS`。每个 Topic 恰有一个结论；`INSUFFICIENT_EVIDENCE` 至少关联一个 Uncertainty。
-3. 对代码库读取[CodeGraph 参考](references/codegraph.md)，依次采用 MCP、已有 CLI、项目局部 CLI、已记录静态回退。生成代码、动态分派、配置、部署和运行边界必须由直接证据佐证，否则记录 Uncertainty。
-4. 从每份往期 SOW 提取 Commitment，核对 `implementationStatus` 与 `treatment`。Commitment 的
+1. 读取 `.ai-sow/project.json` 的四个必填身份字段、可选 Owner 控制项和已发布 Requirements。询问可用的本地代码库、往期 SOW、配置、部署材料和其他证据；只登记用户提供或明确授权取得的输入。仓库与往期 SOW 都同时记录稳定 ID 和非空名称；仓库另存项目相对 path、revision 与 dirty，往期 SOW 复制到 `.ai-sow/inputs/analyze-as-is/prior-sows/` 并记录原文件名和 SHA-256。`repositorySnapshot.path` 只允许 `.` 或项目根下的相对子目录；代码库位于项目根之外时，把经授权的只读快照复制到项目子目录后登记，不能保存绝对路径、`..`、符号链接或 NTFS junction。依据证据确定 `GREENFIELD` 或 `BROWNFIELD`，不回写项目元数据。
+2. 在深挖前先基于已发布 Requirements 形成一句话目标方案假设，并写 `.ai-sow/work/analyze-as-is/premises.json`：显式列出依赖前提、最小证伪方法、verdict、影响和按需激活的 `factFamilies`。逐条证伪；不做无目标的全仓穷举。
+3. 按合同顺序评估 `SYSTEM_CONTEXT`、`CAPABILITY`、`APPLICATION`、`INTEGRATION`、`DATA`、`PLATFORM`、`SECURITY_COMPLIANCE`、`OPERATIONS_QUALITY`、`DELIVERY_CONSTRAINTS`。九项均不得沉默，每项 `status` 只取 `RELEVANT_INVESTIGATED / RELEVANT_INSUFFICIENT_EVIDENCE / BOUNDARY_DECLARED / NOT_APPLICABLE`：只有 `RELEVANT_INVESTIGATED` 深挖 Item、Evidence 与 anchor；`RELEVANT_INSUFFICIENT_EVIDENCE` 必须关联 `affectsEstimate=true` 的 Uncertainty；`BOUNDARY_DECLARED` 写清沿用前提与责任边界并关联 `affectsEstimate=false` 的 Uncertainty；`NOT_APPLICABLE` 只写证据支持的依据。
+4. 对代码库先运行 `scripts/project_facts.py`，按 premises 激活的事实族生成 `.ai-sow/work/analyze-as-is/repo-facts.json`；数量、配置键、profile、部署资源、迁移表与 CI 名称只引用该确定性投影，不在多个摘要中手写。需要图查询时再读取[CodeGraph 参考](references/codegraph.md)，依次采用 MCP、已有 CLI、项目局部 CLI、已记录静态回退。生成代码、动态分派、配置、部署和运行边界必须由直接证据佐证，否则记录 Uncertainty。
+5. 从每份往期 SOW 提取 Commitment，核对 `implementationStatus` 与 `treatment`。Commitment 的
    `sourceReference` 与 `PRIOR_SOW` Evidence 的 `reference` 固定使用
    `prior-sow:<priorSowId>#<anchor>`，例如 `prior-sow:prior-sow-phase-one#Profile!A12`；冒号后的
    ID 必须与已登记 `priorSowId` 完全一致，原材料内的 `!` 等定位符放在 `#` 后。只有当前 Item
@@ -91,10 +94,10 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
    - `PARTIAL / NOT_IMPLEMENTED` → `EXPECTED_BEFORE_START / CARRY_FORWARD / NEEDS_DECISION`
    - `UNVERIFIED` → `NEEDS_DECISION`
    - `SUPERSEDED` → `EXCLUDE`
-5. 为每个 BUSINESS Feature 建立一条 Coverage；无对应现状时使用 `MISSING`，不编造有效起点。
-6. 默认不启动应用、数据库或容器。静态证据无法解决会实质影响设计的重要不确定性时，读取[运行时验证参考](references/runtime-verification.md)，说明原因后仅运行目标仓库已有的最小测试或只读探针。
-7. 直接调查结束后仍有缺口时，读取[现状证据问卷](references/current-state-questionnaire.md)，只选择实际需要的问题并写入 `.ai-sow/work/analyze-as-is/questionnaire.md`。已确认回答可形成 `QUESTIONNAIRE` Evidence；`UNKNOWN` 或冲突回答形成 Uncertainty。Item、Commitment、Effective Start、Uncertainty 和 Evidence 都同时保存稳定 ID 与非空名称；每条 Uncertainty 必须明确 `affectsEstimate`。
-8. 将完整专业结论先写入 `.ai-sow/work/analyze-as-is/asis.candidate.json`。它是 work-only candidate，不是稳定交接数据；批准前不写正式 review、稳定 As-Is 或 validation receipt。
+6. 为每个 BUSINESS Feature 建立一条 Coverage；无对应现状时使用 `MISSING`，不编造有效起点。
+7. 默认不启动应用、数据库或容器。静态证据无法解决会实质影响设计的重要不确定性时，读取[运行时验证参考](references/runtime-verification.md)，说明原因后仅运行目标仓库已有的最小测试或只读探针。
+8. 直接调查结束后仍有缺口时，读取[现状证据问卷](references/current-state-questionnaire.md)，只选择实际需要的问题并写入 `.ai-sow/work/analyze-as-is/questionnaire.md`。已确认回答可形成 `QUESTIONNAIRE` Evidence；`UNKNOWN` 或冲突回答形成 Uncertainty。Item、Commitment、Effective Start、Uncertainty 和 Evidence 都同时保存稳定 ID 与非空名称；每条 Uncertainty 必须明确 `affectsEstimate`。
+9. 将完整专业结论先写入 `.ai-sow/work/analyze-as-is/asis.candidate.json`。它是 work-only candidate，不是稳定交接数据；批准前不写正式 review、稳定 As-Is 或 validation receipt。
 
 `As-Is Item` 只记录调查截止日期已经存在或实际运行的事实。`Effective Start` 是 Design 与 Task 共用的项目起点基线；名称必须唯一，摘要必须具体点明项目开工时可以依赖的对象、能力和边界，并通过 `sourceItemIds`、`commitmentIds` 追溯事实或开工前承诺。本 Skill 不为 Effective Start 预判 Task 工作模式。
 

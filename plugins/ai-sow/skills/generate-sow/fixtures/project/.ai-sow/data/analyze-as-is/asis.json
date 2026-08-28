@@ -48,25 +48,25 @@
   "topicAssessments": [
     {
       "topic": "SYSTEM_CONTEXT",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "会员门户、门店工作台和订单服务承载渠道交易，ERP、支付与发票平台保持系统责任边界。",
       "uncertaintyIds": []
     },
     {
       "topic": "CAPABILITY",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "客户档案、订单服务和通知具备基础能力，会员等级、退货退款、对账与开票需要补齐。",
       "uncertaintyIds": []
     },
     {
       "topic": "APPLICATION",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "现有客户档案组件、订单服务和门店菜单入口可作为调整与续建起点。",
       "uncertaintyIds": []
     },
     {
       "topic": "INTEGRATION",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "ERP、支付网关和电子发票通道均已企业级接入，本项目承担租户内映射、适配和专项验证。",
       "uncertaintyIds": [
         "uncertainty-erp-window",
@@ -76,25 +76,25 @@
     },
     {
       "topic": "DATA",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "会员主数据和订单库已有稳定结构，历史订单映射与对账指标需要新增。",
       "uncertaintyIds": []
     },
     {
       "topic": "PLATFORM",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "保留 Kubernetes 生产环境与 CI/CD 流水线，新增应用配置和切换清单。",
       "uncertaintyIds": []
     },
     {
       "topic": "SECURITY_COMPLIANCE",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "统一身份控制与授权中心可复用，新增功能遵循最小权限和审计留痕要求。",
       "uncertaintyIds": []
     },
     {
       "topic": "OPERATIONS_QUALITY",
-      "status": "INSUFFICIENT_EVIDENCE",
+      "status": "RELEVANT_INSUFFICIENT_EVIDENCE",
       "summary": "统一监控和回归资产可复用，但生产告警最终通知渠道尚待上线前确认。",
       "uncertaintyIds": [
         "uncertainty-profile-alert-channel"
@@ -102,7 +102,7 @@
     },
     {
       "topic": "DELIVERY_CONSTRAINTS",
-      "status": "ASSESSED",
+      "status": "RELEVANT_INVESTIGATED",
       "summary": "数据迁移、生产切换、验证、交接和培训纳入本期；驻场支持与旧系统退役明确排除。",
       "uncertaintyIds": []
     }

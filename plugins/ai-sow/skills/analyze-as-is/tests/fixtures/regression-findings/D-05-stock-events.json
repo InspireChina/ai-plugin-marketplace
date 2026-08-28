@@ -1,0 +1,1 @@
+{"findingId":"D-05","category":"D","expectedLayer":"opus","codexRoute":"gpt-5.6-sol/max","path":"/topicAssessments/7/summary","text":"INTEGRATION 漏掉 catalog 到 Kafka 的库存事件出站流。"}

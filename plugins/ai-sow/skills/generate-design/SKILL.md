@@ -47,6 +47,8 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
 
+开始专业工作前读取插件级[上下文纪律](../../references/context-discipline.md)、[降本评审合同](../../references/review-acceleration.md)与[模型路由](../../references/model-routing.md)。共享合同取代下文遗留的整体自由修复和携带完整历史复审做法；HLD/Go-live 业务门禁仍由本 Skill 独占。
+
 完整设计流程同样从当前 turn 的 Available skills 条目直接取得本 `SKILL.md` 路径，不搜索插件。
 读取本合同及其直接要求的参考后，第一条项目命令必须是下方公开的 `prepare_context.py`；不得先用
 `rg`、`rg --files`、`find`、`git status` 或其他命令枚举项目、`.ai-sow` 或插件，也不得先运行

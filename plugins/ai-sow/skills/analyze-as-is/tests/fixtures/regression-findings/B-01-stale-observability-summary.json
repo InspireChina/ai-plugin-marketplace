@@ -1,0 +1,1 @@
+{"findingId":"B-01","category":"B","expectedLayer":"script","expectedCode":"PATCH_CLOSURE_UNSYNCED","path":"/topicAssessments/3/summary","text":"修复 Uncertainty 后，Topic 摘要仍把可观测性描述为已绑定差异。"}

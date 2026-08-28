@@ -338,6 +338,14 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
     workbook = openpyxl.load_workbook(workbook_path, data_only=False, read_only=False)
     try:
         index = table_index(workbook)
+        assert len(workbook.sheetnames) == 12
+        assert sum(len(worksheet.tables) for worksheet in workbook.worksheets) == 11
+        assert sum(
+            cell.data_type == "f"
+            for worksheet in workbook.worksheets
+            for row in worksheet.iter_rows()
+            for cell in row
+        ) == 578
         assert TABLES.issubset(index)
         requirements = json.loads((project / ".ai-sow/data/analyze-requirement/requirements.json").read_text(encoding="utf-8"))
         technical = json.loads((project / ".ai-sow/data/generate-design/requirements.json").read_text(encoding="utf-8"))

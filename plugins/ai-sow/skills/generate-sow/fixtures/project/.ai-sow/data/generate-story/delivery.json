@@ -1,308 +1,197 @@
 {
-  "gaps": [
-    {
-      "gapId": "gap-customer-profile",
-      "featureId": "feature-customer-profile",
-      "name": "客户档案字段与授权展示不完整",
-      "description": "现有框架缺少一期顺延字段、授权过滤和统一查看体验。",
-      "commitmentIds": [
-        "commitment-profile-fields"
-      ]
-    },
-    {
-      "gapId": "gap-profile-api",
-      "featureId": "feature-profile-api",
-      "name": "缺少稳定的客户档案 API",
-      "description": "渠道与会员主数据之间没有稳定、可审计的操作边界。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-production-scope",
-      "featureId": "feature-production-scope",
-      "name": "生产准备与切换未建账",
-      "description": "环境配置、切换回滚和生产验证尚未形成独立可验收范围。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-member-tier",
-      "featureId": "feature-member-tier",
-      "name": "缺少等级规则版本与历史",
-      "description": "现有会员主数据只保存当前等级，无法追溯规则与变更。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-order-orchestration",
-      "featureId": "feature-order-orchestration",
-      "name": "渠道订单状态不统一",
-      "description": "线上和门店订单缺少统一命令、状态机和审计轨迹。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-inventory-reservation",
-      "featureId": "feature-inventory-reservation",
-      "name": "ERP 库存预占未接入",
-      "description": "订单服务尚未完成 ERP 认证、字段映射、幂等与异常补偿。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-return-refund",
-      "featureId": "feature-return-refund",
-      "name": "退货退款未形成闭环",
-      "description": "缺少可退校验、退款发起、结果回写和差异审计。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-store-order",
-      "featureId": "feature-store-order",
-      "name": "门店接单流程未交付",
-      "description": "一期只保留入口与权限点，缺少订单队列和交接操作。",
-      "commitmentIds": [
-        "commitment-store-order"
-      ]
-    },
-    {
-      "gapId": "gap-order-visibility",
-      "featureId": "feature-order-visibility",
-      "name": "履约轨迹展示不一致",
-      "description": "顾客和客服无法查看同一套履约节点与异常原因。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-payment-reconciliation",
-      "featureId": "feature-payment-reconciliation",
-      "name": "缺少支付日结与差异处理",
-      "description": "支付、退款和手续费尚未形成逐笔可追溯的日结链路。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-einvoice",
-      "featureId": "feature-einvoice",
-      "name": "电子发票未接入订单闭环",
-      "description": "缺少开票申请、状态查询、幂等和失败回写。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-finance-report",
-      "featureId": "feature-finance-report",
-      "name": "经营指标口径未统一",
-      "description": "销售、退款、优惠和未对账金额缺少统一模型与报表。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-data-migration",
-      "featureId": "feature-data-migration",
-      "name": "迁移范围与校验未独立设计",
-      "description": "会员扩展字段与两年历史订单缺少迁移、补偿和核对流程。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-observability-ops",
-      "featureId": "feature-observability-ops",
-      "name": "监控、交接和培训不完整",
-      "description": "缺少新交易指标、财务作业告警、运维手册和业务用户培训。",
-      "commitmentIds": []
-    },
-    {
-      "gapId": "gap-test-quality",
-      "featureId": "feature-test-quality",
-      "name": "既有测试资产未覆盖新范围",
-      "description": "订单状态机、财务口径、性能、安全和兼容场景尚未纳入验证。",
-      "commitmentIds": []
-    }
-  ],
   "stories": [
     {
       "storyId": "story-customer-profile",
-      "gapId": "gap-customer-profile",
       "name": "创建并查看客户档案",
       "description": "交付档案扩展字段、校验、授权展示和可追溯查看流程。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-customer-profile"
     },
     {
       "storyId": "story-profile-api",
-      "gapId": "gap-profile-api",
       "name": "提供客户档案操作",
       "description": "交付客户档案创建、维护和检索 API。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-profile-api"
     },
     {
       "storyId": "story-profile-integration",
-      "gapId": "gap-profile-api",
       "name": "集成会员主数据查询",
       "description": "会员门户通过内部接口查询统一会员号和授权范围内的档案。",
       "assumptionId": "assumption-profile-api-availability",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-profile-api"
     },
     {
       "storyId": "story-member-tier",
-      "gapId": "gap-member-tier",
       "name": "计算并追溯会员等级",
       "description": "按生效规则计算等级并展示规则版本与等级历史。",
       "assumptionId": "assumption-profile-api-availability",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-member-tier"
     },
     {
       "storyId": "story-order-create",
-      "gapId": "gap-order-orchestration",
       "name": "统一创建全渠道订单",
       "description": "门店和线上渠道使用统一校验创建订单。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-order-orchestration"
     },
     {
       "storyId": "story-order-state",
-      "gapId": "gap-order-orchestration",
       "name": "驱动订单状态与事件",
       "description": "订单命令按状态机幂等执行并发布可追踪事件。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-order-orchestration"
     },
     {
       "storyId": "story-inventory-reservation",
-      "gapId": "gap-inventory-reservation",
       "name": "预占和释放 ERP 库存",
       "description": "订单确认或取消时调用 ERP，并处理超时、重试和重复请求。",
       "assumptionId": "assumption-erp-sit-window",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-inventory-reservation"
     },
     {
       "storyId": "story-return-request",
-      "gapId": "gap-return-refund",
       "name": "提交并审核退货申请",
       "description": "门店或客服提交退货，系统校验可退数量并记录审核结果。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-return-refund"
     },
     {
       "storyId": "story-refund-payment",
-      "gapId": "gap-return-refund",
       "name": "发起退款并回写结果",
       "description": "通过外部支付网关发起退款，处理异步结果并回写订单。",
       "assumptionId": "assumption-risk-payment-certification",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-return-refund"
     },
     {
       "storyId": "story-store-order",
-      "gapId": "gap-store-order",
       "name": "门店处理订单与交接",
       "description": "门店查看待处理订单、记录缺货替代并完成班次交接。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-store-order"
     },
     {
       "storyId": "story-order-visibility",
-      "gapId": "gap-order-visibility",
       "name": "查看统一履约轨迹",
       "description": "顾客和客服查看同一套状态、节点与异常原因。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-order-visibility"
     },
     {
       "storyId": "story-payment-reconciliation",
-      "gapId": "gap-payment-reconciliation",
       "name": "执行支付退款日结对账",
       "description": "每日汇总交易并标识实收、退款和手续费差异。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-payment-reconciliation"
     },
     {
       "storyId": "story-einvoice",
-      "gapId": "gap-einvoice",
       "name": "申请并追踪电子发票",
       "description": "提交开票申请，查询状态并处理可重试失败。",
       "assumptionId": "assumption-risk-invoice-certificate",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-einvoice"
     },
     {
       "storyId": "story-finance-report",
-      "gapId": "gap-finance-report",
       "name": "查看财务经营日报",
       "description": "按日期、区域和渠道查看销售、退款、优惠和未对账金额。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-finance-report"
     },
     {
       "storyId": "story-production-preparation",
-      "gapId": "gap-production-scope",
       "name": "准备生产环境和发布流水线",
       "description": "完成应用配置、制品部署、权限和功能开关准备。",
       "uatRelevant": false,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-production-scope"
     },
     {
       "storyId": "story-production-cutover",
-      "gapId": "gap-production-scope",
       "name": "执行生产切换与回滚演练",
       "description": "按批准窗口执行分步切流，并验证回滚清单可执行。",
       "assumptionId": "assumption-migration-freeze-window",
       "uatRelevant": false,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-production-scope"
     },
     {
       "storyId": "story-production-validation",
-      "gapId": "gap-production-scope",
       "name": "完成生产烟测与业务确认",
       "description": "上线后验证档案、下单、退款、开票和对账关键链路。",
       "assumptionId": "assumption-risk-profile-alert-channel",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-production-scope"
     },
     {
       "storyId": "story-data-migration",
-      "gapId": "gap-data-migration",
       "name": "迁移会员与历史订单数据",
       "description": "执行抽取、映射、加载、校验和失败补偿。",
       "assumptionId": "assumption-migration-freeze-window",
       "uatRelevant": false,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-data-migration"
     },
     {
       "storyId": "story-observability",
-      "gapId": "gap-observability-ops",
       "name": "监控核心交易与财务作业",
       "description": "新增指标、阈值、告警和责任人看板。",
       "assumptionId": "assumption-risk-profile-alert-channel",
       "uatRelevant": false,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-observability-ops"
     },
     {
       "storyId": "story-ops-handover",
-      "gapId": "gap-observability-ops",
       "name": "完成运维交接与演练",
       "description": "提交运维手册、联系人和处置流程并完成演练。",
       "uatRelevant": false,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-observability-ops"
     },
     {
       "storyId": "story-user-training",
-      "gapId": "gap-observability-ops",
       "name": "培训门店、客服和财务用户",
       "description": "提供角色化材料并完成两场培训和签到验收。",
       "uatRelevant": true,
-      "requiredIntegrationBoundary": "NONE"
+      "requiredIntegrationBoundary": "NONE",
+      "featureId": "feature-observability-ops"
     },
     {
       "storyId": "story-test-automation",
-      "gapId": "gap-test-quality",
       "name": "扩展自动化与性能验证",
       "description": "调整框架和用例，覆盖核心 API、状态机和峰值场景。",
       "uatRelevant": false,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-test-quality"
     },
     {
       "storyId": "story-test-non-uat",
-      "gapId": "gap-test-quality",
       "name": "执行兼容性与工程回归",
       "description": "验证支持的浏览器、设备矩阵和工程回归范围。",
       "uatRelevant": false,
-      "requiredIntegrationBoundary": "END_TO_END"
+      "requiredIntegrationBoundary": "END_TO_END",
+      "featureId": "feature-test-quality"
     }
   ],
   "acceptanceCriteria": [
@@ -312,7 +201,11 @@
       "sequence": 1,
       "name": "用户保存档案后可以查看授权范围内的最新字段。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：现有框架缺少一期顺延字段、授权过滤和统一查看体验。",
+      "carryForwardCommitmentIds": [
+        "commitment-profile-fields"
+      ]
     },
     {
       "acceptanceCriterionId": "ac-profile-audit",
@@ -320,7 +213,9 @@
       "sequence": 2,
       "name": "档案变更记录包含操作者、时间和变更字段。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：现有框架缺少一期顺延字段、授权过滤和统一查看体验。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-profile-api",
@@ -330,7 +225,9 @@
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：渠道与会员主数据之间没有稳定、可审计的操作边界。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-profile-api-security",
@@ -338,7 +235,9 @@
       "sequence": 2,
       "name": "未授权角色无法读取敏感字段且访问留痕。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：渠道与会员主数据之间没有稳定、可审计的操作边界。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-profile-integration",
@@ -348,7 +247,9 @@
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-profile-api"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：渠道与会员主数据之间没有稳定、可审计的操作边界。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-member-tier",
@@ -356,7 +257,9 @@
       "sequence": 1,
       "name": "会员等级按生效规则计算且可以追溯规则版本。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：现有会员主数据只保存当前等级，无法追溯规则与变更。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-member-tier-history",
@@ -364,7 +267,9 @@
       "sequence": 2,
       "name": "等级调整后保留原等级、生效时间和调整原因。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：现有会员主数据只保存当前等级，无法追溯规则与变更。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-order-create",
@@ -372,7 +277,9 @@
       "sequence": 1,
       "name": "门店和线上渠道通过相同校验规则创建订单。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：线上和门店订单缺少统一命令、状态机和审计轨迹。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-order-idempotency",
@@ -380,7 +287,9 @@
       "sequence": 2,
       "name": "相同幂等键的重复请求不产生重复订单。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：线上和门店订单缺少统一命令、状态机和审计轨迹。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-order-state",
@@ -388,7 +297,9 @@
       "sequence": 1,
       "name": "合法命令驱动状态变化并记录来源、时间和事件编号。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：线上和门店订单缺少统一命令、状态机和审计轨迹。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-inventory-reservation",
@@ -398,7 +309,9 @@
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：订单服务尚未完成 ERP 认证、字段映射、幂等与异常补偿。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-inventory-retry",
@@ -406,7 +319,9 @@
       "sequence": 2,
       "name": "ERP 超时重试不会产生重复预占。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：订单服务尚未完成 ERP 认证、字段映射、幂等与异常补偿。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-return-request",
@@ -416,7 +331,9 @@
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：缺少可退校验、退款发起、结果回写和差异审计。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-refund-payment",
@@ -426,7 +343,9 @@
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：缺少可退校验、退款发起、结果回写和差异审计。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-store-order",
@@ -434,7 +353,11 @@
       "sequence": 1,
       "name": "授权门店可以处理本店订单并完成交接记录。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：一期只保留入口与权限点，缺少订单队列和交接操作。",
+      "carryForwardCommitmentIds": [
+        "commitment-store-order"
+      ]
     },
     {
       "acceptanceCriterionId": "ac-order-visibility",
@@ -442,7 +365,9 @@
       "sequence": 1,
       "name": "顾客和客服看到一致的履约节点与异常原因。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：顾客和客服无法查看同一套履约节点与异常原因。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-payment-reconciliation",
@@ -450,7 +375,9 @@
       "sequence": 1,
       "name": "前一自然日交易在 07:00 前完成对账并标识差异。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：支付、退款和手续费尚未形成逐笔可追溯的日结链路。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-payment-trace",
@@ -458,7 +385,9 @@
       "sequence": 2,
       "name": "每个差异项可以追溯到订单、支付交易和退款记录。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：支付、退款和手续费尚未形成逐笔可追溯的日结链路。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-einvoice",
@@ -468,7 +397,9 @@
       "decisionGate": "REQUIRED",
       "approvalDecisionIds": [
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：缺少开票申请、状态查询、幂等和失败回写。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-einvoice-idempotency",
@@ -476,7 +407,9 @@
       "sequence": 2,
       "name": "重复提交相同开票申请不会重复开票。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：缺少开票申请、状态查询、幂等和失败回写。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-finance-report",
@@ -484,7 +417,9 @@
       "sequence": 1,
       "name": "财务可按日期、区域和渠道查看已定义经营指标。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：销售、退款、优惠和未对账金额缺少统一模型与报表。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-finance-drilldown",
@@ -492,7 +427,9 @@
       "sequence": 2,
       "name": "报表金额可下钻到构成订单和对账状态。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：销售、退款、优惠和未对账金额缺少统一模型与报表。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-production-preparation",
@@ -503,7 +440,9 @@
       "approvalDecisionIds": [
         "decision-profile-api",
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：环境配置、切换回滚和生产验证尚未形成独立可验收范围。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-production-cutover",
@@ -514,7 +453,9 @@
       "approvalDecisionIds": [
         "decision-profile-api",
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：环境配置、切换回滚和生产验证尚未形成独立可验收范围。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-production-validation",
@@ -525,7 +466,9 @@
       "approvalDecisionIds": [
         "decision-profile-api",
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：环境配置、切换回滚和生产验证尚未形成独立可验收范围。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-data-migration",
@@ -533,7 +476,9 @@
       "sequence": 1,
       "name": "关键字段迁移前后一致率为 100%，重复业务主键为 0。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：会员扩展字段与两年历史订单缺少迁移、补偿和核对流程。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-observability",
@@ -541,7 +486,9 @@
       "sequence": 1,
       "name": "核心交易和财务作业指标均配置阈值、渠道与接收人。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：缺少新交易指标、财务作业告警、运维手册和业务用户培训。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-ops-handover",
@@ -549,7 +496,9 @@
       "sequence": 1,
       "name": "运维手册、联系人和故障演练由运维经理签收。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：缺少新交易指标、财务作业告警、运维手册和业务用户培训。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-user-training",
@@ -557,7 +506,9 @@
       "sequence": 1,
       "name": "门店、客服和财务培训完成并保留材料、签到和反馈。",
       "decisionGate": "NOT_REQUIRED",
-      "approvalDecisionIds": []
+      "approvalDecisionIds": [],
+      "gapRationale": "无与本验收结果等价的 Effective Start：缺少新交易指标、财务作业告警、运维手册和业务用户培训。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-test-automation",
@@ -568,7 +519,9 @@
       "approvalDecisionIds": [
         "decision-profile-api",
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：订单状态机、财务口径、性能、安全和兼容场景尚未纳入验证。",
+      "carryForwardCommitmentIds": []
     },
     {
       "acceptanceCriterionId": "ac-test-non-uat",
@@ -579,7 +532,9 @@
       "approvalDecisionIds": [
         "decision-profile-api",
         "decision-integration-boundary"
-      ]
+      ],
+      "gapRationale": "无与本验收结果等价的 Effective Start：订单状态机、财务口径、性能、安全和兼容场景尚未纳入验证。",
+      "carryForwardCommitmentIds": []
     }
   ],
   "integrations": [

@@ -22,7 +22,10 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.handoff import canonical_json_bytes, sha256_bytes
+from runtime.claims import claim_metrics
+from runtime.controls import owner_control
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import prepare_claims
 
 
 CONTEXT_ROOT = ".ai-sow/work/generate-story/context"
@@ -32,6 +35,7 @@ FRAGMENT_SPECS = (
     ("asIs", f"{CONTEXT_ROOT}/as-is.json"),
     ("design", f"{CONTEXT_ROOT}/design.json"),
     ("questionnaire", f"{CONTEXT_ROOT}/questionnaire.json"),
+    ("claims", ".ai-sow/work/generate-story/claims.json"),
 )
 DESIGN_GO_LIVE_COLUMNS = (
     "Concern",
@@ -50,6 +54,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--staging-root")
+    parser.add_argument("--candidate", default=".ai-sow/work/generate-story/delivery.candidate.json")
     return parser.parse_args()
 
 
@@ -294,6 +299,14 @@ def main() -> int:
             go_live_rows(files),
             questionnaire_records(files),
         )
+        fragments["claims"] = prepare_claims(
+            files,
+            args.project_root,
+            story_validator.SUBJECT,
+            (("delivery", args.candidate),),
+            ".ai-sow/work/generate-story/claims.json",
+            validation_path=story_validator.VALIDATION_PATH,
+        )
         fragment_entries: list[dict[str, object]] = []
         for name, path in FRAGMENT_SPECS:
             payload = canonical_json_bytes(fragments[name])
@@ -315,6 +328,10 @@ def main() -> int:
             "fragments": fragment_entries,
             "inputArtifacts": [story_validator.input_entry(item) for item in inputs],
             "owner": story_validator.SUBJECT,
+            "ownerControl": owner_control(
+                files.read_json(story_validator.PROJECT_PATH), story_validator.SUBJECT
+            ),
+            "claimMetrics": claim_metrics(fragments["claims"]),
             "selectedEffectiveStartItemIds": sorted(effective_start_ids),
             "selectedFeatureIds": sorted(feature_ids),
             "selectedQuestionIds": sorted(

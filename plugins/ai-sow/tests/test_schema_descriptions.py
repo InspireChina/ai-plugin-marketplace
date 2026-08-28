@@ -42,7 +42,6 @@ STABLE_OBJECT_DEFS = {
     "Design": ("designItem", "architectureDelta", "decision", "scopeDecision"),
     "Technical Requirements": ("sourceInput", "designDerived", "epic", "feature"),
     "Delivery": (
-        "gap",
         "story",
         "acceptanceCriterion",
         "integration",

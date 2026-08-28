@@ -22,7 +22,10 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.handoff import canonical_json_bytes, sha256_bytes
+from runtime.claims import claim_metrics
+from runtime.controls import owner_control
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import prepare_claims
 
 
 CONTEXT_ROOT = ".ai-sow/work/generate-task/context"
@@ -33,6 +36,7 @@ FRAGMENT_SPECS = (
     ("asIs", f"{CONTEXT_ROOT}/as-is.json"),
     ("technicalRequirements", f"{CONTEXT_ROOT}/technical-requirements.json"),
     ("templateCatalog", f"{CONTEXT_ROOT}/template-catalog.json"),
+    ("claims", ".ai-sow/work/generate-task/claims.json"),
 )
 
 
@@ -40,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare the Owner-local generate-task context closure")
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--staging-root")
+    parser.add_argument("--candidate", default=".ai-sow/work/generate-task/estimate.candidate.json")
     return parser.parse_args()
 
 
@@ -70,7 +75,6 @@ def delivery_context(delivery: dict[str, Any]) -> dict[str, Any]:
     return {
         key: delivery.get(key, [])
         for key in (
-            "gaps",
             "stories",
             "acceptanceCriteria",
             "integrations",
@@ -85,8 +89,7 @@ def design_context(
     design: dict[str, Any],
     technical: dict[str, Any],
 ) -> tuple[dict[str, Any], set[str], set[str], set[str]]:
-    gaps = values(delivery, "gaps")
-    feature_ids = string_ids(gaps, "featureId")
+    feature_ids = string_ids(values(delivery, "stories"), "featureId")
     scope_decisions = [
         item
         for item in values(design, "scopeDecisions")
@@ -160,7 +163,7 @@ def asis_context(
         selected_effective_starts = effective_starts
     source_item_ids = string_ids(selected_effective_starts, "sourceItemIds")
     commitment_ids = string_ids(selected_effective_starts, "commitmentIds") | string_ids(
-        values(delivery, "gaps"), "commitmentIds"
+        values(delivery, "acceptanceCriteria"), "carryForwardCommitmentIds"
     )
     selected_items = [
         item for item in values(asis, "items") if item.get("asIsItemId") in source_item_ids
@@ -279,6 +282,14 @@ def main() -> int:
             "technicalRequirements": technical_context(technical, feature_ids),
             "templateCatalog": template_catalog,
         }
+        fragments["claims"] = prepare_claims(
+            files,
+            args.project_root,
+            task_validator.SUBJECT,
+            (("estimate", args.candidate),),
+            ".ai-sow/work/generate-task/claims.json",
+            validation_path=task_validator.VALIDATION_PATH,
+        )
 
         fragment_entries: list[dict[str, object]] = []
         for name, path in FRAGMENT_SPECS:
@@ -304,6 +315,10 @@ def main() -> int:
             "fragments": fragment_entries,
             "inputArtifacts": [task_validator.input_entry(artifact) for artifact in inputs],
             "owner": task_validator.SUBJECT,
+            "ownerControl": owner_control(
+                files.read_json(task_validator.PROJECT_PATH), task_validator.SUBJECT
+            ),
+            "claimMetrics": claim_metrics(fragments["claims"]),
             "selectedFeatureIds": sorted(feature_ids),
             "selectedEffectiveStartItemIds": sorted(effective_start_ids),
         }

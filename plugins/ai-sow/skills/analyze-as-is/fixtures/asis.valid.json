@@ -9,15 +9,15 @@
     "excludedAreas": []
   },
   "topicAssessments": [
-    {"topic": "SYSTEM_CONTEXT", "status": "ASSESSED", "summary": "产品边界和外部参与者已明确。", "uncertaintyIds": []},
-    {"topic": "CAPABILITY", "status": "ASSESSED", "summary": "当前不存在产品能力。", "uncertaintyIds": []},
+    {"topic": "SYSTEM_CONTEXT", "status": "RELEVANT_INVESTIGATED", "summary": "产品边界和外部参与者已明确。", "uncertaintyIds": []},
+    {"topic": "CAPABILITY", "status": "RELEVANT_INVESTIGATED", "summary": "本次已登记输入中没有可作为现状起点的产品能力。", "uncertaintyIds": []},
     {"topic": "APPLICATION", "status": "NOT_APPLICABLE", "summary": "目标应用尚不存在。", "uncertaintyIds": []},
-    {"topic": "INTEGRATION", "status": "NOT_APPLICABLE", "summary": "当前不存在产品集成。", "uncertaintyIds": []},
-    {"topic": "DATA", "status": "ASSESSED", "summary": "所需源数据边界已明确。", "uncertaintyIds": []},
+    {"topic": "INTEGRATION", "status": "NOT_APPLICABLE", "summary": "本次已登记输入中没有适用的产品集成。", "uncertaintyIds": []},
+    {"topic": "DATA", "status": "RELEVANT_INVESTIGATED", "summary": "所需源数据边界已明确。", "uncertaintyIds": []},
     {"topic": "PLATFORM", "status": "NOT_APPLICABLE", "summary": "目标平台尚未配置。", "uncertaintyIds": []},
-    {"topic": "SECURITY_COMPLIANCE", "status": "ASSESSED", "summary": "企业安全义务已评审。", "uncertaintyIds": []},
+    {"topic": "SECURITY_COMPLIANCE", "status": "RELEVANT_INVESTIGATED", "summary": "企业安全义务已评审。", "uncertaintyIds": []},
     {"topic": "OPERATIONS_QUALITY", "status": "NOT_APPLICABLE", "summary": "当前没有运行中的运行时环境。", "uncertaintyIds": []},
-    {"topic": "DELIVERY_CONSTRAINTS", "status": "ASSESSED", "summary": "交付归属和时间约束已记录。", "uncertaintyIds": []}
+    {"topic": "DELIVERY_CONSTRAINTS", "status": "RELEVANT_INVESTIGATED", "summary": "交付归属和时间约束已记录。", "uncertaintyIds": []}
   ],
   "items": [],
   "commitments": [],

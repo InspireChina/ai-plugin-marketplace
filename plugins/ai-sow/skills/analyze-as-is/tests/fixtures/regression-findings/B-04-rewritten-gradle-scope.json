@@ -1,0 +1,1 @@
+{"findingId":"B-04","category":"B","expectedLayer":"script","expectedCode":"PATCH_FREEFORM_EDIT_DETECTED","path":"/evidence/3/summary","text":"整段重写把零符号节点错误扩展到 Gradle 脚本。"}

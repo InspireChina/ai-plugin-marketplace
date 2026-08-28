@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:analyze-as-is:asis:0.1",
+  "$id": "urn:ai-sow:analyze-as-is:asis:0.2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -183,11 +183,16 @@
         "topic": {"$ref": "#/$defs/topic", "description": "当前评估对应的权威现状 Topic。"},
         "status": {
           "type": "string",
-          "enum": ["ASSESSED", "NOT_APPLICABLE", "INSUFFICIENT_EVIDENCE"],
-          "description": "证据支持的评估结果；不能用未知或空白回答证明不适用。"
+          "enum": [
+            "RELEVANT_INVESTIGATED",
+            "RELEVANT_INSUFFICIENT_EVIDENCE",
+            "BOUNDARY_DECLARED",
+            "NOT_APPLICABLE"
+          ],
+          "description": "两层调查结论：九项必须表态，只有影响估算且已调查的 Topic 才要求深度取证。"
         },
         "summary": {"$ref": "#/$defs/nonEmptyString", "description": "对该 Topic 当前状态、适用边界或证据不足的简明专业结论。"},
-        "uncertaintyIds": {"$ref": "#/$defs/uncertaintyIdArray", "description": "使该 Topic 结论仍不充分的 As-Is Uncertainty ID；证据充分时为空。"}
+        "uncertaintyIds": {"$ref": "#/$defs/uncertaintyIdArray", "description": "相关 Topic 的 As-Is Uncertainty ID；估算相关缺口必须为 affectsEstimate=true，边界声明必须为 false。"}
       }
     },
     "item": {

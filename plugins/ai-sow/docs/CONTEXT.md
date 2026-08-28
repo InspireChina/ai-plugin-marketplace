@@ -102,14 +102,14 @@ Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate �
 
 | 术语 | 定义 |
 |---|---|
-| Delivery Gap | 一个 `IN_SCOPE` Feature 从有效起点到本期交付目标仍缺少的能力。 |
-| SOW Story | 可独立交付、验收和结算的条目；恰有一个来源 Gap。 |
-| AcceptanceCriterion | 一行一个可独立通过或不通过的可观察结果。描述结果，不描述实现 Task。 |
+| Delivery 差值 | `IN_SCOPE` Feature 的目标结果减去 Effective Start；它是分解方法，不再保存为独立稳定实体。 |
+| SOW Story | 可独立交付、验收和结算的条目；直接归属一个 `featureId`。 |
+| AcceptanceCriterion | 一行一个可独立通过或不通过的可观察结果。用 `gapRationale` 说明相对 Effective Start 的差值，用 `carryForwardCommitmentIds` 逐条承接往期承诺；描述结果，不描述实现 Task。 |
 | Integration | 独立于 Story 类型和 Task，记录一次有明确方向的系统交互；保存来源、目标、触发、`INBOUND / OUTBOUND`、目的和 `INTERNAL / EXTERNAL` 责任归属，并关联 Story。登记 Integration 不等于已经生成集成 Task。 |
 | UAT 适用性 | Story 对业务 UAT 是否适用的明确判断；不从 Story 类型或 Task 任务族推导。 |
 | 假设/风险 | 保存类型、名称、触发条件、责任边界、`已明确 / 待确认` 状态和处理方式。Story 通过可选的单个 `assumptionId` 引用足以说明其不确定性的一条记录；同一条记录可以被多个 Story 引用。 |
 
-每个 IN_SCOPE Feature 至少有一个 Gap，每个 Gap 至少有一个 Story，每个 Story 至少有一条 AC。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 packet-bound `NO_CHANGE` 发布；只有用户明确批准交付结果变化后才重新评审 Story/AC。
+每个需要新增交付的 IN_SCOPE Feature 至少有一个 Story，每个 Story 至少有一条 AC；`FULLY_COVERED` Feature 不制造 Story。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，且每条 Task 必须沿同 Story AC 追溯到 Feature。Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 packet-bound `NO_CHANGE` 发布；只有用户明确批准交付结果变化后才重新评审 Story/AC。
 
 ## 6. Task 与估算输入
 
@@ -146,7 +146,7 @@ Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start�
 ## 7. 项目文件、Skill 隔离与交付
 
 setup 由当前 Stage Agent 只调用一次平台 bootstrap；它在插件安装副本内自动准备固定 uv、managed
-Python 3.12、锁定依赖和 `.venv`，再调用确定性 Module 创建项目目录、四字段项目元数据和模板，并在
+Python 3.12、锁定依赖和 `.venv`，再调用确定性 Module 创建项目目录、四个必填身份字段、可选 Owner 控制项和模板，并在
 返回前复读 Project Schema 与模板。普通用户无需预装 Python/uv，后续 Skill 直接使用插件 `.venv`
 的跨平台 Python 路径。完整项目只读验证，合法的项目级模板定制按当前项目模板合同复读，不与
 bundled template 强制比较字节；不完整、损坏或身份冲突项目 fail closed。setup 不 repair、不自动
@@ -154,7 +154,7 @@ bundled template 强制比较字节；不完整、损坏或身份冲突项目 fa
 部署材料及其他现状证据，并负责自己输入目录中的文件和元数据。没有 Repo 或往期 SOW 也可以正常
 开展调查，但必须说明实际检查了哪些现状材料。
 
-`.ai-sow/project.json` 保存 `projectId`、`name`、`pluginVersion` 和 `sowStandardVersion`。每个 Skill 只写自己的 work、review、data、validation 或 output 目录。
+`.ai-sow/project.json` 必须保存 `projectId`、`name`、`pluginVersion` 和 `sowStandardVersion`，可选保存逐 Owner 的 `ownerControls`：`investigationMode`、`reviewDepth` 与 `tokenBudget`。每个 Skill 只写自己的 work、review、data、validation 或 output 目录。
 
 Skill 之间：
 
@@ -162,12 +162,12 @@ Skill 之间：
 - 不调用另一个 Skill 的脚本；
 - 不读取另一个 Skill 的 Schema、Fixture、测试或资源文件；
 - 只通过规定的正式数据路径、批准 review、validation report/receipt、ID 和必要字段进行协作；
-- 只允许调用插件级 `runtime/project_io.py` 与 `runtime/handoff.py` 的纯技术接口，HLD/Go-live 等领域规则保持 Owner Skill-local。
+- 允许调用插件级 `runtime/` 的 Owner-agnostic 项目 I/O、handoff、claim、patch、诊断、控制项与机械评审门禁；HLD/Go-live 等稳定领域规则保持 Owner Skill-local。
 
 `reconcile` 是唯一 Agent-level 协调例外：当前 Stage 可读取受影响 Owner 的 `SKILL.md` 并在批准前
 执行其公开命令；完整 staged closure 只创建一个 fresh-context Reviewer。批准后 Skill-local
-publisher 只验证 packet/hash 并前向发布。Skill Python 仍不跨 Skill import、读取 Schema/fixture
-或共享业务规则；Owner 只写自己的 review/candidate/output/receipt，Task 不能修改 Delivery、Story
+publisher 只验证 packet/hash 并前向发布。Skill Python 仍不跨 Skill import、读取其他 Skill 的 Schema/fixture
+或专业 renderer；Owner 只写自己的 review/candidate/output/receipt，Task 不能修改 Delivery、Story
 或 AC。协调合同公开五个 Owner 的精确 Adapter 路径和 `--staging-root` 参数；legacy
 `publish/rebind` 只允许 reconciliation 调用，缺少合法 staging root 时必须在任何 Owner 写入前
 阻塞。普通 Owner 发布始终走 candidate-first packet 与 `publish-approved`。`NO_CHANGE` 从 base
@@ -196,7 +196,7 @@ Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立
 
 生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
 
-插件不提供统一 CLI，也不建设共享业务 Python 内核、项目锁、不可变 revision store、活动指针、
+插件不提供统一 CLI，也不建设共享 Owner 业务编译器、项目锁、不可变 revision store、活动指针、
 自动回滚、自动 Git commit、用户项目级 Python/uv 环境、公式执行、OOXML 全量基准或 XLSX
 反向导入。`reconcile` 仅使用 work-only run ID、显式 tombstone 和 canonical redo manifest 做单写者
 前向恢复；这些不是稳定业务合同或通用事务系统。

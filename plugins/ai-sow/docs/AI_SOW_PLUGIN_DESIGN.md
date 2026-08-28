@@ -29,7 +29,7 @@ setup
 3. 每项稳定事实只有一个 Owner；下游只匹配内容寻址 handoff receipt，并验证自己创建的引用，不重放上游业务 validator。
 4. BUSINESS 与 TECHNICAL requirements 仅在内存中联合。
 5. XLSX 是任务规则、基础人天、复杂度、SIT、UAT、风险、公式和取整的唯一计算权威。
-6. 每个 Skill 独立拥有领域合同、脚本、测试和工作目录；公共 runtime 只提供项目 I/O 与 handoff 技术机制。HLD/Go-live 语义由 `generate-design` 独占并在本 Skill 校验，下游只验证其 receipt。
+6. 每个 Skill 独立拥有稳定领域合同、专业 renderer、测试和工作目录；插件级 runtime 复用 Owner-agnostic 的项目 I/O、handoff、claim、patch、诊断、控制项和机械评审门禁。HLD/Go-live 语义仍由 `generate-design` 独占并在本 Skill 校验，下游只验证其 receipt。
 7. Owner 表示专业规则、稳定路径和写权限，不等于独立 session。普通主线逐阶段运行；已有完整
    产物后的修正由 `reconcile` 的当前 Stage 在批准前完成固定后缀的 Owner staged pass、package 和
    packet，只保留一个完整闭包 Reviewer；批准后只做确定性 check/publish。
@@ -42,8 +42,17 @@ plugins/ai-sow/
 ├── pyproject.toml
 ├── uv.lock
 ├── references/output-language.md
+├── contracts/review-claims.schema.json
+├── contracts/review-premises.schema.json
+├── runtime/claims.py
+├── runtime/controls.py
+├── runtime/diagnostics.py
+├── runtime/fact_source.py
 ├── runtime/project_io.py
 ├── runtime/handoff.py
+├── runtime/patch.py
+├── runtime/review_checks.py
+├── runtime/text_gates.py
 └── skills/
     ├── setup/
     ├── analyze-requirement/
@@ -55,7 +64,7 @@ plugins/ai-sow/
     └── reconcile/
 ```
 
-每个 Skill 只创建实际需要的 `contracts/`、`scripts/`、`fixtures/`、`tests/`、`references/` 或 `assets/`。脚本不跨 Skill import，不调用其他 Skill 脚本，也不读取其他 Skill 的 schema、fixture、test、reference 或 asset。`reconcile` 的 Agent 可按其合同读取受影响 Owner 的 `SKILL.md` 和项目 artifact，但其 Python 发布器仍只处理技术 manifest。`runtime/project_io.py` 只处理项目相对路径、staging view 和原子单文件写入；`runtime/handoff.py` 只处理 canonical hash、receipt、match、packet-bound `NO_CHANGE` 发布和 reconciliation staging rebind，不包含 Owner 业务语义。
+每个 Skill 只创建实际需要的 `contracts/`、`scripts/`、`fixtures/`、`tests/`、`references/` 或 `assets/`。脚本不跨 Skill import，不调用其他 Skill 脚本，也不读取其他 Skill 的 schema、fixture、test、reference 或 asset。插件整体安装，因此通用机械门禁由 `runtime/` 单点实现：claims 投影与缓存、数量/绝对化/隐私 lint、唯一事实源、字段 patch/引用闭包、Owner 控制项、diagnostics、handoff 和 project I/O。公共 runtime 不拥有六份稳定业务 JSON，不读取 Skill-local 资产，也不编译任何 Owner 业务成果。`reconcile` 的 Agent 可按其合同读取受影响 Owner 的 `SKILL.md` 和项目 artifact，但其 Python 发布器仍只处理技术 manifest。
 
 ## 3. 项目 seam
 
@@ -94,7 +103,7 @@ plugins/ai-sow/
 installer 安装到插件安装副本；随后复用或自动安装 managed Python 3.12，以锁定文件创建插件 `.venv`
 并复核依赖，再用该 Python 调用 setup Module。用户无需管理员权限、终端操作或技术安装步骤；网络/
 权限不足时在任何项目写入前 fail closed，并由 Stage 通过宿主权限机制自动重试。后续 Skill 直接使用
-该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四字段项目元数据、
+该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四个必填身份字段及可选 Owner 控制项、
 复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发
 或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动
 迁移已有项目，也不接收代码库、往期 SOW 或模式。
@@ -104,6 +113,8 @@ installer 安装到插件安装副本；随后复用或自动安装 managed Pyth
 登记原始需求来源，只产出 BUSINESS Epic/Feature。完整来源中每条会影响业务或方案/交付边界的明确陈述先进入 work-only `source-disposition.json`，唯一分类为 `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`；确定性 context 与 review packet 绑定该清单，正式 review 投影完整处置结果，但稳定 requirements 的四个顶级数组不变。`DESIGN_INPUT` 只保留来源定位和摘要供设计阶段回读原文，不创建 TECHNICAL 需求；跨域 `SCOPE_BOUNDARY` 必须映射全部受影响的 BUSINESS Epic/Feature。信息单薄、冲突或歧义会影响业务结论时，生成可回填 Markdown 问卷；关键问题关闭后才能批准稳定需求。需求评审声明问卷路径或 `Questionnaire: NOT_REQUIRED`。每个 `APPROVED_DEFAULT` 保留用户 Answer、决策日期、状态证据和 `ASSUMPTION_CANDIDATE` 处置。
 
 五个专业 Owner 共享同一 candidate-first 生命周期，但不共享业务编译器：各自的 `prepare_context.py` 只投影本阶段必要闭包，`render_review.py` 确定性投影专业评审，`validate.py --mode review` 生成 `ai-sow-owner-review-packet-v1` packet；唯一 Reviewer 只返回 `PASS` 或 findings，`PASS` 后 Stage 必须调用 Owner-local `write-reviewer` 确定性写入 `ai-sow-owner-reviewer-v1` sidecar；用户批准则由 `write-approval` 写入 `ai-sow-owner-approval-v1` sidecar。两个 sidecar 绑定同一 packet SHA-256，`publish-approved` 复算全部绑定后才发布正式 review、稳定输出与 receipt `0.3`。Stage 不手写 reviewer 或 approval JSON；任一输入、candidate、context、review 或风险摘要字节变化都使 Reviewer 与批准失效。
+
+评审加速保持同一批准边界：Stage 先机械闭环，再把 `claims.json` 按 anchor 分片。Claude 路由为 Haiku 4.5（逐条事实）、Sonnet 5（diff 与前提证伪）、Opus（充分性、设计与完备性）；Codex 只增加等价映射，分别为 `gpt-5.6-luna/low`、`gpt-5.6-terra/high`、`gpt-5.6-sol/max`。事实 PASS 必须带原文行号，深度 Reviewer 随机复验 10%，一次假阴性即整批升级。已验证 claim 的正文与 anchor hash 均未变化时写入 receipt `verifiedClaims` 并复用；context manifest 同时绑定 `claimMetrics` 与当前 Owner control。项目可选 `ownerControls` 的 `investigationMode / reviewDepth / tokenBudget`，未配置时使用逐 Owner 默认值；预算耗尽必须报告剩余 claim，不能静默通过。
 
 新 session 已携带 Owner 与完整 packet SHA-256 的精确批准时走固定快速路径：Stage 依次调用 Owner-local `write-approval` 与一次 `publish-approved`。前者只校验批准参数并在固定 work-only 路径确定性写 canonical approval sidecar，不读取 candidate、上游或 Schema；后者承担全部 hash 发布前复核。Stage 不手写 approval JSON，不搜索 Skill，不枚举或预读项目 artifact，不运行 `--help`、closure、renderer、额外 `check`，也不重新进入专业分析或 Reviewer。
 
@@ -122,7 +133,7 @@ installer 安装到插件安装副本；随后复用或自动安装 managed Pyth
 
 ### generate-story
 
-在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再只为 `IN_SCOPE` Feature 相对 Effective Start 形成 Gap、Story 和 AC，`FULLY_COVERED` 不生成 Story。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；有类型化 Design Decision 时只允许引用关联当前 Story Feature 的决策，纯实现集成可用空 `decisionIds` 与非空 `decisionRationale` 说明无需类型化批准。As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 packet-bound `NO_CHANGE` 发布，不为实现机制新增 Gap、Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由对应 BUSINESS Story 拥有。Assumption/Risk 每个语义只保存一次；需要表达不确定性的 Story 最多保存一个 `assumptionId`，同一条记录可被多个 Story 引用。
+在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再把每个 `IN_SCOPE` Feature 相对 Effective Start 的差值直接分解为 Story 和 AC，`FULLY_COVERED` 不生成 Story。Delivery 不再保存中间 Gap 实体：Story 直接引用唯一 `featureId`，每条 AC 用 `gapRationale` 引用 Effective Start 或明确有效起点缺失，并用 `carryForwardCommitmentIds` 逐条承接往期承诺。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；有类型化 Design Decision 时只允许引用关联当前 Story Feature 的决策，纯实现集成可用空 `decisionIds` 与非空 `decisionRationale` 说明无需类型化批准。As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 packet-bound `NO_CHANGE` 发布，不为实现机制新增 Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由首次拥有该结果的 producing Story 负责，其他 AC 必须显式引用它。Assumption/Risk 每个语义只保存一次；需要表达不确定性的 Story 最多保存一个 `assumptionId`，同一条记录可被多个 Story 引用。
 
 ### generate-task
 
@@ -236,4 +247,4 @@ As-Is 的 Commitment 与 `PRIOR_SOW` Evidence 使用
 
 ## 8. 非目标
 
-插件不建设统一 AI SOW CLI、共享业务 Python 内核、共享业务 Schema、通用 Owner runner、自动审批系统、项目锁、不可变 revision store、活动指针、对抗同权限竞态的 inode 协议、EXDEV tree copy、自动 Git 操作、公式执行或 XLSX 反向导入。
+插件不建设统一 AI SOW CLI、共享 Owner 业务编译器、通用 Owner runner、自动审批系统、项目锁、不可变 revision store、活动指针、对抗同权限竞态的 inode 协议、EXDEV tree copy、自动 Git 操作、公式执行或 XLSX 反向导入。插件级共享 runtime 仅承载不拥有稳定业务数据的机械评审与基础设施能力。

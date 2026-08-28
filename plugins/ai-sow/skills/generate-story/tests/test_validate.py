@@ -30,7 +30,7 @@ REQUIREMENT_CONTRACT = OwnerContract(
 )
 ASIS_CONTRACT = OwnerContract(
     subject="analyze-as-is",
-    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.2",),
     validation_path=".ai-sow/validation/analyze-as-is.json",
     reviews=(("approvedReview", ".ai-sow/reviews/analyze-as-is.md"),),
     outputs=(("asIs", ".ai-sow/data/analyze-as-is/asis.json"),),
@@ -108,7 +108,15 @@ ASIS = {
             "commitmentIds": [],
         }
     ],
-    "coverage": [],
+    "coverage": [
+        {
+            "featureId": "feature-customer-profile",
+            "status": "PARTIAL",
+            "effectiveStartItemIds": ["effective-start-customer-api"],
+            "commitmentIds": ["commitment-loyalty-profile"],
+            "uncertaintyIds": [],
+        }
+    ],
     "uncertainties": [],
     "evidence": [
         {
@@ -311,7 +319,6 @@ def publish_design(
 
 def stable_ids(delivery: dict[str, object]) -> list[str]:
     return [
-        *(entry["gapId"] for entry in delivery["gaps"]),  # type: ignore[index]
         *(entry["storyId"] for entry in delivery["stories"]),  # type: ignore[index]
         *(entry["acceptanceCriterionId"] for entry in delivery["acceptanceCriteria"]),  # type: ignore[index]
         *(entry["integrationId"] for entry in delivery["integrations"]),  # type: ignore[index]
@@ -335,7 +342,6 @@ def story_review(
                 concern,
                 "IN_SCOPE",
                 "feature-profile-api",
-                "gap-profile-api",
                 "story-profile-api",
                 "—",
                 "项目负责 API 生产交付，客户负责生产审批。",
@@ -345,7 +351,6 @@ def story_review(
             row = (
                 concern,
                 "NOT_APPLICABLE",
-                "—",
                 "—",
                 "—",
                 "—",
@@ -364,7 +369,7 @@ def story_review(
         )
     return (
         "# 交付 Story 评审\n\n"
-        "## Feature → Gap → Story\n\n差距和 Story 已核对。\n\n"
+        "## Feature → Story\n\n差值和 Story 已核对。\n\n"
         f"Stable IDs: {', '.join(stable_ids(delivery))}\n\n"
         "## Acceptance Criteria\n\nAC 已核对。\n\n"
         "## Integration\n\n集成边界已核对。\n\n"
@@ -372,8 +377,8 @@ def story_review(
         "## Questionnaire consumption\n\n"
         f"Questionnaire Map: {questionnaire_map}\n\n"
         "## 上线映射\n\n"
-        "| Concern | Disposition | Feature IDs | Gap IDs | Story IDs | Assumption/Risk IDs | 责任边界 | 依据 |\n"
-        "|---|---|---|---|---|---|---|---|\n"
+        "| Concern | Disposition | Feature IDs | Story IDs | Assumption/Risk IDs | 责任边界 | 依据 |\n"
+        "|---|---|---|---|---|---|---|\n"
         + "\n".join(rows)
         + "\n\nGo-live Mapping: PASSED\n\n"
         "## 审查与批准\n\nReviewer: PASS\nUser Approval: APPROVED\n"
@@ -386,6 +391,7 @@ def prepare(
     *,
     questionnaire: bytes | None = None,
     requirements: dict[str, object] | None = None,
+    asis: dict[str, object] | None = None,
     design: dict[str, object] | None = None,
     technical: dict[str, object] | None = None,
     delivery: dict[str, object] | None = None,
@@ -393,7 +399,7 @@ def prepare(
     write_bytes(root, ".ai-sow/project.json", json_bytes(PROJECT))
     write_bytes(root, SOURCE_PATH, b"Customer profile source.\n")
     publish_requirements(root, questionnaire=questionnaire, value=requirements)
-    publish_asis(root)
+    publish_asis(root, value=asis)
     publish_design(
         root,
         design_payload=json_bytes(design) if design is not None else None,
@@ -901,9 +907,9 @@ def test_attributes_unreadable_design_outputs_to_owner_and_path(
     assert diagnostic["path"] == output_path
 
 
-def test_rejects_unknown_gap_feature_reference(tmp_path: Path) -> None:
+def test_rejects_unknown_story_feature_reference(tmp_path: Path) -> None:
     prepare(tmp_path)
-    mutate(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", lambda value: value["gaps"][0].update({"featureId": "feature-unknown"}))
+    mutate(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", lambda value: value["stories"][0].update({"featureId": "feature-unknown"}))
 
     result = run_validator(tmp_path)
 
@@ -911,9 +917,9 @@ def test_rejects_unknown_gap_feature_reference(tmp_path: Path) -> None:
     assert "FEATURE_REF_UNKNOWN" in codes(result)
 
 
-def test_rejects_unknown_gap_commitment_reference(tmp_path: Path) -> None:
+def test_rejects_unknown_ac_commitment_reference(tmp_path: Path) -> None:
     prepare(tmp_path)
-    mutate(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", lambda value: value["gaps"][0].update({"commitmentIds": ["commitment-unknown"]}))
+    mutate(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", lambda value: value["acceptanceCriteria"][0].update({"carryForwardCommitmentIds": ["commitment-unknown"]}))
 
     result = run_validator(tmp_path)
 
@@ -931,7 +937,7 @@ def test_rejects_unknown_ac_design_decision_reference(tmp_path: Path) -> None:
     assert "DECISION_REF_UNKNOWN" in codes(result)
 
 
-def test_rejects_missing_gap_story_or_acceptance_criterion(tmp_path: Path) -> None:
+def test_rejects_story_without_acceptance_criterion(tmp_path: Path) -> None:
     prepare(tmp_path)
     mutate(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", lambda value: value["acceptanceCriteria"].pop())
 
@@ -939,6 +945,65 @@ def test_rejects_missing_gap_story_or_acceptance_criterion(tmp_path: Path) -> No
 
     assert result.returncode == 2
     assert "AC_COVERAGE_MISSING" in codes(result)
+
+
+def test_rejects_in_scope_feature_without_story(tmp_path: Path) -> None:
+    prepare(tmp_path)
+
+    def remove_feature_delivery(value: dict[str, object]) -> None:
+        value["stories"] = [  # type: ignore[index]
+            story for story in value["stories"]  # type: ignore[index]
+            if story["featureId"] != "feature-profile-api"
+        ]
+        value["acceptanceCriteria"] = [  # type: ignore[index]
+            criterion for criterion in value["acceptanceCriteria"]  # type: ignore[index]
+            if criterion["storyId"] != "story-profile-api"
+        ]
+        value["integrations"] = []
+
+    mutate(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", remove_feature_delivery)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "FEATURE_COVERAGE_MISSING" in codes(result)
+
+
+def test_rejects_ac_without_effective_start_gap_rationale(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    mutate(
+        tmp_path,
+        ".ai-sow/work/generate-story/delivery.candidate.json",
+        lambda value: value["acceptanceCriteria"][0].update(
+            {"gapRationale": "需要新增客户档案能力。"}
+        ),
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "AC_GAP_RATIONALE_MISSING" in codes(result)
+
+
+def test_rejects_cross_feature_capability_without_producing_story(tmp_path: Path) -> None:
+    prepare(tmp_path)
+    mutate(
+        tmp_path,
+        ".ai-sow/work/generate-story/delivery.candidate.json",
+        lambda value: value["acceptanceCriteria"][0].update(
+            {
+                "gapRationale": (
+                    "effective-start-customer-api 尚未提供 feature-profile-api 的稳定能力，"
+                    "本验收结果直接补齐该能力。"
+                )
+            }
+        ),
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "CROSS_FEATURE_CAPABILITY_UNDECLARED" in codes(result)
 
 
 def test_rejects_integration_boundary_mismatch(tmp_path: Path) -> None:
@@ -1002,20 +1067,21 @@ def test_rejects_technical_aggregate_integration_that_repeats_related_business_t
         "feature-customer-export"
     )
     delivery = fixture("delivery.valid.json")
-    delivery["stories"][0]["requiredIntegrationBoundary"] = "END_TO_END"
-    delivery["gaps"].append(
+    asis = copy.deepcopy(ASIS)
+    asis["coverage"].append(  # type: ignore[index]
         {
-            "gapId": "gap-customer-export",
             "featureId": "feature-customer-export",
-            "name": "客户导出交付差距",
-            "description": "客户导出端到端结果尚未交付。",
+            "status": "MISSING",
+            "effectiveStartItemIds": [],
             "commitmentIds": [],
+            "uncertaintyIds": [],
         }
     )
+    delivery["stories"][0]["requiredIntegrationBoundary"] = "END_TO_END"
     delivery["stories"].append(
         {
             "storyId": "story-customer-export",
-            "gapId": "gap-customer-export",
+            "featureId": "feature-customer-export",
             "name": "交付客户导出",
             "description": "交付客户导出端到端结果。",
             "uatRelevant": True,
@@ -1028,6 +1094,8 @@ def test_rejects_technical_aggregate_integration_that_repeats_related_business_t
             "storyId": "story-customer-export",
             "sequence": 1,
             "name": "客户导出可取得完整结果。",
+            "gapRationale": "该业务 Feature 没有 Effective Start，本验收结果建立首次客户导出能力。",
+            "carryForwardCommitmentIds": [],
             "decisionGate": "REQUIRED",
             "approvalDecisionIds": ["decision-profile-api"],
         }
@@ -1071,6 +1139,7 @@ def test_rejects_technical_aggregate_integration_that_repeats_related_business_t
     prepare(
         tmp_path,
         requirements=requirements,
+        asis=asis,
         design=design,
         technical=technical,
         delivery=delivery,
@@ -1163,10 +1232,9 @@ def test_rejects_in_scope_concern_without_delivery_mapping(tmp_path: Path) -> No
     review = tmp_path / ".ai-sow/reviews/generate-story.md"
     review.write_text(
         review.read_text(encoding="utf-8").replace(
-            "| PRODUCTION_SCOPE | IN_SCOPE | feature-profile-api | gap-profile-api | "
-            "story-profile-api | — |",
-            "| PRODUCTION_SCOPE | IN_SCOPE | — | — | — | — |",
-        ), encoding="utf-8"
+                "| PRODUCTION_SCOPE | IN_SCOPE | feature-profile-api | story-profile-api | — |",
+                "| PRODUCTION_SCOPE | IN_SCOPE | — | — | — |",
+            ), encoding="utf-8"
     )
 
     result = run_validator(tmp_path)
@@ -1243,9 +1311,9 @@ def test_skill_uses_review_candidate_publish_and_stop_flow() -> None:
         "只推荐用户显式调用 `generate-task`",
         "然后 STOP",
         "不得重新执行 Design 的 HLD/Go-live 门禁",
-        "Concern -> Feature -> Gap -> Story/Assumption/Risk",
+        "Concern -> Feature -> Story/Assumption/Risk",
         "已批准的 Story/AC 是业务交付合同",
-        "不得为实现机制创建 Gap、Story 或 AC",
+        "不得为实现机制创建 Story 或 AC",
         "decisionRationale",
         "纯实现集成",
     ):
@@ -1255,12 +1323,12 @@ def test_skill_uses_review_candidate_publish_and_stop_flow() -> None:
 def test_review_template_documents_complete_stable_ids_and_rebind_declarations() -> None:
     template = (SKILL_ROOT / "references/review-template.md").read_text(encoding="utf-8")
     for required in (
-        "Stable IDs: gap-example, story-example, ac-example, integration-example, assumption-example",
+        "Stable IDs: story-example, ac-example, integration-example, assumption-example",
         "Impact: NO_CHANGE",
         "Upstream: generate-design",
         "Previous Receipt SHA-256: generate-design=<old-hash>",
         "Current Receipt SHA-256: generate-design=<new-hash>",
-        "Impact Rationale: gap-example、story-example、ac-example、integration-example、assumption-example",
+        "Impact Rationale: story-example、ac-example、integration-example、assumption-example",
         "decisionRationale",
     ):
         assert required in template

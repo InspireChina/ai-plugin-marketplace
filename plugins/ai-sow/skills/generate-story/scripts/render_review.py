@@ -57,7 +57,6 @@ def records(document: dict[str, Any], key: str) -> list[dict[str, Any]]:
 
 def stable_ids(delivery: dict[str, Any]) -> list[str]:
     return [
-        *(item["gapId"] for item in records(delivery, "gaps")),
         *(item["storyId"] for item in records(delivery, "stories")),
         *(item["acceptanceCriterionId"] for item in records(delivery, "acceptanceCriteria")),
         *(item["integrationId"] for item in records(delivery, "integrations")),
@@ -83,15 +82,11 @@ def go_live_rows(
     delivery: dict[str, Any],
     design_context: dict[str, Any],
 ) -> list[str]:
-    gaps = records(delivery, "gaps")
     stories = records(delivery, "stories")
     assumptions = {item["assumptionId"] for item in records(delivery, "assumptions")}
-    gap_ids_by_feature: dict[str, list[str]] = defaultdict(list)
-    for gap in gaps:
-        gap_ids_by_feature[gap["featureId"]].append(gap["gapId"])
-    story_ids_by_gap: dict[str, list[str]] = defaultdict(list)
+    story_ids_by_feature: dict[str, list[str]] = defaultdict(list)
     for story in stories:
-        story_ids_by_gap[story["gapId"]].append(story["storyId"])
+        story_ids_by_feature[story["featureId"]].append(story["storyId"])
     assumption_ids_by_story: dict[str, list[str]] = defaultdict(list)
     for story in stories:
         assumption_id = story.get("assumptionId")
@@ -103,8 +98,7 @@ def go_live_rows(
     result: list[str] = []
     for concern in concerns:
         feature_ids = [item for item in concern.get("featureIds", []) if isinstance(item, str)]
-        gap_ids = [gap_id for feature_id in feature_ids for gap_id in gap_ids_by_feature[feature_id]]
-        story_ids = [story_id for gap_id in gap_ids for story_id in story_ids_by_gap[gap_id]]
+        story_ids = [story_id for feature_id in feature_ids for story_id in story_ids_by_feature[feature_id]]
         assumption_ids = sorted(
             {
                 assumption_id
@@ -114,7 +108,7 @@ def go_live_rows(
         )
         disposition = concern.get("disposition")
         if disposition not in {"IN_SCOPE", "FULLY_COVERED"}:
-            feature_ids, gap_ids, story_ids, assumption_ids = [], [], [], []
+            feature_ids, story_ids, assumption_ids = [], [], []
         result.append(
             "| "
             + " | ".join(
@@ -123,7 +117,6 @@ def go_live_rows(
                     concern.get("concern", ""),
                     disposition,
                     joined(feature_ids),
-                    joined(gap_ids),
                     joined(story_ids),
                     joined(assumption_ids),
                     concern.get("responsibilityBoundary", ""),
@@ -136,7 +129,6 @@ def go_live_rows(
 
 
 def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
-    gaps = records(delivery, "gaps")
     stories = records(delivery, "stories")
     criteria = records(delivery, "acceptanceCriteria")
     integrations = records(delivery, "integrations")
@@ -151,23 +143,20 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
         "本文件由 Delivery candidate 与已验证的 Owner-local context 确定性投影。Reviewer 与用户",
         "批准声明是拟发布值，只有 sidecar 同时绑定当前 packet 后才具有授权效力。",
         "",
-        "## Feature → Gap → Story",
+        "## Feature → Story",
         "",
         f"Stable IDs: {', '.join(stable_ids(delivery)) if stable_ids(delivery) else 'NONE'}",
         "",
-        "| Feature | Gap | Story | Gap 说明 | Story 结果 | UAT |",
-        "|---|---|---|---|---|---|",
+        "| Feature | Story | Story 结果 | UAT |",
+        "|---|---|---|---|",
     ]
-    gap_by_id = {gap["gapId"]: gap for gap in gaps}
     lines.extend(
         "| "
         + " | ".join(
             cell(value)
             for value in (
-                gap_by_id[story["gapId"]]["featureId"],
-                story["gapId"],
+                story["featureId"],
                 story["storyId"],
-                gap_by_id[story["gapId"]].get("description", gap_by_id[story["gapId"]].get("name", "")),
                 story.get("outcome", story.get("description", story.get("name", ""))),
                 story.get("uatRelevant", ""),
             )
@@ -180,8 +169,8 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
             "",
             "## Acceptance Criteria",
             "",
-            "| Story | AC | Sequence | 可观察结果 | Decision Gate |",
-            "|---|---|---|---|---|",
+            "| Story | AC | Sequence | 可观察结果 | 差值依据 | CARRY_FORWARD | Decision Gate |",
+            "|---|---|---|---|---|---|---|",
             *[
                 "| "
                 + " | ".join(
@@ -191,6 +180,8 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
                         item["acceptanceCriterionId"],
                         item["sequence"],
                         item["name"],
+                        item.get("gapRationale", ""),
+                        joined(item.get("carryForwardCommitmentIds", [])),
                         item.get("decisionGate", ""),
                     )
                 )
@@ -265,8 +256,8 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
             "",
             "## 上线映射",
             "",
-            "| Concern | Disposition | Feature IDs | Gap IDs | Story IDs | Assumption/Risk IDs | 责任边界 | 依据 |",
-            "|---|---|---|---|---|---|---|---|",
+            "| Concern | Disposition | Feature IDs | Story IDs | Assumption/Risk IDs | 责任边界 | 依据 |",
+            "|---|---|---|---|---|---|---|",
             *go_live_rows(delivery, design_context),
             "",
             "Go-live Mapping: PASSED",

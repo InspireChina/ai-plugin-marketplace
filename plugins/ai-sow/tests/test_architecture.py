@@ -144,19 +144,50 @@ def test_skill_entry_scripts_pin_utf8_standard_streams() -> None:
     assert unpinned == []
 
 
-def test_runtime_has_only_two_technical_modules() -> None:
+def test_runtime_is_plugin_shared_owner_agnostic_infrastructure() -> None:
     assert {path.name for path in RUNTIME.glob("*.py")} == {
         "__init__.py",
+        "claims.py",
+        "controls.py",
+        "diagnostics.py",
+        "fact_source.py",
         "handoff.py",
+        "patch.py",
         "project_io.py",
+        "review_checks.py",
+        "text_gates.py",
     }
-    for name in ("handoff.py", "project_io.py"):
+    for name in {path.name for path in RUNTIME.glob("*.py")} - {"__init__.py"}:
         text = (RUNTIME / name).read_text(encoding="utf-8")
         assert "skills/" not in text
         assert "skills." not in text
         assert "urn:ai-sow:" not in text
-        for owner in SKILL_NAMES:
-            assert owner not in text
+
+
+def test_shared_review_gates_have_one_implementation_and_all_owners_call_them() -> None:
+    gate_definitions = {
+        "validate_review_artifacts": "review_checks.py",
+        "validate_text_gates": "text_gates.py",
+        "validate_unique_fact_sources": "fact_source.py",
+        "validate_patch_audit": "patch.py",
+    }
+    runtime_sources = {
+        path.name: path.read_text(encoding="utf-8") for path in python_sources(RUNTIME)
+    }
+    for function, owner_module in gate_definitions.items():
+        definitions = [
+            module for module, text in runtime_sources.items()
+            if re.search(rf"^def {re.escape(function)}\(", text, re.MULTILINE)
+        ]
+        assert definitions == [owner_module]
+    for owner in PROFESSIONAL_OWNER_NAMES:
+        validator = (
+            PLUGIN_ROOT / "skills" / owner / "scripts" / "validate.py"
+        ).read_text(encoding="utf-8")
+        assert "validate_review_artifacts(" in validator, owner
+        wrapper = PLUGIN_ROOT / "skills" / owner / "scripts" / "apply_patch.py"
+        assert wrapper.is_file(), owner
+        assert "runtime.patch" in wrapper.read_text(encoding="utf-8"), owner
 
 
 def test_transition_dependency_edges_are_complete_and_exact() -> None:

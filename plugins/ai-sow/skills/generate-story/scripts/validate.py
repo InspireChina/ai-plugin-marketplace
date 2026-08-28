@@ -22,6 +22,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+from runtime.diagnostics import diagnostic as diag
+from runtime.controls import validate_manifest_controls
 from runtime.handoff import (
     Artifact,
     MatchResult,
@@ -37,10 +39,11 @@ from runtime.handoff import (
     validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import validate_review_artifacts
 
 
 SUBJECT = "generate-story"
-SCHEMA_ID = "urn:ai-sow:generate-story:delivery:0.2"
+SCHEMA_ID = "urn:ai-sow:generate-story:delivery:0.4"
 PROJECT_PATH = ".ai-sow/project.json"
 REQUIREMENTS_PATH = ".ai-sow/data/analyze-requirement/requirements.json"
 REQUIREMENTS_VALIDATION_PATH = ".ai-sow/validation/analyze-requirement.json"
@@ -67,12 +70,14 @@ CONTEXT_FRAGMENT_SPECS = (
     ("asIs", ".ai-sow/work/generate-story/context/as-is.json"),
     ("design", ".ai-sow/work/generate-story/context/design.json"),
     ("questionnaire", ".ai-sow/work/generate-story/context/questionnaire.json"),
+    ("claims", ".ai-sow/work/generate-story/claims.json"),
 )
+CLAIMS_PATH = ".ai-sow/work/generate-story/claims.json"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-owner-reviewer-v1"
 APPROVAL_ALGORITHM = "ai-sow-owner-approval-v1"
 REQUIRED_REVIEW_SECTIONS = (
-    "Feature → Gap → Story",
+    "Feature → Story",
     "Acceptance Criteria",
     "Integration",
     "Assumption / Risk",
@@ -96,7 +101,6 @@ GO_LIVE_COLUMNS = (
     "Concern",
     "Disposition",
     "Feature IDs",
-    "Gap IDs",
     "Story IDs",
     "Assumption/Risk IDs",
     "责任边界",
@@ -117,7 +121,7 @@ REQUIREMENT_CONTRACT = OwnerContract(
 )
 ASIS_CONTRACT = OwnerContract(
     subject="analyze-as-is",
-    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.2",),
     validation_path=ASIS_VALIDATION_PATH,
     reviews=(("approvedReview", ASIS_REVIEW_PATH),),
     outputs=(("asIs", ASIS_PATH),),
@@ -138,14 +142,8 @@ CONTRACT = OwnerContract(
     validation_path=VALIDATION_PATH,
     reviews=(("approvedReview", REVIEW_PATH),),
     outputs=(("delivery", STABLE_PATH),),
+    claims_path=CLAIMS_PATH,
 )
-
-
-def diag(code: str, message: str, path: str = "") -> dict[str, object]:
-    value: dict[str, object] = {"code": code, "message": message}
-    if path:
-        value["path"] = path
-    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -617,12 +615,10 @@ def validate_semantics(
     in_scope = {feature_id for feature_id, scope in scopes.items() if scope.get("decision") == "IN_SCOPE"}
     decisions = {entry["designDecisionId"]: entry for entry in upstream["design"]["decisions"]}
     commitments = {entry["commitmentId"]: entry for entry in upstream["asIs"]["commitments"]}
-    gaps = {entry["gapId"]: entry for entry in delivery["gaps"]}
     stories = {entry["storyId"]: entry for entry in delivery["stories"]}
     assumptions = {entry["assumptionId"]: entry for entry in delivery["assumptions"]}
 
     own_ids = [
-        *(entry["gapId"] for entry in delivery["gaps"]),
         *(entry["storyId"] for entry in delivery["stories"]),
         *(entry["acceptanceCriterionId"] for entry in delivery["acceptanceCriteria"]),
         *(entry["integrationId"] for entry in delivery["integrations"]),
@@ -633,7 +629,6 @@ def validate_semantics(
             diagnostics.append(diag("ID_DUPLICATE", f"duplicate stable ID: {value}"))
 
     for collection in (
-        "gaps",
         "stories",
         "acceptanceCriteria",
         "integrations",
@@ -647,60 +642,97 @@ def validate_semantics(
                     diag("NAME_DUPLICATE", f"duplicate {collection} name: {name}")
                 )
 
-    gap_counts = Counter(entry["featureId"] for entry in delivery["gaps"])
-    for gap in delivery["gaps"]:
-        feature_id = gap["featureId"]
+    story_counts = Counter(entry["featureId"] for entry in delivery["stories"])
+    stories_by_feature: dict[str, list[str]] = defaultdict(list)
+    for story in delivery["stories"]:
+        feature_id = story["featureId"]
+        stories_by_feature[feature_id].append(story["storyId"])
         if feature_id not in known_features:
             diagnostics.append(diag("FEATURE_REF_UNKNOWN", f"unknown Feature: {feature_id}"))
         elif feature_id not in in_scope:
-            diagnostics.append(diag("GAP_OUT_OF_SCOPE", f"Gap targets a non-IN_SCOPE Feature: {feature_id}"))
-        for commitment_id in gap["commitmentIds"]:
-            commitment = commitments.get(commitment_id)
-            if commitment is None:
-                diagnostics.append(diag("COMMITMENT_REF_UNKNOWN", f"unknown Commitment: {commitment_id}"))
-            elif commitment.get("treatment") != "CARRY_FORWARD":
-                diagnostics.append(diag("GAP_COMMITMENT_NOT_CARRY_FORWARD", f"Gap may only include CARRY_FORWARD Commitment: {commitment_id}"))
-            elif feature_id not in commitment.get("relatedFeatureIds", []):
-                diagnostics.append(
-                    diag(
-                        "COMMITMENT_FEATURE_MISMATCH",
-                        f"Commitment is unrelated to Gap Feature: {commitment_id}",
-                    )
-                )
+            diagnostics.append(diag("STORY_OUT_OF_SCOPE", f"Story targets a non-IN_SCOPE Feature: {feature_id}"))
     for feature_id in sorted(in_scope):
-        if gap_counts[feature_id] == 0:
-            diagnostics.append(diag("GAP_COVERAGE_MISSING", f"missing Gap for: {feature_id}"))
-        elif gap_counts[feature_id] > 1:
-            diagnostics.append(diag("GAP_COVERAGE_DUPLICATE", f"multiple Gaps for: {feature_id}"))
-    gaps_by_feature = {entry["featureId"]: entry for entry in delivery["gaps"]}
-    for commitment_id, commitment in commitments.items():
-        if commitment.get("treatment") != "CARRY_FORWARD":
-            continue
-        for feature_id in commitment.get("relatedFeatureIds", []):
-            if feature_id in in_scope and commitment_id not in gaps_by_feature.get(feature_id, {}).get("commitmentIds", []):
-                diagnostics.append(diag("CARRY_FORWARD_GAP_MISSING", f"Gap omits CARRY_FORWARD Commitment: {commitment_id}"))
+        if story_counts[feature_id] == 0:
+            diagnostics.append(diag("FEATURE_COVERAGE_MISSING", f"missing Story for: {feature_id}"))
 
-    stories_by_gap = Counter(entry["gapId"] for entry in delivery["stories"])
-    for story in delivery["stories"]:
-        if story["gapId"] not in gaps:
-            diagnostics.append(diag("GAP_REF_UNKNOWN", f"unknown Gap: {story['gapId']}"))
-    for gap_id in sorted(set(gaps) - set(stories_by_gap)):
-        diagnostics.append(diag("STORY_COVERAGE_MISSING", f"Gap has no Story: {gap_id}"))
-
+    coverage = {
+        entry["featureId"]: entry
+        for entry in upstream["asIs"].get("coverage", [])
+        if isinstance(entry, dict) and isinstance(entry.get("featureId"), str)
+    }
     sequences: dict[str, list[int]] = defaultdict(list)
+    carried_by_feature: dict[str, set[str]] = defaultdict(set)
     for criterion in delivery["acceptanceCriteria"]:
         story_id = criterion["storyId"]
         story = stories.get(story_id)
         if story is None:
             diagnostics.append(diag("STORY_REF_UNKNOWN", f"unknown Story: {story_id}"))
         sequences[story_id].append(criterion["sequence"])
+        if story is not None:
+            feature_id = story["featureId"]
+            feature_coverage = coverage.get(feature_id, {})
+            effective_ids = {
+                value
+                for value in feature_coverage.get("effectiveStartItemIds", [])
+                if isinstance(value, str)
+            }
+            technical_feature = technical_feature_by_id.get(feature_id, {})
+            technical_source = technical_feature.get("source", {}) if isinstance(technical_feature, dict) else {}
+            effective_ids.update(
+                value
+                for value in technical_source.get("effectiveStartItemIds", [])
+                if isinstance(value, str)
+            )
+            effective_ids.update(
+                value
+                for value in scopes.get(feature_id, {}).get("effectiveStartItemIds", [])
+                if isinstance(value, str)
+            )
+            rationale = criterion["gapRationale"]
+            has_start_anchor = any(value in rationale for value in effective_ids)
+            declares_missing_start = (
+                feature_coverage.get("status") == "MISSING"
+                and bool(re.search(r"(?:无|没有).{0,12}(?:Effective Start|有效起点)", rationale))
+            )
+            if not has_start_anchor and not declares_missing_start:
+                diagnostics.append(
+                    diag(
+                        "AC_GAP_RATIONALE_MISSING",
+                        f"AC must cite its Effective Start or an evidenced missing start: {criterion['acceptanceCriterionId']}",
+                    )
+                )
+            for commitment_id in criterion["carryForwardCommitmentIds"]:
+                commitment = commitments.get(commitment_id)
+                if commitment is None:
+                    diagnostics.append(diag("COMMITMENT_REF_UNKNOWN", f"unknown Commitment: {commitment_id}"))
+                elif commitment.get("treatment") != "CARRY_FORWARD":
+                    diagnostics.append(diag("AC_COMMITMENT_NOT_CARRY_FORWARD", f"AC may only include CARRY_FORWARD Commitment: {commitment_id}"))
+                elif feature_id not in commitment.get("relatedFeatureIds", []):
+                    diagnostics.append(diag("COMMITMENT_FEATURE_MISMATCH", f"Commitment is unrelated to AC Story Feature: {commitment_id}"))
+                else:
+                    carried_by_feature[feature_id].add(commitment_id)
+            mentioned_features = {
+                value
+                for value in STABLE_ID_PATTERN.findall(f"{criterion['name']} {rationale}")
+                if value.startswith("feature-") and value != feature_id
+            }
+            for mentioned_feature in mentioned_features:
+                if not any(
+                    related_story in rationale or related_story in criterion["name"]
+                    for related_story in stories_by_feature.get(mentioned_feature, [])
+                ):
+                    diagnostics.append(
+                        diag(
+                            "CROSS_FEATURE_CAPABILITY_UNDECLARED",
+                            f"AC references another Feature without naming its producing Story: {criterion['acceptanceCriterionId']}",
+                        )
+                    )
         for decision_id in criterion["approvalDecisionIds"]:
             decision = decisions.get(decision_id)
             if decision is None:
                 diagnostics.append(diag("DECISION_REF_UNKNOWN", f"unknown Design Decision: {decision_id}"))
             elif story is not None:
-                gap = gaps.get(story["gapId"])
-                if gap is not None and gap["featureId"] not in decision.get("relatedFeatureIds", []):
+                if story["featureId"] not in decision.get("relatedFeatureIds", []):
                     diagnostics.append(
                         diag(
                             "DECISION_FEATURE_MISMATCH",
@@ -712,6 +744,17 @@ def validate_semantics(
     for story_id, actual in sequences.items():
         if sorted(actual) != list(range(1, len(actual) + 1)):
             diagnostics.append(diag("AC_SEQUENCE_INVALID", f"non-contiguous AC sequence for: {story_id}"))
+    for commitment_id, commitment in commitments.items():
+        if commitment.get("treatment") != "CARRY_FORWARD":
+            continue
+        for feature_id in commitment.get("relatedFeatureIds", []):
+            if feature_id in in_scope and commitment_id not in carried_by_feature[feature_id]:
+                diagnostics.append(
+                    diag(
+                        "CARRY_FORWARD_AC_MISSING",
+                        f"no AC carries forward Commitment for Feature {feature_id}: {commitment_id}",
+                    )
+                )
 
     integrations_by_story: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for integration in delivery["integrations"]:
@@ -724,8 +767,7 @@ def validate_semantics(
             if decision is None:
                 diagnostics.append(diag("DECISION_REF_UNKNOWN", f"unknown Design Decision: {decision_id}"))
             elif story_id in stories:
-                gap = gaps.get(stories[story_id]["gapId"])
-                if gap is not None and gap["featureId"] not in decision.get("relatedFeatureIds", []):
+                if stories[story_id]["featureId"] not in decision.get("relatedFeatureIds", []):
                     diagnostics.append(
                         diag(
                             "DECISION_FEATURE_MISMATCH",
@@ -738,9 +780,7 @@ def validate_semantics(
         story = stories.get(story_id)
         if story is None:
             continue
-        gap = gaps.get(story["gapId"])
-        if gap is not None:
-            integrations_by_feature[gap["featureId"]].extend(related)
+        integrations_by_feature[story["featureId"]].extend(related)
     for feature_id, feature in technical_feature_by_id.items():
         related_business_features = set(feature.get("relatedBusinessFeatureIds", []))
         if len(related_business_features) < 2:
@@ -812,7 +852,6 @@ def validate_semantics(
 
 def stable_ids(delivery: dict[str, Any]) -> list[str]:
     return [
-        *(entry["gapId"] for entry in delivery["gaps"]),
         *(entry["storyId"] for entry in delivery["stories"]),
         *(entry["acceptanceCriterionId"] for entry in delivery["acceptanceCriteria"]),
         *(entry["integrationId"] for entry in delivery["integrations"]),
@@ -827,7 +866,7 @@ def _section(text: str, title: str) -> list[str]:
 def parse_go_live_mapping(
     text: str,
     review_path: str,
-) -> tuple[list[dict[str, object]], dict[str, tuple[list[str], list[str], list[str], list[str]]]]:
+) -> tuple[list[dict[str, object]], dict[str, tuple[list[str], list[str], list[str]]]]:
     diagnostics: list[dict[str, object]] = []
     sections = _section(text, "上线映射")
     if len(sections) != 1:
@@ -835,7 +874,7 @@ def parse_go_live_mapping(
     if declaration(sections[0], "Go-live Mapping") != ["PASSED"]:
         diagnostics.append(diag("GO_LIVE_MAPPING_NOT_PASSED", "Go-live Mapping must be PASSED", review_path))
     header_seen = False
-    rows: list[tuple[str, list[str], list[str], list[str], list[str]]] = []
+    rows: list[tuple[str, list[str], list[str], list[str]]] = []
     for raw in sections[0].splitlines():
         line = raw.strip()
         if not (line.startswith("|") and line.endswith("|")):
@@ -848,10 +887,10 @@ def parse_go_live_mapping(
             continue
         if not header_seen:
             continue
-        if len(cells) != 8:
-            diagnostics.append(diag("GO_LIVE_MAPPING_ROW_INVALID", f"go-live mapping row must have eight columns: {line}", review_path))
+        if len(cells) != 7:
+            diagnostics.append(diag("GO_LIVE_MAPPING_ROW_INVALID", f"go-live mapping row must have seven columns: {line}", review_path))
             continue
-        concern, disposition, features, gaps, stories, assumptions, boundary, basis = cells
+        concern, disposition, features, stories, assumptions, boundary, basis = cells
         if concern not in GO_LIVE_CONCERNS:
             diagnostics.append(diag("GO_LIVE_CONCERN_UNKNOWN", f"unknown Concern: {concern}", review_path))
             continue
@@ -860,18 +899,16 @@ def parse_go_live_mapping(
         if boundary.strip().upper() in EMPTY or basis.strip().upper() in EMPTY:
             diagnostics.append(diag("GO_LIVE_MAPPING_EXPLANATION_MISSING", f"Concern needs responsibility and basis: {concern}", review_path))
         feature_ids = split_ids(features)
-        gap_ids = split_ids(gaps)
         story_ids = split_ids(stories)
         assumption_ids = split_ids(assumptions)
         if disposition == "IN_SCOPE" and (
             not feature_ids
-            or not gap_ids
             or (not story_ids and not assumption_ids)
         ):
             diagnostics.append(
                 diag(
                     "GO_LIVE_IN_SCOPE_MAPPING_MISSING",
-                    f"IN_SCOPE Concern needs Feature, Gap, and Story or Assumption/Risk: {concern}",
+                    f"IN_SCOPE Concern needs Feature and Story or Assumption/Risk: {concern}",
                     review_path,
                 )
             )
@@ -883,7 +920,7 @@ def parse_go_live_mapping(
                     review_path,
                 )
             )
-        rows.append((concern, feature_ids, gap_ids, story_ids, assumption_ids))
+        rows.append((concern, feature_ids, story_ids, assumption_ids))
     if not header_seen:
         diagnostics.append(diag("GO_LIVE_MAPPING_HEADER_INVALID", "go-live mapping must use the fixed header", review_path))
     counts = Counter(row[0] for row in rows)
@@ -1005,7 +1042,6 @@ def validate_review(
         diagnostics.append(diag("USER_APPROVAL_MISSING", "User Approval must be APPROVED", review_path))
     mapping_diagnostics, rows = parse_go_live_mapping(text, review_path)
     diagnostics.extend(mapping_diagnostics)
-    gap_map = {entry["gapId"]: entry for entry in delivery["gaps"]}
     story_map = {entry["storyId"]: entry for entry in delivery["stories"]}
     assumption_ids = {entry["assumptionId"] for entry in delivery["assumptions"]}
     known_features = {
@@ -1017,7 +1053,7 @@ def validate_review(
         for entry in delivery["stories"]
         if entry.get("assumptionId")
     }
-    for concern, (features, gaps, stories, assumptions) in rows.items():
+    for concern, (features, stories, assumptions) in rows.items():
         for feature_id in features:
             if feature_id not in known_features:
                 diagnostics.append(
@@ -1027,20 +1063,17 @@ def validate_review(
                         review_path,
                     )
                 )
-        for gap_id in gaps:
-            if gap_id not in gap_map or gap_map[gap_id]["featureId"] not in features:
-                diagnostics.append(diag("GO_LIVE_GAP_MAPPING_INVALID", f"invalid Gap mapping for {concern}: {gap_id}", review_path))
         for story_id in stories:
-            if story_id not in story_map or story_map[story_id]["gapId"] not in gaps:
+            if story_id not in story_map or story_map[story_id]["featureId"] not in features:
                 diagnostics.append(diag("GO_LIVE_STORY_MAPPING_INVALID", f"invalid Story mapping for {concern}: {story_id}", review_path))
         for assumption_id in assumptions:
-            mapped_through_gap = any(
+            mapped_through_story = any(
                 (assumption_id, story_id) in relations
                 and story_id in story_map
-                and story_map[story_id]["gapId"] in gaps
+                and story_map[story_id]["featureId"] in features
                 for story_id in story_map
             )
-            if assumption_id not in assumption_ids or not mapped_through_gap:
+            if assumption_id not in assumption_ids or not mapped_through_story:
                 diagnostics.append(diag("GO_LIVE_ASSUMPTION_MAPPING_INVALID", f"invalid Assumption/Risk mapping for {concern}: {assumption_id}", review_path))
     impacts = declaration(text, "Impact")
     if require_no_change and impacts != ["NO_CHANGE"]:
@@ -1109,7 +1142,7 @@ def risk_summary_bytes(delivery: dict[str, Any], candidate_hash: str) -> bytes:
         "# Story 风险摘要",
         "",
         f"Candidate SHA-256: {candidate_hash}",
-        f"Gap Count: {len(delivery['gaps'])}",
+        f"Feature Count: {len({item['featureId'] for item in delivery['stories']})}",
         f"Story Count: {len(delivery['stories'])}",
         f"Acceptance Criterion Count: {len(delivery['acceptanceCriteria'])}",
         f"Integration Count: {len(delivery['integrations'])}",
@@ -1217,10 +1250,12 @@ def context_packet_entry(
     assert manifest is not None and manifest_payload is not None
     if set(manifest) != {
         "algorithm",
+        "claimMetrics",
         "concernIds",
         "fragments",
         "inputArtifacts",
         "owner",
+        "ownerControl",
         "selectedEffectiveStartItemIds",
         "selectedFeatureIds",
         "selectedQuestionIds",
@@ -1240,6 +1275,16 @@ def context_packet_entry(
         diagnostics.append(
             diag("CONTEXT_MANIFEST_INVALID", "context manifest owner is invalid", CONTEXT_MANIFEST_PATH)
         )
+    diagnostics.extend(
+        validate_manifest_controls(
+            files,
+            manifest,
+            owner=SUBJECT,
+            project_path=PROJECT_PATH,
+            claims_path=CLAIMS_PATH,
+            manifest_path=CONTEXT_MANIFEST_PATH,
+        )
+    )
     if manifest.get("concernIds") != list(GO_LIVE_CONCERNS):
         diagnostics.append(
             diag("CONTEXT_MANIFEST_INVALID", "context Concern order is invalid", CONTEXT_MANIFEST_PATH)
@@ -1457,6 +1502,21 @@ def main() -> int:
         summary_payload: bytes | None = None
         packet_payload: bytes | None = None
         expected_packet: dict[str, object] | None = None
+        if (
+            not diagnostics
+            and args.mode == "review"
+            and payload is not None
+            and delivery is not None
+        ):
+            diagnostics.extend(
+                validate_review_artifacts(
+                    files,
+                    args.project_root,
+                    SUBJECT,
+                    CLAIMS_PATH,
+                    {"delivery": delivery},
+                )
+            )
         if (
             not diagnostics
             and args.mode in {"review", "publish-approved"}

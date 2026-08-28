@@ -46,6 +46,8 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
 
+开始专业工作前读取插件级[上下文纪律](../../references/context-discipline.md)、[降本评审合同](../../references/review-acceleration.md)与[模型路由](../../references/model-routing.md)。共享合同取代下文遗留的整体自由修复和携带完整历史复审做法；模板计算权威与 Task Owner 边界不变。
+
 ## 工作流
 
 1. 当前 Stage Agent 是本 Skill 的唯一用户接口、专业执行者和工具派发者，不再创建独立 Worker 或机械校验角色。先运行 Owner-local context compiler；它用公共 matcher 验证 As-Is、Design 和 Story 三个 receipt，并只投影 Task 拆分必需的引用闭包。任一 handoff 为 missing、invalid、stale 或 unsupported 时，报告对应 Owner Skill 并停止。不得调用上游 validator，不得重新执行 HLD/Go-live 门禁，也不得重新诊断 Story 或 Design 的内部业务质量：

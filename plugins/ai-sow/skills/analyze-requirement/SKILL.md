@@ -65,6 +65,8 @@ Stage 开始完整分析前必须读取：
 
 确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
 
+开始专业工作前读取插件级[上下文纪律](../../references/context-discipline.md)、[降本评审合同](../../references/review-acceleration.md)与[模型路由](../../references/model-routing.md)。这三份共享合同取代下文遗留的“单 Reviewer 顺序复读全部来源”“整体自由修复”和“携带 round-1 历史完整复审”做法；Owner、packet 与用户批准边界不变。
+
 先向用户说明：本阶段会形成的 BUSINESS 结论与稳定输出、已登记来源、当前充分输入、会改变业务范围/目标/规则/优先级/验收意图的缺口、需要用户回答的问题，以及必须保持 `BLOCKED` 的事项。
 
 ## 专业分析与问卷门禁
@@ -117,7 +119,7 @@ Stage 在 work-only 路径形成完整候选：
 
 `review-packet.json` 的固定算法 token 为 `ai-sow-owner-review-packet-v1`；它是本 Owner 的审批合同，不进入公共 runtime。
 
-Reviewer 必须逐份读取完整来源，并以来源处置表为检查清单，检查每条决策相关陈述是否缺失、误分类或漏映射；同时检查业务范围遗漏、跨域 `SCOPE_BOUNDARY`、`DESIGN_INPUT` 保留、Epic→Feature 关系、冲突、未经批准猜测、问卷处置、验收意图和稳定 ID，并核对 candidate 与 review 的编译忠实度。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical sidecar：
+Reviewer 以 `claims.json` 中的来源处置条目为检查清单并按条目并发，检查每条决策相关陈述是否缺失、误分类或漏映射；Judgment Reviewer 再检查业务范围遗漏、跨域 `SCOPE_BOUNDARY`、`DESIGN_INPUT` 保留、Epic→Feature 关系、冲突、未经批准猜测、问卷处置、验收意图和稳定 ID，并核对 candidate 与 review 的编译忠实度。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical sidecar：
 
 ```json
 {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"analyze-requirement","packetSha256":"<packet-sha256>"}

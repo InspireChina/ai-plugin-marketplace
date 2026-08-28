@@ -1,0 +1,1 @@
+{"findingId":"B-06","category":"B","expectedLayer":"script","expectedCode":"PATCH_CLOSURE_UNSYNCED","path":"/coverage/1/rationale","text":"关联对象已修订，但派生 rationale 未随决定同步。"}

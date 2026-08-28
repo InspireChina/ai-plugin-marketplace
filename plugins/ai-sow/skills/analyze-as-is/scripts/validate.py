@@ -22,6 +22,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+from runtime.diagnostics import diagnostic as diag
+from runtime.controls import validate_manifest_controls
 from runtime.handoff import (
     Artifact,
     MatchResult,
@@ -37,10 +39,11 @@ from runtime.handoff import (
     validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import validate_review_artifacts
 
 
 SUBJECT = "analyze-as-is"
-SCHEMA_ID = "urn:ai-sow:analyze-as-is:asis:0.1"
+SCHEMA_ID = "urn:ai-sow:analyze-as-is:asis:0.2"
 PROJECT_PATH = ".ai-sow/project.json"
 REQUIREMENTS_PATH = ".ai-sow/data/analyze-requirement/requirements.json"
 REQUIREMENTS_VALIDATION_PATH = ".ai-sow/validation/analyze-requirement.json"
@@ -58,7 +61,13 @@ CONTEXT_FRAGMENT_SPECS = (
     ("requirements", ".ai-sow/work/analyze-as-is/context/requirements.json"),
     ("investigationScope", ".ai-sow/work/analyze-as-is/context/investigation-scope.json"),
     ("evidenceInventory", ".ai-sow/work/analyze-as-is/context/evidence-inventory.json"),
+    ("premises", ".ai-sow/work/analyze-as-is/premises.json"),
+    ("repoFacts", ".ai-sow/work/analyze-as-is/repo-facts.json"),
+    ("claims", ".ai-sow/work/analyze-as-is/claims.json"),
 )
+PREMISES_PATH = ".ai-sow/work/analyze-as-is/premises.json"
+REPO_FACTS_PATH = ".ai-sow/work/analyze-as-is/repo-facts.json"
+CLAIMS_PATH = ".ai-sow/work/analyze-as-is/claims.json"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-owner-reviewer-v1"
 APPROVAL_ALGORITHM = "ai-sow-owner-approval-v1"
@@ -153,14 +162,8 @@ CONTRACT = OwnerContract(
     validation_path=VALIDATION_PATH,
     reviews=(("approvedReview", REVIEW_PATH),),
     outputs=(("asIs", STABLE_PATH),),
+    claims_path=CLAIMS_PATH,
 )
-
-
-def diag(code: str, message: str, path: str = "") -> dict[str, object]:
-    value: dict[str, object] = {"code": code, "message": message}
-    if path:
-        value["path"] = path
-    return value
 
 
 def chinese_count(value: str) -> int | None:
@@ -260,6 +263,27 @@ def validate_narrative_consistency(data: dict[str, Any]) -> list[dict[str, objec
                 )
             )
     return diagnostics
+
+
+def validate_accelerated_review_inputs(
+    files: ProjectFiles,
+    project_root: Path,
+    data: dict[str, Any],
+) -> list[dict[str, object]]:
+    try:
+        premises = files.read_json(PREMISES_PATH)
+        repo_facts = files.read_json(REPO_FACTS_PATH)
+    except ProjectIOError as error:
+        return [diag(error.code, str(error), error.relative_path)]
+    if not isinstance(premises, dict) or not isinstance(repo_facts, dict):
+        return [diag("CLAIMS_INVALID", "premises and repo facts must be JSON objects")]
+    return validate_review_artifacts(
+        files,
+        project_root,
+        SUBJECT,
+        CLAIMS_PATH,
+        {"asis": data, "premises": premises, "repoFacts": repo_facts},
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -943,9 +967,36 @@ def validate_semantics(
             diagnostics, assessment["uncertaintyIds"], uncertainty_ids,
             "UNCERTAINTY_REF_UNKNOWN", "uncertaintyId",
         )
-        if assessment["status"] == "INSUFFICIENT_EVIDENCE" and not assessment["uncertaintyIds"]:
+        if assessment["status"] in {"RELEVANT_INSUFFICIENT_EVIDENCE", "BOUNDARY_DECLARED"} and not assessment["uncertaintyIds"]:
             diagnostics.append(
                 diag("TOPIC_UNCERTAINTY_REQUIRED", f"{assessment['topic']} requires an Uncertainty")
+            )
+        if assessment["status"] in {"RELEVANT_INVESTIGATED", "NOT_APPLICABLE"} and assessment["uncertaintyIds"]:
+            diagnostics.append(
+                diag("TOPIC_UNCERTAINTY_UNEXPECTED", f"{assessment['topic']} must not retain an Uncertainty")
+            )
+        linked = [
+            uncertainties[uncertainty_id]
+            for uncertainty_id in assessment["uncertaintyIds"]
+            if uncertainty_id in uncertainties
+        ]
+        if assessment["status"] == "RELEVANT_INSUFFICIENT_EVIDENCE" and any(
+            uncertainty["affectsEstimate"] is not True for uncertainty in linked
+        ):
+            diagnostics.append(
+                diag(
+                    "TOPIC_ESTIMATE_UNCERTAINTY_REQUIRED",
+                    f"{assessment['topic']} requires only affectsEstimate=true Uncertainties",
+                )
+            )
+        if assessment["status"] == "BOUNDARY_DECLARED" and any(
+            uncertainty["affectsEstimate"] is not False for uncertainty in linked
+        ):
+            diagnostics.append(
+                diag(
+                    "BOUNDARY_UNCERTAINTY_INVALID",
+                    f"{assessment['topic']} boundary requires only affectsEstimate=false Uncertainties",
+                )
             )
     assessments_by_topic = {
         entry["topic"]: set(entry["uncertaintyIds"])
@@ -1343,9 +1394,10 @@ def risk_summary_bytes(data: dict[str, Any], candidate_hash: str) -> bytes:
         "# As-Is 风险摘要\n\n"
         f"Candidate SHA-256: {candidate_hash}\n"
         f"Topic Count: {len(data['topicAssessments'])}\n"
-        f"ASSESSED Topics: {status_counts.get('ASSESSED', 0)}\n"
+        f"RELEVANT_INVESTIGATED Topics: {status_counts.get('RELEVANT_INVESTIGATED', 0)}\n"
+        f"BOUNDARY_DECLARED Topics: {status_counts.get('BOUNDARY_DECLARED', 0)}\n"
         f"NOT_APPLICABLE Topics: {status_counts.get('NOT_APPLICABLE', 0)}\n"
-        f"INSUFFICIENT_EVIDENCE Topics: {status_counts.get('INSUFFICIENT_EVIDENCE', 0)}\n"
+        f"RELEVANT_INSUFFICIENT_EVIDENCE Topics: {status_counts.get('RELEVANT_INSUFFICIENT_EVIDENCE', 0)}\n"
         f"Evidence Count: {len(data['evidence'])}\n"
         f"Estimate-affecting Uncertainties: {len(estimate_uncertainties)}\n"
     )
@@ -1452,9 +1504,11 @@ def context_packet_entry(
     assert manifest is not None and manifest_payload is not None
     if set(manifest) != {
         "algorithm",
+        "claimMetrics",
         "fragments",
         "inputArtifacts",
         "owner",
+        "ownerControl",
         "selectedEvidenceIds",
         "selectedTopicIds",
         "selectionRule",
@@ -1474,6 +1528,16 @@ def context_packet_entry(
         diagnostics.append(
             diag("CONTEXT_MANIFEST_INVALID", "context manifest owner is invalid", CONTEXT_MANIFEST_PATH)
         )
+    diagnostics.extend(
+        validate_manifest_controls(
+            files,
+            manifest,
+            owner=SUBJECT,
+            project_path=PROJECT_PATH,
+            claims_path=CLAIMS_PATH,
+            manifest_path=CONTEXT_MANIFEST_PATH,
+        )
+    )
     if manifest.get("inputArtifacts") != [input_entry(artifact) for artifact in inputs]:
         diagnostics.append(
             diag(
@@ -1709,6 +1773,10 @@ def main() -> int:
             diagnostics.extend(upstream_diagnostics)
             if not diagnostics:
                 diagnostics.extend(validate_semantics(data, feature_ids, requirement_ids))
+                if not diagnostics and args.mode == "review":
+                    diagnostics.extend(
+                        validate_accelerated_review_inputs(files, args.project_root, data)
+                    )
                 review_diagnostics, questionnaire = validate_review(
                     files,
                     data,

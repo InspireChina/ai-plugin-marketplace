@@ -1550,7 +1550,7 @@ def validate_receipt(
             "final validation report is not a successful report for the expected Owner",
         )
     receipt = report["compilationReceipt"]
-    if set(receipt) != {
+    required_receipt_fields = {
         "algorithm",
         "subject",
         "validatorContractVersion",
@@ -1558,6 +1558,10 @@ def validate_receipt(
         "inputs",
         "reviews",
         "outputs",
+    }
+    if set(receipt) not in {
+        frozenset(required_receipt_fields),
+        frozenset(required_receipt_fields | {"verifiedClaims"}),
     }:
         raise ReconcileError(
             "FINAL_RECEIPT_INVALID", spec.receipt, "final compilation receipt shape is invalid"
@@ -1576,9 +1580,38 @@ def validate_receipt(
     inputs = receipt["inputs"]
     reviews = receipt["reviews"]
     outputs = receipt["outputs"]
+    verified_claims = receipt.get("verifiedClaims", [])
     if not isinstance(inputs, list) or not isinstance(reviews, list) or not isinstance(outputs, list):
         raise ReconcileError(
             "FINAL_RECEIPT_INVALID", spec.receipt, "receipt artifact collections must be lists"
+        )
+    if not isinstance(verified_claims, list) or any(
+        not isinstance(entry, dict)
+        or set(entry)
+        != {
+            "claimId",
+            "textSha256",
+            "anchorPath",
+            "anchorSha256",
+            "verdict",
+            "verifiedBy",
+            "verifierModel",
+        }
+        or not isinstance(entry.get("claimId"), str)
+        or not isinstance(entry.get("anchorPath"), str)
+        or not isinstance(entry.get("verifiedBy"), str)
+        or not isinstance(entry.get("verifierModel"), str)
+        or entry.get("verdict") != "PASS"
+        or not isinstance(entry.get("textSha256"), str)
+        or not HASH_PATTERN.fullmatch(entry["textSha256"])
+        or not isinstance(entry.get("anchorSha256"), str)
+        or not HASH_PATTERN.fullmatch(entry["anchorSha256"])
+        for entry in verified_claims
+    ):
+        raise ReconcileError(
+            "FINAL_RECEIPT_INVALID",
+            spec.receipt,
+            "verifiedClaims entries are invalid",
         )
     for index, raw in enumerate(inputs):
         if not isinstance(raw, dict) or not isinstance(raw.get("kind"), str):

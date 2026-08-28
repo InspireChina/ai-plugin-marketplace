@@ -22,6 +22,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+from runtime.diagnostics import diagnostic as diag
+from runtime.controls import validate_manifest_controls
 from runtime.handoff import (
     Artifact,
     OwnerContract,
@@ -35,6 +37,7 @@ from runtime.handoff import (
     validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import validate_review_artifacts
 
 
 SUBJECT = "analyze-requirement"
@@ -53,7 +56,9 @@ CONTEXT_FRAGMENT_SPECS = (
     ("sourceIndex", ".ai-sow/work/analyze-requirement/context/source-index.json"),
     ("sourceDisposition", ".ai-sow/work/analyze-requirement/context/source-disposition.json"),
     ("questionnaire", ".ai-sow/work/analyze-requirement/context/questionnaire.json"),
+    ("claims", ".ai-sow/work/analyze-requirement/claims.json"),
 )
+CLAIMS_PATH = ".ai-sow/work/analyze-requirement/claims.json"
 CONTEXT_ALGORITHM = "ai-sow-analyze-requirement-context-v2"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-owner-reviewer-v1"
@@ -93,14 +98,8 @@ CONTRACT = OwnerContract(
     validation_path=VALIDATION_PATH,
     reviews=(("approvedReview", REVIEW_PATH),),
     outputs=(("requirements", STABLE_PATH),),
+    claims_path=CLAIMS_PATH,
 )
-
-
-def diag(code: str, message: str, path: str = "") -> dict[str, object]:
-    value: dict[str, object] = {"code": code, "message": message}
-    if path:
-        value["path"] = path
-    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -835,7 +834,7 @@ def context_packet_entry(
     if diagnostics:
         return None, diagnostics
     assert manifest is not None and manifest_payload is not None
-    if set(manifest) != {"algorithm", "fragments", "inputArtifacts", "owner"}:
+    if set(manifest) != {"algorithm", "claimMetrics", "fragments", "inputArtifacts", "owner", "ownerControl"}:
         diagnostics.append(
             diag(
                 "CONTEXT_MANIFEST_INVALID",
@@ -851,6 +850,16 @@ def context_packet_entry(
         diagnostics.append(
             diag("CONTEXT_MANIFEST_INVALID", "context manifest owner is invalid", CONTEXT_MANIFEST_PATH)
         )
+    diagnostics.extend(
+        validate_manifest_controls(
+            files,
+            manifest,
+            owner=SUBJECT,
+            project_path=PROJECT_PATH,
+            claims_path=CLAIMS_PATH,
+            manifest_path=CONTEXT_MANIFEST_PATH,
+        )
+    )
     if manifest.get("inputArtifacts") != [input_entry(artifact) for artifact in inputs]:
         diagnostics.append(
             diag("CONTEXT_INPUT_STALE", "context inputs do not match current Owner inputs", CONTEXT_MANIFEST_PATH)
@@ -1084,6 +1093,23 @@ def main() -> int:
             require_no_change=no_change,
             review_path=args.review_path,
         )
+        if (
+            not diagnostics
+            and data is not None
+            and args.mode == "review"
+        ):
+            source_disposition, local = load_source_disposition(files, data)
+            diagnostics.extend(local)
+            if source_disposition is not None and not diagnostics:
+                diagnostics.extend(
+                    validate_review_artifacts(
+                        files,
+                        args.project_root,
+                        SUBJECT,
+                        CLAIMS_PATH,
+                        {"requirements": data, "sourceDisposition": source_disposition},
+                    )
+                )
         if not diagnostics and no_change and payload is not None:
             try:
                 validate_no_change_candidate(

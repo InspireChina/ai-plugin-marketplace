@@ -110,7 +110,8 @@ def verify_existing_project(
     openpyxl: Any,
 ) -> None:
     existing = validate_project(files.read_json(PROJECT_PATH), validator)
-    if existing != requested:
+    identity_fields = ("projectId", "name", "pluginVersion", "sowStandardVersion")
+    if {key: existing[key] for key in identity_fields} != requested:
         raise BlockedError("已登记项目身份或版本与本次请求不一致")
     for relative_path in MANAGED_DIRECTORIES:
         try:

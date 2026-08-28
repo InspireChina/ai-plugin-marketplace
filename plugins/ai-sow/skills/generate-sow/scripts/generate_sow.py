@@ -34,6 +34,7 @@ from runtime.handoff import (
     sha256_bytes,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.controls import valid_owner_controls
 from workbook import write_workbook
 
 
@@ -86,7 +87,7 @@ REQUIREMENT_CONTRACT = OwnerContract(
 )
 ASIS_CONTRACT = OwnerContract(
     subject="analyze-as-is",
-    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.1",),
+    contract_ids=("urn:ai-sow:analyze-as-is:asis:0.2",),
     validation_path=VALIDATION_PATHS["analyzeAsIs"],
     reviews=(("approvedReview", REVIEW_PATHS["analyzeAsIs"]),),
     outputs=(("asIs", DATA_PATHS["asis"]),),
@@ -106,7 +107,7 @@ DESIGN_CONTRACT = OwnerContract(
 )
 STORY_CONTRACT = OwnerContract(
     subject="generate-story",
-    contract_ids=("urn:ai-sow:generate-story:delivery:0.2",),
+    contract_ids=("urn:ai-sow:generate-story:delivery:0.4",),
     validation_path=VALIDATION_PATHS["generateStory"],
     reviews=(("approvedReview", REVIEW_PATHS["generateStory"]),),
     outputs=(("delivery", DATA_PATHS["delivery"]),),
@@ -293,8 +294,10 @@ def load_object(files: ProjectFiles, path: str) -> dict[str, Any]:
 
 
 def validate_project(project: dict[str, Any]) -> None:
-    if set(project) != {"projectId", "name", "pluginVersion", "sowStandardVersion"}:
-        raise GenerationError("PROJECT_SCHEMA_INVALID", "project metadata must contain exactly four fields", PROJECT_PATH)
+    if not set(project).issubset({"projectId", "name", "pluginVersion", "sowStandardVersion", "ownerControls"}) or not {
+        "projectId", "name", "pluginVersion", "sowStandardVersion"
+    }.issubset(project):
+        raise GenerationError("PROJECT_SCHEMA_INVALID", "project metadata has unsupported fields", PROJECT_PATH)
     if (
         not isinstance(project["projectId"], str)
         or re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)+", project["projectId"]) is None
@@ -302,6 +305,7 @@ def validate_project(project: dict[str, Any]) -> None:
         or not project["name"]
         or project["pluginVersion"] != PLUGIN_VERSION
         or project["sowStandardVersion"] != "1.3"
+        or not valid_owner_controls(project)
     ):
         raise GenerationError(
             "PROJECT_SCHEMA_INVALID",

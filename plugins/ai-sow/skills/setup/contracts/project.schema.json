@@ -8,6 +8,25 @@
     "id": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"
+    },
+    "ownerControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "investigationMode": {
+          "enum": ["hypothesis", "exhaustive"],
+          "description": "hypothesis 只深挖会改变估算的前提；尽调场景显式使用 exhaustive。"
+        },
+        "reviewDepth": {
+          "enum": ["mechanical", "factual", "full"],
+          "description": "当前 Owner 的评审深度；机械门禁始终运行。"
+        },
+        "tokenBudget": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "当前 Owner 单次调用的 token 上限；达到时输出覆盖率和剩余 claim 后停止。"
+        }
+      }
     }
   },
   "properties": {
@@ -29,6 +48,18 @@
       "type": "string",
       "const": "1.3",
       "description": "项目采用的 SOW 标准版本，用于绑定模板与交付规则；不保存插件实现版本。"
+    },
+    "ownerControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "analyze-requirement": {"$ref": "#/$defs/ownerControl"},
+        "analyze-as-is": {"$ref": "#/$defs/ownerControl"},
+        "generate-design": {"$ref": "#/$defs/ownerControl"},
+        "generate-story": {"$ref": "#/$defs/ownerControl"},
+        "generate-task": {"$ref": "#/$defs/ownerControl"}
+      },
+      "description": "可选的逐 Owner 成本、调查模式和评审深度控制；省略时使用插件默认值。"
     }
   }
 }

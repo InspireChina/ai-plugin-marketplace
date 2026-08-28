@@ -114,6 +114,71 @@ def test_publish_owner_writes_named_receipt_last_and_match_accepts_it(tmp_path: 
     assert match_owner(files, CONTRACT, inputs).ok is True
 
 
+def test_publish_owner_persists_hash_bound_verified_claim_cache(tmp_path: Path) -> None:
+    files, inputs = prepare_project(tmp_path)
+    contract = OwnerContract(
+        subject=CONTRACT.subject,
+        contract_ids=CONTRACT.contract_ids,
+        validation_path=CONTRACT.validation_path,
+        reviews=CONTRACT.reviews,
+        outputs=CONTRACT.outputs,
+        claims_path=".ai-sow/work/sample-owner/claims.json",
+    )
+    anchor_sha = sha256_bytes(files.read_bytes(".ai-sow/project.json"))
+    text = "项目身份已登记。"
+    files.write_atomic(
+        contract.claims_path,
+        canonical_json_bytes(
+            {
+                "algorithm": "ai-sow-review-claims-v1",
+                "owner": "sample-owner",
+                "claims": [
+                    {
+                        "claimId": "claim-0123456789abcdef",
+                        "ownerField": "/result/summary",
+                        "text": text,
+                        "anchors": [
+                            {
+                                "path": ".ai-sow/project.json",
+                                "anchorSha256": anchor_sha,
+                            }
+                        ],
+                        "kind": "FACTUAL",
+                        "confidence": "HIGH",
+                        "verification": {
+                            "verdict": "PASS",
+                            "lineReference": ".ai-sow/project.json:1",
+                            "anchorSha256": anchor_sha,
+                            "verifiedBy": "claim-verifier",
+                            "verifierModel": "gpt-5.6-luna/low",
+                        },
+                    }
+                ],
+            }
+        ),
+    )
+
+    report = publish_owner(
+        files,
+        contract,
+        inputs,
+        {"result": canonical_json_bytes({"summary": text})},
+    )
+
+    assert report["compilationReceipt"]["verifiedClaims"] == [
+        {
+            "claimId": "claim-0123456789abcdef",
+            "textSha256": sha256_bytes(text.encode("utf-8")),
+            "anchorPath": ".ai-sow/project.json",
+            "anchorSha256": anchor_sha,
+            "verdict": "PASS",
+            "verifiedBy": "claim-verifier",
+            "verifierModel": "gpt-5.6-luna/low",
+        }
+    ]
+    assert match_owner(files, contract, inputs).ok is True
+
+
 def test_identical_publication_reuses_report_bytes(tmp_path: Path) -> None:
     files, inputs = prepare_project(tmp_path)
     candidate = canonical_json_bytes({"result": "same"})

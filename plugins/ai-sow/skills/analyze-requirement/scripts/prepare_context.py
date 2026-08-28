@@ -23,7 +23,10 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.handoff import canonical_json_bytes, sha256_bytes
+from runtime.claims import build_claims, claim_metrics, validate_claims
+from runtime.controls import owner_control
 from runtime.project_io import ProjectFiles, ProjectIOError
+from runtime.review_checks import cached_verified_claims, existing_claims
 
 
 CANDIDATE_PATH = ".ai-sow/work/analyze-requirement/requirements.candidate.json"
@@ -120,6 +123,25 @@ def main() -> int:
 
         assert isinstance(candidate, dict)
         assert source_disposition is not None
+        previous_verified = cached_verified_claims(
+            files,
+            requirement_validator.CLAIMS_PATH,
+            requirement_validator.VALIDATION_PATH,
+        )
+        claims = build_claims(
+            requirement_validator.SUBJECT,
+            (("requirements", candidate), ("sourceDisposition", source_disposition)),
+            project_root=args.project_root,
+            previous_verified=previous_verified,
+            previous_claims=existing_claims(files, requirement_validator.CLAIMS_PATH),
+        )
+        claim_diagnostics = validate_claims(
+            claims,
+            requirement_validator.SUBJECT,
+            {"requirements": candidate, "sourceDisposition": source_disposition},
+        )
+        if claim_diagnostics:
+            raise ValueError(f"claims.json is invalid: {claim_diagnostics}")
         fragments: dict[str, object] = {
             "sourceIndex": {
                 "normalizedItems": candidate["normalizedItems"],
@@ -130,6 +152,7 @@ def main() -> int:
                 "declaration": questionnaire_declaration,
                 "records": records,
             },
+            "claims": claims,
         }
         fragment_entries: list[dict[str, object]] = []
         for name, path in requirement_validator.CONTEXT_FRAGMENT_SPECS:
@@ -148,6 +171,11 @@ def main() -> int:
             "fragments": fragment_entries,
             "inputArtifacts": [requirement_validator.input_entry(artifact) for artifact in inputs],
             "owner": requirement_validator.SUBJECT,
+            "ownerControl": owner_control(
+                files.read_json(requirement_validator.PROJECT_PATH),
+                requirement_validator.SUBJECT,
+            ),
+            "claimMetrics": claim_metrics(claims),
         }
         files.write_atomic(MANIFEST_PATH, canonical_json_bytes(manifest))
         print(

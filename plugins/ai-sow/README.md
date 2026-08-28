@@ -65,6 +65,13 @@ setup 在 macOS/Linux 实际调用 `bootstrap.sh`，在 Windows 调用 `bootstra
 明确批准后，再保存供下一阶段使用的正式结果。下游发现问题时，应回到负责该结论的阶段
 修改，不能直接改最终工作簿来掩盖问题。
 
+默认流程会优先用脚本完成数量、绝对化表述、隐私、重复事实和引用闭包检查，再按 claim 的
+anchor 与判断难度选择评审模型。Claude 使用 Haiku 4.5 / Sonnet 5 / Opus，Codex 使用
+`gpt-5.6-luna` / `gpt-5.6-terra` / `gpt-5.6-sol` 的对应层级；深度设计与完备性判断不会降级。
+需要控制尽调范围、评审深度或单阶段 token 上限时，可在 `.ai-sow/project.json` 的可选
+`ownerControls` 中逐 Owner 配置 `investigationMode`、`reviewDepth` 与 `tokenBudget`。达到预算后
+插件会报告已核验数量与剩余 claim，不会把未核验项当作通过。
+
 ### 开始前要准备什么
 
 最少需要稳定的项目 ID、项目名称和业务需求材料。对于既有系统改造，建议同时准备：

@@ -4,6 +4,18 @@
 
 ## 0.1.0 - 未发布
 
+- 按 Windows 全流程 E2E 的 26 条真实 findings 落地评审降本方案：新增 premises、确定性 repo facts、
+  claims 分片与 hash 缓存、数量/绝对化/隐私门禁、唯一事实源、字段级 patch 与引用闭包、机械内循环、
+  diff-review 以及逐 Owner 成本控制。保留原 Claude Haiku 4.5 / Sonnet 5 / Opus 路由，并增加 Codex
+  `gpt-5.6-luna` / `gpt-5.6-terra` / `gpt-5.6-sol` 映射与 10% 假阴性抽检升级规则。
+- Delivery 合同升级为 0.4，移除中间 Gap 实体：Story 直接引用 Feature，AC 保存相对 Effective Start
+  的 `gapRationale` 与逐条 `carryForwardCommitmentIds`；Task 新增 Story→AC→Feature 可达性门禁，
+  工作簿保持直接按 Story.featureId 投影；当前自测版本不提供旧 Delivery 的兼容迁移。
+- As-Is 合同升级为 0.2，把 Topic 结论拆为已调查、证据不足、边界声明和不适用四态，并绑定对应
+  Uncertainty/估算影响规则；新增九类按需仓库事实预投影与 26 条 Windows E2E 黄金回归夹具。
+- 插件作为单一安装包共享 Owner-agnostic review runtime；各 Skill 继续独占稳定业务 Schema、专业
+  renderer 与数据所有权，独立复制插件的 smoke 边界不变。
+
 - 修复 Excel 2016/2019 打开生成工作簿时 `03-SOW主表` 的“验收条件”和“任务明细”为空：
   两列改用兼容旧版 Excel 的 `TEXTJOIN + IF` CSE 数组公式，并统一为每条内容添加项目符号。
   五张受保护业务表继续锁定公式与关系派生单元格及单元格格式，但允许用户编辑白色输入单元格、

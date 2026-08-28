@@ -13,15 +13,15 @@
     "excludedAreas": ["旧版账单批处理"]
   },
   "topicAssessments": [
-    {"topic": "SYSTEM_CONTEXT", "status": "ASSESSED", "summary": "Customer API（客户接口）的边界和负责人已明确。", "uncertaintyIds": []},
-    {"topic": "CAPABILITY", "status": "ASSESSED", "summary": "当前客户能力与往期承诺的客户能力已核对。", "uncertaintyIds": []},
-    {"topic": "APPLICATION", "status": "ASSESSED", "summary": "当前 Customer API（客户接口）组件已通过代码验证。", "uncertaintyIds": []},
-    {"topic": "INTEGRATION", "status": "NOT_APPLICABLE", "summary": "范围内不存在集成。", "uncertaintyIds": []},
-    {"topic": "DATA", "status": "INSUFFICIENT_EVIDENCE", "summary": "现有仓库无法确认数据保留行为。", "uncertaintyIds": ["uncertainty-data-retention"]},
-    {"topic": "PLATFORM", "status": "ASSESSED", "summary": "当前服务部署边界已记录。", "uncertaintyIds": []},
-    {"topic": "SECURITY_COMPLIANCE", "status": "ASSESSED", "summary": "现有访问控制边界已评审。", "uncertaintyIds": []},
-    {"topic": "OPERATIONS_QUALITY", "status": "ASSESSED", "summary": "当前运维信号和差距已评估。", "uncertaintyIds": []},
-    {"topic": "DELIVERY_CONSTRAINTS", "status": "ASSESSED", "summary": "延续承诺仍属于交付范围。", "uncertaintyIds": []}
+    {"topic": "SYSTEM_CONTEXT", "status": "RELEVANT_INVESTIGATED", "summary": "Customer API（客户接口）的边界和负责人已明确。", "uncertaintyIds": []},
+    {"topic": "CAPABILITY", "status": "RELEVANT_INVESTIGATED", "summary": "当前客户能力与往期承诺的客户能力已核对。", "uncertaintyIds": []},
+    {"topic": "APPLICATION", "status": "RELEVANT_INVESTIGATED", "summary": "当前 Customer API（客户接口）组件已通过代码验证。", "uncertaintyIds": []},
+    {"topic": "INTEGRATION", "status": "NOT_APPLICABLE", "summary": "本次调查范围内未登记适用集成。", "uncertaintyIds": []},
+    {"topic": "DATA", "status": "RELEVANT_INSUFFICIENT_EVIDENCE", "summary": "现有仓库无法确认数据保留行为。", "uncertaintyIds": ["uncertainty-data-retention"]},
+    {"topic": "PLATFORM", "status": "RELEVANT_INVESTIGATED", "summary": "当前服务部署边界已记录。", "uncertaintyIds": []},
+    {"topic": "SECURITY_COMPLIANCE", "status": "RELEVANT_INVESTIGATED", "summary": "现有访问控制边界已评审。", "uncertaintyIds": []},
+    {"topic": "OPERATIONS_QUALITY", "status": "RELEVANT_INVESTIGATED", "summary": "当前运维信号和差距已评估。", "uncertaintyIds": []},
+    {"topic": "DELIVERY_CONSTRAINTS", "status": "RELEVANT_INVESTIGATED", "summary": "延续承诺仍属于交付范围。", "uncertaintyIds": []}
   ],
   "items": [
     {
