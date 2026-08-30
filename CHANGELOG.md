@@ -39,6 +39,10 @@
 - 修复 Story 离线评审的 Integration 表遗漏：renderer 现在逐行投影 `deliveryBoundary` 与
   `targetKind`，让 Reviewer 无需回读 candidate 即可核对 `END_TO_END / PORT_ONLY` 及目标类型；
   新增回归测试锁定表头和实际字段值。
+- 修复字段级 patch 的引用闭包误扩散：当前 Owner 不拥有的 Feature、Decision、Commitment 等
+  外部 ID 不再作为遍历枢纽把无关对象串入 `syncSuspects`。`PATCH_CLOSURE_UNSYNCED` 现在明确返回
+  候选未写入、精确确认字段、允许重试且不消耗成功 patch 轮次；共享合同规定逐项确认格式与一次
+  原子拒绝后的修正重试，避免 Stage 在实际未应用修复时提前 `BLOCKED`。
 - 发布者标识统一为 `Inspire`：Codex manifest 的 `author.name` 与 `interface.developerName`、
   Claude manifest 的 `author.name`、Claude marketplace 的 `owner.name`，以及根目录和插件目录
   `NOTICE` 的版权声明。`scripts/validate_repository.py` 新增 `validate_publisher_identity`

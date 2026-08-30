@@ -23,7 +23,22 @@ Stage 在创建任何 Reviewer 前，自行循环运行公开的 renderer、`pre
 
 Reviewer finding 的修复使用 Owner-local `scripts/apply_patch.py`。patch 采用 JSON Pointer 的 `replace`、`add` 或 `remove`，每条 operation 带 `findingId`；禁止直接自由编辑 candidate 或整段重写。
 
-脚本比较 patch 前后字节并计算引用传递闭包；有稳定 ID 的对象以 ID 标识，没有稳定 ID 但持有引用的对象以 `@<JSON Pointer>` 标识。声明外变化触发 `PATCH_FREEFORM_EDIT_DETECTED`；闭包内未修改且未明确确认的对象触发 `PATCH_CLOSURE_UNSYNCED`。修复后的复审由新的轻量 Reviewer 执行，只读取 patch diff、影响闭包和闭包字段原文，不加载仓库或 round-1 历史。
+patch 的固定结构如下；`acknowledgedClosureIds` 只能逐项列出已阅读且确认无需同步修改的当前 Owner 对象 ID，匿名对象使用 `@<JSON Pointer>`，不得使用通配符或 `ALL`：
+
+```json
+{
+  "operations": [
+    {"op": "replace", "path": "/items/0/summary", "value": "修复后的值", "findingId": "F-1"}
+  ],
+  "acknowledgedClosureIds": ["coverage-one", "@/anonymous-boundary"]
+}
+```
+
+脚本比较 patch 前后字节并计算当前 Owner 文档内的引用传递闭包；上游 Feature、Decision、Commitment 等非本阶段所有的外部 ID 只作为叶子引用，不得充当连接两个 Owner 对象的遍历枢纽。有稳定 ID 的对象以 ID 标识，没有稳定 ID 但持有引用的对象以 `@<JSON Pointer>` 标识。声明外变化触发 `PATCH_FREEFORM_EDIT_DETECTED`；闭包内未修改且未明确确认的对象触发 `PATCH_CLOSURE_UNSYNCED`。
+
+`PATCH_CLOSURE_UNSYNCED` 是原子拒绝：脚本不写 candidate 或 audit，诊断返回 `candidateUpdated: false`、`retryAllowed: true`、`consumesPatchRound: false` 和确认字段名。一次 patch 轮次只在脚本返回 `OK`、候选实际更新时才消耗。只要 base/candidate 仍与 round-1 packet 原字节绑定、finding ID 未变化且没有扩大语义范围，Stage 必须按 `syncSuspects` 逐项修改或确认后重试一次；该修正重试不是新的 Reviewer 修复轮。修正后的命令再次被原子拒绝时才返回 `BLOCKED`。
+
+修复后的复审由新的轻量 Reviewer 执行，只读取 patch diff、影响闭包和闭包字段原文，不加载仓库或 round-1 历史。
 
 ## 已验证断言复用
 

@@ -86,7 +86,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
      --audit .ai-sow/work/generate-story/patch-audit.json
    ```
 
-   `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才整体重跑 renderer/`review` 并形成新 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整上游或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical work-only sidecar：
+   patch 顶层使用 `operations` 和 `acknowledgedClosureIds`；后者必须逐项列出已阅读且确认无需同步修改的 `syncSuspects`，不得使用通配符。`PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。该拒绝不写 candidate/audit，也不消耗一次成功 patch 轮次；candidate 仍与 round-1 packet 原字节绑定、finding ID 不变且语义范围未扩大时，按诊断补齐修改或确认并重试一次，第二次仍拒绝才 `BLOCKED`。只有脚本返回 `OK` 才整体重跑 renderer/`review` 并形成新 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整上游或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical work-only sidecar：
 
    ```json
    {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"generate-story","packetSha256":"<packet-sha256>"}

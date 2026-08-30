@@ -12,7 +12,7 @@ if str(PLUGIN_ROOT) not in sys.path:
 from runtime.claims import build_claims, claim_metrics, validate_claims
 from runtime.diagnostics import diagnostic_codes
 from runtime.fact_source import validate_unique_fact_sources
-from runtime.patch import apply_operations, validate_patch_audit
+from runtime.patch import apply_operations, patch_audit, validate_patch_audit
 from runtime.text_gates import validate_text_gates
 
 
@@ -99,6 +99,80 @@ def test_patch_detects_freeform_edits_and_unsynchronised_references() -> None:
     assert "PATCH_FREEFORM_EDIT_DETECTED" in diagnostic_codes(
         validate_patch_audit(before, freeform, patch)
     )
+
+
+def test_patch_closure_does_not_bridge_through_external_ids() -> None:
+    before = {
+        "stories": [
+            {"storyId": "story-one", "featureId": "feature-one"},
+            {"storyId": "story-two", "featureId": "feature-two"},
+        ],
+        "acceptanceCriteria": [
+            {
+                "acceptanceCriterionId": "ac-one",
+                "storyId": "story-one",
+                "approvalDecisionIds": ["decision-shared"],
+            },
+            {
+                "acceptanceCriterionId": "ac-two",
+                "storyId": "story-two",
+                "approvalDecisionIds": ["decision-shared"],
+            },
+        ],
+    }
+    patch = {
+        "operations": [
+            {
+                "op": "add",
+                "path": "/acceptanceCriteria/-",
+                "findingId": "F-1",
+                "value": {
+                    "acceptanceCriterionId": "ac-new",
+                    "storyId": "story-one",
+                    "approvalDecisionIds": ["decision-shared"],
+                },
+            }
+        ],
+        "acknowledgedClosureIds": [],
+    }
+    after = apply_operations(before, patch["operations"])
+
+    audit = patch_audit(before, after, patch)
+
+    assert audit["changedIds"] == ["ac-new"]
+    assert audit["closureIds"] == ["ac-new", "ac-one", "story-one"]
+    assert audit["syncSuspects"] == ["ac-one", "story-one"]
+
+
+def test_patch_closure_diagnostic_exposes_atomic_retry_contract() -> None:
+    before = {
+        "items": [{"itemId": "item-source", "summary": "旧事实"}],
+        "coverage": [
+            {"coverageId": "coverage-one", "itemIds": ["item-source"]}
+        ],
+    }
+    patch = {
+        "operations": [
+            {
+                "op": "replace",
+                "path": "/items/0/summary",
+                "value": "新事实",
+                "findingId": "F-1",
+            }
+        ],
+        "acknowledgedClosureIds": [],
+    }
+    after = apply_operations(before, patch["operations"])
+
+    diagnostics = validate_patch_audit(before, after, patch)
+    closure_diagnostic = next(
+        item for item in diagnostics if item["code"] == "PATCH_CLOSURE_UNSYNCED"
+    )
+
+    assert closure_diagnostic["acknowledgementField"] == "acknowledgedClosureIds"
+    assert closure_diagnostic["candidateUpdated"] is False
+    assert closure_diagnostic["retryAllowed"] is True
+    assert closure_diagnostic["consumesPatchRound"] is False
 
 
 def test_claim_projection_is_deterministic_and_source_bound(tmp_path: Path) -> None:

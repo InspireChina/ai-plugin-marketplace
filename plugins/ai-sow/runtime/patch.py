@@ -141,6 +141,7 @@ def _object_registry(value: object, path: str = "") -> tuple[dict[str, str], dic
 
 def reference_closure(document: object, changed: Iterable[str]) -> tuple[set[str], dict[str, str]]:
     paths, refs = _object_registry(document)
+    owned_ids = set(paths)
     reverse: dict[str, set[str]] = defaultdict(set)
     for owner, targets in refs.items():
         for target in targets:
@@ -150,7 +151,7 @@ def reference_closure(document: object, changed: Iterable[str]) -> tuple[set[str
     while queue:
         current = queue.popleft()
         for related in refs.get(current, set()) | reverse.get(current, set()):
-            if related not in closure:
+            if related in owned_ids and related not in closure:
                 closure.add(related)
                 queue.append(related)
     return closure, paths
@@ -227,6 +228,10 @@ def validate_patch_audit(
                 "PATCH_CLOSURE_UNSYNCED",
                 "referencing objects require explicit patch or acknowledgement; anonymous objects use @<JSON Pointer>",
                 syncSuspects=audit["syncSuspects"],
+                acknowledgementField="acknowledgedClosureIds",
+                candidateUpdated=False,
+                retryAllowed=True,
+                consumesPatchRound=False,
             )
         )
     return diagnostics
@@ -257,5 +262,17 @@ def run_patch_cli(owner: str, default_candidate: str) -> int:
     except (ProjectIOError, OSError, UnicodeError, json.JSONDecodeError, ValueError, KeyError, IndexError) as exc:
         diagnostics.append(diagnostic("PATCH_INVALID", str(exc)))
     outcome = "OK" if not diagnostics else "BLOCKED"
-    print(json.dumps({"outcome": outcome, "owner": owner, "diagnostics": diagnostics}, ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "outcome": outcome,
+                "owner": owner,
+                "candidateUpdated": not diagnostics,
+                "auditUpdated": not diagnostics,
+                "diagnostics": diagnostics,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
     return 0 if not diagnostics else 2

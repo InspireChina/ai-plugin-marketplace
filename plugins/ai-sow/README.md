@@ -68,6 +68,9 @@ setup 在 macOS/Linux 实际调用 `bootstrap.sh`，在 Windows 调用 `bootstra
 默认流程会优先用脚本完成数量、绝对化表述、隐私、重复事实和引用闭包检查，再按 claim 的
 anchor 与判断难度选择评审模型。Claude 使用 Haiku 4.5 / Sonnet 5 / Opus，Codex 使用
 `gpt-5.6-luna` / `gpt-5.6-terra` / `gpt-5.6-sol` 的对应层级；深度设计与完备性判断不会降级。
+Reviewer finding 的字段级修复只遍历当前 Owner 拥有的对象；上游外部 ID 不会把无关对象串入
+闭包。闭包尚未逐项修改或确认时 patch 会原子拒绝且不消耗成功修复轮次，插件会按诊断补齐精确
+确认后重试，不会因为一次未写入候选的校验失败提前结束阶段。
 需要控制尽调范围、评审深度或单阶段 token 上限时，可在 `.ai-sow/project.json` 的可选
 `ownerControls` 中逐 Owner 配置 `investigationMode`、`reviewDepth` 与 `tokenBudget`。达到预算后
 插件会报告已核验数量与剩余 claim，不会把未核验项当作通过。
