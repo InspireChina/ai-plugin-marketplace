@@ -5,6 +5,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 
 SKILL_ROOT = Path(__file__).parents[1]
 PLUGIN_ROOT = SKILL_ROOT.parents[1]
@@ -14,6 +16,7 @@ if str(PLUGIN_ROOT) not in sys.path:
 
 from runtime.diagnostics import diagnostic_codes
 from runtime.fact_source import validate_unique_fact_sources
+from runtime.patch import apply_operations, validate_patch_audit
 from runtime.text_gates import validate_text_gates
 
 
@@ -58,6 +61,40 @@ def test_c_findings_are_caught_by_unique_fact_source_gate() -> None:
             ]
         )
         assert "DUPLICATE_FACT_STATEMENT" in diagnostic_codes(diagnostics), case["findingId"]
+
+
+def _set_pointer(document: object, pointer: str, value: object) -> None:
+    tokens = [token for token in pointer.split("/") if token]
+    node = document
+    for token in tokens[:-1]:
+        node = node[int(token)] if isinstance(node, list) else node[token]  # type: ignore[index]
+    last = tokens[-1]
+    if isinstance(node, list):
+        node[int(last)] = value
+    else:
+        node[last] = value  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [case for case in findings() if case["category"] == "B"],
+    ids=lambda case: str(case["findingId"]),
+)
+def test_b_findings_are_caught_by_patch_audit(case: dict[str, object]) -> None:
+    before = case["before"]
+    operations = case["operations"]
+    assert isinstance(operations, list)
+    patch = {
+        "operations": operations,
+        "acknowledgedClosureIds": case["acknowledgedClosureIds"],
+    }
+    after = apply_operations(before, operations)
+    if case["expectedCode"] == "PATCH_FREEFORM_EDIT_DETECTED":
+        _set_pointer(after, str(case["path"]), case["freeformValue"])
+
+    diagnostics = validate_patch_audit(before, after, patch)
+
+    assert str(case["expectedCode"]) in diagnostic_codes(diagnostics), case["findingId"]
 
 
 def test_d_findings_remain_reserved_for_deep_judgment_review() -> None:

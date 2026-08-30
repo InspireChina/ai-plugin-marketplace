@@ -1006,6 +1006,36 @@ def test_rejects_cross_feature_capability_without_producing_story(tmp_path: Path
     assert "CROSS_FEATURE_CAPABILITY_UNDECLARED" in codes(result)
 
 
+def test_rejects_identical_ac_results_owned_by_different_features(
+    tmp_path: Path,
+) -> None:
+    prepare(tmp_path)
+
+    def duplicate_result_across_features(value: dict[str, object]) -> None:
+        criteria = value["acceptanceCriteria"]  # type: ignore[index]
+        criteria[1]["name"] = criteria[0]["name"]
+
+    mutate(
+        tmp_path,
+        ".ai-sow/work/generate-story/delivery.candidate.json",
+        duplicate_result_across_features,
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "FEATURE_OVERLAP_SUSPECTED" in codes(result)
+    diagnostic = next(
+        item
+        for item in result_payload(result)["diagnostics"]  # type: ignore[index]
+        if item["code"] == "FEATURE_OVERLAP_SUSPECTED"
+    )
+    assert diagnostic["featureIds"] == [
+        "feature-customer-profile",
+        "feature-profile-api",
+    ]
+
+
 def test_rejects_integration_boundary_mismatch(tmp_path: Path) -> None:
     prepare(tmp_path)
     mutate(tmp_path, ".ai-sow/work/generate-story/delivery.candidate.json", lambda value: value["integrations"][0].update({"deliveryBoundary": "PORT_ONLY"}))

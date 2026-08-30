@@ -110,15 +110,21 @@ def _object_registry(value: object, path: str = "") -> tuple[dict[str, str], dic
             ),
             None,
         )
-        if primary:
-            paths[primary] = path or "/"
-            for child in value.values():
-                if isinstance(child, str) and child != primary and STABLE_ID_PATTERN.fullmatch(child):
-                    refs[primary].add(child)
-                elif isinstance(child, list):
-                    refs[primary].update(
-                        item for item in child if isinstance(item, str) and STABLE_ID_PATTERN.fullmatch(item)
-                    )
+        direct_refs: set[str] = set()
+        for key, child in value.items():
+            if key.endswith("Id") and isinstance(child, str) and child != primary:
+                if STABLE_ID_PATTERN.fullmatch(child):
+                    direct_refs.add(child)
+            elif key.endswith("Ids") and isinstance(child, list):
+                direct_refs.update(
+                    item
+                    for item in child
+                    if isinstance(item, str) and STABLE_ID_PATTERN.fullmatch(item)
+                )
+        identity = primary or (f"@{path or '/'}" if direct_refs else None)
+        if identity:
+            paths[identity] = path or "/"
+            refs[identity].update(direct_refs)
         for key, child in value.items():
             child_paths, child_refs = _object_registry(child, f"{path}/{key}")
             paths.update(child_paths)
@@ -219,7 +225,7 @@ def validate_patch_audit(
         diagnostics.append(
             diagnostic(
                 "PATCH_CLOSURE_UNSYNCED",
-                "referencing objects require explicit patch or acknowledgement",
+                "referencing objects require explicit patch or acknowledgement; anonymous objects use @<JSON Pointer>",
                 syncSuspects=audit["syncSuspects"],
             )
         )

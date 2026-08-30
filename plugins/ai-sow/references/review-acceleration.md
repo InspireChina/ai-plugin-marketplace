@@ -23,7 +23,7 @@ Stage 在创建任何 Reviewer 前，自行循环运行公开的 renderer、`pre
 
 Reviewer finding 的修复使用 Owner-local `scripts/apply_patch.py`。patch 采用 JSON Pointer 的 `replace`、`add` 或 `remove`，每条 operation 带 `findingId`；禁止直接自由编辑 candidate 或整段重写。
 
-脚本比较 patch 前后字节并计算稳定 ID 的引用传递闭包：声明外变化触发 `PATCH_FREEFORM_EDIT_DETECTED`；闭包内未修改且未明确确认的对象触发 `PATCH_CLOSURE_UNSYNCED`。修复后的复审由新的轻量 Reviewer 执行，只读取 patch diff、影响闭包和闭包字段原文，不加载仓库或 round-1 历史。
+脚本比较 patch 前后字节并计算引用传递闭包；有稳定 ID 的对象以 ID 标识，没有稳定 ID 但持有引用的对象以 `@<JSON Pointer>` 标识。声明外变化触发 `PATCH_FREEFORM_EDIT_DETECTED`；闭包内未修改且未明确确认的对象触发 `PATCH_CLOSURE_UNSYNCED`。修复后的复审由新的轻量 Reviewer 执行，只读取 patch diff、影响闭包和闭包字段原文，不加载仓库或 round-1 历史。
 
 ## 已验证断言复用
 

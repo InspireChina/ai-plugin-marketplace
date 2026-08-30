@@ -1194,7 +1194,7 @@ def test_rebind_rejects_changed_stable_output_bytes(tmp_path: Path) -> None:
 def test_skill_defines_review_candidate_publish_stop_flow() -> None:
     contract = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     for required in (
-        "全新 Reviewer Agent",
+        "完整 Reviewer Agent",
         "prepare_context.py",
         "render_review.py",
         "--mode review",
@@ -1205,7 +1205,10 @@ def test_skill_defines_review_candidate_publish_stop_flow() -> None:
         "review-packet.json",
         "approval.json",
         "不继承当前完整聊天",
-        "一次整体修复",
+        "scripts/apply_patch.py",
+        "patch-audit.json",
+        "轻量 fresh-context Reviewer",
+        "不加载完整来源或 round-1 历史",
         "requirements.candidate.json",
         "推荐用户显式调用 `generate-story`",
         "然后停止",
@@ -1226,6 +1229,7 @@ def test_skill_defines_review_candidate_publish_stop_flow() -> None:
         "可独立验收的非重叠结果",
     ):
         assert required in contract
+    assert "一次整体修复" not in contract
     for forbidden in ("Worker", "Validator", "Orchestrator"):
         assert forbidden not in contract
     assert "当前 Stage 是本 Skill 的唯一用户接口" in contract

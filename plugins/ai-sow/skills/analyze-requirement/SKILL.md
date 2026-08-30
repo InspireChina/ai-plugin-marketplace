@@ -42,9 +42,20 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 ## 当前任务与 Reviewer
 
-- 当前 Stage Agent 就是当前宿主 task，也是本 Skill 的唯一用户接口：直接与用户协作，完成来源登记、业务分析、问卷关闭、candidate、确定性 review 投影、机械校验和最多一次整体修复。不要为 Stage 工作另派 Agent。
+- 当前 Stage Agent 就是当前宿主 task，也是本 Skill 的唯一用户接口：直接与用户协作，完成来源登记、业务分析、问卷关闭、candidate、确定性 review 投影、机械校验和最多一次字段级 finding 修复。不要为 Stage 工作另派 Agent。
 - 只有 candidate 通过机械校验并形成 hash-bound `review-packet.json` 后，才创建一个 fresh Reviewer Agent。Reviewer 不继承当前完整聊天，只读取 packet、其中绑定的 candidate、context、review、risk summary 和项目内来源；它只返回 `PASS` 或带证据 findings，不修改文件。
-- 同一次调用最多创建一个 Reviewer。第一次有 findings 时，Stage 进行一次整体修复：重新检查全部来源、业务范围、关系、问卷处置和稳定 ID，而不是只改被点名字段；随后重建 context、review 与 packet，并交给同一 Reviewer 完整复审。第二次仍有 findings 时返回 `BLOCKED` 并停止。
+- 当前 packet 只创建一个完整 Reviewer。Reviewer 返回 findings 时，Stage 先确认被审 candidate 仍与 packet 绑定字节一致，把每项字段变更写入 `patch.json`，再通过 Owner-local `scripts/apply_patch.py` 应用；不得直接编辑 candidate 或整段重写。Requirement finding 可分别作用于 `requirements.candidate.json` 或 `source-disposition.json`，一次 patch 只修改其中一个文件：
+
+  ```text
+  "<python-bin>" "<skill-root>/scripts/apply_patch.py" \
+    --project-root "<project-root>" \
+    --base "<candidate-path>" \
+    --candidate "<candidate-path>" \
+    --patch .ai-sow/work/analyze-requirement/patch.json \
+    --audit .ai-sow/work/analyze-requirement/patch-audit.json
+  ```
+
+  `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才重建 context、review、risk summary 与 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整来源或 round-1 历史。轻量 Reviewer 仍有 findings 时返回 `BLOCKED`，不创建第三个 Reviewer。
 - 确定性脚本是机械门禁，不是 Agent。原样报告 outcome、diagnostics、hash 与 receipt，不解释或放宽失败。
 
 Reviewer 不可用、packet 无法稳定绑定，或需要的用户事实仍缺失时返回 `BLOCKED`。不得让 Stage 自审，也不得创建第二个 Reviewer 规避 findings。

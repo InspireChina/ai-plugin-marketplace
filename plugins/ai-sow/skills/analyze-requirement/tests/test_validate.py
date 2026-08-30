@@ -978,13 +978,17 @@ def test_review_mode_preserves_existing_formal_bytes(tmp_path: Path) -> None:
     assert validation_path(tmp_path).read_bytes() == b"previous validation receipt\n"
 
 
-def test_skill_contract_uses_single_fresh_reviewer_and_candidate_first_publication() -> None:
+def test_skill_contract_uses_full_then_lightweight_reviewers_and_candidate_first_publication() -> None:
     contract = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     for required in (
         "Stage Agent",
         "fresh Reviewer Agent",
         "不继承当前完整聊天",
-        "最多一次整体修复",
+        "字段级 finding 修复",
+        "scripts/apply_patch.py",
+        "patch-audit.json",
+        "轻量 fresh-context Reviewer",
+        "不加载完整来源或 round-1 历史",
         "prepare_context.py",
         "render_review.py",
         "--mode review",
@@ -995,6 +999,7 @@ def test_skill_contract_uses_single_fresh_reviewer_and_candidate_first_publicati
         "然后 STOP",
     ):
         assert required in contract
+    assert "最多一次整体修复" not in contract
     assert "Validator Agent" not in contract
     assert "Worker Agent" not in contract
 

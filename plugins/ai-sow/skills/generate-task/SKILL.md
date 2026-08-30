@@ -75,7 +75,18 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```text
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-task/estimate.candidate.json --review-path .ai-sow/work/generate-task/review.candidate.md
    ```
-12. 只创建一个 Reviewer Agent，并使用不继承当前完整聊天的新上下文。Reviewer 只读取 `review-packet.json`、candidate、review、risk summary、[评审模板](references/review-template.md)和 packet 点名的证据 fragment；不读取 canonical fixture 或完整上游 artifact，不运行机械校验，不修改成果。Reviewer 返回有限 findings 或 `PASS`。finding 允许当前 Stage Agent 完成一次整体修复；整体修复必须对全部新增或变化的 Task 重新核对基础单元计数边界、工作模式、复杂度、现状依据、Integration 和非重复计价，而不是只改 finding 点名的字段。随后整体重跑 renderer 与 `review`，并交回同一 Reviewer 完整复审；第二次仍不通过时 `BLOCKED`。Reviewer `PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令，把下列对象按递归 key 排序、紧凑分隔符和一个结尾换行写入 work-only `reviewer.json`：
+12. 为当前 packet 只创建一个 Reviewer Agent，并使用不继承当前完整聊天的新上下文。Reviewer 只读取 `review-packet.json`、candidate、review、risk summary、[评审模板](references/review-template.md)和 packet 点名的证据 fragment；不读取 canonical fixture 或完整上游 artifact，不运行机械校验，不修改成果。Reviewer 返回 findings 时，Stage 先确认 `estimate.candidate.json` 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，再运行 Owner-local patch；不得直接编辑 candidate 或整段重写：
+
+   ```text
+   "<python-bin>" "<skill-root>/scripts/apply_patch.py" \
+     --project-root "<project-root>" \
+     --base .ai-sow/work/generate-task/estimate.candidate.json \
+     --candidate .ai-sow/work/generate-task/estimate.candidate.json \
+     --patch .ai-sow/work/generate-task/patch.json \
+     --audit .ai-sow/work/generate-task/patch-audit.json
+   ```
+
+   `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才整体重跑 renderer 与 `review` 并形成新 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整上游、模板目录或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。Reviewer `PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令，把下列对象按递归 key 排序、紧凑分隔符和一个结尾换行写入 work-only `reviewer.json`：
 
    ```json
    {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"generate-task","packetSha256":"<packet-sha256>"}

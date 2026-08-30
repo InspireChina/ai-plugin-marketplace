@@ -655,6 +655,23 @@ def validate_semantics(
         if story_counts[feature_id] == 0:
             diagnostics.append(diag("FEATURE_COVERAGE_MISSING", f"missing Story for: {feature_id}"))
 
+    feature_ids_by_ac_name: dict[str, set[str]] = defaultdict(set)
+    for criterion in delivery["acceptanceCriteria"]:
+        story = stories.get(criterion["storyId"])
+        if story is not None:
+            feature_ids_by_ac_name[criterion["name"]].add(story["featureId"])
+    for ac_name, feature_ids in sorted(feature_ids_by_ac_name.items()):
+        if len(feature_ids) > 1:
+            ordered_feature_ids = sorted(feature_ids)
+            diagnostics.append(
+                diag(
+                    "FEATURE_OVERLAP_SUSPECTED",
+                    "different Features share an identical AC result; return to generate-design to merge or redraw the Feature boundary",
+                    acceptanceCriterionName=ac_name,
+                    featureIds=ordered_feature_ids,
+                )
+            )
+
     coverage = {
         entry["featureId"]: entry
         for entry in upstream["asIs"].get("coverage", [])

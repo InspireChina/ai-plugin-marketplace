@@ -10,7 +10,8 @@
   `gpt-5.6-luna` / `gpt-5.6-terra` / `gpt-5.6-sol` 映射与 10% 假阴性抽检升级规则。
 - Delivery 合同升级为 0.4，移除中间 Gap 实体：Story 直接引用 Feature，AC 保存相对 Effective Start
   的 `gapRationale` 与逐条 `carryForwardCommitmentIds`；Task 新增 Story→AC→Feature 可达性门禁，
-  工作簿保持直接按 Story.featureId 投影；当前自测版本不提供旧 Delivery 的兼容迁移。
+  Story 新增跨 Feature 同名 AC 的 `FEATURE_OVERLAP_SUSPECTED` 回流诊断，工作簿保持直接按
+  Story.featureId 投影；当前自测版本不提供旧 Delivery 的兼容迁移。
 - As-Is 合同升级为 0.2，把 Topic 结论拆为已调查、证据不足、边界声明和不适用四态，并绑定对应
   Uncertainty/估算影响规则；新增九类按需仓库事实预投影与 26 条 Windows E2E 黄金回归夹具。
 - 插件作为单一安装包共享 Owner-agnostic review runtime；各 Skill 继续独占稳定业务 Schema、专业

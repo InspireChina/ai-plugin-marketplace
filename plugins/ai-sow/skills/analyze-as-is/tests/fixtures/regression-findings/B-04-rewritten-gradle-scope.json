@@ -1,1 +1,1 @@
-{"findingId":"B-04","category":"B","expectedLayer":"script","expectedCode":"PATCH_FREEFORM_EDIT_DETECTED","path":"/evidence/3/summary","text":"整段重写把零符号节点错误扩展到 Gradle 脚本。"}
+{"findingId":"B-04","category":"B","expectedLayer":"script","expectedCode":"PATCH_FREEFORM_EDIT_DETECTED","path":"/evidence/0/summary","text":"整段重写把零符号节点错误扩展到 Gradle 脚本。","before":{"evidence":[{"evidenceId":"evidence-codegraph-coverage","summary":"CodeGraph 对生成代码未产生符号节点。"}]},"operations":[],"acknowledgedClosureIds":[],"freeformValue":"CodeGraph 对生成代码与 Gradle 脚本均未产生任何符号节点。"}

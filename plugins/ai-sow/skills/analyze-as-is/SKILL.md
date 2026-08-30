@@ -129,7 +129,20 @@ Stage 先确定性准备 Owner-local closure 并投影 review：
 
 脚本校验有效 Requirement handoff、As-Is Schema、Owner-local ID/关系、九个 Topic、登记输入、Evidence anchor、问卷消费和 review 机械合同，再写 work-only `risk-summary.md` 与 canonical `review-packet.json`。packet 算法固定为 `ai-sow-owner-review-packet-v1`，绑定 named inputs、candidate、context manifest/fragments、review、risk summary 及其 SHA-256；返回 `REVIEW_REQUIRED`。此步骤不写正式 data、review 或 validation report。
 
-只创建一个 fresh-context Reviewer。Reviewer 对照登记输入、Evidence anchor、问卷、Schema 和[评审模板](references/review-template.md)完整审查当前 packet，并采用模板中的 finding 严重度下限。`PASS` 时 Stage 只运行“精确 Reviewer 绑定”命令写 canonical `.ai-sow/work/analyze-as-is/reviewer.json`，使用 `ai-sow-owner-reviewer-v1` 并绑定精确 packet SHA-256。findings 只允许 Stage 做一次整体修复；修复必须重新核对九个 Topic、全部新增或变化的 Item/Commitment/Effective Start/Coverage/Uncertainty/Evidence、问卷消费和隐私边界，再重新生成 context、review、risk summary 与新 packet，由同一 Reviewer 完整复审。第二次仍有 findings 时返回 `BLOCKED`，不写 Reviewer sidecar 或任何正式路径。
+当前 packet 只创建一个完整 fresh-context Reviewer。Reviewer 对照登记输入、Evidence anchor、问卷、Schema 和[评审模板](references/review-template.md)完整审查当前 packet，并采用模板中的 finding 严重度下限。`PASS` 时 Stage 只运行“精确 Reviewer 绑定”命令写 canonical `.ai-sow/work/analyze-as-is/reviewer.json`，使用 `ai-sow-owner-reviewer-v1` 并绑定精确 packet SHA-256。
+
+Reviewer 返回 findings 时，Stage 先确认 `asis.candidate.json` 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，再运行 Owner-local patch；不得直接编辑 candidate 或整段重写：
+
+```text
+"<python-bin>" "<skill-root>/scripts/apply_patch.py" \
+  --project-root "<project-root>" \
+  --base .ai-sow/work/analyze-as-is/asis.candidate.json \
+  --candidate .ai-sow/work/analyze-as-is/asis.candidate.json \
+  --patch .ai-sow/work/analyze-as-is/patch.json \
+  --audit .ai-sow/work/analyze-as-is/patch-audit.json
+```
+
+`PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才重新生成 context、review、risk summary 与 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载仓库、完整证据或 round-1 历史。轻量 Reviewer 仍有 findings 时返回 `BLOCKED`，不创建第三个 Reviewer，也不写 Reviewer sidecar 或任何正式路径。
 
 Reviewer `PASS` 后，Stage 向用户展示 Owner、packet path、精确 SHA-256、risk summary 和正式目标路径。只有用户明确批准该精确 packet，才写 canonical `.ai-sow/work/analyze-as-is/approval.json`，使用 `ai-sow-owner-approval-v1` 并绑定相同 packet SHA-256，然后只运行：
 

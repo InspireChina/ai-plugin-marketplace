@@ -101,7 +101,18 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
    "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root .
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --review-path .ai-sow/work/generate-design/review.candidate.md
    ```
-11. 当前 Stage 只启动一个不继承当前完整聊天的全新 Reviewer Agent。Reviewer 以当前 packet、评审、风险摘要、闭包和必要来源独立审查专业遗漏、HLD/Go-live、范围边界及两份候选忠实度。首次失败时，当前 Stage 只允许一次整体修复，并重新检查所有新增或变化对象后交回同一 Reviewer 完整复审；第二次仍失败则 `BLOCKED`。Reviewer PASS 后 Stage 只运行“精确 Reviewer 绑定”命令，用固定算法 `ai-sow-owner-reviewer-v1` 写 `reviewer.json`，绑定精确 packet SHA-256。
+11. 当前 Stage 为当前 packet 启动一个不继承当前完整聊天的完整 Reviewer Agent。Reviewer 以当前 packet、评审、风险摘要、闭包和必要来源独立审查专业遗漏、HLD/Go-live、范围边界及两份候选忠实度。Reviewer 返回 findings 时，Stage 先确认两份被审 candidate 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，再运行 Owner-local patch；不得直接编辑 candidate 或整段重写。一次 patch 只修改 `design.candidate.json` 或 `requirements.candidate.json` 之一：
+
+    ```text
+    "<python-bin>" "<skill-root>/scripts/apply_patch.py" \
+      --project-root "<project-root>" \
+      --base "<candidate-path>" \
+      --candidate "<candidate-path>" \
+      --patch .ai-sow/work/generate-design/patch.json \
+      --audit .ai-sow/work/generate-design/patch-audit.json
+    ```
+
+    `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才重建 context、review、risk summary 与 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整来源或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。Reviewer PASS 后 Stage 只运行“精确 Reviewer 绑定”命令，用固定算法 `ai-sow-owner-reviewer-v1` 写 `reviewer.json`，绑定精确 packet SHA-256。
 12. 将 Reviewer 已绑定的同一 packet 提交用户。用户明确批准 Owner 与精确 packet SHA-256 后，用固定算法 `ai-sow-owner-approval-v1` 写 `approval.json`；候选、上下文、review、risk 或 input 任一字节变化都必须重新生成 packet 并重新整体评审、批准。
 13. 当前 Stage 只运行 `--mode publish-approved`。确定性脚本校验两个 sidecar 后，按 candidate 原字节同时发布 Design 与 TECHNICAL requirements、正式 review 与 0.3 receipt；不得在此阶段重做分析、改候选或启动 Reviewer：
 

@@ -24,7 +24,7 @@ setup
   -> generate-sow
 ```
 
-1. 五个专业 Owner 都在 work 目录先形成 candidate、评审预览和风险摘要，由当前 Stage Agent 直接运行 Owner-local 确定性 validator、一个 fresh-context Reviewer 审查精确 packet、用户批准 packet hash 后执行原字节发布。普通路径不创建 Worker 或 Validator 叶子 Agent；稳定 JSON 在所有路径上都只能于用户批准后发布。
+1. 五个专业 Owner 都在 work 目录先形成 candidate、评审预览和风险摘要，由当前 Stage Agent 直接运行 Owner-local 确定性 validator、一个完整 fresh-context Reviewer 审查精确 packet、用户批准 packet hash 后执行原字节发布。Reviewer 有 findings 时只用字段 patch 修复，并由一个新的轻量 fresh-context Reviewer 对 patch diff 与影响闭包复审；普通路径不创建 Worker 或 Validator 叶子 Agent，稳定 JSON 在所有路径上都只能于用户批准后发布。
 2. `analyze-requirement` 独占 BUSINESS，`generate-design` 独占 TECHNICAL。
 3. 每项稳定事实只有一个 Owner；下游只匹配内容寻址 handoff receipt，并验证自己创建的引用，不重放上游业务 validator。
 4. BUSINESS 与 TECHNICAL requirements 仅在内存中联合。
@@ -112,7 +112,7 @@ installer 安装到插件安装副本；随后复用或自动安装 managed Pyth
 
 登记原始需求来源，只产出 BUSINESS Epic/Feature。完整来源中每条会影响业务或方案/交付边界的明确陈述先进入 work-only `source-disposition.json`，唯一分类为 `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`；确定性 context 与 review packet 绑定该清单，正式 review 投影完整处置结果，但稳定 requirements 的四个顶级数组不变。`DESIGN_INPUT` 只保留来源定位和摘要供设计阶段回读原文，不创建 TECHNICAL 需求；跨域 `SCOPE_BOUNDARY` 必须映射全部受影响的 BUSINESS Epic/Feature。信息单薄、冲突或歧义会影响业务结论时，生成可回填 Markdown 问卷；关键问题关闭后才能批准稳定需求。需求评审声明问卷路径或 `Questionnaire: NOT_REQUIRED`。每个 `APPROVED_DEFAULT` 保留用户 Answer、决策日期、状态证据和 `ASSUMPTION_CANDIDATE` 处置。
 
-五个专业 Owner 共享同一 candidate-first 生命周期，但不共享业务编译器：各自的 `prepare_context.py` 只投影本阶段必要闭包，`render_review.py` 确定性投影专业评审，`validate.py --mode review` 生成 `ai-sow-owner-review-packet-v1` packet；唯一 Reviewer 只返回 `PASS` 或 findings，`PASS` 后 Stage 必须调用 Owner-local `write-reviewer` 确定性写入 `ai-sow-owner-reviewer-v1` sidecar；用户批准则由 `write-approval` 写入 `ai-sow-owner-approval-v1` sidecar。两个 sidecar 绑定同一 packet SHA-256，`publish-approved` 复算全部绑定后才发布正式 review、稳定输出与 receipt `0.3`。Stage 不手写 reviewer 或 approval JSON；任一输入、candidate、context、review 或风险摘要字节变化都使 Reviewer 与批准失效。
+五个专业 Owner 共享同一 candidate-first 生命周期，但不共享业务编译器：各自的 `prepare_context.py` 只投影本阶段必要闭包，`render_review.py` 确定性投影专业评审，`validate.py --mode review` 生成 `ai-sow-owner-review-packet-v1` packet；完整 Reviewer 只返回 `PASS` 或 findings，findings 由 Owner-local `apply_patch.py` 形成字段 diff 与引用闭包审计，再交给新的轻量 Reviewer 复审。最终 `PASS` 后 Stage 必须调用 Owner-local `write-reviewer` 确定性写入 `ai-sow-owner-reviewer-v1` sidecar；用户批准则由 `write-approval` 写入 `ai-sow-owner-approval-v1` sidecar。两个 sidecar 绑定同一 packet SHA-256，`publish-approved` 复算全部绑定后才发布正式 review、稳定输出与 receipt `0.3`。Stage 不手写 reviewer 或 approval JSON；任一输入、candidate、context、review 或风险摘要字节变化都使 Reviewer 与批准失效。
 
 评审加速保持同一批准边界：Stage 先机械闭环，再把 `claims.json` 按 anchor 分片。Claude 路由为 Haiku 4.5（逐条事实）、Sonnet 5（diff 与前提证伪）、Opus（充分性、设计与完备性）；Codex 只增加等价映射，分别为 `gpt-5.6-luna/low`、`gpt-5.6-terra/high`、`gpt-5.6-sol/max`。事实 PASS 必须带原文行号，深度 Reviewer 随机复验 10%，一次假阴性即整批升级。已验证 claim 的正文与 anchor hash 均未变化时写入 receipt `verifiedClaims` 并复用；context manifest 同时绑定 `claimMetrics` 与当前 Owner control。项目可选 `ownerControls` 的 `investigationMode / reviewDepth / tokenBudget`，未配置时使用逐 Owner 默认值；预算耗尽必须报告剩余 claim，不能静默通过。
 

@@ -51,8 +51,9 @@ package 复读及 canonical redo/diff/risk，并由完整 packet 绑定；一个
 
 五个专业 Owner 都遵守 candidate-first 生命周期：由当前 Stage 开展分析、设计或拆分，并在 work 目录提前形成和机械校验结构化
 candidate，再确定性生成 review 投影、风险摘要和 hash-bound review packet。packet 绑定本 Owner
-的 named inputs、candidate、context manifest/fragments、review 与风险摘要，供唯一 fresh-context
-Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。用户批准精确 packet 后才按 candidate
+的 named inputs、candidate、context manifest/fragments、review 与风险摘要，供完整 fresh-context
+Reviewer 与用户确认；Reviewer findings 只通过字段 patch 修复，并由新的轻量 fresh-context Reviewer
+复核 patch diff 与影响闭包。packet 不是稳定 JSON，也不能代替专业分析。用户批准精确 packet 后才按 candidate
 原字节发布稳定交接数据，任一绑定字节变化都必须重新整体评审和批准。
 
 ## 3. 需求
@@ -75,7 +76,7 @@ Reviewer 与用户确认；它不是稳定 JSON，也不能代替专业分析。
 | 术语 | 定义 |
 |---|---|
 | As-Is 调查 | 独立判断当前能力、系统交互、基础设施、承诺变化、证据和有效起点的调查工作。可以根据需要使用搜索、语言工具、CodeGraph、接口说明、配置、部署材料或访谈。 |
-| Topic Assessment | 每次 As-Is 对九个 Topic 各给出且只给出一条评估：系统边界与参与方、能力与流程、应用与组件、集成与外部依赖、数据与存储、平台/环境与部署、安全与合规、运维与质量、交付与约束。状态为 `ASSESSED / NOT_APPLICABLE / INSUFFICIENT_EVIDENCE`。 |
+| Topic Assessment | 每次 As-Is 对九个 Topic 各给出且只给出一条评估：系统边界与参与方、能力与流程、应用与组件、集成与外部依赖、数据与存储、平台/环境与部署、安全与合规、运维与质量、交付与约束。状态为 `RELEVANT_INVESTIGATED / RELEVANT_INSUFFICIENT_EVIDENCE / BOUNDARY_DECLARED / NOT_APPLICABLE`。 |
 | As-Is Item | 已存在或实际运行的 `CAPABILITY / COMPONENT / INTEGRATION / DATA_ASSET / INFRASTRUCTURE / CONTROL / PROCESS / CONSTRAINT` 当前事实。 |
 | Commitment | 从往期 SOW 等有效承诺提取的 `ADD / REPLACE / RETIRE` 变化；同时记录 `implementationStatus`（实现对账结果）与 `treatment`（范围处理方式）。 |
 | Effective Start | 设计与 Task 共用的项目起点基线，只能由当前 Item 与 `EXPECTED_BEFORE_START` Commitment 组成；ArchitectureDelta、ScopeDecision 和 Task 工作模式都引用同一条起点记录。 |
