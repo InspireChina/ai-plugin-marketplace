@@ -15,8 +15,9 @@ SOW 计算标准：继续使用 v1.3
 - 五个门禁及最终签署确认的进入、通过、阻塞和失效条件；
 - Candidate、Review、Approval、Publish 和 Stale 状态转换；
 - Design、Delivery、Estimate 和 Planning 的反馈路径；
-- 上游变更后的依赖闭包；
-- Greenfield、Brownfield、Discovery 和计划不可行场景。
+- Context、Claim、Subject Review 与 Agent 的最小信息流；
+- 类型化引用派生的依赖闭包和 Evidence rebind；
+- Greenfield、Brownfield、Discovery、计划不可行与定量浪费场景。
 
 本文描述逻辑合同，不固定 Python 文件名、CLI 参数、目录布局或 JSON Schema 拆分方式。实现可以选择不同内部结构，但不得改变本文定义的 Owner、关系、门禁和停止条件。
 
@@ -31,7 +32,7 @@ SOW 计算标准：继续使用 v1.3
 | Module | 通过小 interface 提供完整行为的实现单元；不等于 Owner 或 Phase。 |
 | Gate | 判断是否可以承担下一项不可逆责任的门禁；只接受绑定的输入和候选结果。 |
 | Candidate | 尚未发布、内容已冻结并可计算 hash 的 Owner 成果。 |
-| Gate Packet | 绑定门禁输入、候选结果、风险和 Reviewer 结论的不可变审查对象；角色批准通过 sidecar 引用其 hash。 |
+| Gate Packet | 绑定门禁输入、候选结果、风险和 Reviewer 结论的不可变审查对象；角色初次批准通过 sidecar 同时引用完整 Packet hash 和业务语义 hash。 |
 | Stable Output | Gate 通过后由唯一 Owner 发布、可供下游引用的业务数据。 |
 | Decision Dependency | 一个稳定事实或决定对另一个决定的直接语义依赖。 |
 | Impact Closure | 从变化对象沿 Decision Dependency 得到的全部受影响对象和 Gate。 |
@@ -50,11 +51,11 @@ SOW 计算标准：继续使用 v1.3
 | Investigation Request | 为支持或证伪一个具体决定而提出的最小调查问题。 |
 | Investigation Result | As-Is Owner 对 Investigation Request 给出的 `SUPPORTED / FALSIFIED / UNKNOWN` 结论。 |
 | Delivery Delta | Feature 目标结果减去 Effective Start 后仍需交付的差值。 |
-| Technical Solution | Scope Decision、Design Item、Architecture Delta、Design Decision、TECHNICAL requirement 和上线责任的集合。 |
+| Technical Solution | Delivery Disposition、Design Item、Architecture Delta、Design Decision、TECHNICAL requirement 和上线责任的集合。 |
 | Delivery Contract | Story、AC、Integration、Assumption/Risk 及其责任边界。 |
 | Trial Estimate | 用于证明 Delivery Contract 可估算的 work-only Task 试拆分，不是正式 Estimate。 |
 | Estimate Baseline | 已批准 Task、基础单元、工作模式、复杂度、理由和估算关系。 |
-| Delivery Plan | 资源、依赖、迭代、里程碑和外部配合窗口；只在承诺日期或计划时成为稳定业务输出。 |
+| Planning Disposition | 本次承诺模式、早期硬约束及条件性的 Delivery Plan；由 Planning Owner 拥有。 |
 | Allowance | 对有上限未知的获批处理；必须表现为可枚举、可按模板计价的最大工作范围，不保存自由人天。 |
 | Discovery Requirement | 无法安全进入实施估算时，独立调研 SOW 必须回答的问题、交付物和退出条件。 |
 | Commercial Packet | 对同一范围、方案、Delivery Contract、Estimate、Plan、假设和例外的统一商业批准对象。 |
@@ -64,7 +65,7 @@ SOW 计算标准：继续使用 v1.3
 
 ### 3.1 稳定聚合
 
-目标合同包含七个稳定业务聚合和一个最终交付聚合：
+目标合同包含八个稳定业务聚合和一个最终交付聚合：
 
 | 聚合 | 唯一 Owner | 必选 | 首次稳定发布时点 |
 |---|---|---:|---|
@@ -74,10 +75,10 @@ SOW 计算标准：继续使用 v1.3
 | `TechnicalSolution` | Design Owner | 是 | Commitment Gate |
 | `DeliveryContract` | Delivery Owner | 是 | Commitment Gate |
 | `EstimateBaseline` | Estimate Owner | 是 | Commitment Gate |
-| `DeliveryPlan` | Planning Owner | 条件必选 | Commitment Gate |
+| `PlanningDisposition` | Planning Owner | 是 | Commitment Gate |
 | `SowPackage` | SOW Compiler | 是 | Compilation Gate |
 
-`CommercialPacket` 是跨聚合批准投影，不拥有新的业务事实。它只引用并绑定上述 Owner candidate 和风险处置；角色批准通过 sidecar 引用它的精确 hash。
+`PlanningDisposition` 始终保存本次商业承诺是 `EFFORT_ONLY` 还是 `MILESTONE_COMMITTED`；只有后者包含 `DeliveryPlan`。`CommercialPacket` 是跨聚合批准投影，不拥有新的业务事实。它只引用并绑定上述 Owner candidate 和风险处置；角色批准绑定其业务语义 hash，完整技术 Packet 另有精确 hash。
 
 ### 3.2 Work-only 对象
 
@@ -86,26 +87,31 @@ SOW 计算标准：继续使用 v1.3
 - Design Hypothesis；
 - Investigation Request；
 - 未被批准决定引用的 Investigation Result；
+- Planning Premise；
 - Trial Estimate；
 - Trial Finding；
 - Gate Evaluation；
+- Gate Review Receipt；
+- Owner Validation Receipt；
+- Claim Verification Receipt；
+- Context Bundle、context fragment、claims、risk summary；
 - Reviewer sidecar；
 - Approval sidecar；
-- Context fragment、claims、risk summary；
-- Impact analysis 和发布 staging。
+- Evidence Rebind Attestation；
+- Impact analysis、Gate Run Metrics 和发布 staging。
 
-被最终批准决定引用的 Investigation Result，其结论、Evidence 和 Effective Start 必须由 As-Is Owner 编译进 `CurrentStateLedger`。未被引用的调查过程留在 work 目录，不进入稳定交接。
+被最终批准决定引用的 Investigation Result，其身份、问题、结论、Evidence 和影响必须由 As-Is Owner 编译进 `CurrentStateLedger`。未被引用的调查过程留在 work 目录，不进入稳定交接。
 
 ### 3.3 写权限
 
 | Owner | 可以写 | 只读 | 禁止写 |
 |---|---|---|---|
-| Requirement | `BusinessScope` candidate/stable | Source、ProjectShell | Current State、Design、Delivery、Estimate |
-| As-Is | `CurrentStateLedger` candidate/stable | BusinessScope、授权 Evidence | Design、Delivery、Estimate |
-| Design | `TechnicalSolution` candidate/stable | BusinessScope、Current State candidate | BusinessScope、Current State、Delivery、Estimate |
-| Delivery | `DeliveryContract` candidate/stable | BusinessScope、Current State、Technical Solution | Design、Estimate |
-| Estimate | Trial Estimate、`EstimateBaseline` candidate/stable | Delivery、Design、Current State、模板目录 | Story、AC、Design、模板计算规则 |
-| Planning | `DeliveryPlan` candidate/stable | Estimate、Delivery、项目约束 | Task、基础人天、Story/AC |
+| Requirement | `BusinessScope` candidate/stable | Source、ProjectShell | Current State、Design、Delivery、Estimate、Planning |
+| As-Is | `CurrentStateLedger` candidate/stable、`DiscoveryRequirement` | BusinessScope、授权 Evidence | Design、Delivery、Estimate、Planning |
+| Design | `TechnicalSolution` candidate/stable | BusinessScope、Current State candidate、Technical Input 原文 anchor | BusinessScope、Current State、Delivery、Estimate |
+| Delivery | `DeliveryContract` candidate/stable | BusinessScope、Current State、Technical Solution | Design、Estimate、Planning |
+| Estimate | Trial Estimate、`EstimateBaseline` candidate/stable、`Allowance` | Delivery、Design、Current State、模板目录 | Story、AC、Design、模板计算规则 |
+| Planning | Planning Premise、`PlanningDisposition` candidate/stable | Estimate、Delivery、项目约束 | Task、基础人天、Story/AC、BusinessScope |
 | SOW Compiler | `SowPackage` | 全部已批准稳定聚合、模板 | 所有上游业务聚合 |
 
 Owner 发现上游错误时只能返回结构化 Finding，不能直接修复上游。
@@ -119,16 +125,17 @@ ProjectShell
   └─ BusinessScope
        ├─ BusinessFeature
        │    ├─ Coverage ── EffectiveStart ── CurrentStateFact ── EvidenceRef
-       │    ├─ ScopeDecision
+       │    ├─ DeliveryDisposition
        │    ├─ DesignDecision
        │    └─ Story ── AcceptanceCriterion
        │                 └─ Task ── BaseUnit / WorkMode / Complexity
        └─ TechnicalInput
-            └─ DesignDecision
+            └─ TechnicalInputDisposition ── DesignDecision
 
-DesignDecision ── InvestigationResult ── InvestigationRequest
+DesignDecision ── InvestigationResult
+InvestigationResult ── requestId（仅审计） / decisionId / EvidenceRef
 Story ── Integration ── IntegrationTask
-Task / Milestone ── DeliveryPlan
+Task / Milestone ── PlanningDisposition
 Uncertainty ── Handling ── Assumption | Allowance | DiscoveryRequirement | BLOCKED
 
 BusinessScope
@@ -136,7 +143,7 @@ BusinessScope
 + TechnicalSolution
 + DeliveryContract
 + EstimateBaseline
-+ DeliveryPlan（条件）
++ PlanningDisposition
   └─ CommercialPacket
        └─ SowPackage
 ```
@@ -152,12 +159,8 @@ BusinessScope
 | `pluginContractVersion` | 固定为目标插件合同版本。 |
 | `sowStandardVersion` | 本重构固定为 `1.3`。 |
 | `templateFingerprint` | 当前项目模板内容 hash。 |
-| `commitmentMode` | `EFFORT_ONLY / MILESTONE_COMMITTED`。 |
 
-`commitmentMode` 决定 `DeliveryPlan` 是否为 Gate 必选输入：
-
-- `EFFORT_ONLY`：只承诺范围和工作量，SOW 必须明确不承诺日期；
-- `MILESTONE_COMMITTED`：承诺日期、里程碑或迭代，必须有可行的 Delivery Plan。
+ProjectShell 不保存范围、日期、里程碑、资源或 `commitmentMode`。这些属于专业 Owner 的项目约束与商业承诺，改变时不得使 Setup 或 Scope Gate stale。
 
 ### 4.3 `BusinessScope`
 
@@ -182,7 +185,7 @@ BusinessScope
 | `scopeStatus` | `IN_SCOPE / OUT_OF_SCOPE / DEFERRED`。 |
 | `sourceRefs` | 至少一个来源或明确的人类决定。 |
 
-每个 `IN_SCOPE` Feature 必须进入 Coverage、Scope Decision 和 Delivery Contract；`OUT_OF_SCOPE / DEFERRED` 不生成 Story 或 Task。
+每个 `IN_SCOPE` Feature 必须进入 Coverage、DeliveryDisposition 和 Delivery Contract；`OUT_OF_SCOPE / DEFERRED` 不进入 TechnicalSolution，也不生成 Story 或 Task。
 
 #### `TechnicalInput`
 
@@ -312,14 +315,18 @@ Evidence 不保存源码、完整工具输出、凭据或本机绝对路径。�
 
 | 字段 | 约束 |
 |---|---|
-| `requestId` | 恰好对应一个 Request。 |
+| `investigationResultId` | As-Is Owner 的稳定 ID；被稳定决定引用后进入 Ledger。 |
+| `requestId` | 对应 work-only Request，仅用于审计；不得作为稳定引用目标。 |
+| `decisionId` | 被支持或证伪的唯一决定；与 Request 原值一致。 |
+| `question` | 从 Request 编译的有限问题，发布后可独立解释 Result。 |
+| `materialityTargets` | 从 Request 编译的影响字段集合。 |
 | `verdict` | `SUPPORTED / FALSIFIED / UNKNOWN`。 |
 | `factIds` | `SUPPORTED / FALSIFIED` 时至少一个；`UNKNOWN` 可以为空。 |
 | `evidenceIds` | 高影响结论至少一条；冲突时保留必要竞争 Evidence。 |
 | `impact` | 明确影响哪些决定字段。 |
 | `handling` | `ACCEPT / REVISE_DECISION / ASSUMPTION / ALLOWANCE / DISCOVERY / BLOCK`。 |
 
-`UNKNOWN` 不能使用 `ACCEPT`。`FALSIFIED` 不能保持原 Decision candidate 不变。
+`UNKNOWN` 不能使用 `ACCEPT`。`FALSIFIED` 不能保持原 Decision candidate 不变。所有稳定消费者只引用 `investigationResultId`；删除 work 目录后 Result 仍必须可解析。
 
 #### `Uncertainty`
 
@@ -348,13 +355,13 @@ Evidence 不保存源码、完整工具输出、凭据或本机绝对路径。�
 | `responsibleRole` | 负责组织 Discovery 的角色。 |
 | `affectedFeatureIds` | 被阻塞的实施范围。 |
 
-Discovery Requirement 是当前实施 SOW 的阻塞输出，不与被阻塞的实施范围一起进入 Commitment Gate。Discovery 完成后，其结果作为新的授权输入重新进入相应 Owner。
+Discovery Requirement 由 As-Is Owner 作为 `CurrentStateLedger` 的阻塞对象拥有。它不与被阻塞的实施范围一起进入 Commitment Gate；Commercial Packet 只能引用其 ID 和阻塞处置，不能创建或改写 Discovery。Discovery 完成后，其结果作为新的授权输入重新进入相应 Owner。
 
 ### 4.5 `TechnicalSolution`
 
 包含：
 
-- `ScopeDecision[]`；
+- `DeliveryDisposition[]`；
 - `DesignItem[]`；
 - `ArchitectureDelta[]`；
 - `DesignDecision[]`；
@@ -362,13 +369,14 @@ Discovery Requirement 是当前实施 SOW 的阻塞输出，不与被阻塞的�
 - `TechnicalInputDisposition[]`；
 - `GoLiveDisposition[]`。
 
-#### `ScopeDecision`
+#### `DeliveryDisposition`
 
-每个 BUSINESS 和 TECHNICAL Feature 恰有一条：
+BusinessScope 中每个 `IN_SCOPE` BUSINESS Feature，以及每个进入方案的 TECHNICAL Feature，恰有一条：
 
-- `IN_SCOPE`：需要 Design 和 Delivery；
-- `FULLY_COVERED`：必须引用 `COMPLETE` Coverage 和支持 Evidence；
-- `OUT_OF_SCOPE`：必须引用已批准 Scope Boundary，不能由 Design 单方面排除 BUSINESS Feature。
+- `NEEDS_DELIVERY`：需要 Design 覆盖并形成 Delivery；
+- `FULLY_COVERED`：必须引用 `COMPLETE` Coverage 和支持 Evidence，不生成 Story。
+
+`OUT_OF_SCOPE / DEFERRED` 只由 BusinessScope 拥有，不进入 TechnicalSolution。Design Owner 不得重复写商业范围状态，也不得用 DeliveryDisposition 扩大或缩小获批范围。
 
 #### `DesignItem`
 
@@ -412,13 +420,14 @@ Design Owner 不修改 `BusinessScope.TechnicalInput`，而是在自己的聚合
 | 字段 | 约束 |
 |---|---|
 | `technicalInputId` | 引用 BusinessScope 中的输入。 |
+| `sourceRef` | 与 Technical Input 绑定同一原文 anchor；Design 必须读取该片段自行确认，不能只接受摘要。 |
 | `status` | `ADOPTED / REPLACED / REJECTED / INVESTIGATION_REQUIRED`。 |
 | `designDecisionIds` | 采用或替代时至少一个。 |
 | `technicalRequirementIds` | 形成 TECHNICAL requirement 时至少一个。 |
-| `investigationResultIds` | 需要现状判断时绑定结果。 |
+| `investigationResultIds` | 需要现状判断时绑定稳定 Result。 |
 | `rationale` | 说明为何采用、替代或拒绝，不改写来源陈述。 |
 
-`INVESTIGATION_REQUIRED` 只允许出现在 working candidate；Solution Readiness Gate 不接受该状态。
+`INVESTIGATION_REQUIRED` 只允许出现在 working candidate；Solution Readiness Gate 不接受该状态。Design context 只读取队列逐条点名的原文片段，不重新通读未入队来源。
 
 #### `DesignDecision`
 
@@ -563,8 +572,9 @@ Trial Task 与正式 Task 使用相同领域字段，但只能存在于 work/sta
 
 #### `Allowance`
 
-Allowance 不能绕过模板计算权威。它必须定义：
+Allowance 由 Estimate Owner 在 `EstimateBaseline` 中拥有，不能由 Commercial Packet 或 Delivery Owner 创建。它不能绕过模板计算权威，必须定义：
 
+- `allowanceId`；
 - 触发条件；
 - 最大基础单元实例集合或最大实例数量；
 - 每个实例允许的工作模式和复杂度上限；
@@ -572,11 +582,36 @@ Allowance 不能绕过模板计算权威。它必须定义：
 - 未触发时如何处理；
 - 超出上限时的变更控制。
 
-正式 Estimate 将上限范围编译为明确 Task；模板计算人天。无法用基础单元和有限实例表达的未知必须转为 Discovery。
+正式 Estimate 将上限范围编译为明确 Task；模板计算人天。无法用基础单元和有限实例表达的未知必须转为 As-Is Owner 拥有的 Discovery Requirement。
 
-### 4.8 `DeliveryPlan`
+### 4.8 `PlanningDisposition`
 
-`MILESTONE_COMMITTED` 时包含：
+#### `PlanningPremise`
+
+Planning Owner 在 Scope Gate 后形成 work-only Planning Premise，只捕获可能提前否定方案的约束：
+
+- 客户要求或明确排除的目标日期；
+- UAT、变更冻结、发布、第三方和平台窗口；
+- 关键角色的硬性不可用区间；
+- 必须串行的外部依赖；
+- 每项约束的来源、受影响 Feature 和违反后果。
+
+Gate 2 只做粗粒度约束筛查，不编造 Task 级排期。明显不可行的硬约束必须形成 Finding；其余约束由 Phase 4 使用正式 Task 复核。
+
+#### `PlanningDisposition`
+
+Planning Owner 在 Commitment Gate 发布且始终包含：
+
+| 字段 | 约束 |
+|---|---|
+| `planningDispositionId` | 稳定 ID。 |
+| `commitmentMode` | `EFFORT_ONLY / MILESTONE_COMMITTED`。 |
+| `planningPremiseHash` | 绑定进入 Gate 2 的硬约束闭包。 |
+| `scheduleCommitment` | `EFFORT_ONLY` 时固定为 `NONE`；否则固定为 `PLAN_BOUND`。 |
+| `feasibility` | `EFFORT_ONLY` 为 `NOT_APPLICABLE`；里程碑承诺必须为 `FEASIBLE`。 |
+| `deliveryPlan` | 只在 `MILESTONE_COMMITTED` 时存在。 |
+
+`deliveryPlan` 包含：
 
 - `ResourceRole[]`：角色、容量、可用窗口；
 - `TaskDependency[]`：前置、后置和依赖类型；
@@ -584,17 +619,9 @@ Allowance 不能绕过模板计算权威。它必须定义：
 - `Milestone[]`：范围、完成条件和日期；
 - `PlanningRisk[]`：触发、影响、负责人和处理。
 
-不保存个人敏感信息；人员以角色或经批准的非敏感显示名表示。
+不保存个人敏感信息；人员以角色或经批准的非敏感显示名表示。每个 Milestone 必须引用非空 Story/Task 集，完成条件可观察，全部前置、容量和外部窗口均可满足。
 
-每个 Milestone：
-
-- 引用非空 Story/Task 集；
-- 完成条件可观察；
-- 所有前置依赖在时间上可满足；
-- 所需角色容量不超过可用容量；
-- 外部窗口与计划一致。
-
-`EFFORT_ONLY` 时不生成虚假 Delivery Plan，只在 Commercial Packet 保存 `scheduleCommitment: NONE`。
+从 `MILESTONE_COMMITTED` 改为 `EFFORT_ONLY` 只使 PlanningDisposition、Commercial Packet 和 SowPackage stale；如果用户同时修改范围、方案或责任，才按对应 Finding 扩大 Impact Closure。
 
 ### 4.9 `CommercialPacket`
 
@@ -606,13 +633,16 @@ Commercial Packet 是 Commitment Gate 的专用 Gate Packet。除通用 Gate Pac
 - TechnicalSolution candidate；
 - DeliveryContract candidate；
 - EstimateBaseline candidate；
-- 条件性的 DeliveryPlan candidate；
-- Assumption、Allowance、Discovery 和明确排除；
+- PlanningDisposition candidate；
+- Owner candidate 中的 Assumption/Risk ID；
+- EstimateBaseline 中的 Allowance ID；
+- CurrentStateLedger 中的 Discovery Requirement ID 与处置；
+- 明确排除；
 - Owner validation/review 结果；
 - Gate Evaluation；
 - 各对象 hash。
 
-BA、TL、PM 的 Role Approval sidecar 分别引用同一 `packetSha256`，不写入 Packet 本身。Commercial Packet 不得新增或改写业务字段；摘要中出现而 Owner candidate 中不存在的决定必须使 Gate 失败。
+BA、TL、PM 的 Role Approval sidecar 不写入 Packet 本身。Commercial Packet 不得新增或改写业务字段；摘要中出现而 Owner candidate 中不存在的决定必须使 Gate 失败。
 
 ## 5. 生命周期模型
 
@@ -633,12 +663,12 @@ WORKING
 |---|---|---|
 | `WORKING` | 可变 | Owner 专业工作和局部修正。 |
 | `CANDIDATE` | 不可原地改 | 计算 hash、机械验证、生成 review；修改必须产生新 candidate hash。 |
-| `REVIEWED` | 不可变 | Reviewer 已对当前 hash PASS；可以请求角色批准。 |
-| `APPROVED` | 不可变 | 所需角色已批准当前 packet hash；可以发布。 |
+| `REVIEWED` | 不可变 | 当前 subject 的专业判断已 PASS；未变化 subject 可以由后续 Packet 引用原 review。 |
+| `APPROVED` | 不可变 | 所需角色已批准当前业务语义 hash；可以发布。 |
 | `PUBLISHED` | 稳定 | 下游可以引用；只有 Owner 可产生替代版本。 |
 | `STALE` | 只读 | 直接依赖变化；不得供新 Gate 使用。 |
 
-状态不写回业务对象本身；由 sidecar/receipt 表达，避免稳定业务 JSON 混入流程元数据。
+状态不写回业务对象本身；由 sidecar/receipt 表达。聚合 candidate 任一字节变化会产生新 hash，但不自动使 Impact Closure 外 subject 的 review 或 claim verification 失效。
 
 ### 5.2 Gate 生命周期
 
@@ -650,28 +680,31 @@ NOT_READY
   -> APPROVED
   -> PUBLISHED
 
-任一前置 hash 变化：
-READY_FOR_REVIEW / REVIEW_REQUIRED / READY_FOR_APPROVAL / APPROVED / PUBLISHED
-  -> STALE
+Solution Readiness:
+READY_FOR_REVIEW -> REVIEW_REQUIRED -> ESTIMATION_READY
+
+受影响前置 hash 变化：
+current state -> STALE
 ```
 
-`BLOCKED` 是评估结果，不是可继续前进的状态。解除 blocker 后必须重新计算 Gate Evaluation 和 packet hash，不能从旧 `BLOCKED` 或旧批准继续。
+`BLOCKED` 是评估结果，不是可继续前进的状态。解除 blocker 后必须重新计算受影响 subject 的 Gate Evaluation 和 Packet binding，不能从旧 `BLOCKED` 直接继续。
 
-并非每个 Gate 使用全部生命周期状态：Setup/Compilation 由机械检查直接发布；Scope/Commitment 需要 Role Approval；Solution Readiness 在专业 Review 后结束于 `ESTIMATION_READY`，不进入 `APPROVED / PUBLISHED`。所有 Gate 都遵守相同 stale 规则。
+Setup/Compilation 由机械检查直接发布；Scope/Commitment 需要 Role Approval；Solution Readiness 由 `GateReviewReceipt(outcome=ESTIMATION_READY)` 结束，不进入 `APPROVED / PUBLISHED`。Gate 只因其 subject 或直接输入的受影响闭包变化而 stale；无关聚合对象变化不能使该 subject 的 review 失效。
 
 ### 5.3 原子批准与可恢复发布
 
 Commitment Gate 同时绑定多个 Owner candidate，但不改变单一 Owner 写权限：
 
-1. 各 Owner 在 staging 中形成 candidate；
-2. Gate Packet 绑定所有 candidate 和直接输入；
-3. Reviewer 与用户批准同一 packet hash；
-4. publisher 只做 hash/check/publish；
-5. 按固定技术顺序发布，receipt 最后写入；
-6. 中断时只允许从已批准 packet 恢复，不重新解释业务；
-7. 任一 candidate 字节变化使整个 packet 批准失效。
+1. Current State、Technical Solution 和 Delivery Contract 在 staging 中通过 Solution Readiness；
+2. Trial Estimate 基于上述精确 hash 运行，修复 finding 后只冻结新 candidate，不发布；
+3. EstimateBaseline 与 PlanningDisposition 基于同一 candidate set 形成；
+4. Gate Packet 绑定全部 candidate、最小上下文、Owner validation 和可复用 review；
+5. 一个 Commitment Judgment Reviewer 只审新增 Estimate/Planning、跨聚合一致性和 Gate 2 未覆盖的商业风险；
+6. 角色初次批准同时绑定完整 `packetSha256` 与 `semanticApprovalHash`；
+7. publisher 只做 hash/check/publish，按固定技术顺序发布，receipt 最后写入；
+8. 中断时只允许从已批准 Packet 恢复，不重新解释业务。
 
-逻辑上这是一个批准集；物理实现可以是可恢复前向发布，不要求文件系统多文件事务。
+Gate 3 之前不得发布 CurrentStateLedger、TechnicalSolution、DeliveryContract、EstimateBaseline 或 PlanningDisposition。逻辑上这是一个批准集；物理实现可以是可恢复前向发布，不要求文件系统多文件事务。
 
 ### 5.4 Gate 工件模型
 
@@ -682,10 +715,23 @@ Commitment Gate 同时绑定多个 Owner candidate，但不改变单一 Owner �
 | `fromId` | 依赖方决定或事实。 |
 | `toId` | 被依赖的稳定对象。 |
 | `kind` | `SCOPE / EVIDENCE / BASELINE / SOLUTION / DELIVERY / ESTIMATE / PLAN`。 |
+| `source` | `STRUCTURAL / SEMANTIC`。 |
 | `owner` | 声明该依赖的 Owner；必须拥有 `fromId`。 |
-| `rationale` | 说明被依赖对象变化时为什么可能影响 `fromId`。 |
+| `rationale` | `SEMANTIC` 必填；说明结构引用无法表达的影响。 |
 
-同一 `fromId + toId + kind` 只能出现一次。Dependency 方向固定为“依赖方 → 被依赖方”，Impact Closure 反向遍历消费者。
+所有类型化 ID 引用必须由确定性 projector 派生 `STRUCTURAL` 边。Owner 只能补充无法从字段推导的 `SEMANTIC` 边；Gate 比较“Schema 应有结构边”与实际精确集合，缺边、多边、悬空边或方向错误均 BLOCK。同一 `fromId + toId + kind` 只能出现一次；Impact Closure 从变化对象反向遍历消费者。
+
+#### `OwnerValidationReceipt`
+
+每个 Owner-local validator 输出：
+
+- Owner、合同版本和 candidate hash；
+- `subjectIds`；
+- 本 Owner 业务 check 与 diagnostics；
+- 从本 Owner Schema 派生的结构依赖边；
+- outcome：`PASS / BLOCKED`。
+
+HLD/Go-live、Delivery、Estimate 和 Planning 专业规则只在各自 Owner validator 中执行。共享 Gate runtime 不读取 Owner Schema，不重放这些规则。
 
 #### `GateEvaluation`
 
@@ -694,12 +740,45 @@ Commitment Gate 同时绑定多个 Owner candidate，但不改变单一 Owner �
 | `gateId` | `SETUP / SCOPE / SOLUTION_READINESS / COMMITMENT / COMPILATION`。 |
 | `contractVersion` | 与目标插件合同一致。 |
 | `inputBindings` | 按稳定名称绑定全部直接输入路径、业务版本和 SHA-256。 |
+| `ownerValidationBindings` | 绑定当前 subject 的 Owner Validation Receipt。 |
 | `subjectIds` | 本次 Gate 实际判断的业务对象。 |
-| `checks` | 每项包含稳定 code、`PASS / BLOCKED` 和受影响 ID。 |
+| `crossOwnerChecks` | 只检查引用、hash、唯一 Owner、闭包和跨聚合不变量。 |
 | `blockingFindingIds` | outcome 为 `BLOCKED` 时非空。 |
 | `outcome` | `READY_FOR_REVIEW / BLOCKED`。 |
 
-Gate Evaluation 不包含自由裁量批准。任一机械 check 为 `BLOCKED` 时 outcome 必须为 `BLOCKED`，Stage 和 Reviewer 都不能改写。
+任一 Owner validation 或 cross-owner check 为 `BLOCKED` 时 outcome 必须为 `BLOCKED`，Coordinator 和 Reviewer 都不能改写。
+
+#### `ContextBundle`
+
+Gate 的最小上下文由确定性 Owner-local projector 生成并包含：
+
+| 字段 | 约束 |
+|---|---|
+| `gateId / runId` | 唯一 Gate run。 |
+| `subjectIds` | 与 Evaluation 一致。 |
+| `fragmentBindings` | 每个唯一业务集合只投影一次，绑定路径、hash、字节数和 Owner。 |
+| `claimBindings` | 绑定 claim text hash、anchor hash 和 subject。 |
+| `verificationBindings` | 绑定可复用 Claim Verification Receipt。 |
+| `sourceRevisions` | 绑定仓库、文档或问卷 revision。 |
+
+同一 Agent 在一个 Gate run 中每个 fragment 最多读取一次；相同 `(projectorVersion, subjectIds, inputHashes)` 只投影一次并跨 Gate 复用。不同 Owner 可以引用同一 fragment binding，不得复制同一集合为多个内容不同的摘要。
+
+#### `ClaimVerificationReceipt`
+
+work-only claim 核验记录至少绑定 `claimTextHash + anchorHash + sourceRevision + verificationPolicyVersion`。四项均未变化且未被抽检时可以在首次发布前、Gate 2→Gate 3 和局部修复后复用；任一项变化、`UNVERIFIED` 或抽检命中使该 claim stale。发布时有效记录可以提升到 Owner receipt。
+
+#### `GateReviewReceipt`
+
+| 字段 | 约束 |
+|---|---|
+| `gateId` | 对应 Gate。 |
+| `subjectBindings` | 每个 subject 的 candidate/object hash。 |
+| `judgmentReviewHash` | 当前 Gate 完整 Judgment Review。 |
+| `reusedReviewBindings` | 未变化 subject 的既有 review；必须证明依赖闭包未变。 |
+| `diffReviewBindings` | 修改 subject 的 patch diff 与 Impact Closure review。 |
+| `outcome` | Scope/Commitment 为 `PASS / BLOCKED`；Solution Readiness 为 `ESTIMATION_READY / BLOCKED`。 |
+
+Gate 3 以 Gate 2 Receipt 证明 Solution Readiness 当前；不重新执行未变化 Solution/Delivery 的完整 Judgment Review。
 
 #### `GatePacket`
 
@@ -709,12 +788,15 @@ Gate Evaluation 不包含自由裁量批准。任一机械 check 为 `BLOCKED` �
 | `gateId` | 对应唯一 Gate。 |
 | `inputBindings` | 与 Gate Evaluation 原字节一致。 |
 | `candidateBindings` | 按 Owner 稳定名称绑定 candidate hash。 |
+| `contextBindings` | 绑定 Context Bundle 与 fragment hash。 |
+| `claimVerificationBindings` | 绑定当前或复用的 Claim Verification Receipt。 |
 | `gateEvaluationHash` | 绑定机械判断。 |
-| `reviewBindings` | 绑定专业 review、risk summary 和 Reviewer 结论。 |
+| `reviewBindings` | 绑定专业 review、risk summary 和 Gate Review Receipt。 |
 | `openNonBlockingRiskIds` | 只含已处理且不阻塞的风险。 |
-| `packetSha256` | 对 canonical packet 内容计算；字段自身不参与递归计算。 |
+| `semanticApprovalHash` | 对范围、方案、交付、估算、责任、假设和计划语义计算；排除纯 anchor/路径/格式 binding。 |
+| `packetSha256` | 对完整 canonical Packet 计算；字段自身不参与递归计算。 |
 
-Packet 不保存角色批准；批准 sidecar 引用 `packetSha256`，避免自引用。Candidate、Evaluation、review 或输入任一字节变化都产生新 packet。
+Candidate、Evaluation、业务 review 或输入语义变化产生新的 `semanticApprovalHash` 和 Packet。只有纯 Evidence/路径 binding 变化允许 semantic hash 保持不变。
 
 #### `RoleApproval`
 
@@ -722,16 +804,21 @@ Packet 不保存角色批准；批准 sidecar 引用 `packetSha256`，避免自�
 |---|---|
 | `gateId` | 角色正在批准的 Gate。 |
 | `role` | `BA / TL / PM`。 |
-| `packetSha256` | 完整精确 hash。 |
+| `approvedPacketSha256` | 初次批准时的完整精确 Packet hash。 |
+| `semanticApprovalHash` | 角色承担责任的业务语义 hash。 |
 | `decision` | `APPROVED / REJECTED`。 |
 | `decisionDate` | 用户确认的 ISO 日期。 |
 | `responsibility` | 当前角色实际承担的批准范围，必须与 Gate 合同一致。 |
 
-缺少必需角色、批准不同 packet、角色责任与 Gate 不符或任一 `REJECTED` 都不能进入 `APPROVED`。
+缺少必需角色、角色批准不同 semantic hash、责任与 Gate 不符或任一 `REJECTED` 都不能进入 `APPROVED`。
+
+#### `EvidenceRebindAttestation`
+
+只允许 `EVIDENCE_REBIND` 使用，绑定旧/新 Packet、旧/新 Evidence binding、相同 `semanticApprovalHash`、受影响 subject 和独立 Reviewer 的语义等价结论。任一事实陈述、决定、责任或估算变化都拒绝 attestation 并要求新业务批准。有效 attestation 允许复用原 Role Approval，只重发 As-Is receipt、受影响直接引用、Commercial Packet binding 和 SowPackage。
 
 #### `OwnerReceipt`
 
-Owner receipt 绑定 Owner、合同版本、named inputs、stable output、正式 review、Gate Packet 和 Role Approval。Receipt 只证明当前发布与批准闭包一致，不重放 Owner 业务判断，也不复制业务字段。
+Owner receipt 绑定 Owner、合同版本、named inputs、stable output、Owner Validation Receipt、Gate Review Receipt、Gate Packet 和适用的 Role Approval/Evidence Rebind Attestation。Receipt 只证明当前发布与批准闭包一致，不重放 Owner 业务判断，也不复制业务字段。
 
 ## 6. Phase 输入输出合同
 
@@ -745,7 +832,6 @@ Owner receipt 绑定 Owner、合同版本、named inputs、stable output、正�
 | `projectName` | 是 | 非空。 |
 | 插件 manifest/lock | 是 | 与目标合同版本一致。 |
 | SOW v1.3 模板 | 是 | 可以复读，计算权威不被复制。 |
-| `commitmentMode` | 是 | `EFFORT_ONLY / MILESTONE_COMMITTED`。 |
 
 #### 输出
 
@@ -789,12 +875,13 @@ Owner receipt 绑定 Owner、合同版本、named inputs、stable output、正�
 
 | 输入 | 必选 | 约束 |
 |---|---:|---|
-| 已发布 `ProjectShell` | 是 | 当前模板和 commitment mode。 |
+| 已发布 `ProjectShell` | 是 | 当前模板与合同版本。 |
 | 已发布 `BusinessScope` | 是 | Scope Gate receipt 当前。 |
-| `TechnicalInput[]` | 条件 | 来源中存在时全部处置。 |
+| `TechnicalInput[]` 与原文 anchor | 条件 | 来源中存在时逐条读取点名片段并全部处置，不通读未入队来源。 |
 | 授权 Repo/文档/配置 | 条件 | 仅按 Investigation Request 读取。 |
 | 往期 SOW | 条件 | 只处理与当前 Feature 重叠承诺。 |
 | 负责人回答 | 条件 | 只回答定向问题。 |
+| 日期、窗口与容量硬约束 | 条件 | 由 Planning Owner 编译为 Planning Premise；不在 ProjectShell 保存。 |
 
 #### 内部循环输出
 
@@ -804,7 +891,10 @@ Owner receipt 绑定 Owner、合同版本、named inputs、stable output、正�
 - `CurrentStateLedger.candidate`；
 - `TechnicalSolution.candidate`；
 - `DeliveryContract.candidate`；
-- Solution Readiness Gate Evaluation。
+- Planning Premise 与粗粒度约束筛查；
+- Owner Validation Receipt；
+- Context Bundle、Claim Verification Receipt；
+- Solution Readiness Gate Evaluation 与 Gate Review Receipt。
 
 #### Phase 输出
 
@@ -813,9 +903,11 @@ Owner receipt 绑定 Owner、合同版本、named inputs、stable output、正�
 - Current State；
 - Technical Solution；
 - Delivery Contract；
+- Planning Premise；
 - 仍适用的 Assumption/Risk；
 - 无未处理高影响 Unknown；
-- 完整直接依赖。
+- 机械证明完整的直接依赖；
+- `GateReviewReceipt(outcome=ESTIMATION_READY)`。
 
 这些 Candidate 尚未作为稳定输出发布。
 
@@ -825,29 +917,32 @@ Owner receipt 绑定 Owner、合同版本、named inputs、stable output、正�
 
 | 输入 | 必选 | 约束 |
 |---|---:|---|
-| `ESTIMATION_READY` candidate set | 是 | hash 当前。 |
+| `ESTIMATION_READY` candidate set | 是 | Gate Review Receipt 和 subject hash 当前。 |
 | SOW v1.3 模板目录投影 | 是 | 不复制人天和公式。 |
-| 资源与窗口输入 | `MILESTONE_COMMITTED` 时是 | 角色、容量、依赖和外部窗口。 |
-| 商业假设/Allowance | 条件 | 已结构化且有责任方。 |
+| Planning Premise | 是 | Gate 2 已筛查硬约束。 |
+| 最终商业承诺选择 | 是 | `EFFORT_ONLY / MILESTONE_COMMITTED`，由 Planning Owner 拥有。 |
+| 资源与窗口明细 | `MILESTONE_COMMITTED` 时是 | 角色、容量、依赖和外部窗口。 |
+| 商业假设/Allowance | 条件 | 已结构化且有唯一 Owner。 |
 
 #### 内部循环输出
 
 - Trial Estimate；
 - Trial Findings；
 - 修正后的 Owner candidate set；
+- 受影响 subject 的 diff review；
 - `EstimateBaseline.candidate`；
-- 条件性的 `DeliveryPlan.candidate`；
+- `PlanningDisposition.candidate`；
 - Commercial Packet candidate。
 
 #### Phase 输出
 
-Commitment Gate 通过后发布：
+Commitment Gate 一次通过后发布：
 
 - `CurrentStateLedger`；
 - `TechnicalSolution`；
 - `DeliveryContract`；
 - `EstimateBaseline`；
-- 条件性的 `DeliveryPlan`；
+- `PlanningDisposition`；
 - 各 Owner receipt；
 - 已批准 Commercial Packet。
 
@@ -858,9 +953,8 @@ Commitment Gate 通过后发布：
 | 输入 | 必选 | 约束 |
 |---|---:|---|
 | 当前 `ProjectShell` | 是 | template fingerprint 匹配。 |
-| 已批准 Commercial Packet | 是 | 角色批准绑定同一 hash。 |
-| 五个专业 Owner stable/receipt | 是 | 与 Packet named inputs 完全匹配。 |
-| 条件性的 Planning stable/receipt | 条件 | commitment mode 要求时存在。 |
+| 已批准 Commercial Packet | 是 | 角色批准绑定同一 semantic hash；完整 Packet 或有效 rebind attestation 当前。 |
+| 六个业务 Owner stable/receipt | 是 | 与 Packet named inputs 完全匹配。 |
 | 项目模板 | 是 | 与 ProjectShell 当前 hash 一致。 |
 
 #### 输出
@@ -881,13 +975,13 @@ Commitment Gate 通过后发布：
 
 | 当前能力 | 目标位置 | 变化 |
 |---|---|---|
-| `setup` | Phase 1 | 保持机械化；新增 commitment mode。 |
+| `setup` | Phase 1 | 保持机械化；只写身份、合同版本和模板 binding。 |
 | `analyze-requirement` | Phase 2 / Requirement Owner | 只发布 BusinessScope 和 Technical Input 队列。 |
 | `analyze-as-is` | Phase 3 / Decision Investigation Module + As-Is Owner | 从完整前置阶段改为按 Design/Estimate 决定调用。 |
 | `generate-design` | Phase 3 / Design Owner | 与 As-Is、Delivery candidate 在 Gate 2 前共同收敛。 |
 | `generate-story` | Phase 3 / Delivery Owner | Story/AC 先形成 candidate，通过 Trial Estimate 后才发布。 |
 | `generate-task` | Phase 4 / Estimate Owner | 先产生 work-only Trial Estimate；Gate 3 后发布 EstimateBaseline。 |
-| 人员与迭代规划 | Phase 4 / Planning Owner | 从流程外补充变成 commitment mode 驱动的条件性稳定 Owner。 |
+| 人员与迭代规划 | Phase 3/4 / Planning Owner | Gate 2 前筛查硬约束；Gate 3 发布 PlanningDisposition，只有里程碑承诺包含 DeliveryPlan。 |
 | `generate-sow` | Phase 5 / SOW Compiler | 只编译和复读已批准 Commercial Packet。 |
 | `reconcile` | 跨 Phase Impact Coordinator | 从固定阶段后缀改为 Decision Dependency 影响闭包；不拥有业务数据。 |
 
@@ -910,7 +1004,6 @@ Commitment Gate 通过后发布：
 3. 插件合同、锁文件和运行时一致；
 4. 模板为 SOW v1.3 且可 round-trip；
 5. 受管目录无越界或链接穿越；
-6. commitment mode 明确。
 
 #### BLOCK 条件
 
@@ -938,7 +1031,7 @@ Commitment Gate 通过后发布：
 2. 每个 Feature 恰好一个 scope status；
 3. 每个 `IN_SCOPE` Feature 有业务 outcome 和 acceptance intent；
 4. 每个来源中的决策相关业务陈述被消费、排除或形成问题；
-5. 每个 Technical Input 有 source anchor 和受影响 Feature；
+5. 每个 Technical Input 有 source anchor、受影响 Feature 和可供 Design 定向读取的原文片段；
 6. BUSINESS 与 Technical Input 没有被错误混为 TECHNICAL requirement；
 7. 不含凭据、绝对路径或客户原文复制。
 
@@ -948,7 +1041,7 @@ Commitment Gate 通过后发布：
 2. 范围内外及延期边界无冲突；
 3. 会改变商业范围的关键问题已解决；
 4. 仍存在的业务假设有触发、责任和未满足后果；
-5. Design 可以直接消费 Technical Input 队列，不需重新通读全部来源来发现遗漏。
+5. Design 可以读取每项 Technical Input 点名的原文 anchor，不需通读未入队来源。
 
 #### BLOCK 条件
 
@@ -956,44 +1049,52 @@ Commitment Gate 通过后发布：
 - 来源冲突会改变范围但未决定；
 - “沿用/不替换/仅集成”等边界未映射受影响 Feature；
 - Technical Input 无来源或影响对象；
-- BA 未批准当前 packet hash。
+- BA 未批准当前 Scope Packet 的 semantic hash。
 
 #### PASS 输出
 
-发布 `BusinessScope` 和 Scope receipt。任何业务语义修改使 Gate stale。
+发布 `BusinessScope`、Scope Gate Review Receipt 和 Scope receipt。任何业务语义修改使 Gate stale；纯来源 anchor rebind 使用 Evidence Rebind Attestation。
 
 ### 7.3 Gate 2：Solution Readiness Gate
 
-这是进入 Task 试拆分的内部专业门禁，不发布稳定 Design/Delivery，也不要求用户承担最终商业承诺。
+这是进入 Task 试拆分的内部专业门禁，不发布稳定 Design/Delivery，也不要求真人 TL/BA 提前批准。TL/BA 在本 Gate 表示同一个 fresh-context Judgment Reviewer 的两种专业审查视角。
 
 #### 进入条件
 
 - Scope Gate 当前；
-- Current State、Technical Solution 和 Delivery Contract candidate 已形成；
-- 所有 Investigation Request 已有 Result 或明确取消理由。
+- Current State、Technical Solution、Delivery Contract candidate 和 Planning Premise 已形成；
+- 所有 Investigation Request 已有 Result 或明确取消理由；
+- 各 Owner Validation Receipt 当前；
+- Context Bundle 与 Claim Verification Receipt 已形成。
 
 #### 机械 PASS 条件
 
-1. 每个 `IN_SCOPE` BUSINESS Feature 恰有一条 Coverage；
-2. 每个 Feature 恰有一个 Scope Decision；
-3. `FULLY_COVERED` 只引用 COMPLETE Coverage 和 Evidence；
-4. 每个 `IN_SCOPE` Feature 有 Design 覆盖和至少一个 Story；
-5. 每个 Story 恰属一个 Feature，并至少有一个 AC；
-6. Story 显式引用其 Effective Start 或 MISSING；
-7. 每个高 Materiality Design Decision 有 Investigation/Greenfield/Assumption/Allowance/Discovery 处理；
-8. 每个 Technical Input 有 `ADOPTED / REPLACED / REJECTED / INVESTIGATION_REQUIRED` 处置，且不得残留 `INVESTIGATION_REQUIRED`；
-9. 十项 Go-live concern 恰各一条 disposition；
-10. 所有引用闭包有效，无 orphan Fact、Evidence、Effective Start 或 Decision；
-11. 稳定候选 As-Is 实体都被一个当前决定消费。
+Owner-local validator 分别证明自己的业务不变量；Gate runtime 只组合 receipt 并检查：
+
+1. 每个 `IN_SCOPE` BUSINESS Feature 恰有一条 Coverage 和 DeliveryDisposition；
+2. `FULLY_COVERED` 只引用 COMPLETE Coverage 和 Evidence，`NEEDS_DELIVERY` 有 Design 覆盖和至少一个 Story；
+3. 每个 Story 恰属一个 Feature、至少有一个 AC，并显式引用其 Effective Start 或 MISSING；
+4. 每个高 Materiality Design Decision 有 Investigation/Greenfield/Assumption/Allowance/Discovery 处理；
+5. 每个 Technical Input 的原文 anchor 已由 Design 读取，且有 `ADOPTED / REPLACED / REJECTED` 处置；
+6. Design Owner Validation Receipt 证明十项 Go-live disposition 完整；
+7. Planning Premise 中没有尚未处理的明显不可行硬约束；
+8. 所有类型化引用对应精确结构依赖边，无 orphan Fact、Evidence、Effective Start、Result 或 Decision；
+9. 稳定候选 As-Is 实体都被一个当前决定消费；
+10. Context Bundle 没有重复集合，所有 claim 都有当前 verification 或明确深度 Review 路由。
 
 #### 专业 PASS 条件
+
+一个完整 Judgment Reviewer 使用同一 Packet，按 TL/BA 两个视角确认：
 
 1. 方案与业务范围一致；
 2. Delivery Delta 能解释 Story 的必要性；
 3. AC 可观察且不描述实现步骤；
 4. Integration、迁移、生产、发布、验证、运维移交和支持责任明确；
 5. 无未处理、可能推翻范围或估算的 Unknown；
-6. TL 确认方案可进入估算，BA 确认 Delivery candidate 未改变商业意图。
+6. 当前方案可以进入 Trial Estimate，Delivery candidate 未改变商业意图；
+7. 粗粒度日期/窗口约束未使当前方案明显不可行。
+
+本 Gate 不请求 Role Approval，不产生第二份 TL/BA 人类确认。
 
 #### BLOCK 条件与回退
 
@@ -1002,22 +1103,23 @@ Commitment Gate 通过后发布：
 | Coverage/Effective Start/Evidence 不足 | As-Is |
 | Technical Input 未处置、方案缺口 | Design |
 | Story/AC 不可验收 | Delivery |
+| 硬日期或窗口明显不可行 | Planning；若需改范围则返回 Requirement/Design |
 | 商业范围本身不明确 | Requirement，Scope Gate stale |
-| 高影响未知无上限 | 形成 Discovery Requirement，阻塞实施 SOW |
+| 高影响未知无上限 | As-Is 形成 Discovery Requirement，阻塞实施 SOW |
 
 #### PASS 输出
 
-产生 hash-bound `ESTIMATION_READY` candidate set；不发布稳定专业数据。
+产生 hash-bound `ESTIMATION_READY` candidate set 和 `GateReviewReceipt(outcome=ESTIMATION_READY)`；不发布稳定专业数据。
 
 ### 7.4 Gate 3：Commitment Gate
 
 #### 进入条件
 
-- Solution Readiness Gate 当前；
+- Solution Readiness Gate Review Receipt 当前，且其 subject hash 与 candidate set 匹配；
 - Trial Estimate 已运行；
 - 所有 blocking Trial Finding 已关闭；
-- Estimate 和条件性 Plan candidate 已形成；
-- Commercial Packet 已绑定所有 candidate。
+- EstimateBaseline 和 PlanningDisposition candidate 已形成；
+- Commercial Packet 已绑定全部 candidate、Context Bundle、claim verification 和复用 review。
 
 #### 机械 PASS 条件
 
@@ -1029,37 +1131,44 @@ Commitment Gate 通过后发布：
 6. 每个 `deliveryRequired=true` Integration 恰好一个 Integration Task；
 7. 发布切换、迁移、诊断/整改不存在合同定义的重复计价；
 8. Allowance 可以展开为有限 Task 且不保存自由人天；
-9. `MILESTONE_COMMITTED` 时 Plan 完整且容量/依赖/窗口可行；
-10. `EFFORT_ONLY` 时没有日期或里程碑承诺；
+9. `MILESTONE_COMMITTED` 时 PlanningDisposition 含完整可行 Plan；
+10. `EFFORT_ONLY` 时 `scheduleCommitment=NONE` 且没有日期或里程碑承诺；
 11. Commercial Packet 不含 Owner candidate 之外的新业务字段；
-12. Reviewer、candidate、risk、Gate Evaluation 和 input hash 全部匹配。
+12. Gate 2 未变化 subject 绑定原 Gate Review Receipt，变化 subject 绑定 diff review；
+13. Reviewer、candidate、Context Bundle、claim verification、risk、Gate Evaluation 和 input hash 全部匹配。
 
 #### 专业 PASS 条件
 
-1. TL 批准 Technical Solution、Task、工作模式、复杂度和技术责任；
-2. BA 批准 Story/AC 仍忠实表达商业范围；
-3. PM 批准责任、资源、依赖和条件性里程碑；
-4. Assumption、Allowance、客户前置和排除有明确触发与后果；
-5. 三个角色批准同一 Commercial Packet hash；
-6. 没有未关闭 blocking Finding。
+Commitment Judgment Reviewer 不重做 Gate 2 的方案完整性 Review，只判断新增和交叉责任：
+
+1. Estimate/Planning 与 Gate 2 candidate set 一致；
+2. Assumption、Allowance、客户前置和排除有明确触发与后果；
+3. Task、工作模式、复杂度、资源、依赖和计划没有引入新的范围或责任矛盾；
+4. 没有未关闭 blocking Finding。
+
+随后：
+
+5. TL 批准 Technical Solution、Task、工作模式、复杂度和技术责任；
+6. BA 批准 Story/AC 仍忠实表达商业范围；
+7. PM 批准责任、PlanningDisposition 和条件性里程碑；
+8. 三个角色批准同一 `semanticApprovalHash`。
 
 #### BLOCK 条件与回退
 
 | Blocker | 返回位置 |
 |---|---|
-| Task 对象或计数不明确 | Design 或 Delivery，重跑 Gate 2 |
+| Task 对象或计数不明确 | Design 或 Delivery；只重跑受影响 subject 的 Gate 2 diff review |
 | AC 无 Task 覆盖 | Delivery 或 Estimate |
 | 工作模式无现状依据 | As-Is 或 Estimate |
 | Integration 漏失或责任不清 | Design/Delivery |
 | 复杂度只能为 X | Design/As-Is/Delivery |
 | 资源或窗口不可行 | Planning；若需改范围则返回 Scope/Design |
-| 未知无法界定上限 | Discovery，阻塞实施 SOW |
+| 未知无法界定上限 | As-Is Discovery，阻塞实施 SOW |
 | 模板组合不适用 | Estimate；不得手写人天绕过 |
 
 #### PASS 输出
 
-- 发布 `CurrentStateLedger`、`TechnicalSolution`、`DeliveryContract` 和 `EstimateBaseline`；
-- 按 commitment mode 发布或省略 Delivery Plan；
+- 一次发布 `CurrentStateLedger`、`TechnicalSolution`、`DeliveryContract`、`EstimateBaseline` 和 `PlanningDisposition`；
 - 发布 Owner receipt；
 - 发布获批 Commercial Packet。
 
@@ -1068,7 +1177,8 @@ Commitment Gate 通过后发布：
 #### 进入条件
 
 - Commitment Gate 当前且已发布；
-- 所有 Owner stable/review/receipt 与 Commercial Packet hash 匹配；
+- 所有 Owner stable/review/receipt 与 Commercial Packet 的 semantic/full binding 匹配；
+- Evidence rebind 时存在有效 attestation；
 - 模板 fingerprint 当前。
 
 #### PASS 条件
@@ -1099,12 +1209,74 @@ Commitment Gate 通过后发布：
 签署确认不是新的业务 Gate。TL、BA、PM 只确认：
 
 - package ID；
-- Commercial Packet hash；
+- Commercial Packet 的 `packetSha256` 与 `semanticApprovalHash`；
 - 工作簿可打开；
-- 生成内容与已批准 packet 一致；
+- 生成内容与已批准 Packet 或有效 Evidence Rebind Attestation 一致；
 - 对应角色的签署版本明确。
 
 发现业务内容错误时回到真实 Owner 和受影响 Gate，不直接修改工作簿。
+
+### 7.7 信息流与 Agent 编排
+
+普通路径的 Agent 图固定为：
+
+```text
+Coordinator
+  -> Owner-local projector / validator
+  -> Claim Verifier[]（按 claim 并行，可缓存）
+  -> 一个 Gate Judgment Reviewer
+  -> Owner patch
+  -> Patch/Diff Reviewer（只读影响闭包）
+  -> Scope 或 Commitment 用户批准
+  -> deterministic publisher
+```
+
+| 角色 | 最小输入 | 输出 | 并行边界 | 停止条件 | 禁止继承或写入 |
+|---|---|---|---|---|---|
+| Coordinator | Gate manifest、diagnostics、receipt hash | 调度、Impact Closure、Packet | 可并行启动无依赖 Owner/Verifier | Gate BLOCK 或所需 receipt 当前 | 不读取完整业务原文，不写 Owner candidate |
+| Requirement Owner | 获授权来源、Scope subject | BusinessScope candidate | 来源处置可按条并行 | Scope 不确定性关闭 | 不写技术方案 |
+| As-Is Owner | Investigation Request、授权来源 | Result、Ledger candidate | 独立 Request 并行 | Request stopRule 满足 | 不读取无关事实族，不写 Design |
+| Design Owner | Scope、点名 Result/原文 anchor | TechnicalSolution candidate | 不依赖同一对象的 Decision 可并行 | 所有输入处置完成 | 不声明现状或商业范围 |
+| Delivery Owner | Scope、Solution、相关起点 | DeliveryContract candidate | 独立 Feature/Story 可并行 | Story 可验收 | 不写 Task |
+| Estimate Owner | 当前 Story/AC、模板目录、相关起点 | Trial/正式 Estimate candidate | 独立 Story 试拆分可并行 | 无 blocking Trial Finding | 不修改 Story/AC |
+| Planning Owner | Planning Premise、Task/Estimate、外部约束 | PlanningDisposition candidate | 约束收集可与 Phase 3 并行；正式计划等 Task | 模式和可行性明确 | 不改范围、Task、人天 |
+| Claim Verifier | 单 claim、最小 anchor、cache key | Verification Receipt | claim 间并行 | PASS/FAIL/UNVERIFIED | 不读取完整 candidate 或相邻 claim |
+| Judgment Reviewer | Gate Packet、Context Bundle、验证结果 | Gate Review Receipt/findings | 每个 Gate 恰好一个完整实例 | 完备性通过或返回 findings | 不继承 Stage 聊天史，不重读已验证 anchor，抽检除外 |
+| Patch/Diff Reviewer | patch diff、Impact Closure、闭包原文 | diff review | 独立 finding 闭包可并行 | 声明变化与闭包一致 | 不加载全仓库或 round-1 历史 |
+| User approver | Scope/Commercial Packet 可读投影、hash | Role Approval | 同一 Packet 的角色可分别确认 | APPROVED/REJECTED | 不逐份批准 context、claim、receipt |
+| SOW Compiler | 已批准 stable/receipt、模板 | SowPackage | 机械内部实现可并行 | round-trip 和 manifest 通过 | 不运行专业 Reviewer，不补业务字段 |
+
+#### Gate 级复用规则
+
+1. Scope、Solution Readiness、Commitment 普通路径各最多一个完整 Judgment Reviewer，总计三个；Compilation 不创建专业 Reviewer。
+2. Gate 2 Receipt 中 subject hash 未变化时，Gate 3 直接复用其专业判断，只新增 Estimate/Planning 和跨聚合 Review。
+3. Trial Finding 只使 `subjectIds` 的反向 Impact Closure stale；未变化 subject 绑定旧 review 和 claim verification。
+4. Claim Verifier、Investigation Request 和独立 Story Trial 可以并行；同一 Owner 对同一 candidate 的写入必须串行合并后重新计算 hash。
+5. Commercial Packet 只引用 Owner review/receipt/hash，不复制完整专业正文。
+6. Reviewer 不继承 Coordinator 或 Owner 的聊天历史，只从 hash-bound Context Bundle 启动 fresh context。
+
+#### 停止与失败
+
+- 机械失败在创建 Judgment Reviewer 前返回 Owner；
+- 任一 Claim `FAIL/UNVERIFIED` 不被深度 Reviewer 解决或显式处理时，Gate BLOCK；
+- Owner 修复只能产生新 candidate 和 patch manifest，不能原地修改已绑定 candidate；
+- 达到 token/工具预算时返回已完成、缓存命中和剩余 subject/claim，不静默扩大读取或视为 PASS；
+- 单个并行任务失败只阻塞其 subject；共享输入无效才阻塞整个 Gate。
+
+#### `GateRunMetrics`
+
+每次 Gate run 机械记录但不进入稳定业务数据：
+
+- projected fragment 数量与字节数；
+- fragment read 次数；
+- unique anchor read 次数；
+- claim cache hit/miss/stale 数量；
+- full Judgment Reviewer 与 Patch/Diff Reviewer 次数；
+- reused/reviewed subject 数量；
+- user approval request 数量；
+- Investigation Request 数量及 stopRule 关闭数量。
+
+这些指标只用于验收浪费边界，不进入 Commercial Packet 业务正文。
 
 ## 8. Finding 与回退合同
 
@@ -1121,17 +1293,18 @@ Commitment Gate 通过后发布：
 | `TASK_DUPLICATED` | 同一工作重复计价 | Estimate |
 | `INTEGRATION_CLOSURE_MISSING` | Integration 与 Task 闭包不完整 | Design/Delivery/Estimate |
 | `PLAN_INFEASIBLE` | 容量、依赖或窗口不可行 | Planning |
-| `UNKNOWN_UNBOUNDED` | 未知无法形成安全上限 | Discovery |
+| `UNKNOWN_UNBOUNDED` | 未知无法形成安全上限 | As-Is |
 | `PACKAGE_MISMATCH` | 工作簿与批准 packet 不一致 | SOW Compiler |
 
 ### 8.2 回退原则
 
 1. Finding 指向最早拥有错误语义的 Owner，而不是最接近报错的脚本。
 2. 下游 Owner 不附带上游字段 patch；只描述违反的不变量和所需决定。
-3. 修复生成新 candidate hash；旧 Review、Approval 和 Gate Packet 失效。
-4. 只重跑受影响的直接消费者和传递闭包。
-5. 商业范围变化必须重新通过 Scope Gate；名称或 anchor 变化不自动升级为范围变化。
-6. 任何业务失败都不能在 SOW Compiler 中修复。
+3. 修复生成新 candidate hash；Impact Closure 外 review、claim verification 和此前未受影响 Gate 的 Role Approval 不自动失效。
+4. 只重跑受影响的直接消费者和传递闭包；新 Packet 显式绑定复用项。
+5. 当前 Gate 的商业语义变化产生新 `semanticApprovalHash` 并要求该 Gate 角色重新批准；纯 Evidence rebind 使用 Attestation。
+6. 商业范围变化必须重新通过 Scope Gate；名称、格式或 anchor 变化不自动升级为范围变化。
+7. 任何业务失败都不能在 SOW Compiler 中修复。
 
 ### 8.3 Task 试拆分反馈示例
 
@@ -1144,7 +1317,7 @@ owner: DELIVERY
 blocking: true
 ```
 
-Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate，再运行 Solution Readiness 和 Trial Estimate。
+Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate，只对该 Story 的 Impact Closure 运行 Solution Readiness diff review 和 Trial Estimate。无依赖 Story、Design Decision、claim 和 review 原绑定复用。
 
 ## 9. 依赖与变更模型
 
@@ -1154,14 +1327,17 @@ Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate�
 |---|---|
 | Coverage | Business Feature、Effective Start、Commitment、Uncertainty |
 | Effective Start | Current-State Fact、Commitment、Evidence |
+| DeliveryDisposition | Business Feature、Coverage、Evidence |
 | Design Decision | Feature、Effective Start、Investigation Result、Technical Input |
-| Story | Feature、Scope Decision、Design Decision、Effective Start、Assumption/Risk |
+| Story | Feature、DeliveryDisposition、Design Decision、Effective Start、Assumption/Risk |
 | AC | Story、Delivery Delta、Commitment |
 | Integration | Story、Design Decision、Current-State Fact |
 | Task | Story、AC、Effective Start、Integration、Base Unit |
-| Delivery Plan | Task、Story、外部窗口、角色容量 |
-| Commercial Packet | 全部 Owner candidate、Assumption、Allowance、Gate Evaluation |
+| PlanningDisposition | Task、Story、Planning Premise、外部窗口、角色容量 |
+| Commercial Packet | 全部 Owner candidate、Assumption/Risk、Allowance、Discovery 处置、Gate Evaluation |
 | SOW Package | Commercial Packet、Owner stable/receipt、模板 |
+
+表中由 ID 字段表达的边全部确定性派生；只有责任、替代关系等没有结构字段的语义影响可以显式补边。Gate 必须证明结构边精确集合完整，不能用 Reviewer 猜测弥补漏边。
 
 禁止反向业务依赖：
 
@@ -1175,21 +1351,22 @@ Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate�
 | 类别 | 示例 | 重新打开 |
 |---|---|---|
 | `PRESENTATION_ONLY` | 不改变身份的名称、格式 | 直接投影和 Compilation Gate |
-| `EVIDENCE_REBIND` | anchor/hash 更新，事实语义不变 | As-Is receipt、直接引用验证、Compilation |
-| `BASELINE_CHANGE` | Effective Start 能力变化 | 引用它的 Design/Story/Task/Plan |
-| `SOLUTION_CHANGE` | Design Decision 或责任变化 | 关联 Story/AC/Task/Plan |
-| `DELIVERY_CHANGE` | Story/AC/Integration 变化 | Trial Estimate、Estimate、Plan |
-| `ESTIMATE_CHANGE` | Task、工作模式、复杂度变化 | Plan、Commercial Packet、Package |
-| `PLAN_CHANGE` | 资源、窗口、里程碑变化 | Commercial Packet、Package |
+| `EVIDENCE_REBIND` | anchor/hash 更新，事实语义不变 | As-Is receipt、直接引用、Attestation、Commercial Packet binding、Compilation |
+| `BASELINE_CHANGE` | Effective Start 能力变化 | 引用它的 Design/Story/Task/PlanningDisposition |
+| `SOLUTION_CHANGE` | Design Decision 或责任变化 | 关联 Story/AC/Task/PlanningDisposition |
+| `DELIVERY_CHANGE` | Story/AC/Integration 变化 | Trial Estimate、Estimate、PlanningDisposition |
+| `ESTIMATE_CHANGE` | Task、工作模式、复杂度变化 | PlanningDisposition、Commercial Packet、Package |
+| `PLAN_CHANGE` | 承诺模式、资源、窗口、里程碑变化 | PlanningDisposition、Commercial Packet、Package；只有同时改变范围/方案时扩大闭包 |
 | `SCOPE_CHANGE` | Feature 语义或范围变化 | Scope Gate 及相关完整闭包 |
 
 ### 9.3 Gate stale 规则
 
-- Gate 任一 named input hash 变化立即 stale；
-- 语义变化只要求重开 Impact Closure 内对象，但新的 Gate Packet 必须重新绑定未变化对象的当前 hash；
-- `PRESENTATION_ONLY / EVIDENCE_REBIND` 不自动创建专业 finding；
+- 只有 named input 中属于当前 `subjectIds` 或其反向 Impact Closure 的 hash 变化才使对应 Gate subject stale；
+- 聚合 hash 变化时，新 Packet 必须逐项绑定复用 subject 与受影响 subject，不得把聚合变化等同于全量专业重审；
+- 语义变化产生新 `semanticApprovalHash`；`PRESENTATION_ONLY / EVIDENCE_REBIND` 保持 semantic hash 并要求 diff/attestation；
+- `PRESENTATION_ONLY / EVIDENCE_REBIND` 不自动创建专业 finding，也不请求新的业务 Role Approval；
 - Reviewer 必须检查变更分类是否低估，不能由修改 Owner 单方面声明无影响；
-- 已发布 SOW Package 永不原地覆盖；新批准产生新的 package ID。
+- 已发布 SowPackage 永不原地覆盖；任何新 binding 产生新的内容寻址 package ID。
 
 ## 10. 端到端场景
 
@@ -1250,45 +1427,49 @@ Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate�
 1. Gate 2 产生一个包含迁移、接口和切换的 Story candidate。
 2. Trial Estimate 返回 `DELIVERY_NOT_ESTIMABLE`。
 3. Delivery 将 Story 拆为独立验收对象；Design 补充共享切换决定。
-4. Gate 2 重新通过后重跑 Trial Estimate。
+4. 只对受影响 Story/Decision 运行 Gate 2 diff review 和 Trial Estimate；未变化 subject 复用 review/claim verification。
 5. 没有稳定 Story/AC 被中途发布。
 
 预期：正常收敛发生在稳定批准前，不触发正式 reconciliation。
 
 ### 10.7 里程碑不可行
 
-1. Estimate 人天合法，但客户 UAT 只在目标日期后可用。
-2. Planning 返回 `PLAN_INFEASIBLE`。
+1. Planning Premise 已在 Gate 2 筛查当时已知的目标日期和硬约束。
+2. Phase 4 才确认客户 UAT 只能在目标日期后执行，Planning 返回 `PLAN_INFEASIBLE`。
 3. PM 不能直接移动业务范围或修改人天。
 4. 用户选择调整里程碑、改为 `EFFORT_ONLY`，或返回 Scope/Design 分期。
-5. 选择结果进入新 Commercial Packet。
+5. 只改为 `EFFORT_ONLY` 时更新 PlanningDisposition 和 Commercial Packet；Scope、Gate 2、Trial Estimate 和 Estimate review 保持当前。
 
-预期：正确人天不会被误认为可承诺日期。
+预期：已知硬约束尽早失败；晚到窗口不会把正确人天误认为可承诺日期，也不会无条件重做上游。
 
 ### 10.8 Evidence anchor 修正，语义不变
 
 1. 已批准 Fact 的文件 anchor 因文档重排变化，内容语义不变。
 2. 变更分类为 `EVIDENCE_REBIND`。
-3. As-Is 更新 Evidence binding；Reviewer 检查分类。
-4. 不重开无关 Design、Story、Task 专业判断。
-5. 重新生成 receipt、Commercial Packet binding 和新 SOW Package。
+3. As-Is 更新 Evidence binding；独立 Reviewer 形成 Evidence Rebind Attestation。
+4. `semanticApprovalHash` 不变，原 Role Approval 继续有效。
+5. 不重开无关 Design、Story、Task 专业判断。
+6. 重新生成 receipt、Commercial Packet binding 和新 SowPackage。
 
-预期：保持追溯完整，不进行固定后缀全量重审。
+预期：保持追溯完整，不进行固定后缀全量重审，也不请求新的业务批准。
 
 ## 11. 可测验收条件
 
 ### 11.1 模型不变量
 
-1. 每个 `IN_SCOPE` Business Feature 恰有一条 Coverage 和 Scope Decision。
-2. 每个稳定 Current-State Fact 至少被一个 Effective Start、Coverage、Design Decision 或 Task 工作模式引用。
-3. 每个高 Materiality Design Decision 有支持性处理或阻塞实施 SOW。
-4. 每个 Story 恰属一个 Feature，并显式引用相关 Effective Start 或 MISSING。
-5. 每个 AC 至少由一个同 Story Trial Task 和正式 Task 覆盖。
-6. 每个正式 Task 恰好一个基础单元、工作模式和复杂度，且不为 `X`。
-7. `调整 / 接入复用` Task 的 Effective Start 必须属于同 Story 允许集合。
-8. 每个需要交付的 Integration 恰好一个 Integration Task。
-9. Allowance 可以确定性展开为有限 Task，且不保存自由人天。
-10. `MILESTONE_COMMITTED` 必须存在通过可行性检查的 Delivery Plan；`EFFORT_ONLY` 不得含日期承诺。
+1. 每个 `IN_SCOPE` Business Feature 恰有一条 Coverage 和 DeliveryDisposition。
+2. `OUT_OF_SCOPE / DEFERRED` 只存在于 BusinessScope；TechnicalSolution 不重复商业范围状态。
+3. 每个稳定 Current-State Fact 至少被一个 Effective Start、Coverage、Design Decision 或 Task 工作模式引用。
+4. 每个稳定 Investigation Result 有独立 ID、decision、问题、materiality、结论和证据，删除 work-only Request 后仍可解析。
+5. 每个高 Materiality Design Decision 有支持性处理或阻塞实施 SOW。
+6. 每个 Story 恰属一个 Feature，并显式引用相关 Effective Start 或 MISSING。
+7. 每个 AC 至少由一个同 Story Trial Task 和正式 Task 覆盖。
+8. 每个正式 Task 恰好一个基础单元、工作模式和复杂度，且不为 `X`。
+9. `调整 / 接入复用` Task 的 Effective Start 必须属于同 Story 允许集合。
+10. 每个需要交付的 Integration 恰好一个 Integration Task。
+11. Allowance 由 Estimate Owner 拥有，可以确定性展开为有限 Task，且不保存自由人天。
+12. Discovery Requirement 由 As-Is Owner 拥有，不由 Commercial Packet 创建。
+13. `MILESTONE_COMMITTED` 的 PlanningDisposition 必须含可行 Delivery Plan；`EFFORT_ONLY` 固定 `scheduleCommitment=NONE`。
 
 ### 11.2 调查收敛
 
@@ -1297,25 +1478,30 @@ Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate�
 3. 非 Material 事实不能进入稳定 CurrentStateLedger。
 4. Greenfield 可以用零 Current-State Fact 通过 Gate 2。
 5. Task context 只包含 Story 显式引用的 Effective Start；不存在“为安全加载全部”路径。
-6. 未处理高影响 `UNKNOWN` 不能进入 Commitment Gate。
+6. Design 对每个 Technical Input 读取点名原文 anchor，但不通读未入队来源。
+7. 未处理高影响 `UNKNOWN` 不能进入 Commitment Gate。
+8. Gate 2 前对已知硬日期、窗口和容量约束完成粗粒度筛查。
 
 ### 11.3 Gate 行为
 
 1. 每个 Gate 对缺失、无效、stale、unsupported 输入 fail closed。
-2. Candidate 任一字节变化使 Reviewer 和 Approval binding 失效。
+2. Candidate 任一字节变化产生新 candidate/Packet hash，但只使 Impact Closure 内 subject review 失效。
 3. Gate 只发布自身定义的稳定输出。
 4. Gate 失败不修改任何已发布稳定业务数据。
-5. Commitment Gate 的所有角色批准绑定同一 Commercial Packet hash。
-6. Compilation Gate 不运行上游业务分析或 validator，不补充缺失业务字段。
+5. Gate 2 使用 Gate Review Receipt 表达 `ESTIMATION_READY`，不请求 Role Approval。
+6. Commitment Gate 的所有角色批准同一 `semanticApprovalHash`，初次批准同时绑定完整 Packet。
+7. Gate 3 前不发布 Current State、Solution、Delivery、Estimate 或 PlanningDisposition。
+8. Compilation Gate 不运行上游业务分析或 Owner validator，不补充缺失业务字段。
 
 ### 11.4 反馈与返工
 
 1. Trial Finding 只能由声明 Owner 修复。
 2. Estimate Owner 无法修改 Story/AC；Planning Owner 无法修改 Task/Estimate。
-3. `PRESENTATION_ONLY / EVIDENCE_REBIND` 不触发无关专业重审。
-4. `SCOPE_CHANGE` 必须重新通过 Scope Gate。
-5. Impact Closure 外稳定对象保持原字节。
-6. 任何新发布 Package 使用新内容寻址 ID，不覆盖旧 Package。
+3. 单 Story Finding 不重审无依赖 Story、Design Decision、Task、claim 或 review。
+4. `PRESENTATION_ONLY / EVIDENCE_REBIND` 不触发无关专业重审或新业务批准。
+5. `SCOPE_CHANGE` 必须重新通过 Scope Gate。
+6. Impact Closure 外稳定对象保持原字节，其 review/verification binding 可复用。
+7. 任何新发布 Package 使用新内容寻址 ID，不覆盖旧 Package。
 
 ### 11.5 交付与兼容
 
@@ -1325,15 +1511,28 @@ Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate�
 4. 稳定数据和 package 不包含凭据、客户原文、源码、完整工具输出或本机绝对路径。
 5. 相同 Commercial Packet、Owner stable/receipt 和模板产生相同 SowPackage。
 
+### 11.6 浪费与吞吐指标
+
+1. 普通路径恰有 Scope、Solution Readiness、Commitment 三次完整 Judgment Review；Compilation 为零，Gate 3 不重跑未变化的 Gate 2 专业判断。
+2. 普通路径用户业务批准请求恰有 Scope 和 Commitment 两轮；前者形成一个 BA sidecar，后者形成 TL/BA/PM 三个 Role Approval sidecar；最终签署确认不重新展示或批准业务正文。
+3. 相同 `claimTextHash + anchorHash + sourceRevision + verificationPolicyVersion` 最多事实核验一次，抽检和显式失效除外。
+4. 相同 `(projectorVersion, subjectIds, inputHashes)` 的 context fragment 最多投影一次；同一 Agent 每个 Gate run 最多读取一次。
+5. 单 Story Trial Finding 的 `reviewedSubjectCount` 不包含 Impact Closure 外 Story/Decision/Task。
+6. GateRunMetrics 必须能报告 fragment bytes/read、anchor read、cache hit/miss、完整/diff Reviewer 次数和 approval request 次数。
+7. Commercial Packet 只引用 Owner review/receipt/hash，不复制完整专业正文。
+8. Evidence rebind 的 `semanticApprovalHash` 不变且 approval request 数为零。
+9. Greenfield、Brownfield 和单 Story 修复场景必须断言上述次数，而不只断言最终 Schema。
+
 ## 12. 实现约束
 
-1. 先固定逻辑 Schema 和 Gate diagnostics，再修改 Skill 文案；禁止只靠 prompt 表达核心门禁。
+1. 先固定逻辑 Schema、Owner Validation Receipt、Gate diagnostics 和复用键，再修改 Skill 文案；禁止只靠 prompt 表达核心门禁。
 2. 每个 Owner 继续 Skill-local 拥有业务 Schema、renderer、validator 和测试。
-3. 插件级 runtime 只实现 Owner-agnostic 的状态、hash、patch、Gate Packet、影响闭包和 project I/O。
-4. `Decision Investigation` 可以内部使用搜索、语言工具、CodeGraph、文档或问卷 Adapter，但这些 Adapter 不进入外部 interface。
-5. 两种以上真实调查 Adapter 存在前，不为每种工具创建公共 seam。
-6. Gate Evaluation 返回稳定 diagnostics；Stage 不扫描实现源码预测失败。
-7. 稳定业务对象不保存流程状态；状态由 receipt/sidecar 表达。
-8. Commercial Packet 是批准投影，不成为第八份可被下游改写的业务真相。
-9. 生成器继续只读取当前批准稳定数据和模板，不读取 Owner Schema、fixture、test 或工作目录猜测业务语义。
-10. 实现必须 clean cutover 全部调用方、测试、fixture、文档和发布元数据，不保留旧阶段 alias。
+3. 插件级 runtime 只实现 Owner-agnostic 的状态、hash、patch、Gate Packet、Context Bundle binding、claim cache、影响闭包、metrics 和 project I/O。
+4. Gate runtime 只组合 Owner receipt 和检查跨 Owner 引用；不得读取 Owner Schema 或复制 HLD/Go-live 等专业规则。
+5. `Decision Investigation` 可以内部使用搜索、语言工具、CodeGraph、文档或问卷 Adapter，但这些 Adapter 不进入外部 interface。
+6. 两种以上真实调查 Adapter 存在前，不为每种工具创建公共 seam。
+7. Gate Evaluation 返回稳定 diagnostics；Coordinator 不扫描实现源码预测失败。
+8. 稳定业务对象不保存流程状态；状态由 receipt/sidecar 表达。
+9. Commercial Packet 是批准投影，不成为可被下游改写的额外业务真相。
+10. 生成器继续只读取当前批准稳定数据和模板，不读取 Owner Schema、fixture、test 或工作目录猜测业务语义。
+11. 实现必须 clean cutover 全部调用方、测试、fixture、文档和发布元数据，不保留旧阶段 alias。
