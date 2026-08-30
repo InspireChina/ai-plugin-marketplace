@@ -520,6 +520,17 @@ def prepare_candidate_first(root: Path) -> tuple[bytes, bytes]:
     return candidate, review
 
 
+def test_integration_review_projection_includes_boundary_and_target_kind(tmp_path: Path) -> None:
+    _, review_bytes = prepare_candidate_first(tmp_path)
+    review = review_bytes.decode("utf-8")
+
+    assert (
+        "| Integration | Name | Story | Source | Target | Trigger | Direction | Purpose | Owner | "
+        "Delivery Boundary | Target Kind | Design Decisions | Decision Rationale |"
+    ) in review
+    assert "| INTERNAL | END_TO_END | SYSTEM | decision-profile-api | — |" in review
+
+
 def bind_review_packet(root: Path) -> str:
     packet = root / ".ai-sow/work/generate-story/review-packet.json"
     packet_hash = sha256_bytes(packet.read_bytes())

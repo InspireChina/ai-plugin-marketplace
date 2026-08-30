@@ -135,6 +135,10 @@ installer 安装到插件安装副本；随后复用或自动安装 managed Pyth
 
 在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再把每个 `IN_SCOPE` Feature 相对 Effective Start 的差值直接分解为 Story 和 AC，`FULLY_COVERED` 不生成 Story。Delivery 不再保存中间 Gap 实体：Story 直接引用唯一 `featureId`，每条 AC 用 `gapRationale` 引用 Effective Start 或明确有效起点缺失，并用 `carryForwardCommitmentIds` 逐条承接往期承诺。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；有类型化 Design Decision 时只允许引用关联当前 Story Feature 的决策，纯实现集成可用空 `decisionIds` 与非空 `decisionRationale` 说明无需类型化批准。As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 packet-bound `NO_CHANGE` 发布，不为实现机制新增 Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由首次拥有该结果的 producing Story 负责，其他 AC 必须显式引用它。Assumption/Risk 每个语义只保存一次；需要表达不确定性的 Story 最多保存一个 `assumptionId`，同一条记录可被多个 Story 引用。
 
+Story review renderer 对每条 Integration 确定性投影 `deliveryBoundary` 与 `targetKind`，使离线 Reviewer
+无需回读 candidate 即可核对 `END_TO_END / PORT_ONLY` 和 `PROVIDER / SYSTEM / ADAPTER / PORT`
+边界；Decision 引用与可选 `decisionRationale` 仍在同一行显示。
+
 ### generate-task
 
 按模板计数口径把 Story 拆为一实例一行的基础单元 Task。从单张配置表读取 37 项基础单元、13 个任务族、三个工作模式的人天列和逐单元 S/M/L 标准，并从项目参数读取复杂度系数；Task 保存基础单元、工作模式、复杂度、理由、Effective Start 引用、`调整 / 接入复用` 的结构化 `workModeEvidence` 和必要的 `integrationId`。接入复用的项目侧工作类型确定性生成标准正向交付承诺和工作模式理由，避免用自由文本推断责任。发布计划与实际切换合并为每 Story 至多一个发布切换 Task，数据迁移独立；问题诊断与根因整改不得重复计价；用户培训使用专门基础单元，未明确购买的上线后支持不得生成。任务族由模板带出，不使用活动、数量、固定任务对或统一工作模式倍率。

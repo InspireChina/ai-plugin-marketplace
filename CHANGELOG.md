@@ -36,6 +36,9 @@
   `decisionIds`，但必须提供结构化 `decisionRationale`；存在决策时继续要求它关联当前 Story
   Feature。Design review renderer 另要求共享相同或包含 Design Item 集合的 `IN_SCOPE`
   TECHNICAL Feature 逐对说明可独立验收的非重叠边界。
+- 修复 Story 离线评审的 Integration 表遗漏：renderer 现在逐行投影 `deliveryBoundary` 与
+  `targetKind`，让 Reviewer 无需回读 candidate 即可核对 `END_TO_END / PORT_ONLY` 及目标类型；
+  新增回归测试锁定表头和实际字段值。
 - 发布者标识统一为 `Inspire`：Codex manifest 的 `author.name` 与 `interface.developerName`、
   Claude manifest 的 `author.name`、Claude marketplace 的 `owner.name`，以及根目录和插件目录
   `NOTICE` 的版权声明。`scripts/validate_repository.py` 新增 `validate_publisher_identity`
