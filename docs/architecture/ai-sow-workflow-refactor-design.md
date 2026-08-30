@@ -5,6 +5,9 @@
 适用范围：`plugins/ai-sow/` 的阶段职责、Owner seam、评审门禁、返工路径和最终生成边界  
 当前基线：插件 0.1.0、SOW 标准 v1.3
 
+详细领域对象、阶段输入输出、状态转换、门禁条件和回退合同见
+[AI SOW 决策驱动工作流详细合同](ai-sow-workflow-contract-spec.md)。
+
 ## 1. 结论
 
 当前七阶段链路把“完成一个领域的完整成果”当作进入下一阶段的主要条件：
@@ -470,19 +473,21 @@ Discovery 的输出必须是能够关闭实施估算问题的决定和证据，�
 
 ## 9. 批准模型
 
-目标工作流保留四个专业批准门禁和一个签署确认：
+目标工作流使用五个 Gate，但只有两个 Gate 承担业务批准：
 
-1. **商业范围批准：** BA 主责；确认 BUSINESS Feature、范围、规则和验收意图。
-2. **方案与交付批准：** TL 主责、BA 复核；确认 Design、上线责任、Story 和 AC。
-3. **可承诺估算批准：** TL 确认 Task 与技术估算，PM 确认资源/里程碑，BA 确认交付合同未被估算反向改写。
-4. **商业 packet 批准：** 三个角色分别批准同一份范围、交付、估算、假设和计划摘要。
-5. **生成包签署确认：** 只确认工作簿与商业 packet 一致。
+1. **Setup Gate：** 机械确认项目身份、运行时和模板，不做专业批准。
+2. **Scope Gate：** BA 批准 BUSINESS Feature、范围、规则、验收意图和技术输入队列。
+3. **Solution Readiness Gate：** TL 与 BA 完成进入 Trial Estimate 的专业检查；不发布稳定 Design/Delivery，也不要求用户提前承担最终商业承诺。
+4. **Commitment Gate：** TL、BA、PM 分别批准同一 Commercial Packet hash；一次确认方案、交付合同、Task、估算、假设、责任以及条件性的资源/里程碑。
+5. **Compilation Gate：** 机械确认工作簿和 package 是 Commercial Packet 的确定性投影。
+
+生成后另做一次签署确认，只核对 package ID、Commercial Packet hash 和工作簿可打开，不重新批准业务内容。
 
 Reviewer、validator、claims 和 receipt 继续存在，但职责不同：
 
 - validator 证明结构、引用、hash、机械门禁和确定性投影；
 - Reviewer 报告事实错误、证据不足、设计缺陷、遗漏和内部矛盾；
-- 用户只批准责任决定，不逐份批准实现内部 fragment；
+- 用户只在 Scope Gate 和 Commitment Gate 批准责任决定，不逐份批准实现内部 fragment；
 - 任一批准都绑定精确 packet，防止批准后字节漂移。
 
 ## 10. 依赖驱动返工
@@ -524,7 +529,7 @@ Evidence / Current Fact
 
 ### 12.1 固定新合同
 
-- 定义五组目标阶段和四个专业门禁；
+- 定义五组目标阶段、五个 Gate 和 Scope/Commitment 两个业务批准点；
 - 定义 `Decision Investigation` interface；
 - 定义 Story/AC candidate 与 Task 试拆分 seam；
 - 定义 Planning Owner 的最小稳定输入；
@@ -622,7 +627,7 @@ Evidence / Current Fact
 6. Story/AC 必须通过 Task 试拆分后才能正式发布。
 7. Estimate Owner 只能返回上游 finding，不能修改 Story、AC 或 Design。
 8. 承诺日期或里程碑时必须有资源与依赖可行性；只承诺人天时明确排除日期承诺。
-9. 用户批准对象减少为范围、方案与交付、可承诺估算、商业 packet 和最终签署版本。
+9. 用户只在 Scope Gate 和 Commitment Gate 批准业务责任；最终签署只确认生成包与已批准 Commercial Packet 一致。
 10. `generate-sow` 只执行确定性投影、复读和 package 发布，不承担业务分析。
 11. 局部修正按决策依赖闭包重开，不按固定阶段后缀无差别重审。
 12. SOW v1.3 模板、基础人天和计算权威保持不变。
