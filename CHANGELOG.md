@@ -2,8 +2,16 @@
 
 所有重要的用户可见变更都记录在此。
 
-## 0.1.0 - 未发布
+## 0.1.0-beta.1 - 未发布
 
+- `reconcile` 支持在修正影响后缀的连续未发布末端使用 `PENDING`：首次发布可在一次整体评审中完成，
+  而中间 Owner 缺失但更下游已发布时仍以非法后缀阻塞；稳定数据继续由各 Owner 的正常发布路径写入。
+- 明确确定性脚本成功且无 diagnostics 即为最终可信结果，Stage 不再重复 hash、复读、枚举或调用等价
+  检查；`generate-design` 与 `generate-task` 的执行合同统一引用该共享规则。
+- `generate-sow` 新增生成器静态指纹基线，仓库验证器会检查 `generate_sow.py` 与 `workbook.py` 的
+  SHA-256；生成语义变化必须同步提升 `generatorContract` 并刷新基线，避免合同漏升版。
+- 新增 work-only 结构化 Finding 路由合同，以 `LOCAL / UPSTREAM / DECISION / MECHANICAL` 分类替代
+  跨 Owner 自由文本交接；容量、驻场、待命、固定班次和 SLA 等商业承诺问题必须进入用户决策路径。
 - `generate-task` 新增基础单元实例碰撞归一化：区分同一实例、不同交付对象和消费方接入，Renderer
   显式投影潜在碰撞组；同一 API 下的业务操作与读模型可按 API/数据模型基础单元分别保留。轻量
   diff-review 发现 patch 引入的 Task-local 误选时允许一次受限纠错与最终轻量复审；无法保留独立

@@ -41,7 +41,7 @@
     },
     "pluginVersion": {
       "type": "string",
-      "const": "0.1.0",
+      "const": "0.1.0-beta.1",
       "description": "初始化该项目外壳的 AI SOW 插件版本，用于判断合同兼容性；不表示业务数据已迁移。"
     },
     "sowStandardVersion": {

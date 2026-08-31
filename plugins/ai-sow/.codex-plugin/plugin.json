@@ -1,6 +1,6 @@
 {
   "name": "ai-sow",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "根据需求和系统现状创建可评审、可追溯的 AI 辅助 SOW 工作簿。",
   "author": {
     "name": "Inspire"

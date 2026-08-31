@@ -77,7 +77,10 @@ Stage 在读取 Requirements 或开始调查前只运行以下确定性输入门
 
 `upstream-check` 不需要 As-Is candidate，也不写任何 work、review、data 或 validation 文件；它只验证当前 `analyze-requirement` handoff。下游只接受 `ai-sow-owner-v1`、validator contract `0.3` 和 Source Requirements Schema `:0.1`；只报告 `UPSTREAM_HANDOFF_MISSING`、`UPSTREAM_HANDOFF_INVALID`、`UPSTREAM_HANDOFF_STALE` 或 `UPSTREAM_CONTRACT_UNSUPPORTED`，不得重跑或复述 Requirement 的业务 diagnostics。
 
-Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目相对 path，建议用户显式返回 `analyze-requirement`。
+Requirement handoff 无效时立即停止，原样报告诊断与项目相对 path，并输出 `category: MECHANICAL`、
+`discoveredBy: analyze-as-is`、`correctionOwner: analyze-requirement`、对应 receipt/output `subjectIds` 与
+`requiresUserDecision: false` 的结构化 finding；它只路由 handoff 修复，不要求 As-Is 修改 BUSINESS
+数据，也不再用自由文本建议“返回上游”。
 
 ## Stage 调查
 

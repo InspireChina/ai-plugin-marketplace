@@ -11,7 +11,8 @@
 | 正式交接数据 | 五个 Skill 产生的六份 JSON：来源需求、As-Is、设计、设计产生的技术需求、交付内容和估算输入。 |
 | 项目元数据 | 由 setup 初始化的 `.ai-sow/project.json`；只登记 `projectId`、`name`、`pluginVersion`、`sowStandardVersion`，不计入上述六份正式交接数据。 |
 | 数据归属 | 每项正式数据只由一个 Skill 负责。后续 Skill 只读取 `.ai-sow/data/...`，不修改上一步的文件。 |
-| 影响集协调 | 已有完整下游产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；它不拥有稳定业务数据。 |
+| Finding 路由 | 当前 Owner 无法在自身写集合内修复时使用的 work-only 机械元数据，分类为 `LOCAL / UPSTREAM / DECISION / MECHANICAL`；它点名发现 Owner、修正 Owner、subject 和用户决策要求，不进入六份正式交接数据。 |
+| 影响集协调 | 已有有效 Owner 产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；连续未发布末端可标为 `PENDING` 并走各 Owner 的首次发布路径，它不拥有稳定业务数据。 |
 | 固定 ID | 使用小写 kebab-case 和对象前缀，并且在项目数据中唯一，例如 `feature-order-status`。每个可独立引用的实体同时保存必填、非空的 `name`；所指内容不变时沿用原 ID，内容发生实质变化时新建 ID。关系字段只保存目标 ID。 |
 | Excel 展示主键 | 最终 XLSX 用唯一、非空的名称识别、选择和引用业务概念；稳定 ID 不作为业务 Sheet 的阅读字段。 |
 | 名称投影 | `generate-sow` 把稳定 ID 关系转换为名称关系，并把可翻译的机器枚举转换为中文选项；名称变化不改变结构化对象身份。 |
@@ -43,11 +44,13 @@ setup
 
 `setup` 写入项目元数据并复制模板；`generate-sow` 生成待确认的交付文件。两者都不负责业务分析。
 
-普通首次生成仍按七阶段顺序逐项完成。上游修正发生在已有完整产物之后时，用户可显式调用
+普通首次生成仍按七阶段顺序逐项完成。上游修正发生在已有有效 Owner 产物之后时，用户可显式调用
 `reconcile`：Owner 仍分别拥有业务语义、稳定路径和确定性 validator，但不再要求用户逐阶段重启
-session。当前 Stage 在批准前按固定后缀完成各 Owner 的 `CHANGED/NO_CHANGE` staged pass、SOW
+session。当前 Stage 在批准前按固定后缀完成各 Owner 的 `CHANGED/NO_CHANGE/PENDING` staged pass、SOW
 package 复读及 canonical redo/diff/risk，并由完整 packet 绑定；一个 fresh-context Reviewer 与一次
-用户批准绑定同一 packet SHA-256，批准后只做 check/publish。六份稳定 JSON 集合保持不变。
+用户批准绑定同一 packet SHA-256，批准后只做 check/publish。`PENDING` 只允许出现在尚未首次发布的
+连续末端，并复用对应 Owner 的正常首次发布路径；中间缺失而更下游已发布时阻塞。六份稳定 JSON
+集合保持不变。
 
 五个专业 Owner 都遵守 candidate-first 生命周期：由当前 Stage 开展分析、设计或拆分，并在 work 目录提前形成和机械校验结构化
 candidate，再确定性生成 review 投影、风险摘要和 hash-bound review packet。packet 绑定本 Owner
@@ -199,7 +202,7 @@ Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立
 
 `generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。模板 prototype 提供数据行最小高度，生成器按最终可见换行文本和模板列宽确定性扩大行高；`03-SOW主表` 的公式汇总列使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式并为每条内容添加项目符号，不依赖 `_xlfn._xlws.` 动态工作表函数；五张受保护业务表只锁定公式与关系派生单元格及单元格格式，白色输入单元格保持可编辑，并允许调整列宽与行高、使用表头筛选与排序。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 通过“关联现状条目”单选一个可见 Effective Start 且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 只保留一张 Effective Start 明细表，展示“主题名称 / 现状条目名称 / 现状描述 / 起点可用性”，其中现状描述直接投影 Effective Start 自身的 `summary`，不以来源 Item/Commitment 摘要重建开工边界；主题和起点可用性使用下拉，整页可手工填写且不启用保护。任务下拉直接引用该可见名称列，不再使用隐藏辅助名单。Excel 内的系统现状修订不回写稳定 JSON、评审或 manifest。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
 
-生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。生成指纹中的 `receipt-only-v2` 合同隔离当前工作簿投影语义；投影变化必须提升该合同，避免不同包树复用同一不可变 ID。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
+生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。生成指纹中的 `receipt-only-v3` 合同隔离当前工作簿投影语义；投影变化必须提升该合同，避免不同包树复用同一不可变 ID。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
 
 插件不提供统一 CLI，也不建设共享 Owner 业务编译器、项目锁、不可变 revision store、活动指针、
 自动回滚、自动 Git commit、用户项目级 Python/uv 环境、公式执行、OOXML 全量基准或 XLSX

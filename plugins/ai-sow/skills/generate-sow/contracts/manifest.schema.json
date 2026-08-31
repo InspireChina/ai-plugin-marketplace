@@ -38,11 +38,11 @@
   "properties": {
     "packageId": {"description": "由生成指纹形成的确定性交付包标识。", "type": "string", "pattern": "^sow-sha256-[0-9a-f]{64}$"},
     "fingerprintAlgorithm": {"description": "计算交付包标识所采用的固定算法。", "const": "ai-sow-package-v1"},
-    "generatorContract": {"description": "确定性工作簿与 manifest 投影所采用的生成器合同。", "const": "receipt-only-v2"},
+    "generatorContract": {"description": "确定性工作簿与 manifest 投影所采用的生成器合同。", "const": "receipt-only-v3"},
     "generationFingerprint": {"description": "绑定项目、稳定数据、评审、收据与模板的生成指纹。", "type": "string", "pattern": "^[0-9a-f]{64}$"},
     "generatedWorkbookSha256": {"description": "生成工作簿确定性字节的 SHA-256 摘要。", "type": "string", "pattern": "^[0-9a-f]{64}$"},
     "projectId": {"description": "生成该交付包的项目稳定机器标识。", "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
-    "pluginVersion": {"description": "生成该交付包的 AI SOW 插件版本。", "const": "0.1.0"},
+    "pluginVersion": {"description": "生成该交付包的 AI SOW 插件版本。", "const": "0.1.0-beta.1"},
     "sowStandardVersion": {"description": "工作簿采用的 SOW 标准版本。", "const": "1.3"},
     "projectMode": {"description": "现状合同声明的项目模式。", "enum": ["GREENFIELD", "BROWNFIELD"]},
     "repositories": {"description": "现状收据绑定的仓库及其提交快照。", "type": "array", "items": {"$ref": "#/$defs/repository"}},

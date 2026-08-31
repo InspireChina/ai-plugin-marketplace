@@ -33,7 +33,7 @@ from runtime.project_io import ProjectFiles  # noqa: E402
 PROJECT = {
     "projectId": "project-task-tests",
     "projectName": "Task validator tests",
-    "pluginVersion": "0.1.0",
+    "pluginVersion": "0.1.0-beta.1",
     "sowStandardVersion": "1.3",
 }
 SOURCE_PATH = "sources/task-source.md"
@@ -1387,6 +1387,8 @@ def test_skill_uses_review_candidate_publish_stop_and_local_template() -> None:
         "review-packet.json", "approval.json", "不继承当前完整聊天",
         "SAME_INSTANCE", "DISTINCT_DELIVERY_OBJECTS", "STORY_OWNER_RETURN_REQUIRED",
         "TASK_LOCAL_CORRECTION", "最多两次成功 patch",
+        "category: DECISION", "category: UPSTREAM", "correctionOwner: generate-story",
+        "correctionOwner: generate-design", "requiresUserDecision: true",
     ):
         assert required in contract
     assert "Validator Agent" not in contract

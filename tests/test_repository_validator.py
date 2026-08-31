@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.validate_repository import (
     validate_ai_sow_release,
     validate_claude_marketplace,
+    validate_generator_contract_consistency,
     validate_marketplace,
     validate_marketplace_parity,
     validate_plugin_manifest,
@@ -64,7 +66,7 @@ def write_plugin(root: Path, name: str, version: str) -> Path:
 
 
 def write_valid_ai_sow_release(root: Path) -> Path:
-    plugin_root = write_plugin(root, "ai-sow", "0.1.0")
+    plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.1")
     for relative in (
         "tests/support/smoke_plugin.py",
         "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
@@ -78,18 +80,46 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         {
             "projectId": "validator-fixture",
             "name": "Validator Fixture",
-            "pluginVersion": "0.1.0",
+            "pluginVersion": "0.1.0-beta.1",
             "sowStandardVersion": "1.3",
         },
     )
     (plugin_root / "pyproject.toml").write_text(
-        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0"\n',
+        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
         encoding="utf-8",
     )
     (plugin_root / "uv.lock").write_text(
         'version = 1\nrevision = 3\n\n[[package]]\n'
-        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0"\n',
+        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
         encoding="utf-8",
+    )
+    generator_root = plugin_root / "skills/generate-sow"
+    generator_payloads = {
+        "scripts/generate_sow.py": b"generate sow\n",
+        "scripts/workbook.py": b"render workbook\n",
+    }
+    for relative, payload in generator_payloads.items():
+        path = generator_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    write_json(
+        generator_root / "contracts/manifest.schema.json",
+        {
+            "type": "object",
+            "properties": {
+                "generatorContract": {"const": "receipt-only-v2"},
+            },
+        },
+    )
+    write_json(
+        generator_root / "contracts/generator-fingerprint-baseline.json",
+        {
+            "generatorContract": "receipt-only-v2",
+            "files": {
+                relative: hashlib.sha256(payload).hexdigest()
+                for relative, payload in generator_payloads.items()
+            },
+        },
     )
     return plugin_root
 
@@ -116,6 +146,37 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
+    def test_generator_fingerprint_matches_the_current_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+
+            self.assertEqual(
+                validate_generator_contract_consistency(root, plugin_root),
+                [],
+            )
+
+    def test_generator_fingerprint_rejects_changed_projection_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            workbook = (
+                plugin_root / "skills/generate-sow/scripts/workbook.py"
+            )
+            workbook.write_bytes(workbook.read_bytes() + b"changed projection\n")
+
+            errors = validate_generator_contract_consistency(root, plugin_root)
+
+            self.assertTrue(
+                any(
+                    "generator fingerprint mismatch for "
+                    "plugins/ai-sow/skills/generate-sow/scripts/workbook.py"
+                    in error
+                    for error in errors
+                ),
+                errors,
+            )
+
     def test_marketplace_accepts_ai_sow_and_another_valid_plugin(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -259,7 +320,7 @@ class RepositoryValidatorTests(unittest.TestCase):
 
             self.assertEqual(validate_plugin_manifest(root, plugin_root), [])
             self.assertIn(
-                "AI SOW plugin version in .codex-plugin/plugin.json must be 0.1.0",
+                "AI SOW plugin version in .codex-plugin/plugin.json must be 0.1.0-beta.1",
                 validate_ai_sow_release(root, plugin_root),
             )
 

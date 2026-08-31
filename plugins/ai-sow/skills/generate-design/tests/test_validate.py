@@ -50,7 +50,7 @@ GO_LIVE_CONCERNS = (
 PROJECT = {
     "projectId": "project-design-test",
     "name": "设计交接测试",
-    "pluginVersion": "0.1.0",
+    "pluginVersion": "0.1.0-beta.1",
     "templateVersion": "1.3",
 }
 SOURCE_PATH = ".ai-sow/inputs/analyze-requirement/customer-profile.md"
@@ -1267,6 +1267,9 @@ def test_skill_defines_review_candidate_publish_stop_flow() -> None:
         "`Structure Counts`",
         "featureBoundaryReview",
         "可独立验收的非重叠结果",
+        "category: DECISION",
+        "correctionOwner: null",
+        "requiresUserDecision: true",
     ):
         assert required in contract
     assert "一次整体修复" not in contract

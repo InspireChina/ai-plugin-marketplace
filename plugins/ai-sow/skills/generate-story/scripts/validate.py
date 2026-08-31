@@ -23,6 +23,7 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.diagnostics import diagnostic as diag
+from runtime.findings import validate_finding_routing
 from runtime.authorization import publish_review_packet
 from runtime.controls import validate_manifest_controls
 from runtime.context_pages import (
@@ -75,6 +76,7 @@ PACKET_PATH = ".ai-sow/work/generate-story/review-packet.json"
 RISK_SUMMARY_PATH = ".ai-sow/work/generate-story/risk-summary.md"
 REVIEWER_PATH = ".ai-sow/work/generate-story/reviewer.json"
 APPROVAL_PATH = ".ai-sow/work/generate-story/approval.json"
+FINDING_PATH = ".ai-sow/work/generate-story/finding.json"
 CONTEXT_MANIFEST_PATH = ".ai-sow/work/generate-story/context/manifest.json"
 CONTEXT_FRAGMENT_SPECS = (
     ("requirements", ".ai-sow/work/generate-story/context/requirements.json"),
@@ -178,6 +180,7 @@ def parse_args() -> argparse.Namespace:
             "record-reviewer",
             "write-reviewer",
             "write-approval",
+            "validate-finding",
             "publish-approved",
             "publish",
             "rebind",
@@ -192,7 +195,62 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--packet-sha256")
     parser.add_argument("--review-decision", choices=("PASS", "BLOCKED"))
     parser.add_argument("--finding-id", action="append", default=[])
+    parser.add_argument("--finding-path", default=FINDING_PATH)
     return parser.parse_args()
+
+
+def validate_finding(args: argparse.Namespace) -> int:
+    diagnostics: list[dict[str, object]] = []
+    if args.staging_root is not None:
+        diagnostics.append(
+            diag(
+                "FINDING_ROUTING_INVALID",
+                "validate-finding does not accept --staging-root",
+                args.finding_path,
+            )
+        )
+    if args.finding_path != FINDING_PATH:
+        diagnostics.append(
+            diag(
+                "FINDING_ROUTING_INVALID",
+                f"validate-finding must use {FINDING_PATH}",
+                args.finding_path,
+            )
+        )
+    finding: dict[str, object] | None = None
+    if not diagnostics:
+        try:
+            value = ProjectFiles.open(args.project_root).read_json(args.finding_path)
+        except ProjectIOError as error:
+            diagnostics.append(diag(error.code, str(error), error.relative_path))
+        else:
+            if not isinstance(value, dict):
+                diagnostics.append(
+                    diag(
+                        "FINDING_ROUTING_INVALID",
+                        "finding must be a JSON object",
+                        args.finding_path,
+                    )
+                )
+            else:
+                finding = value
+                diagnostics.extend(
+                    diag("FINDING_ROUTING_INVALID", message, args.finding_path)
+                    for message in validate_finding_routing(value)
+                )
+    result = {
+        "outcome": "BLOCKED" if diagnostics else "OK",
+        "summary": (
+            "Finding routing is invalid"
+            if diagnostics
+            else "Finding routing is valid"
+        ),
+        "finding": finding if not diagnostics else None,
+        "diagnostics": diagnostics,
+        "outputs": [] if diagnostics else [args.finding_path],
+    }
+    print(json.dumps(result, ensure_ascii=False))
+    return 2 if diagnostics else 0
 
 
 def write_reviewer(args: argparse.Namespace) -> int:
@@ -1540,6 +1598,8 @@ def write_failure(files: ProjectFiles, diagnostics: list[dict[str, object]]) -> 
 
 def main() -> int:
     args = parse_args()
+    if args.mode == "validate-finding":
+        return validate_finding(args)
     if args.mode in {"record-reviewer", "write-reviewer"}:
         return write_reviewer(args)
     if args.mode == "write-approval":
