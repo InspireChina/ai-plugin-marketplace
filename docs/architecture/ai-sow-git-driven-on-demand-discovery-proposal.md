@@ -92,8 +92,9 @@ receipt 通过多层 SHA-256 绑定。它能检测字节变化，但也会产生
 
 ### 2.6 固定后缀返工大于真实影响
 
-Task 发现现状错误时，可能只影响工作模式，也可能推翻 Design、Story 甚至 BUSINESS 范围。固定从某个
-Owner 到末尾全部 `CHANGED/NO_CHANGE`，既不能准确表达影响，也要求为无变化 Owner 生成额外绑定。
+下游发现上游问题时，可能只影响一个局部决定，也可能改变其全部下游交付链。固定从某个 Owner 到
+末尾全部 `CHANGED/NO_CHANGE`，既不能准确表达影响，也要求为无变化 Owner 生成额外绑定；如果再让
+每个阶段逐步接收、重新分析和重新批准，还会重复加载同一上下文，并在中间产生暂时不一致的产物。
 
 ## 3. 目标与非目标
 
@@ -104,7 +105,7 @@ Owner 到末尾全部 `CHANGED/NO_CHANGE`，既不能准确表达影响，也要
 3. 保留 As-Is 单一写 Owner；其他 Owner 只能提出调查需求和消费结果。
 4. Setup 提前建立项目上下文和系统来源目录，使后续调查有的放矢。
 5. Greenfield 优先问卷，Existing System 优先仓库/文档证据，Hybrid 按 Solution Area 组合。
-6. Task 可以发现并路由上游问题，但不能直接修改 Design、Story 或 Requirement。
+6. 任一下游阶段都可以发现上游问题；相关上游与下游在同一 ChangeSet 中整体分析，按 Owner 分别写入和验证。
 7. 用 Git 小步提交替代自建 revision store 和工作流可见 hash 确认。
 8. 用稳定 ID、类型化引用和语义依赖图计算真实 Impact Closure。
 9. 保持 SOW v1.3 工作簿、基础人天、复杂度、公式、SIT、UAT、风险和取整权威不变。
@@ -114,7 +115,7 @@ Owner 到末尾全部 `CHANGED/NO_CHANGE`，既不能准确表达影响，也要
 
 - 不把 Requirement、As-Is、Design、Delivery 和 Estimate 合并为一个共享业务文件。
 - 不把 As-Is Owner 变成持续扫描全部代码库的知识图谱系统。
-- 不允许下游 Owner 直接写上游稳定数据。
+- 不允许任何 Owner 绕过其他 Owner 的写集合和 validator 直接发布跨域稳定数据。
 - 不用 Git diff 代替领域语义、Owner 所有权、Finding 分类或 Impact Closure。
 - 不自动 push、创建远程仓库或把客户资料发送到外部服务。
 - 不在 0.1.0-beta.1 中原地改变合同语义。
@@ -135,7 +136,9 @@ Owner 到末尾全部 `CHANGED/NO_CHANGE`，既不能准确表达影响，也要
 | `InvestigationRequest` | As-Is Owner 接受的 work-only 调查任务，包含问题、materiality、subject 和允许来源。 |
 | `InvestigationResult` | 可被后续 Owner 稳定引用的调查结论；包含 verdict、Evidence、适用范围、来源修订和未知处理。 |
 | `Finding` | Owner 无法在自己的写集合内修复时使用的结构化路由信息，继续使用 `LOCAL / UPSTREAM / DECISION / MECHANICAL`。 |
-| `ChangeSet` | 围绕同一目的的一组小步 Git commits；可以跨多个 Owner，但每个 commit 的写集合仍归属于一个 Owner。 |
+| `ChangeSet` | 一次跨 Owner 修正的整体分析、PatchSet、验证、评审和 Git commits；可以覆盖上游根因及受影响下游，但每个 OwnerPatch 的写集合仍归属于对应 Owner。 |
+| `OwnerPatch` | ChangeSet 中由一个 Owner 负责的字段级变更，包含目标 subject、操作、理由和预期影响；多个 OwnerPatch 共同组成一个逻辑 PatchSet。 |
+| `OwnerPatchSet` | 同一 ChangeSet 中所有 OwnerPatch 的完整集合；它们共享 baseline、Finding 和 ImpactClosure，并作为一个整体接受跨 Owner 检查。 |
 | `ImpactClosure` | 从变化的稳定 subject 沿类型化和显式语义依赖边得到的最小受影响对象集合。 |
 | `ApprovedCommit` | 用户或责任角色批准的精确 Git commit，由 AI SOW 管理的本地 approval ref 指向。 |
 | `PackageFingerprint` | 最终不可变 SOW 包的内容标识；它不参与普通阶段批准。 |
@@ -364,27 +367,92 @@ Result 的有效性按稳定 ID 和来源修订判断。目标仓库 commit 改�
 Evidence 时，只标记引用该 Result 的 subject 需要复核；不能因为 `asis.json` 其他区域变化就使全部
 下游失效。
 
-## 8. Finding 与上游修正
+## 8. 下游反馈与链路整体修正
 
-Task 阶段发现的新事实可以证明上游错误，但必须通过 Finding 路由到拥有该语义的 Owner：
+任一下游 Owner 都可以发现可能属于上游的问题。发现者只需要声明观察事实、关联 subject、潜在根因
+和业务影响，不需要先判断完整修正路径，也不能直接发布其他 Owner 的稳定数据。`LOCAL` Finding
+留在当前 Owner；`UPSTREAM` Finding 进入链路整体修正；`DECISION` Finding 先取得用户决定，再确定
+修正根。Coordinator 以需要跨 Owner 处理的 Finding 为根同时向两个方向分析：
 
-| 新发现的影响 | 修正路径 |
-|---|---|
-| 只改变 Task 基础单元、工作模式或复杂度 | `As-Is -> Task` |
-| 改变实现机制，但不改变客户购买的交付结果 | `As-Is -> Design -> Task`；Story 保持不变 |
-| 改变可验收交付结果或 Integration 边界 | `As-Is -> Design -> Story -> Task` |
-| 改变 BUSINESS 范围、责任或商业承诺 | `DECISION -> Requirement -> Design -> Story -> Task` |
-| 只修正 Evidence anchor，事实语义不变 | 只提交 As-Is 变化；下游不制造 `NO_CHANGE` 文件 |
+1. 向上定位一个或多个最早需要改变语义的 Root Owner 和 Root Subject；
+2. 从全部 Root Subject 向下计算实际受影响的 `ImpactClosure`；
+3. 将根因与闭包内对象放入同一个 ChangeSet，而不是逐阶段启动独立返工。
 
-每个 Finding 至少包含 `findingId`、发现 Owner、目标 Owner、变化 subject、证据、建议影响类型和是否
-需要用户决策。Coordinator 根据稳定 ID 引用生成 `ImpactClosure`；Owner 仍只修改自己的 candidate。
+### 8.1 一个 ChangeSet，多个 OwnerPatch
+
+用户所说的“形成一个 patch”，在领域上应表达为一个 ChangeSet，而不是一份可以任意修改所有文件的
+通用 JSON Patch。ChangeSet 至少包含：
+
+```text
+baselineCommit
+findingIds
+rootSubjectIds
+impactClosure
+ownerPatches[]
+unaffectedSubjects[]
+validationSummary
+```
+
+每个 `OwnerPatch` 只描述一个 Owner 写集合内的字段变化：
+
+```text
+owner
+targetSubjectIds
+operations
+rationale
+expectedEffects
+```
+
+这样可以一次看清整条链路将如何收敛，同时继续由 Owner-local Schema、规则和 validator 保证专业
+正确性。若某个闭包内对象经过整体分析后不需要语义变化，就写入 work-only `unaffectedSubjects` 及
+理由，不生成空 Patch、`NO_CHANGE` receipt 或占位 commit。
+
+### 8.2 整体分析、分 Owner 验证、一次批准
+
+ChangeSet 使用同一个 staged view 完成以下流程：
+
+```text
+Finding
+  -> 定位 Root Owner(s) / Root Subject(s)
+  -> 计算 ImpactClosure
+  -> 整体形成 OwnerPatchSet
+  -> 按依赖顺序执行 Owner-local validator
+  -> 执行一次跨 Owner 引用与承诺一致性检查
+  -> 在临时 ChangeSet branch/worktree 中形成分 Owner 小步 commits
+  -> 对完整 commit range 做一次 Review / Approval
+  -> 移动 Approved Commit ref
+```
+
+“整体”指所有 Patch 都基于同一 baseline、同一 Finding 和同一闭包共同推导，不再等待上一个阶段正式
+发布后由下一个阶段从头分析。“分别”指 OwnerPatch 仍按上游到下游顺序写入 staged view，并由各自
+validator 对同一完整 staged closure 验证。任一 OwnerPatch 或跨 Owner 检查失败，整个 ChangeSet 留在
+临时分支修正，Approved Commit 不移动，因此不会发布半条链路。
+
+### 8.3 示例：下游发现 Design 问题
+
+假设 Task 分析发现目标平台不支持某个 Design 机制：
+
+```text
+Finding from Task
+  -> Root Subject: Design Decision D1
+  -> ImpactClosure: D1 + Story S2 + Task T7/T8
+  -> OwnerPatchSet:
+       DesignPatch(D1)
+       StoryPatch(S2) 或 unaffected(S2)
+       TaskPatch(T7/T8)
+```
+
+Design、Story 和 Task 在一个 ChangeSet 中完成整体推导。Story 如果交付结果不变，只记录为什么不受
+影响；如果 AC 或 Integration 边界需要改变，则形成真实 StoryPatch。最终只评审完整 ChangeSet，不再
+执行“先改 Design 并批准，再启动 Story，再启动 Task”的串行返工。
 
 现有 `reconcile` 的角色应从“固定阶段后缀发布器”调整为 ChangeSet Coordinator：
 
-- 建立或恢复 ChangeSet；
-- 按 Impact Closure 调度受影响 Owner；
-- 验证每个 Owner 的写集合和 commit；
-- 汇总 review diff；
+- 建立或恢复 ChangeSet 和统一 staged view；
+- 定位 Root Subject 并计算 Impact Closure；
+- 协调 Owner 共同形成 PatchSet；
+- 调用 Owner-local validator 和跨 Owner 一致性检查；
+- 汇总一个 review diff 和 commit range；
 - 不拥有任何业务 Schema，也不替 Owner 作专业判断。
 
 ## 9. Git 驱动的版本、评审与批准
@@ -509,7 +577,7 @@ commit 或其语义未变的后继，而不是重新计算并比较每个文件�
 | `analyze-as-is` | 初始化 Map，拥有共享 Ledger，执行所有定向调查 | 唯一稳定写者 |
 | `generate-design` | 拥有目标设计、TECHNICAL requirement 和上线责任 | 按 Design Decision 提出 Need |
 | `generate-story` | 拥有 Story、AC、Integration 和 Assumption/Risk | 按交付、验收和责任问题提出 Need |
-| `generate-task` | 拥有 Task、工作模式、复杂度和估算输入 | 按可实施性和估算问题提出 Need；可路由上游 Finding |
+| `generate-task` | 拥有 Task、工作模式、复杂度和估算输入 | 按可实施性和估算问题提出 Need 或跨 Owner Finding |
 | `generate-sow` | 从 Approved Commit 确定性编译 package | 不产生新调查或业务决定 |
 | `reconcile` | 协调 ChangeSet 和 Impact Closure | 不拥有现状或其他业务数据 |
 
@@ -601,7 +669,7 @@ v1.3，因为工作簿计算规则没有变化。
 
 - 从类型化 ID 引用机械生成依赖边；
 - 允许 Owner 补充 Schema 无法表达的语义边；
-- 把 Task Finding 路由到正确 Owner；
+- 把下游 Finding 路由到 Root Owner(s)，并生成完整 Impact Closure；
 - 将 `reconcile` 从固定后缀调整为 ChangeSet/ImpactClosure Coordinator。
 
 ### 14.6 简化评审与批准
@@ -649,14 +717,14 @@ v1.3，因为工作簿计算规则没有变化。
 - Task 为某个基础单元判断“调整”时，只搜索相关对象；
 - 不相关模块不进入稳定 As-Is 或 review。
 
-### 15.4 Task 推翻上游方案
+### 15.4 下游发现上游问题
 
-- Task 发现目标平台不支持 Design 假定的机制；
-- As-Is Owner 确认事实并 commit Result；
-- Task 发出 UPSTREAM Finding；
-- Design Owner 修改机制并 commit；
-- 若交付结果未变，Story 不产生无意义 commit；
-- Task 只重新处理 Impact Closure 中的对象。
+- 下游 Owner 发现问题并发出 UPSTREAM Finding；
+- Coordinator 定位 Root Subject 并计算上下游 Impact Closure；
+- 相关 Owner 基于同一 baseline 整体形成 OwnerPatchSet；
+- 每个 OwnerPatch 在统一 staged view 中分别验证；
+- 未变化 subject 只记录 unaffected 理由，不产生空 Patch 或 commit；
+- 完整 ChangeSet 只进行一次 Review 和 Approval。
 
 ### 15.5 来源变化
 
@@ -682,7 +750,7 @@ v1.3，因为工作簿计算规则没有变化。
 7. Existing System 默认从地图定向搜索，不扫描与当前决定无关的仓库区域。
 8. `asis.json` 是共享增量 Ledger，但只有 As-Is Owner 能写稳定现状数据。
 9. Investigation Result 删除 work-only Request 后仍能独立解析，并保留 SourceRevision。
-10. Task Finding 能根据影响类型修正 Design、Story 或 Requirement 链路，Task 本身不越权写上游。
+10. 任一下游 Finding 都能定位 Root Owner(s)，并让相关上下游在一个 ChangeSet 中整体分析、分 Owner 验证。
 11. 语义不变的 Evidence 修正不会制造下游 `NO_CHANGE` 文件或固定后缀重审。
 12. 每个受影响对象由 Stable ID 依赖图进入 Impact Closure，闭包外内容可以复用。
 13. 普通评审向用户展示 ChangeSet、subject 和可读 diff，不要求用户核对 SHA-256。
