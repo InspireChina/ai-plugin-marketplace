@@ -42,7 +42,11 @@ from runtime.handoff import (
     validate_no_change_candidate,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError
-from runtime.review_checks import validate_review_artifacts
+from runtime.review_checks import (
+    artifact_metrics,
+    record_reviewer_judgment,
+    validate_review_artifacts,
+)
 
 
 SUBJECT = "generate-design"
@@ -151,6 +155,7 @@ def parse_args() -> argparse.Namespace:
         choices=(
             "check",
             "review",
+            "record-reviewer",
             "write-reviewer",
             "write-approval",
             "publish-approved",
@@ -169,6 +174,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reviewer-path", default=REVIEWER_PATH)
     parser.add_argument("--approval-path", default=APPROVAL_PATH)
     parser.add_argument("--packet-sha256")
+    parser.add_argument("--review-decision", choices=("PASS", "BLOCKED"))
+    parser.add_argument("--finding-id", action="append", default=[])
     return parser.parse_args()
 
 
@@ -189,34 +196,46 @@ def write_reviewer(args: argparse.Namespace) -> int:
                 "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
             )
         )
+    decision = "PASS" if args.mode == "write-reviewer" else args.review_decision
+    if args.mode == "record-reviewer" and decision is None:
+        diagnostics.append(
+            diag(
+                "REVIEW_DECISION_INVALID",
+                "record-reviewer requires --review-decision PASS or BLOCKED",
+            )
+        )
+    outputs: list[str] = []
+    judgment_path: str | None = None
     if not diagnostics:
         try:
             files = ProjectFiles.open(args.project_root)
-            files.write_atomic(
-                REVIEWER_PATH,
-                canonical_json_bytes(
-                    {
-                        "algorithm": REVIEWER_ALGORITHM,
-                        "decision": "PASS",
-                        "owner": SUBJECT,
-                        "packetSha256": args.packet_sha256,
-                    }
-                ),
+            local, outputs, judgment_path = record_reviewer_judgment(
+                files,
+                owner=SUBJECT,
+                packet_sha256=args.packet_sha256,
+                decision=decision,
+                finding_ids=args.finding_id,
+                journal_directory=".ai-sow/work/generate-design/review-judgments",
+                reviewer_path=REVIEWER_PATH,
+                reviewer_algorithm=REVIEWER_ALGORITHM,
             )
+            diagnostics.extend(local)
         except (ProjectIOError, OSError) as error:
             diagnostics.append(diag(getattr(error, "code", "REVIEWER_WRITE_BLOCKED"), str(error)))
     result: dict[str, object] = {
         "outcome": "BLOCKED" if diagnostics else "OK",
         "summary": (
-            f"{SUBJECT} reviewer sidecar is invalid"
+            f"{SUBJECT} reviewer judgment is invalid"
             if diagnostics
-            else f"{SUBJECT} reviewer sidecar is ready"
+            else f"{SUBJECT} reviewer judgment is recorded"
         ),
         "diagnostics": diagnostics,
-        "outputs": [] if diagnostics else [REVIEWER_PATH],
+        "outputs": [] if diagnostics else outputs,
     }
     if not diagnostics:
         result["packetSha256"] = args.packet_sha256
+        result["reviewDecision"] = decision
+        result["judgmentPath"] = judgment_path
     print(json.dumps(result, ensure_ascii=False))
     return 2 if diagnostics else 0
 
@@ -1199,7 +1218,7 @@ def write_failure(files: ProjectFiles, diagnostics: list[dict[str, object]]) -> 
 
 def main() -> int:
     args = parse_args()
-    if args.mode == "write-reviewer":
+    if args.mode in {"record-reviewer", "write-reviewer"}:
         return write_reviewer(args)
     if args.mode == "write-approval":
         return write_approval(args)
@@ -1451,6 +1470,13 @@ def main() -> int:
             "diagnostics": diagnostics,
             "outputs": outputs,
         }
+        metrics_documents: dict[str, object] = {}
+        if design is not None:
+            metrics_documents["design"] = design
+        if technical is not None:
+            metrics_documents["technicalRequirements"] = technical
+        if metrics_documents:
+            result["artifactMetrics"] = artifact_metrics(metrics_documents)
         if packet_payload is not None:
             result["packetSha256"] = sha256_bytes(packet_payload)
         if report is not None:

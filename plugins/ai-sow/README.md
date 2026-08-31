@@ -68,6 +68,14 @@ setup 在 macOS/Linux 实际调用 `bootstrap.sh`，在 Windows 调用 `bootstra
 默认流程会优先用脚本完成数量、绝对化表述、隐私、重复事实和引用闭包检查，再按 claim 的
 anchor 与判断难度选择评审模型。Claude 使用 Haiku 4.5 / Sonnet 5 / Opus，Codex 使用
 `gpt-5.6-luna` / `gpt-5.6-terra` / `gpt-5.6-sol` 的对应层级；深度设计与完备性判断不会降级。
+Reviewer finding 的字段级修复只遍历当前 Owner 拥有的对象；上游外部 ID 不会把无关对象串入
+闭包。闭包尚未逐项修改或确认时 patch 会原子拒绝且不消耗成功修复轮次，插件会按诊断补齐精确
+确认后重试，不会因为一次未写入候选的校验失败提前结束阶段。
+Reviewer 对同一 packet 的第一次 `PASS/BLOCKED` 判断会按 packet SHA-256 冻结；没有新 packet 时
+不能因催办或重复调用翻转结论。阶段摘要中的 Story、AC、Evidence、Task 等数量直接来自 validator
+输出的 `artifactMetrics`，不由 Agent 自行统计。
+As-Is 评审会把 Commitment、Uncertainty 和 Evidence 的稳定 ID 与名称逐条成对投影；validator
+按当前 candidate 机械核对这些身份行，缺失或错配时不会进入 Reviewer 或发布。
 需要控制尽调范围、评审深度或单阶段 token 上限时，可在 `.ai-sow/project.json` 的可选
 `ownerControls` 中逐 Owner 配置 `investigationMode`、`reviewDepth` 与 `tokenBudget`。达到预算后
 插件会报告已核验数量与剩余 claim，不会把未核验项当作通过。
@@ -232,7 +240,8 @@ PM 补充人员和迭代计划；支持这项工作的 Skill 尚在规划中，�
 - **输出：** 需求与现状之间的交付缺口、可独立交付的 Story、验收条件、集成点、假设和风险。
 - **必须评审：** 每项交付范围是否都有对应的工作项；每个工作项是否能独立交付、验收和
   结算；验收条件是否能明确判断通过或不通过；上线准备、发布切换、生产验证和运维移交
-  是否完整；数据迁移是否单独说明；集成责任、测试范围、支持边界、假设和风险是否清楚。
+  是否完整；数据迁移是否单独说明；每个集成点的交付边界和目标类型是否明确；集成责任、
+  测试范围、支持边界、假设和风险是否清楚。
 - **需要澄清或阻塞：** 前面阶段尚未确认时不能继续。TL 或 BA 复核发现问题后，由 TL
   与 AI 调整 Story 和验收条件；如果根因在需求、系统现状或总体设计，则先退回对应阶段
   修改并重新确认，不能在本阶段临时改写前面的结论。

@@ -52,6 +52,8 @@ setup
 8. 角色批准绑定业务语义 hash；纯 Evidence rebind 由等价 attestation 处理，不重新请求商业批准。
 9. `generate-sow` 是确定性编译 module，不再承担业务内容决策。
 10. 上游修正按机械完整的决策依赖闭包重新打开成果，并复用闭包外 review、claim verification 和 context。
+11. Reviewer 对同一 Gate Packet 的首次判断不可被过程压力翻转；阶段对象数量只采用 validator 从
+    candidate 确定性投影的指标，不采用 Agent 自报统计。
 
 ## 2. 目标与非目标
 
@@ -304,6 +306,10 @@ Owner 间允许在同一个决策门禁内多次形成 candidate，但任何 Own
 
 九个 Topic 继续作为防遗漏清单，但不是九项默认深挖任务。Topic 只有在影响当前 Feature、设计决定或估算时才展开 Item 和 Evidence；否则使用有依据的边界声明或不适用结论。
 
+迁移期间现有 As-Is 离线 review 必须至少把 Commitment、Uncertainty 和 Evidence 的稳定 ID 与名称
+成对投影，并由 Owner validator 对 candidate 逐条核对。该门禁先消除已知的评审盲区，不替代
+0.2.0 `CurrentStateLedger` 的 clean-cut 数据重塑。
+
 #### 5.4.2 形成可证伪方案假设
 
 Design Owner 为每个关键范围决定提出候选方案，并明确：
@@ -505,6 +511,12 @@ Discovery 的输出必须是能够关闭实施估算问题的决定和证据，�
 - Trial Finding 只对 `subjectIds` 的 Impact Closure 运行 Patch/Diff Reviewer；
 - candidate 聚合 hash 变化不等于全部 subject 专业判断失效；
 - 首次发布前也能按 claim text、anchor、source revision 和 policy version 复用事实核验。
+- 每个 Packet 的第一次 `PASS / BLOCKED` 判断按 Packet hash 内容寻址保存；没有新的 Packet hash 时，
+  重复 Reviewer 不能覆盖或翻转原判断。
+- Owner validator 直接输出绑定 candidate 的 `artifactMetrics`；Coordinator 和 Stage 只转发这些数量，
+  不从自然语言总结重新统计 Story、AC、Evidence、Task 或其他对象。
+- 现有 As-Is 迁移切片先机械保证 Commitment、Uncertainty 和 Evidence 的 ID/名称完整投影；目标
+  `CurrentStateLedger` 继续按新合同收窄数据面。
 
 ### 9.3 Context 与 Agent 流
 
@@ -572,6 +584,7 @@ Evidence / Current Fact
 - 定义 Story/AC candidate、Task 试拆分和 Gate 3 原子发布 seam；
 - 定义 Planning Premise、PlanningDisposition 和条件性 Delivery Plan；
 - 定义 Owner Validation、Gate Review、Context、Claim Verification 和 Evidence Rebind 合同；
+- 定义不可覆盖的 Packet Reviewer Judgment 与 candidate-derived `artifactMetrics`；
 - 固定 0.2.0 版本与 receipt/packet 双 hash 合同。
 
 ### 12.2 重塑 Owner 数据与 handoff
@@ -672,6 +685,8 @@ Evidence / Current Fact
 - 同一 Context Bundle fragment 每个 Agent/Gate run 最多读取一次；
 - 单 Story finding 的 reviewed subject 不包含 Impact Closure 外对象；
 - 普通路径只有 Scope、Commitment 两轮业务批准请求，Evidence rebind 的批准请求为零。
+- 同一 Packet 的 Reviewer 判断不能在无新输入的重复调用中翻转；
+- Stage 报告的领域对象数量与 Owner validator 的 `artifactMetrics` 原字节一致。
 
 ## 14. 验收标准
 
@@ -695,6 +710,11 @@ Evidence / Current Fact
 18. 新流程以插件 0.2.0 和新 receipt/packet 合同 clean cutover，不静默混读 0.1.0 项目数据。
 19. Greenfield、Brownfield、接入复用、高影响未知、Task 反馈、计划、Evidence rebind 和局部返工均有端到端行为与次数测试。
 20. 独立复制后的插件仍不读取 marketplace 根目录或其他插件文件。
+21. 同一 Packet 的首次 Reviewer 判断被内容寻址冻结；无新 Packet 时任何相反判断机械失败。
+22. 阶段完成和阻塞摘要中的对象数量来自 Owner validator 的 candidate-derived `artifactMetrics`，
+    不能由模型手算或覆盖。
+23. As-Is 人工评审面逐条包含 Commitment、Uncertainty 和 Evidence 的稳定 ID/名称映射，且映射
+    缺失或错配时由 Owner validator 阻塞。
 
 ## 15. 否决的方案
 

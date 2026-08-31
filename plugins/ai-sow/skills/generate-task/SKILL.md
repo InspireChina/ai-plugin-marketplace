@@ -30,15 +30,16 @@ description: 当已评审的交付 Story 需要按权威模板的基础单元目
 
 ## 精确 Reviewer 绑定
 
-fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文、模板或上游数据：
+fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 的第一次判断必须立即按共享合同冻结；`PASS` 使用下列命令，同时写判断记录与固定 `ai-sow-owner-reviewer-v1` sidecar，findings 则在任何 patch 前使用同一命令的 `BLOCKED + --finding-id` 形式：
 
 ```text
 "<python-bin>" "<skill-root>/scripts/validate.py" \
-  --project-root "<project-root>" --mode write-reviewer \
-  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
+  --project-root "<project-root>" --mode record-reviewer \
+  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>" \
+  --review-decision PASS
 ```
 
-该命令只能消费实际 Reviewer 的 `PASS`，不能替代独立评审。命令返回 `BLOCKED` 时原样报告并停止；任何 packet 字节变化都必须重新创建 packet、交回 Reviewer 完整复审，再重新绑定。
+该命令只能消费实际 Reviewer 的判断，不能替代独立评审；Stage 不得手写 reviewer JSON 或 judgment 记录。同一 packet 已记录 findings 后不得再次调用 Reviewer 寻求翻转；只有新 packet 可以重新判断。命令返回 `BLOCKED` 时原样报告并停止。
 
 ## 路径
 
@@ -75,7 +76,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```text
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-task/estimate.candidate.json --review-path .ai-sow/work/generate-task/review.candidate.md
    ```
-12. 为当前 packet 只创建一个 Reviewer Agent，并使用不继承当前完整聊天的新上下文。Reviewer 只读取 `review-packet.json`、candidate、review、risk summary、[评审模板](references/review-template.md)和 packet 点名的证据 fragment；不读取 canonical fixture 或完整上游 artifact，不运行机械校验，不修改成果。Reviewer 返回 findings 时，Stage 先确认 `estimate.candidate.json` 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，再运行 Owner-local patch；不得直接编辑 candidate 或整段重写：
+12. 为当前 packet 只创建一个 Reviewer Agent，并使用不继承当前完整聊天的新上下文。Reviewer 只读取 `review-packet.json`、candidate、review、risk summary、[评审模板](references/review-template.md)和 packet 点名的证据 fragment；不读取 canonical fixture 或完整上游 artifact，不运行机械校验，不修改成果。Reviewer 返回 findings 时，Stage 先按共享合同用 `record-reviewer` 冻结 `BLOCKED` 与全部 finding ID，再确认 `estimate.candidate.json` 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，并运行 Owner-local patch；不得直接编辑 candidate 或整段重写：
 
    ```text
    "<python-bin>" "<skill-root>/scripts/apply_patch.py" \

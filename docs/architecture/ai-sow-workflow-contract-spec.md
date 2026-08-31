@@ -96,6 +96,7 @@ SOW 计算标准：继续使用 v1.3
 - Claim Verification Receipt；
 - Context Bundle、context fragment、claims、risk summary；
 - Reviewer sidecar；
+- Packet Reviewer Judgment；
 - Approval sidecar；
 - Evidence Rebind Attestation；
 - Impact analysis、Gate Run Metrics 和发布 staging。
@@ -210,6 +211,9 @@ Requirement Owner 不得把 `TechnicalInput` 标记为 `ACCEPTED_TECHNICAL_REQUI
 - `Uncertainty[]`；
 - `EvidenceRef[]`；
 - `InvestigationResult[]`。
+
+人工评审投影必须保留每个 Commitment、Uncertainty 和 EvidenceRef 的稳定 ID 与名称映射；Owner
+validator 从 candidate 逐条校验，禁止只在机器 JSON 中保留身份名称。
 
 固定九个 Topic 只作为 `CoverageChecklist`，每个 Topic 恰有一个：
 
@@ -776,9 +780,18 @@ work-only claim 核验记录至少绑定 `claimTextHash + anchorHash + sourceRev
 | `judgmentReviewHash` | 当前 Gate 完整 Judgment Review。 |
 | `reusedReviewBindings` | 未变化 subject 的既有 review；必须证明依赖闭包未变。 |
 | `diffReviewBindings` | 修改 subject 的 patch diff 与 Impact Closure review。 |
+| `firstJudgmentBinding` | 绑定当前 Packet 第一次 `PASS / BLOCKED` 判断；同一 Packet 只能有一个 canonical 值。 |
 | `outcome` | Scope/Commitment 为 `PASS / BLOCKED`；Solution Readiness 为 `ESTIMATION_READY / BLOCKED`。 |
 
 Gate 3 以 Gate 2 Receipt 证明 Solution Readiness 当前；不重新执行未变化 Solution/Delivery 的完整 Judgment Review。
+Reviewer 对同一 Packet 的后续相反判断不能覆盖 `firstJudgmentBinding`；只有 candidate、context、
+Evidence、review 或其他 Gate input 变化并生成新 Packet hash 后才允许重新判断。
+
+#### `ArtifactMetrics`
+
+每个 Owner validator 从当前 candidate 确定性投影顶层业务集合数量与 candidate canonical hash，形成
+work-only `ArtifactMetrics`。Stage、Coordinator 和用户可见摘要只能转发该对象；不得由模型自行统计
+Story、AC、Evidence、Task 或其他集合，也不得在 stdout 缺少指标时补报推测数字。
 
 #### `GatePacket`
 
@@ -1260,6 +1273,8 @@ Coordinator
 - 机械失败在创建 Judgment Reviewer 前返回 Owner；
 - 任一 Claim `FAIL/UNVERIFIED` 不被深度 Reviewer 解决或显式处理时，Gate BLOCK；
 - Owner 修复只能产生新 candidate 和 patch manifest，不能原地修改已绑定 candidate；
+- Reviewer 第一次判断必须在任何 patch 或重复调用前按 Packet hash 记录；同一 Packet 的判断冲突
+  机械返回 `REVIEW_JUDGMENT_CONFLICT`；
 - 达到 token/工具预算时返回已完成、缓存命中和剩余 subject/claim，不静默扩大读取或视为 PASS；
 - 单个并行任务失败只阻塞其 subject；共享输入无效才阻塞整个 Gate。
 
@@ -1492,6 +1507,8 @@ Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate�
 6. Commitment Gate 的所有角色批准同一 `semanticApprovalHash`，初次批准同时绑定完整 Packet。
 7. Gate 3 前不发布 Current State、Solution、Delivery、Estimate 或 PlanningDisposition。
 8. Compilation Gate 不运行上游业务分析或 Owner validator，不补充缺失业务字段。
+9. 同一 Packet 的第一次 Reviewer 判断不可覆盖；无新 Packet 的相反判断必须 fail closed。
+10. Stage 完成或阻塞摘要中的对象数量必须与 Owner validator 的 `ArtifactMetrics` 完全一致。
 
 ### 11.4 反馈与返工
 
@@ -1522,6 +1539,8 @@ Estimate Owner 不直接拆分 Story；Delivery 修复后重新形成 candidate�
 7. Commercial Packet 只引用 Owner review/receipt/hash，不复制完整专业正文。
 8. Evidence rebind 的 `semanticApprovalHash` 不变且 approval request 数为零。
 9. Greenfield、Brownfield 和单 Story 修复场景必须断言上述次数，而不只断言最终 Schema。
+10. Current State review 中 Commitment、Uncertainty 和 EvidenceRef 的稳定 ID/名称映射与
+    candidate 精确一致。
 
 ## 12. 实现约束
 

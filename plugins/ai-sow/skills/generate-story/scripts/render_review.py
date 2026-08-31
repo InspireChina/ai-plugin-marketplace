@@ -191,8 +191,8 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
             "",
             "## Integration",
             "",
-            "| Integration | Name | Story | Source | Target | Trigger | Direction | Purpose | Owner | Design Decisions | Decision Rationale |",
-            "|---|---|---|---|---|---|---|---|---|---|---|",
+            "| Integration | Name | Story | Source | Target | Trigger | Direction | Purpose | Owner | Delivery Boundary | Target Kind | Design Decisions | Decision Rationale |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
             *(
                 [
                     "| "
@@ -208,6 +208,8 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
                             item.get("direction", ""),
                             item.get("purpose", ""),
                             item.get("owner", ""),
+                            item.get("deliveryBoundary", ""),
+                            item.get("targetKind", ""),
                             joined(item.get("decisionIds", [])),
                             item.get("decisionRationale", "—"),
                         )
@@ -215,7 +217,9 @@ def render(delivery: dict[str, Any], design_context: dict[str, Any]) -> bytes:
                     + " |"
                     for item in integrations
                 ]
-                or ["| NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE |"]
+                or [
+                    "| NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE | NONE |"
+                ]
             ),
             "",
             "## Assumption / Risk",

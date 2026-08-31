@@ -30,21 +30,22 @@ description: 当 AI SOW 项目需要从业务简报、招标文件、研讨会�
 
 ## 精确 Reviewer 绑定
 
-fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文或来源：
+fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 的第一次判断必须立即按共享合同冻结；`PASS` 使用下列命令，同时写判断记录与固定 `ai-sow-owner-reviewer-v1` sidecar，findings 则在任何 patch 前使用同一命令的 `BLOCKED + --finding-id` 形式：
 
 ```text
 "<python-bin>" "<skill-root>/scripts/validate.py" \
-  --project-root "<project-root>" --mode write-reviewer \
-  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
+  --project-root "<project-root>" --mode record-reviewer \
+  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>" \
+  --review-decision PASS
 ```
 
-该命令只能消费实际 Reviewer 的 `PASS`，不能替代独立评审。命令返回 `BLOCKED` 时原样报告并停止；任何 packet 字节变化都必须重新创建 packet、交回 Reviewer 完整复审，再重新绑定。
+该命令只能消费实际 Reviewer 的判断，不能替代独立评审；Stage 不得手写 reviewer JSON 或 judgment 记录。同一 packet 已记录 findings 后不得再次调用 Reviewer 寻求翻转；只有新 packet 可以重新判断。命令返回 `BLOCKED` 时原样报告并停止。
 
 ## 当前任务与 Reviewer
 
 - 当前 Stage Agent 就是当前宿主 task，也是本 Skill 的唯一用户接口：直接与用户协作，完成来源登记、业务分析、问卷关闭、candidate、确定性 review 投影、机械校验和最多一次字段级 finding 修复。不要为 Stage 工作另派 Agent。
 - 只有 candidate 通过机械校验并形成 hash-bound `review-packet.json` 后，才创建一个 fresh Reviewer Agent。Reviewer 不继承当前完整聊天，只读取 packet、其中绑定的 candidate、context、review、risk summary 和项目内来源；它只返回 `PASS` 或带证据 findings，不修改文件。
-- 当前 packet 只创建一个完整 Reviewer。Reviewer 返回 findings 时，Stage 先确认被审 candidate 仍与 packet 绑定字节一致，把每项字段变更写入 `patch.json`，再通过 Owner-local `scripts/apply_patch.py` 应用；不得直接编辑 candidate 或整段重写。Requirement finding 可分别作用于 `requirements.candidate.json` 或 `source-disposition.json`，一次 patch 只修改其中一个文件：
+- 当前 packet 只创建一个完整 Reviewer。Reviewer 返回 findings 时，Stage 先按共享合同用 `record-reviewer` 冻结 `BLOCKED` 与全部 finding ID，再确认被审 candidate 仍与 packet 绑定字节一致，把每项字段变更写入 `patch.json`，并通过 Owner-local `scripts/apply_patch.py` 应用；不得直接编辑 candidate 或整段重写。Requirement finding 可分别作用于 `requirements.candidate.json` 或 `source-disposition.json`，一次 patch 只修改其中一个文件：
 
   ```text
   "<python-bin>" "<skill-root>/scripts/apply_patch.py" \

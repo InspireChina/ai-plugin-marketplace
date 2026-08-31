@@ -36,6 +36,19 @@
   `decisionIds`，但必须提供结构化 `decisionRationale`；存在决策时继续要求它关联当前 Story
   Feature。Design review renderer 另要求共享相同或包含 Design Item 集合的 `IN_SCOPE`
   TECHNICAL Feature 逐对说明可独立验收的非重叠边界。
+- 修复 Story 离线评审的 Integration 表遗漏：renderer 现在逐行投影 `deliveryBoundary` 与
+  `targetKind`，让 Reviewer 无需回读 candidate 即可核对 `END_TO_END / PORT_ONLY` 及目标类型；
+  新增回归测试锁定表头和实际字段值。
+- 修复字段级 patch 的引用闭包误扩散：当前 Owner 不拥有的 Feature、Decision、Commitment 等
+  外部 ID 不再作为遍历枢纽把无关对象串入 `syncSuspects`。`PATCH_CLOSURE_UNSYNCED` 现在明确返回
+  候选未写入、精确确认字段、允许重试且不消耗成功 patch 轮次；共享合同规定逐项确认格式与一次
+  原子拒绝后的修正重试，避免 Stage 在实际未应用修复时提前 `BLOCKED`。
+- 冻结 Reviewer 对同一 packet 的第一次 `PASS/BLOCKED` 判断：五个 Owner 新增内容寻址
+  `review-judgments/<packet-sha256>.json`，无新 packet 时拒绝结论翻转；validator 同时输出
+  candidate-derived `artifactMetrics`，阶段摘要不再由 Agent 手算 Story、AC、Evidence 或 Task 数量。
+- 修复 As-Is 离线评审的身份投影缺口：Commitment、Uncertainty 和 Evidence 表现在同时显示稳定
+  ID 与 `name`；validator 按 candidate 逐条核对该映射，任何缺名或错名都会以
+  `REVIEW_NAME_PROJECTION_MISSING` 阻塞，不再把关键名称留给 Reviewer 回读 JSON 发现。
 - 发布者标识统一为 `Inspire`：Codex manifest 的 `author.name` 与 `interface.developerName`、
   Claude manifest 的 `author.name`、Claude marketplace 的 `owner.name`，以及根目录和插件目录
   `NOTICE` 的版权声明。`scripts/validate_repository.py` 新增 `validate_publisher_identity`

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -8,9 +9,144 @@ from typing import Any
 from runtime.claims import NARRATIVE_FIELDS, build_claims, validate_claims, verified_claims
 from runtime.diagnostics import diagnostic
 from runtime.fact_source import validate_unique_fact_sources
-from runtime.handoff import canonical_json_bytes
+from runtime.handoff import canonical_json_bytes, sha256_bytes
 from runtime.project_io import ProjectFiles, ProjectIOError
 from runtime.text_gates import text_fields, validate_text_gates
+
+
+REVIEW_JUDGMENT_ALGORITHM = "ai-sow-owner-review-judgment-v1"
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def artifact_metrics(documents: Mapping[str, object]) -> dict[str, object]:
+    """Return deterministic candidate counts for user-visible stage summaries."""
+
+    projected: dict[str, object] = {}
+    for name in sorted(documents):
+        document = documents[name]
+        if not isinstance(document, Mapping):
+            continue
+        projected[name] = {
+            "canonicalSha256": sha256_bytes(canonical_json_bytes(document)),
+            "collections": {
+                key: len(value)
+                for key, value in sorted(document.items())
+                if isinstance(value, list)
+            },
+        }
+    return {
+        "algorithm": "ai-sow-artifact-metrics-v1",
+        "documents": projected,
+    }
+
+
+def record_reviewer_judgment(
+    files: ProjectFiles,
+    *,
+    owner: str,
+    packet_sha256: str,
+    decision: str,
+    finding_ids: Sequence[str],
+    journal_directory: str,
+    reviewer_path: str,
+    reviewer_algorithm: str,
+) -> tuple[list[dict[str, object]], list[str], str]:
+    """Freeze the first judgment for a packet and optionally bind a PASS sidecar."""
+
+    diagnostics: list[dict[str, object]] = []
+    normalized_findings = sorted(set(finding_ids))
+    if SHA256_PATTERN.fullmatch(packet_sha256) is None:
+        diagnostics.append(
+            diagnostic(
+                "PACKET_SHA256_INVALID",
+                "--packet-sha256 must be exactly 64 lowercase hexadecimal characters",
+            )
+        )
+    if decision not in {"PASS", "BLOCKED"}:
+        diagnostics.append(
+            diagnostic(
+                "REVIEW_DECISION_INVALID",
+                "--review-decision must be PASS or BLOCKED",
+            )
+        )
+    if any(not isinstance(value, str) or not value.strip() for value in finding_ids):
+        diagnostics.append(
+            diagnostic(
+                "REVIEW_FINDING_IDS_INVALID",
+                "--finding-id values must be non-empty strings",
+            )
+        )
+    if len(normalized_findings) != len(finding_ids):
+        diagnostics.append(
+            diagnostic(
+                "REVIEW_FINDING_IDS_INVALID",
+                "--finding-id values must be unique",
+            )
+        )
+    if decision == "PASS" and normalized_findings:
+        diagnostics.append(
+            diagnostic(
+                "REVIEW_FINDING_IDS_INVALID",
+                "PASS cannot include finding IDs",
+            )
+        )
+    if decision == "BLOCKED" and not normalized_findings:
+        diagnostics.append(
+            diagnostic(
+                "REVIEW_FINDING_IDS_REQUIRED",
+                "BLOCKED requires at least one --finding-id",
+            )
+        )
+
+    judgment_path = f"{journal_directory.rstrip('/')}/{packet_sha256}.json"
+    if diagnostics:
+        return diagnostics, [], judgment_path
+
+    judgment = {
+        "algorithm": REVIEW_JUDGMENT_ALGORITHM,
+        "decision": decision,
+        "findingIds": normalized_findings,
+        "owner": owner,
+        "packetSha256": packet_sha256,
+    }
+    payload = canonical_json_bytes(judgment)
+    try:
+        current = files.read_bytes(judgment_path)
+    except ProjectIOError as error:
+        if error.code != "PROJECT_PATH_MISSING":
+            return [diagnostic(error.code, str(error), error.relative_path)], [], judgment_path
+        files.write_atomic(judgment_path, payload)
+    else:
+        if current != payload:
+            try:
+                previous = json.loads(current.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                previous = {}
+            return [
+                diagnostic(
+                    "REVIEW_JUDGMENT_CONFLICT",
+                    "the first judgment for this packet is immutable; new evidence must produce a new packet hash",
+                    judgmentPath=judgment_path,
+                    previousDecision=previous.get("decision"),
+                    attemptedDecision=decision,
+                )
+            ], [], judgment_path
+
+    outputs = [judgment_path]
+    if decision == "PASS":
+        files.write_atomic(
+            reviewer_path,
+            canonical_json_bytes(
+                {
+                    "algorithm": reviewer_algorithm,
+                    "decision": "PASS",
+                    "owner": owner,
+                    "packetSha256": packet_sha256,
+                }
+            ),
+        )
+        outputs.append(reviewer_path)
+    return [], outputs, judgment_path
 
 
 def existing_claims(

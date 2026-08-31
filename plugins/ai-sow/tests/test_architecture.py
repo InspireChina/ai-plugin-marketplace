@@ -259,7 +259,8 @@ def test_all_professional_owners_freeze_owner_local_candidate_first_interface() 
         assert "正式写入前唯一需要的 preflight" in skill, owner
         assert "不得手写 approval JSON" in skill, owner
         assert "不得手写 reviewer JSON" in skill, owner
-        assert "--mode write-reviewer" in skill, owner
+        assert "--mode record-reviewer" in skill, owner
+        assert "--review-decision PASS" in skill, owner
         assert "--mode write-approval" in skill, owner
         assert "--packet-sha256" in skill, owner
         assert "不得使用 `rg`、`find` 或 `rg --files`" in skill, owner
@@ -268,6 +269,7 @@ def test_all_professional_owners_freeze_owner_local_candidate_first_interface() 
             assert algorithm in validator, (owner, algorithm)
         for mode in (
             "review",
+            "record-reviewer",
             "write-reviewer",
             "write-approval",
             "publish-approved",

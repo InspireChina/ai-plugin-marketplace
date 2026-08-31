@@ -31,15 +31,16 @@ description: 当 AI SOW 项目需要基于已批准的业务需求、原始来�
 
 ## 精确 Reviewer 绑定
 
-fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、两份 candidate、上下文或来源：
+fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 的第一次判断必须立即按共享合同冻结；`PASS` 使用下列命令，同时写判断记录与固定 `ai-sow-owner-reviewer-v1` sidecar，findings 则在任何 patch 前使用同一命令的 `BLOCKED + --finding-id` 形式：
 
 ```text
 "<python-bin>" "<skill-root>/scripts/validate.py" \
-  --project-root "<project-root>" --mode write-reviewer \
-  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
+  --project-root "<project-root>" --mode record-reviewer \
+  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>" \
+  --review-decision PASS
 ```
 
-该命令只能消费实际 Reviewer 的 `PASS`，不能替代独立评审。命令返回 `BLOCKED` 时原样报告并停止；任何 packet 字节变化都必须重新创建 packet、交回 Reviewer 完整复审，再重新绑定。
+该命令只能消费实际 Reviewer 的判断，不能替代独立评审；Stage 不得手写 reviewer JSON 或 judgment 记录。同一 packet 已记录 findings 后不得再次调用 Reviewer 寻求翻转；只有新 packet 可以重新判断。命令返回 `BLOCKED` 时原样报告并停止。
 
 ## 路径
 
@@ -101,7 +102,7 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
    "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root .
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --review-path .ai-sow/work/generate-design/review.candidate.md
    ```
-11. 当前 Stage 为当前 packet 启动一个不继承当前完整聊天的完整 Reviewer Agent。Reviewer 以当前 packet、评审、风险摘要、闭包和必要来源独立审查专业遗漏、HLD/Go-live、范围边界及两份候选忠实度。Reviewer 返回 findings 时，Stage 先确认两份被审 candidate 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，再运行 Owner-local patch；不得直接编辑 candidate 或整段重写。一次 patch 只修改 `design.candidate.json` 或 `requirements.candidate.json` 之一：
+11. 当前 Stage 为当前 packet 启动一个不继承当前完整聊天的完整 Reviewer Agent。Reviewer 以当前 packet、评审、风险摘要、闭包和必要来源独立审查专业遗漏、HLD/Go-live、范围边界及两份候选忠实度。Reviewer 返回 findings 时，Stage 先按共享合同用 `record-reviewer` 冻结 `BLOCKED` 与全部 finding ID，再确认两份被审 candidate 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，并运行 Owner-local patch；不得直接编辑 candidate 或整段重写。一次 patch 只修改 `design.candidate.json` 或 `requirements.candidate.json` 之一：
 
     ```text
     "<python-bin>" "<skill-root>/scripts/apply_patch.py" \

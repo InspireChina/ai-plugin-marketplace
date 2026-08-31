@@ -163,6 +163,20 @@ def approved_review(
     impact_rationale: str | None = None,
 ) -> str:
     ids = stable_ids(payload)
+
+    def name_projection(collection: str, id_field: str, id_header: str) -> str:
+        rows = payload[collection]
+        return "\n".join(
+            [
+                f"| {id_header} | 名称 |",
+                "|---|---|",
+                *(
+                    f"| {entry[id_field]} | {entry['name']} |"
+                    for entry in rows
+                ),
+            ]
+        )
+
     impact_line = ""
     if impact:
         impact_line = (
@@ -176,11 +190,23 @@ def approved_review(
         ("调查范围", "本次调查范围与登记输入已确认。"),
         ("九个 Topic", "九个 Topic 均已逐项评估。"),
         ("Item", "当前 Item 结论已核对。"),
-        ("Commitment", "往期承诺与处置已核对。"),
+        (
+            "Commitment",
+            "往期承诺与处置已核对。\n\n"
+            + name_projection("commitments", "commitmentId", "Commitment"),
+        ),
         ("Effective Start", "生效起点已确认。"),
         ("Coverage", "每个 BUSINESS Feature 均有 Coverage。"),
-        ("Uncertainty", "不确定性及估算影响已记录。"),
-        ("Evidence", "结论均有证据或明确不确定性。"),
+        (
+            "Uncertainty",
+            "不确定性及估算影响已记录。\n\n"
+            + name_projection("uncertainties", "uncertaintyId", "Uncertainty"),
+        ),
+        (
+            "Evidence",
+            "结论均有证据或明确不确定性。\n\n"
+            + name_projection("evidence", "evidenceId", "Evidence"),
+        ),
         (
             "问卷记录",
             f"Questionnaire: {questionnaire}\nQuestionnaire IDs: {questionnaire_ids}"
@@ -404,6 +430,44 @@ def test_review_template_has_complete_contract() -> None:
     assert "Finding 严重度下限" in text
     assert "只报告违反合同" in text
     assert "只在 Evidence 摘要或对应工作记录中维护一份权威陈述" in text
+    assert "ID 和名称" in text
+
+
+def test_renderer_projects_named_review_identities(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+
+    result = run_renderer(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    review = (
+        tmp_path / ".ai-sow/work/analyze-as-is/review.candidate.md"
+    ).read_text(encoding="utf-8")
+    for section, collection, id_field in (
+        ("Commitment", "commitments", "commitmentId"),
+        ("Uncertainty", "uncertainties", "uncertaintyId"),
+        ("Evidence", "evidence", "evidenceId"),
+    ):
+        assert f"| {section} | 名称 |" in review
+        for entry in payload[collection]:
+            assert f"| {entry[id_field]} | {entry['name']} |" in review
+
+
+def test_check_rejects_missing_named_review_identity(tmp_path: Path) -> None:
+    payload = prepare_brownfield(tmp_path)
+    review_path = tmp_path / ".ai-sow/reviews/analyze-as-is.md"
+    entry = payload["uncertainties"][0]
+    review_path.write_text(
+        review_path.read_text(encoding="utf-8").replace(
+            f"| {entry['uncertaintyId']} | {entry['name']} |",
+            f"| {entry['uncertaintyId']} | 名称未投影 |",
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_validator(tmp_path, "check")
+
+    assert result.returncode == 2
+    assert "REVIEW_NAME_PROJECTION_MISSING" in codes(result)
 
 
 @pytest.mark.parametrize("fixture", ["greenfield", "brownfield"])

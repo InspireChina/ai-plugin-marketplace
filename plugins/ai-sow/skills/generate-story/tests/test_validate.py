@@ -520,6 +520,17 @@ def prepare_candidate_first(root: Path) -> tuple[bytes, bytes]:
     return candidate, review
 
 
+def test_integration_review_projection_includes_boundary_and_target_kind(tmp_path: Path) -> None:
+    _, review_bytes = prepare_candidate_first(tmp_path)
+    review = review_bytes.decode("utf-8")
+
+    assert (
+        "| Integration | Name | Story | Source | Target | Trigger | Direction | Purpose | Owner | "
+        "Delivery Boundary | Target Kind | Design Decisions | Decision Rationale |"
+    ) in review
+    assert "| INTERNAL | END_TO_END | SYSTEM | decision-profile-api | — |" in review
+
+
 def bind_review_packet(root: Path) -> str:
     packet = root / ".ai-sow/work/generate-story/review-packet.json"
     packet_hash = sha256_bytes(packet.read_bytes())
@@ -667,7 +678,14 @@ def test_review_mode_writes_bound_story_packet_without_formal_publication(tmp_pa
     )
 
     assert result.returncode == 0, result.stdout
-    assert result_payload(result)["outcome"] == "REVIEW_REQUIRED"
+    payload = result_payload(result)
+    assert payload["outcome"] == "REVIEW_REQUIRED"
+    candidate_json = json.loads(candidate)
+    assert payload["artifactMetrics"]["documents"]["delivery"]["collections"] == {
+        key: len(value)
+        for key, value in sorted(candidate_json.items())
+        if isinstance(value, list)
+    }
     packet = json.loads(
         (tmp_path / ".ai-sow/work/generate-story/review-packet.json").read_text(encoding="utf-8")
     )

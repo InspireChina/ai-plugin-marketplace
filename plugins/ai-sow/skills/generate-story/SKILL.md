@@ -30,15 +30,16 @@ description: 当已评审的业务需求、技术需求、现状和目标设计�
 
 ## 精确 Reviewer 绑定
 
-fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 返回 `PASS` 后，当前 Stage 不得手写 reviewer JSON，必须立即运行下列唯一绑定命令；它只校验完整 hash 格式并以 canonical bytes 原子写入固定 `ai-sow-owner-reviewer-v1` sidecar，不读取 packet、candidate、上下文或上游数据：
+fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Reviewer 对当前 packet 的第一次判断必须立即按共享合同冻结；`PASS` 使用下列命令，同时写判断记录与固定 `ai-sow-owner-reviewer-v1` sidecar，findings 则在任何 patch 前使用同一命令的 `BLOCKED + --finding-id` 形式：
 
 ```text
 "<python-bin>" "<skill-root>/scripts/validate.py" \
-  --project-root "<project-root>" --mode write-reviewer \
-  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>"
+  --project-root "<project-root>" --mode record-reviewer \
+  --packet-sha256 "<Reviewer 已独立审查并 PASS 的完整 packet SHA-256>" \
+  --review-decision PASS
 ```
 
-该命令只能消费实际 Reviewer 的 `PASS`，不能替代独立评审。命令返回 `BLOCKED` 时原样报告并停止；任何 packet 字节变化都必须重新创建 packet、交回 Reviewer 完整复审，再重新绑定。
+该命令只能消费实际 Reviewer 的判断，不能替代独立评审；Stage 不得手写 reviewer JSON 或 judgment 记录。同一 packet 已记录 findings 后不得再次调用 Reviewer 寻求翻转；只有新 packet 可以重新判断。命令返回 `BLOCKED` 时原样报告并停止。
 
 ## 路径
 
@@ -75,7 +76,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```text
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --candidate .ai-sow/work/generate-story/delivery.candidate.json --review-path .ai-sow/work/generate-story/review.candidate.md
    ```
-13. 为当前 packet 只创建一个不继承当前完整聊天的完整 fresh-context Reviewer。Reviewer 只读 packet、candidate、review、risk summary、评审模板和 packet 点名的 fragment；不运行机械校验、不修改成果、不代替用户批准。Reviewer 返回 finding 时，Stage 先确认 `delivery.candidate.json` 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，再运行 Owner-local patch；不得直接编辑 candidate 或整段重写：
+13. 为当前 packet 只创建一个不继承当前完整聊天的完整 fresh-context Reviewer。Reviewer 只读 packet、candidate、review、risk summary、评审模板和 packet 点名的 fragment；不运行机械校验、不修改成果、不代替用户批准。Reviewer 返回 finding 时，Stage 先按共享合同用 `record-reviewer` 冻结 `BLOCKED` 与全部 finding ID，再确认 `delivery.candidate.json` 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，并运行 Owner-local patch；不得直接编辑 candidate 或整段重写：
 
    ```text
    "<python-bin>" "<skill-root>/scripts/apply_patch.py" \
@@ -86,7 +87,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
      --audit .ai-sow/work/generate-story/patch-audit.json
    ```
 
-   `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才整体重跑 renderer/`review` 并形成新 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整上游或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical work-only sidecar：
+   patch 顶层使用 `operations` 和 `acknowledgedClosureIds`；后者必须逐项列出已阅读且确认无需同步修改的 `syncSuspects`，不得使用通配符。`PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。该拒绝不写 candidate/audit，也不消耗一次成功 patch 轮次；candidate 仍与 round-1 packet 原字节绑定、finding ID 不变且语义范围未扩大时，按诊断补齐修改或确认并重试一次，第二次仍拒绝才 `BLOCKED`。只有脚本返回 `OK` 才整体重跑 renderer/`review` 并形成新 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整上游或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。`PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令写 canonical work-only sidecar：
 
    ```json
    {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"generate-story","packetSha256":"<packet-sha256>"}

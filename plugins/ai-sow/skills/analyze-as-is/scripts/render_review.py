@@ -131,10 +131,11 @@ def render(data: dict[str, Any], questionnaire: str | None) -> bytes:
         "## Commitment",
         "",
         *table(
-            ("Commitment", "变化", "实现状态", "处置", "Feature", "Item"),
+            ("Commitment", "名称", "变化", "实现状态", "处置", "Feature", "Item"),
             [
                 (
                     entry["commitmentId"],
+                    entry["name"],
                     entry["changeType"],
                     entry["implementationStatus"],
                     entry["treatment"],
@@ -180,10 +181,11 @@ def render(data: dict[str, Any], questionnaire: str | None) -> bytes:
         "## Uncertainty",
         "",
         *table(
-            ("Uncertainty", "Topic", "问题", "影响", "影响估算", "负责人", "建议"),
+            ("Uncertainty", "名称", "Topic", "问题", "影响", "影响估算", "负责人", "建议"),
             [
                 (
                     entry["uncertaintyId"],
+                    entry["name"],
                     entry["topic"],
                     entry["question"],
                     entry["impact"],
@@ -198,10 +200,11 @@ def render(data: dict[str, Any], questionnaire: str | None) -> bytes:
         "## Evidence",
         "",
         *table(
-            ("Evidence", "类型", "项目相对 anchor", "摘要", "支持 ID"),
+            ("Evidence", "名称", "类型", "项目相对 anchor", "摘要", "支持 ID"),
             [
                 (
                     entry["evidenceId"],
+                    entry["name"],
                     entry["kind"],
                     entry["reference"],
                     entry["summary"],

@@ -59,6 +59,33 @@ def run_reviewer(owner: str, project_root: Path, packet_sha256: str) -> subproce
     )
 
 
+def record_blocked_reviewer(
+    owner: str,
+    project_root: Path,
+    packet_sha256: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(PLUGIN_ROOT / "skills" / owner / "scripts" / "validate.py"),
+            "--project-root",
+            str(project_root),
+            "--mode",
+            "record-reviewer",
+            "--packet-sha256",
+            packet_sha256,
+            "--review-decision",
+            "BLOCKED",
+            "--finding-id",
+            "F-1",
+        ],
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+    )
+
+
 def run_legacy_write_mode(
     owner: str,
     project_root: Path,
@@ -138,12 +165,17 @@ def test_owner_writes_canonical_reviewer_without_other_inputs(
     result = run_reviewer(owner, tmp_path, PACKET_SHA256)
 
     assert result.returncode == 0, result.stdout + result.stderr
+    judgment_path = (
+        f".ai-sow/work/{owner}/review-judgments/{PACKET_SHA256}.json"
+    )
     assert json.loads(result.stdout) == {
         "outcome": "OK",
-        "summary": f"{owner} reviewer sidecar is ready",
+        "summary": f"{owner} reviewer judgment is recorded",
         "diagnostics": [],
-        "outputs": [OWNER_REVIEWER_PATHS[owner]],
+        "outputs": [judgment_path, OWNER_REVIEWER_PATHS[owner]],
         "packetSha256": PACKET_SHA256,
+        "reviewDecision": "PASS",
+        "judgmentPath": judgment_path,
     }
     expected = json.dumps(
         {
@@ -157,9 +189,33 @@ def test_owner_writes_canonical_reviewer_without_other_inputs(
         separators=(",", ":"),
     ).encode("utf-8") + b"\n"
     assert (tmp_path / OWNER_REVIEWER_PATHS[owner]).read_bytes() == expected
-    assert sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*") if path.is_file()) == [
-        OWNER_REVIEWER_PATHS[owner]
-    ]
+    assert sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    ) == sorted([judgment_path, OWNER_REVIEWER_PATHS[owner]])
+
+
+@pytest.mark.parametrize("owner", OWNER_REVIEWER_PATHS)
+def test_owner_rejects_reviewer_flip_for_same_packet(
+    tmp_path: Path,
+    owner: str,
+) -> None:
+    blocked = record_blocked_reviewer(owner, tmp_path, PACKET_SHA256)
+    assert blocked.returncode == 0, blocked.stdout + blocked.stderr
+    blocked_payload = json.loads(blocked.stdout)
+    assert blocked_payload["reviewDecision"] == "BLOCKED"
+    assert blocked_payload["outputs"] == [blocked_payload["judgmentPath"]]
+
+    flipped = run_reviewer(owner, tmp_path, PACKET_SHA256)
+
+    assert flipped.returncode == 2
+    flipped_payload = json.loads(flipped.stdout)
+    assert flipped_payload["outcome"] == "BLOCKED"
+    assert flipped_payload["diagnostics"][0]["code"] == "REVIEW_JUDGMENT_CONFLICT"
+    assert flipped_payload["diagnostics"][0]["previousDecision"] == "BLOCKED"
+    assert flipped_payload["diagnostics"][0]["attemptedDecision"] == "PASS"
+    assert not (tmp_path / OWNER_REVIEWER_PATHS[owner]).exists()
 
 
 @pytest.mark.parametrize("owner", OWNER_REVIEWER_PATHS)

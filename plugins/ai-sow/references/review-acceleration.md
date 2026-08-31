@@ -19,11 +19,54 @@ Stage 在创建任何 Reviewer 前，自行循环运行公开的 renderer、`pre
 
 停止条件是“未验证 claim 数为零且完备性检查通过”，不是连续若干轮没有 finding。
 
+## Reviewer 判断冻结与机器摘要
+
+Reviewer 对当前 packet 的第一次判断必须立即通过 Owner-local validator 记录；`PASS` 与 `BLOCKED`
+都不能只留在聊天文本中：
+
+```text
+"<python-bin>" "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode record-reviewer \
+  --packet-sha256 "<当前 packet SHA-256>" \
+  --review-decision PASS
+
+"<python-bin>" "<skill-root>/scripts/validate.py" \
+  --project-root "<project-root>" --mode record-reviewer \
+  --packet-sha256 "<当前 packet SHA-256>" \
+  --review-decision BLOCKED \
+  --finding-id "<finding-id>"
+```
+
+`BLOCKED` 必须逐项传入非空、唯一的 finding ID。命令在
+`.ai-sow/work/<owner>/review-judgments/<packet-sha256>.json` 保存内容寻址判断；同一 packet 的首次
+判断不可改写，也不能在没有新 candidate、context、Evidence 或 review 字节的情况下从 findings
+翻转为 `PASS`。新证据必须先生成新的 packet hash。`PASS` 同时写现有
+`ai-sow-owner-reviewer-v1` sidecar；`write-reviewer` 只保留为 `PASS` 兼容入口，并服从同一冻结记录。
+
+Owner validator 的结构化 stdout 使用 `artifactMetrics` 投影 candidate 顶层集合数量和 canonical
+hash。Stage 的阶段完成/阻塞摘要必须逐字使用该对象，不得由 Agent 自行手算 Story、AC、Evidence、
+Task 或其他集合数量。stdout 没有 `artifactMetrics` 时不得补报推测数字。
+
 ## 字段级修复与轻量复审
 
 Reviewer finding 的修复使用 Owner-local `scripts/apply_patch.py`。patch 采用 JSON Pointer 的 `replace`、`add` 或 `remove`，每条 operation 带 `findingId`；禁止直接自由编辑 candidate 或整段重写。
 
-脚本比较 patch 前后字节并计算引用传递闭包；有稳定 ID 的对象以 ID 标识，没有稳定 ID 但持有引用的对象以 `@<JSON Pointer>` 标识。声明外变化触发 `PATCH_FREEFORM_EDIT_DETECTED`；闭包内未修改且未明确确认的对象触发 `PATCH_CLOSURE_UNSYNCED`。修复后的复审由新的轻量 Reviewer 执行，只读取 patch diff、影响闭包和闭包字段原文，不加载仓库或 round-1 历史。
+patch 的固定结构如下；`acknowledgedClosureIds` 只能逐项列出已阅读且确认无需同步修改的当前 Owner 对象 ID，匿名对象使用 `@<JSON Pointer>`，不得使用通配符或 `ALL`：
+
+```json
+{
+  "operations": [
+    {"op": "replace", "path": "/items/0/summary", "value": "修复后的值", "findingId": "F-1"}
+  ],
+  "acknowledgedClosureIds": ["coverage-one", "@/anonymous-boundary"]
+}
+```
+
+脚本比较 patch 前后字节并计算当前 Owner 文档内的引用传递闭包；上游 Feature、Decision、Commitment 等非本阶段所有的外部 ID 只作为叶子引用，不得充当连接两个 Owner 对象的遍历枢纽。有稳定 ID 的对象以 ID 标识，没有稳定 ID 但持有引用的对象以 `@<JSON Pointer>` 标识。声明外变化触发 `PATCH_FREEFORM_EDIT_DETECTED`；闭包内未修改且未明确确认的对象触发 `PATCH_CLOSURE_UNSYNCED`。
+
+`PATCH_CLOSURE_UNSYNCED` 是原子拒绝：脚本不写 candidate 或 audit，诊断返回 `candidateUpdated: false`、`retryAllowed: true`、`consumesPatchRound: false` 和确认字段名。一次 patch 轮次只在脚本返回 `OK`、候选实际更新时才消耗。只要 base/candidate 仍与 round-1 packet 原字节绑定、finding ID 未变化且没有扩大语义范围，Stage 必须按 `syncSuspects` 逐项修改或确认后重试一次；该修正重试不是新的 Reviewer 修复轮。修正后的命令再次被原子拒绝时才返回 `BLOCKED`。
+
+修复后的复审由新的轻量 Reviewer 执行，只读取 patch diff、影响闭包和闭包字段原文，不加载仓库或 round-1 历史。
 
 ## 已验证断言复用
 

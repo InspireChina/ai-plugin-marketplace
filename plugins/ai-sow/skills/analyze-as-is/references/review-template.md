@@ -16,7 +16,7 @@
 
 ## Commitment
 
-逐项核对往期承诺、实现状态、处置和关联 Feature。
+逐项以 ID 和名称核对往期承诺、实现状态、处置和关联 Feature。
 
 ## Effective Start
 
@@ -28,11 +28,11 @@
 
 ## Uncertainty
 
-说明问题、影响、估算影响、负责人、建议处理和关联 Feature。
+逐项以 ID 和名称说明问题、影响、估算影响、负责人、建议处理和关联 Feature。
 
 ## Evidence
 
-列出每条结论的项目相对 anchor、简要证据摘要和受支持 ID；不得粘贴源码或完整工具输出，也不得写入凭据或本机绝对路径。
+逐项以 ID 和名称列出每条结论的项目相对 anchor、简要证据摘要和受支持 ID；不得粘贴源码或完整工具输出，也不得写入凭据或本机绝对路径。
 
 ## 问卷记录
 
@@ -68,6 +68,6 @@ User Approval: APPROVED
 
 ## Reviewer 检查清单
 
-Reviewer 对当前完整 packet 逐项确认：九个 Topic 恰好各一条；`INSUFFICIENT_EVIDENCE` 均关联 Uncertainty；每条 Uncertainty 明确 `affectsEstimate`；Effective Start 只由当前 Item 和 `EXPECTED_BEFORE_START` Commitment 组成；每个 BUSINESS Feature 有 Coverage；Commitment 实现状态、处置与 Coverage 一致；选中问卷被逐条原样消费；每个现状声明有允许的项目相对 Evidence anchor 或明确 Uncertainty；packet、review 和稳定候选中均不包含源码或完整工具输出、凭据、本机绝对路径、未授权 repository 或 prior SOW 内容。
+Reviewer 对当前完整 packet 逐项确认：九个 Topic 恰好各一条；Commitment、Uncertainty 和 Evidence 的 ID 与名称均已投影；`INSUFFICIENT_EVIDENCE` 均关联 Uncertainty；每条 Uncertainty 明确 `affectsEstimate`；Effective Start 只由当前 Item 和 `EXPECTED_BEFORE_START` Commitment 组成；每个 BUSINESS Feature 有 Coverage；Commitment 实现状态、处置与 Coverage 一致；选中问卷被逐条原样消费；每个现状声明有允许的项目相对 Evidence anchor 或明确 Uncertainty；packet、review 和稳定候选中均不包含源码或完整工具输出、凭据、本机绝对路径、未授权 repository 或 prior SOW 内容。
 
 Finding 严重度下限：只报告违反合同的事实与证据不符、内部矛盾或误述、结构或引用违规、追溯断裂和隐私越界。不报告单纯措辞偏好、可读性建议、可选补充细节、没有形成冲突断言的描述简略，或对技术方案的个人偏好。
