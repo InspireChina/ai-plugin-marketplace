@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.validate_repository import (
     validate_ai_sow_release,
     validate_claude_marketplace,
+    validate_generator_contract_consistency,
     validate_marketplace,
     validate_marketplace_parity,
     validate_plugin_manifest,
@@ -91,6 +93,34 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         'name = "ai-sow-plugin-runtime"\nversion = "0.1.0"\n',
         encoding="utf-8",
     )
+    generator_root = plugin_root / "skills/generate-sow"
+    generator_payloads = {
+        "scripts/generate_sow.py": b"generate sow\n",
+        "scripts/workbook.py": b"render workbook\n",
+    }
+    for relative, payload in generator_payloads.items():
+        path = generator_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    write_json(
+        generator_root / "contracts/manifest.schema.json",
+        {
+            "type": "object",
+            "properties": {
+                "generatorContract": {"const": "receipt-only-v2"},
+            },
+        },
+    )
+    write_json(
+        generator_root / "contracts/generator-fingerprint-baseline.json",
+        {
+            "generatorContract": "receipt-only-v2",
+            "files": {
+                relative: hashlib.sha256(payload).hexdigest()
+                for relative, payload in generator_payloads.items()
+            },
+        },
+    )
     return plugin_root
 
 
@@ -116,6 +146,37 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
+    def test_generator_fingerprint_matches_the_current_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+
+            self.assertEqual(
+                validate_generator_contract_consistency(root, plugin_root),
+                [],
+            )
+
+    def test_generator_fingerprint_rejects_changed_projection_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            workbook = (
+                plugin_root / "skills/generate-sow/scripts/workbook.py"
+            )
+            workbook.write_bytes(workbook.read_bytes() + b"changed projection\n")
+
+            errors = validate_generator_contract_consistency(root, plugin_root)
+
+            self.assertTrue(
+                any(
+                    "generator fingerprint mismatch for "
+                    "plugins/ai-sow/skills/generate-sow/scripts/workbook.py"
+                    in error
+                    for error in errors
+                ),
+                errors,
+            )
+
     def test_marketplace_accepts_ai_sow_and_another_valid_plugin(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

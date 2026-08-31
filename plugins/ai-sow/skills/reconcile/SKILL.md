@@ -37,12 +37,15 @@ analyze-requirement
 字段级依赖。修正证据、来源、问卷和 prior SOW 必须在建立 baseline 前已位于正式项目路径；staging
 不登记或发布新的 Owner input。
 
-每个受影响 Owner 只能为 `CHANGED` 或 `NO_CHANGE`：
+每个受影响 Owner 使用 `CHANGED / NO_CHANGE / PENDING` 三态：
 
 - `CHANGED`：只修改该 Owner 的 work-only review projection、candidate、staged output 和 receipt；
   语义未变的 ID 保持稳定。
 - `NO_CHANGE`：不编译 candidate、不运行拒绝 `Impact: NO_CHANGE` 的 check；稳定 output 原字节复用，
   只把获批 review projection staged 后执行 Owner-local `rebind`。
+- `PENDING`：该 Owner 位于影响后缀中但尚未首次发布；所有 `PENDING` 必须构成后缀的连续末端。
+  它按 Owner 自己的普通 candidate、renderer、`check` 与 `publish` 路径首次发布，不读取不存在的
+  baseline，也不使用 `rebind`。这次首次发布仍只占该 Owner 原本需要的一次批准，不增加批准轮次。
 - 设计、实现机制、基础单元、工作模式、复杂度或 Task 边界变化默认保持 Story/AC 不变。只有修正
   本身改变业务交付结果，且整体评审包含 `Story/AC Outcome Change: CHANGED` 和精确差异时，
   `generate-story` 才能为 `CHANGED`。Task 不得修改 Delivery、Story 或 AC。
@@ -67,11 +70,14 @@ analyze-requirement
 
 当前 Stage 先读取[整体评审模板](references/review-template.md)和受影响 Owner 的完整 `SKILL.md`、
 Owner-local 必需 reference；随后用下方只读 `inspect` 取得固定路径、hash、receipt input 和 review
-ID 声明。Stage 只读取 `CHANGED` Owner 的专业工作所需稳定内容与修正证据；`NO_CHANGE` 不把完整
+ID 声明。`inspect` 同时把未首次发布的连续末端标记为 `PENDING`；若中间 Owner 缺失而更下游已
+发布，则立即 `BLOCKED`。Stage 只读取 `CHANGED` Owner 的专业工作所需稳定内容与修正证据；`PENDING`
+没有 baseline 可读，直接从 staged upstream handoff 开展该 Owner 的首次专业工作；`NO_CHANGE` 不把完整
 稳定 output/review 带入模型上下文，也不由模型创建 work review。然后只形成 `review.md`、全部
-`CHANGED` candidate 及其 work-only review；`NO_CHANGE` projection 由 Adapter 确定性生成。影响矩阵 Before/After 必须按
+`CHANGED/PENDING` candidate 及其 work-only review；`NO_CHANGE` projection 由 Adapter 确定性生成。影响矩阵 Before/After 必须按
 Owner receipt 的 named output 顺序使用 canonical `name=64-lowercase-hex`；多份 output 以 `; `
-连接。`NO_CHANGE` 的 Before/After hash 必须相同。
+连接。`PENDING` 的 Before 使用 canonical `name=MISSING`，After 使用首次发布 hash；`NO_CHANGE` 的
+Before/After hash 必须相同。
 
 ### 精确路径与 Adapter 命令
 
@@ -93,7 +99,8 @@ Owner 合同读取后的第一条项目命令固定为只读 baseline inspection
 base receipt 的 validation inputs 和 review 中已有的 ID 声明；它不写项目、不调用 Owner 脚本、
 不读取其他 Skill Schema，也不解释业务字段。Stage 必须直接复用该结构化结果，不再自行哈希同一
 baseline 或读取完整 `NO_CHANGE` review/output。
-读取 `CHANGED` 内容时只访问 `inspect` 返回的精确路径和修正证据 anchor；禁止对 `.ai-sow` 递归
+读取 `CHANGED` 内容时只访问 `inspect` 返回的精确路径和修正证据 anchor；`PENDING` 只访问其
+上游 staged handoff、Owner 合同和本次 work candidate，不探测不存在的正式路径。禁止对 `.ai-sow` 递归
 `rg/find`，禁止再次运行 Adapter `--help`，也不得重新哈希 `inspect` 已返回的 baseline。
 
 | Owner | Stable output | Candidate | Work review | Formal review | Receipt |
@@ -106,12 +113,12 @@ baseline 或读取完整 `NO_CHANGE` review/output。
 
 任何 Owner staging 前必须先冻结整体专业 review，顺序不可交换：
 
-1. 形成全部 `CHANGED` candidate 及其 renderer 生成的 work review；
-2. 对每个 `CHANGED` Owner 单独运行只读 `inspect-work`，取得 candidate named hashes；
+1. 形成全部 `CHANGED/PENDING` candidate 及其 renderer 生成的 work review；
+2. 对每个 `CHANGED/PENDING` Owner 单独运行只读 `inspect-work`，取得 candidate named hashes；
 3. 用 baseline `inspect` 与 `inspect-work` 的精确 hashes 写完
    `.ai-sow/work/reconcile/<run-id>/review.md` 全文；不得留占位；
-4. 对每个 `CHANGED` Owner 单独运行 `prepare-changed`，把精确 run ID、整体 review hash 与
-   `Impact: CHANGED` 绑定到其 work review；
+4. 对每个 `CHANGED/PENDING` Owner 单独运行 `prepare-changed`，把精确 run ID、整体 review hash 与
+   baseline 决定的 `Impact: CHANGED` 或 `Impact: PENDING` 绑定到其 work review；
 5. 只有上述步骤全部完成，才开始下方 Owner `check/stage/publish`。`prepare-no-change` 同样要求整体
    review 已存在，绝不能先发布 Design 再补整体 review。
 
@@ -134,7 +141,8 @@ Owner validator 仍由当前 Stage 直接调用，reconcile Python 不跨 Skill 
 所有 `--project-root` 必须是绝对路径，不得使用 `--stage-root`。直接调用插件 `.venv` Python 不改变
 项目 cwd；读取或编辑项目 artifact 时继续保持项目 cwd，不得拼接临时 `python -c` 代替公开命令。
 
-`CHANGED` 固定执行三个独立调用：Owner `check`、`stage-owner review`、Owner `publish`。Owner 命令
+`CHANGED/PENDING` 固定执行三个独立调用：Owner `check`、`stage-owner review`、Owner `publish`。
+`PENDING` 使用 Owner 的现有首次发布 candidate，不进入 `NO_CHANGE` 分支。Owner 命令
 使用表中 validator/candidate/work review 精确路径及其 Skill 公布的 candidate flags：
 
 ```text
@@ -206,9 +214,10 @@ receipt 和模板不得复制进 staging。完整受影响后缀通过后，直�
 
 批准前在同一个 flat staging view 完成一次固定顺序的前向 pass：
 
-1. `CHANGED` Owner-local `check` 通过 `--review-path` 读取 work-only projection，再把 projection 写入
-   staging 固定 review 路径并执行 `publish`；candidate After hash 必须等于整体 review 的 named
-   After hash。
+1. `CHANGED/PENDING` Owner-local `check` 通过 `--review-path` 读取 work-only projection，再把
+   projection 写入 staging 固定 review 路径并执行 `publish`；candidate After hash 必须等于整体
+   review 的 named After hash。`PENDING` 的正式 review/output/receipt 在 baseline 中必须全部为
+   `MISSING`，并由该次 `publish` 一次性首次形成。
 2. `NO_CHANGE` 直接把 projection 写入 staging 固定 review 路径，执行 Owner-local `rebind`，并把
    原稳定 output 原字节物化到 staging closure。
 3. 两类 Owner 都必须匹配刚生成的 staged receipt，才允许下游读取完整 staged handoff；

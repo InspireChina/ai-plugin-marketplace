@@ -1525,4 +1525,7 @@ def test_reviewer_contract_catches_professional_evidence_privacy_failure() -> No
     assert "确定性 Owner 命令由外层 Stage 直接调用" in skill
     assert "## 机械门禁输入合同" in skill
     assert "项目根下的相对子目录" in skill
+    assert "category: MECHANICAL" in skill
+    assert "correctionOwner: analyze-requirement" in skill
+    assert "requiresUserDecision: false" in skill
     assert "单一 Worker、Reviewer、Validator" not in skill

@@ -47,6 +47,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 将包含当前 `SKILL.md` 的目录解析为 `<skill-root>`，将其上两级目录解析为 `<plugin-root>`。保持项目根目录为当前工作目录，并在执行前把命令中的路径占位符替换为绝对路径。
 
 确定性脚本是本 Skill 的公开命令实现。Stage 与 Reviewer 不得复读 `scripts/*.py` 实现，也不得为预测 diagnostics 扫描源码；Stage 只按本 Skill 公布的命令执行并原样消费结构化 stdout。仅当脚本实际异常且公开 diagnostics 不足以定位执行故障时，才允许最小化读取直接报错位置。
+成功 stdout 按[降本评审合同的确定性输出信任规则](../../references/review-acceleration.md#确定性输出信任)直接作为同一 artifact 的最终机械依据。
 
 开始专业工作前读取插件级[上下文纪律](../../references/context-discipline.md)、[降本评审合同](../../references/review-acceleration.md)与[模型路由](../../references/model-routing.md)。共享合同取代下文遗留的整体自由修复和携带完整历史复审做法；HLD/Go-live 业务门禁仍由本 Skill 独占。
 
@@ -94,7 +95,7 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
    - 紧随上线门禁使用固定七列矩阵：`Concern | Disposition | Feature IDs | Effective Start IDs | Evidence IDs | 责任边界 | 依据`。
 
    矩阵必须恰好列出 `PRODUCTION_SCOPE`、`ENVIRONMENT_CONFIGURATION`、`DEPLOYMENT_CUTOVER_ROLLBACK`、`DATA_MIGRATION`、`PRODUCTION_VALIDATION`、`OBSERVABILITY`、`OPERATIONS_HANDOVER`、`POST_GO_LIVE_SUPPORT`、`USER_ENABLEMENT`、`LEGACY_RETIREMENT` 十项 Concern。每项只能选择 `IN_SCOPE / FULLY_COVERED / OUT_OF_SCOPE / NOT_APPLICABLE`，并给出责任边界和依据。`IN_SCOPE` 必须关联 TECHNICAL Feature；`FULLY_COVERED` 必须关联有 Evidence 的 Effective Start；`PRODUCTION_SCOPE` 不得为 `NOT_APPLICABLE` 且必须关联 TECHNICAL Feature。数据迁移与生产发布范围必须使用不同 Feature。
-9. 对 `IN_SCOPE` 上线 Concern 新增或复用职责单一的 TECHNICAL Feature；对 `FULLY_COVERED` 记录证据；对 `OUT_OF_SCOPE / NOT_APPLICABLE` 明确责任和依据。若合同购买专职驻场、固定班次、待命容量或 24×7 支持，生成 `affectsEstimate = true` 的 Uncertainty，转入独立服务容量模型或单独支持 SOW，并保持 `BLOCKED`。
+9. 对 `IN_SCOPE` 上线 Concern 新增或复用职责单一的 TECHNICAL Feature；对 `FULLY_COVERED` 记录证据；对 `OUT_OF_SCOPE / NOT_APPLICABLE` 明确责任和依据。若合同购买专职驻场、固定班次、待命容量或 24×7 支持，输出 `category: DECISION`、`correctionOwner: null`、相关 Feature/Concern `subjectIds` 与 `requiresUserDecision: true` 的结构化 finding；在用户决定独立服务容量模型或单独支持 SOW，或明确排除前保持 `BLOCKED`，不把商业容量决定自动路由给其他 Owner。
 10. 当前 Stage 直接运行以下确定性脚本；`--mode review` 验证两份 candidate、HLD/Go-live、provenance、context 与 risk summary，并用固定算法 `ai-sow-owner-review-packet-v1` 写入 hash-bound `review-packet.json`。此时 `.ai-sow/reviews/generate-design.md`、两份稳定 JSON 和 validation receipt 必须都不存在或保持原值：
 
    ```text

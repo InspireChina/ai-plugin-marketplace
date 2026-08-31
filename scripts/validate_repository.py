@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -41,6 +42,10 @@ FORBIDDEN_PUBLIC_TEXT = (
     "2026-08-19-" + "as-is-output-contract.md",
     "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
     "-----BEGIN " + "PRIVATE KEY-----",
+)
+GENERATOR_FINGERPRINT_FILES = (
+    "scripts/generate_sow.py",
+    "scripts/workbook.py",
 )
 
 
@@ -420,6 +425,82 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     return errors
 
 
+def validate_generator_contract_consistency(
+    repo_root: Path,
+    plugin_root: Path,
+) -> list[str]:
+    """Bind deterministic SOW generator bytes to the package contract token."""
+    errors: list[str] = []
+    skill_root = plugin_root / "skills/generate-sow"
+    manifest_path = skill_root / "contracts/manifest.schema.json"
+    baseline_path = skill_root / "contracts/generator-fingerprint-baseline.json"
+    try:
+        manifest = load_json(manifest_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"invalid generate-sow manifest schema: {exc}"]
+    try:
+        baseline = load_json(baseline_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"invalid generator fingerprint baseline: {exc}"]
+
+    properties = manifest.get("properties") if isinstance(manifest, dict) else None
+    generator_contract = (
+        properties.get("generatorContract")
+        if isinstance(properties, dict)
+        else None
+    )
+    contract = (
+        generator_contract.get("const")
+        if isinstance(generator_contract, dict)
+        else None
+    )
+    if not isinstance(contract, str) or not contract:
+        errors.append("generate-sow manifest schema must declare generatorContract const")
+
+    baseline_contract = (
+        baseline.get("generatorContract") if isinstance(baseline, dict) else None
+    )
+    baseline_files = baseline.get("files") if isinstance(baseline, dict) else None
+    if baseline_contract != contract:
+        errors.append(
+            "generator fingerprint baseline generatorContract must match the "
+            f"manifest schema: expected {contract!r}, found {baseline_contract!r}"
+        )
+    if not isinstance(baseline_files, dict):
+        return [*errors, "generator fingerprint baseline files must be an object"]
+
+    expected_files = set(GENERATOR_FINGERPRINT_FILES)
+    actual_files = set(baseline_files)
+    if actual_files != expected_files:
+        missing = ", ".join(sorted(expected_files - actual_files)) or "none"
+        extra = ", ".join(sorted(actual_files - expected_files)) or "none"
+        errors.append(
+            "generator fingerprint baseline file set is invalid: "
+            f"missing [{missing}], extra [{extra}]"
+        )
+
+    for relative in GENERATOR_FINGERPRINT_FILES:
+        path = skill_root / relative
+        expected = baseline_files.get(relative)
+        try:
+            payload = path.read_bytes()
+        except OSError as exc:
+            errors.append(
+                f"cannot read generator fingerprint file "
+                f"{path.relative_to(repo_root).as_posix()}: {exc}"
+            )
+            continue
+        actual = hashlib.sha256(payload).hexdigest()
+        if expected != actual:
+            errors.append(
+                "generator fingerprint mismatch for "
+                f"{path.relative_to(repo_root).as_posix()}: expected {expected!r}, "
+                f"found {actual}; deterministic generator changes require a "
+                "generatorContract bump and baseline refresh"
+            )
+    return errors
+
+
 def _marketplace_plugin_paths(repo_root: Path) -> list[tuple[str, Path]]:
     """Return valid local marketplace plugin names and paths for manifest checks."""
     try:
@@ -502,6 +583,7 @@ def validate_repository(repo_root: Path) -> list[str]:
             f"{name}: {error}" for error in validate_plugin_manifest_parity(path)
         )
     errors.extend(validate_ai_sow_release(repo_root, plugin_root))
+    errors.extend(validate_generator_contract_consistency(repo_root, plugin_root))
     errors.extend(validate_publisher_identity(repo_root, plugin_root))
     errors.extend(validate_public_tree(repo_root))
     return errors

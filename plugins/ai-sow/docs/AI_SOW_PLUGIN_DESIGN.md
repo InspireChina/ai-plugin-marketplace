@@ -48,6 +48,7 @@ plugins/ai-sow/
 ├── runtime/controls.py
 ├── runtime/diagnostics.py
 ├── runtime/fact_source.py
+├── runtime/findings.py
 ├── runtime/project_io.py
 ├── runtime/handoff.py
 ├── runtime/patch.py
@@ -64,7 +65,12 @@ plugins/ai-sow/
     └── reconcile/
 ```
 
-每个 Skill 只创建实际需要的 `contracts/`、`scripts/`、`fixtures/`、`tests/`、`references/` 或 `assets/`。脚本不跨 Skill import，不调用其他 Skill 脚本，也不读取其他 Skill 的 schema、fixture、test、reference 或 asset。插件整体安装，因此通用机械门禁由 `runtime/` 单点实现：claims 投影与缓存、数量/绝对化/隐私 lint、唯一事实源、字段 patch/引用闭包、Owner 控制项、diagnostics、handoff 和 project I/O。公共 runtime 不拥有六份稳定业务 JSON，不读取 Skill-local 资产，也不编译任何 Owner 业务成果。`reconcile` 的 Agent 可按其合同读取受影响 Owner 的 `SKILL.md` 和项目 artifact，但其 Python 发布器仍只处理技术 manifest。
+每个 Skill 只创建实际需要的 `contracts/`、`scripts/`、`fixtures/`、`tests/`、`references/` 或 `assets/`。脚本不跨 Skill import，不调用其他 Skill 脚本，也不读取其他 Skill 的 schema、fixture、test、reference 或 asset。插件整体安装，因此通用机械门禁由 `runtime/` 单点实现：claims 投影与缓存、数量/绝对化/隐私 lint、唯一事实源、字段 patch/引用闭包、Finding 路由元数据、Owner 控制项、diagnostics、handoff 和 project I/O。公共 runtime 不拥有六份稳定业务 JSON，不读取 Skill-local 资产，也不编译任何 Owner 业务成果。`reconcile` 的 Agent 可按其合同读取受影响 Owner 的 `SKILL.md` 和项目 artifact，但其 Python 发布器仍只处理技术 manifest。
+
+跨 Owner 停止点统一输出 `LOCAL / UPSTREAM / DECISION / MECHANICAL` 四类 Finding，至少点名
+`findingId`、发现 Owner、修正 Owner、受影响 subject 和用户决策要求。Finding 只用于机械路由；
+涉及范围、责任、验收结果、商业承诺或服务容量时必须为 `DECISION`，不能伪装为可自动上游修正。
+它不新增稳定 JSON，也不启用自动 reconciliation。
 
 ## 3. 项目 seam
 
@@ -183,10 +189,12 @@ Reviewer。需要改 Story/AC 时改走 `STORY_OWNER_RETURN_REQUIRED`；最终�
 
 ### reconcile
 
-只处理已经存在有效下游产物后的用户修正。当前 Stage 确认唯一 Owner，按固定阶段顺序读取到
-`generate-sow` 的完整后缀，在批准前形成各 Owner `CHANGED/NO_CHANGE` 结论、全部 candidate 与
-work-only review projection，并在同一 flat staging view 完成一次前向 pass：`CHANGED` 先 `check`
-再 `publish`，`NO_CHANGE` 直接 `rebind` 并物化原 output 字节；每一次 Owner `publish/rebind` 都必须
+处理已经存在有效 Owner 产物后的用户修正；固定后缀末端允许包含尚未首次发布的 Owner。当前 Stage
+确认唯一 Owner，按固定阶段顺序读取到 `generate-sow` 的完整后缀，在批准前形成各 Owner
+`CHANGED/NO_CHANGE/PENDING` 结论、全部必要 candidate 与 work-only review projection，并在同一
+flat staging view 完成一次前向 pass：`CHANGED/PENDING` 先 `check` 再 `publish`，`NO_CHANGE`
+直接 `rebind` 并物化原 output 字节；`PENDING` 必须构成连续末端并从全 `MISSING` baseline 走对应
+Owner 的正常首次发布路径，中间缺失时阻塞。每一次 Owner `publish/rebind` 都必须
 携带同一合法 `--staging-root`，缺失时在任何 Owner 写入前阻塞。最后从完整 staged handoff 生成并
 复读 package。为避免 Agent 猜测 Adapter Interface，reconcile 合同固定列出五个 Owner 的 stable、
 candidate、review、receipt 路径和 `--staging-root` 命令；`NO_CHANGE` 的 previous hash 来自 base

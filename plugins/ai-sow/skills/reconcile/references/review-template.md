@@ -24,11 +24,17 @@ Evidence: <已在 baseline 正式路径存在的证据与 anchor>
 
 | Owner | Impact | Before Output SHA-256 | After Output SHA-256 | Stable IDs | Rationale |
 |---|---|---|---|---|---|
-| `<owner>` | `CHANGED / NO_CHANGE` | `<named-output>=<64-lowercase-hex>` | `<named-output>=<64-lowercase-hex>` | `<全部受影响或确认不受影响的稳定 ID>` | `<专业理由>` |
+| `<owner>` | `CHANGED / NO_CHANGE / PENDING` | `<named-output>=<64-lowercase-hex 或 MISSING>` | `<named-output>=<64-lowercase-hex>` | `<全部受影响或确认不受影响的稳定 ID>` | `<专业理由>` |
 
-Before/After 单元格使用 canonical named-output 顺序；每项严格写成 `name=64-lowercase-hex`，多份 output 以 `; ` 连接。例如 Design 必须按 `design=<hash>; technicalRequirements=<hash>` 填写。逐个列出该 Owner 的全部稳定 output，不使用 `old`、`new`、省略号或其他占位。
+Before/After 单元格使用 canonical named-output 顺序；已发布 output 严格写成
+`name=64-lowercase-hex`，`PENDING` Owner 的 Before 严格写成 `name=MISSING`，多份 output 以 `; `
+连接。例如 Design 必须按 `design=<hash>; technicalRequirements=<hash>` 填写。逐个列出该 Owner 的
+全部稳定 output，不使用 `old`、`new`、省略号或其他占位。
 
-`NO_CHANGE` 的每个 named output 前后 hash 必须相同。`CHANGED` 只能改变该 Owner 的 named output；语义未变的 ID 保持稳定。Publisher 将这两列逐 Owner、逐 named output 与获批 redo operation 的 before/after SHA-256 完全对账。
+`NO_CHANGE` 的每个 named output 前后 hash 必须相同。`CHANGED` 只能改变该 Owner 的 named output；
+`PENDING` 只能出现在连续末端，并把全部 Owner path 从 `MISSING` 首次发布为文件。语义未变的 ID
+保持稳定。Publisher 将这两列逐 Owner、逐 named output 与获批 redo operation 的 before/after 状态
+完全对账。
 
 ## Owner-local 评审
 

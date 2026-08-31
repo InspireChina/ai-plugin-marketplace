@@ -43,8 +43,9 @@ RUN_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 PACKAGE_ID_PATTERN = re.compile(r"^sow-sha256-[0-9a-f]{64}$")
 Action = Literal["WRITE", "DELETE"]
-Impact = Literal["CHANGED", "NO_CHANGE"]
+Impact = Literal["CHANGED", "NO_CHANGE", "PENDING"]
 StageArtifact = Literal["review", "unchanged-output"]
+VALID_IMPACTS = frozenset({"CHANGED", "NO_CHANGE", "PENDING"})
 
 
 @dataclass(frozen=True)
@@ -567,6 +568,8 @@ def prepare_changed_review(
         ) from error
     holistic_path = f".ai-sow/work/reconcile/{run_id}/review.md"
     holistic_hash = sha256_bytes(files.read_bytes(holistic_path))
+    baseline_status = owner_baseline_status(files, OWNER_BY_NAME[owner])
+    impact = "PENDING" if baseline_status == "PENDING" else "CHANGED"
     projection = (
         "\n".join(
             [
@@ -574,7 +577,7 @@ def prepare_changed_review(
                 "",
                 f"Reconciliation Run ID: {run_id}",
                 f"Reconciliation Review SHA-256: {holistic_hash}",
-                "Impact: CHANGED",
+                f"Impact: {impact}",
             ]
         )
         + "\n"
@@ -584,6 +587,7 @@ def prepare_changed_review(
         "outcome": "OK",
         "runId": run_id,
         "owner": owner,
+        "impact": impact,
         "workReviewPath": work_review,
         "sha256": sha256_bytes(projection),
         "diagnostics": [],
@@ -758,12 +762,91 @@ def owner_suffix(start_owner: str) -> tuple[OwnerSpec, ...]:
     return OWNER_SPECS[names.index(start_owner) :]
 
 
+def owner_baseline_status(
+    files: ProjectFiles,
+    spec: OwnerSpec,
+) -> Literal["PUBLISHED", "PENDING"]:
+    states = [(path, actual_state(files, path)) for path in spec.ordered_paths]
+    if all(state.state == "FILE" for _, state in states):
+        return "PUBLISHED"
+    if all(state.state == "MISSING" for _, state in states):
+        return "PENDING"
+    missing = [path for path, state in states if state.state == "MISSING"]
+    raise ReconcileError(
+        "BASELINE_OWNER_INCOMPLETE",
+        missing[0] if missing else spec.review,
+        f"{spec.name} baseline must contain either every published Owner path or none",
+    )
+
+
+def fixed_suffix_statuses(
+    files: ProjectFiles,
+    suffix: tuple[OwnerSpec, ...],
+) -> list[Literal["PUBLISHED", "PENDING"]]:
+    statuses = [owner_baseline_status(files, spec) for spec in suffix]
+    pending_seen = False
+    for spec, status in zip(suffix, statuses, strict=True):
+        if status == "PENDING":
+            pending_seen = True
+        elif pending_seen:
+            raise ReconcileError(
+                "OWNER_PENDING_SUFFIX_INVALID",
+                spec.review,
+                "unpublished Owners must form one continuous tail of the fixed suffix",
+            )
+    return statuses
+
+
+def validate_pending_owner_suffix(
+    owners: list[OwnerChange],
+    path: str,
+) -> None:
+    pending_seen = False
+    for owner in owners:
+        if owner.impact == "PENDING":
+            pending_seen = True
+        elif pending_seen:
+            raise ReconcileError(
+                "OWNER_PENDING_SUFFIX_INVALID",
+                path,
+                "PENDING impacts must form one continuous tail of the fixed Owner suffix",
+            )
+
+
 def inspect_baseline(project_root: Path, start_owner: str) -> dict[str, object]:
     """Return a compact, read-only hash projection for one fixed Owner suffix."""
 
     files = ProjectFiles.open(project_root)
     owners: list[dict[str, object]] = []
-    for spec in owner_suffix(start_owner):
+    suffix = owner_suffix(start_owner)
+    statuses = fixed_suffix_statuses(files, suffix)
+    for spec, status in zip(suffix, statuses, strict=True):
+        common: dict[str, object] = {
+            "owner": spec.name,
+            "status": status,
+            "validatorPath": f"skills/{spec.name}/scripts/validate.py",
+            "candidatePaths": list(spec.candidates),
+            "workReviewPath": f".ai-sow/work/{spec.name}/review.candidate.md",
+        }
+        if status == "PENDING":
+            owners.append(
+                {
+                    **common,
+                    "review": {"path": spec.review, "state": "MISSING"},
+                    "outputs": [
+                        {"name": name, "path": path, "state": "MISSING"}
+                        for name, path in zip(
+                            spec.output_names, spec.outputs, strict=True
+                        )
+                    ],
+                    "receipt": {
+                        "path": spec.receipt,
+                        "state": "MISSING",
+                        "validationInputs": [],
+                    },
+                }
+            )
+            continue
         review_payload = files.read_bytes(spec.review)
         try:
             review_text = review_payload.decode("utf-8")
@@ -814,10 +897,7 @@ def inspect_baseline(project_root: Path, start_owner: str) -> dict[str, object]:
                 )
         owners.append(
             {
-                "owner": spec.name,
-                "validatorPath": f"skills/{spec.name}/scripts/validate.py",
-                "candidatePaths": list(spec.candidates),
-                "workReviewPath": f".ai-sow/work/{spec.name}/review.candidate.md",
+                **common,
                 "review": {
                     "path": spec.review,
                     "sha256": sha256_bytes(review_payload),
@@ -950,11 +1030,11 @@ def load_plan(files: ProjectFiles, manifest_path: str) -> RedoPlan:
             code="OWNER_SUFFIX_INVALID",
             path=f"{manifest_path}#/owners/{index}",
         )
-        if owner["impact"] not in {"CHANGED", "NO_CHANGE"}:
+        if owner["impact"] not in VALID_IMPACTS:
             raise ReconcileError(
                 "OWNER_IMPACT_INVALID",
                 f"{manifest_path}#/owners/{index}",
-                "impact must be CHANGED or NO_CHANGE",
+                "impact must be CHANGED, NO_CHANGE, or PENDING",
             )
         owners.append(OwnerChange(str(owner["owner"]), owner["impact"]))  # type: ignore[arg-type]
     if [owner.owner for owner in owners] != [spec.name for spec in suffix]:
@@ -963,6 +1043,7 @@ def load_plan(files: ProjectFiles, manifest_path: str) -> RedoPlan:
             manifest_path,
             "owners must be the complete fixed suffix from startOwner through generate-task",
         )
+    validate_pending_owner_suffix(owners, manifest_path)
 
     review = require_keys(
         manifest["review"],
@@ -1145,11 +1226,19 @@ def load_plan(files: ProjectFiles, manifest_path: str) -> RedoPlan:
                     "optional Owner input cleanup only supports deleting an existing baseline file",
                 )
             continue
-        if operation.before.state != "FILE" or operation.after.state != "FILE":
+        impact = next(
+            owner.impact for owner in owners if owner.owner == operation.owner
+        )
+        expected_before = "MISSING" if impact == "PENDING" else "FILE"
+        if (
+            operation.action != "WRITE"
+            or operation.before.state != expected_before
+            or operation.after.state != "FILE"
+        ):
             raise ReconcileError(
                 "FINAL_OWNER_PATH_MISSING",
                 operation.path,
-                "existing reconciliation Owner review/output/receipt paths must remain files",
+                "published Owner paths must remain files and PENDING Owner paths must be created from MISSING",
             )
 
     plan = RedoPlan(
@@ -1172,6 +1261,7 @@ def load_plan(files: ProjectFiles, manifest_path: str) -> RedoPlan:
 
 def validate_owner_impacts(plan: RedoPlan) -> None:
     operations = {item.path: item for item in plan.operations}
+    validate_pending_owner_suffix(list(plan.owners), plan.review_path)
     for change in plan.owners:
         spec = OWNER_BY_NAME[change.owner]
         output_changes = [
@@ -1189,6 +1279,16 @@ def validate_owner_impacts(plan: RedoPlan) -> None:
                 "CHANGED_OUTPUT_UNCHANGED",
                 spec.outputs[0],
                 f"{change.owner} CHANGED must change at least one owned stable output",
+            )
+        if change.impact == "PENDING" and any(
+            operations[path].before.state != "MISSING"
+            or operations[path].after.state != "FILE"
+            for path in spec.ordered_paths
+        ):
+            raise ReconcileError(
+                "PENDING_OWNER_BASELINE_INVALID",
+                spec.review,
+                f"{change.owner} PENDING must create every Owner path from a missing baseline",
             )
 
 
@@ -1217,11 +1317,14 @@ def output_hash_declaration(plan: RedoPlan, spec: OwnerSpec, *, after: bool) -> 
     entries: list[str] = []
     for name, output_path in zip(spec.output_names, spec.outputs, strict=True):
         state = operations[output_path].after if after else operations[output_path].before
-        if state.state != "FILE" or state.sha256 is None:
+        if state.state == "MISSING":
+            entries.append(f"{name}=MISSING")
+            continue
+        if state.sha256 is None:
             raise ReconcileError(
                 "HOLISTIC_REVIEW_OUTPUT_HASH_MISMATCH",
                 plan.review_path,
-                "stable output review bindings require FILE SHA-256 states",
+                "stable output review bindings require FILE SHA-256 or MISSING states",
             )
         entries.append(f"{name}={state.sha256}")
     return "; ".join(entries)
@@ -1440,6 +1543,12 @@ def validate_owner_review_bindings(
                 "OWNER_REVIEW_HASH_MISMATCH",
                 spec.review,
                 "Owner review must bind the approved holistic review SHA-256 once",
+            )
+        if declaration(text, "Impact") != [change.impact]:
+            raise ReconcileError(
+                "OWNER_REVIEW_IMPACT_MISMATCH",
+                spec.review,
+                "Owner review must bind its exact CHANGED, NO_CHANGE, or PENDING impact once",
             )
 
 
@@ -2411,7 +2520,7 @@ def candidate_bindings(
 ) -> list[dict[str, str]]:
     bindings: list[dict[str, str]] = []
     for owner in plan.owners:
-        if owner.impact != "CHANGED":
+        if owner.impact not in {"CHANGED", "PENDING"}:
             continue
         spec = OWNER_BY_NAME[owner.owner]
         for candidate_path, output_path in zip(
@@ -2561,14 +2670,18 @@ def _prepared_plan(files: ProjectFiles, run_id: str) -> RedoPlan:
         )
     owners: list[OwnerChange] = []
     for owner_name, impact, _, _ in rows:
-        if impact not in {"CHANGED", "NO_CHANGE"}:
+        if impact not in VALID_IMPACTS:
             raise ReconcileError(
-                "OWNER_IMPACT_INVALID", review_path, "impact must be CHANGED or NO_CHANGE"
+                "OWNER_IMPACT_INVALID",
+                review_path,
+                "impact must be CHANGED, NO_CHANGE, or PENDING",
             )
         owners.append(OwnerChange(owner_name, impact))  # type: ignore[arg-type]
+    validate_pending_owner_suffix(owners, review_path)
 
     staging_view = ProjectFiles.open_view(files.root, f".ai-sow/.stage-{run_id}")
     operations: list[Operation] = []
+    impacts = {owner.owner: owner.impact for owner in owners}
     for spec in suffix:
         for optional_path in spec.optional_delete_paths:
             before = actual_state(files, optional_path)
@@ -2578,11 +2691,12 @@ def _prepared_plan(files: ProjectFiles, run_id: str) -> RedoPlan:
                 )
         for logical_path in spec.ordered_paths:
             before = actual_state(files, logical_path)
-            if before.state != "FILE":
+            expected_before = "MISSING" if impacts[spec.name] == "PENDING" else "FILE"
+            if before.state != expected_before:
                 raise ReconcileError(
                     "FINAL_OWNER_PATH_MISSING",
                     logical_path,
-                    "reconciliation baseline must contain every scoped Owner path",
+                    "reconciliation baseline must contain every published Owner path and no PENDING Owner path",
                 )
             staged = stage_path(run_id, logical_path)
             try:

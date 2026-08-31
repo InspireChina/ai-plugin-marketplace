@@ -11,7 +11,8 @@
 | 正式交接数据 | 五个 Skill 产生的六份 JSON：来源需求、As-Is、设计、设计产生的技术需求、交付内容和估算输入。 |
 | 项目元数据 | 由 setup 初始化的 `.ai-sow/project.json`；只登记 `projectId`、`name`、`pluginVersion`、`sowStandardVersion`，不计入上述六份正式交接数据。 |
 | 数据归属 | 每项正式数据只由一个 Skill 负责。后续 Skill 只读取 `.ai-sow/data/...`，不修改上一步的文件。 |
-| 影响集协调 | 已有完整下游产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；它不拥有稳定业务数据。 |
+| Finding 路由 | 当前 Owner 无法在自身写集合内修复时使用的 work-only 机械元数据，分类为 `LOCAL / UPSTREAM / DECISION / MECHANICAL`；它点名发现 Owner、修正 Owner、subject 和用户决策要求，不进入六份正式交接数据。 |
+| 影响集协调 | 已有有效 Owner 产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；连续未发布末端可标为 `PENDING` 并走各 Owner 的首次发布路径，它不拥有稳定业务数据。 |
 | 固定 ID | 使用小写 kebab-case 和对象前缀，并且在项目数据中唯一，例如 `feature-order-status`。每个可独立引用的实体同时保存必填、非空的 `name`；所指内容不变时沿用原 ID，内容发生实质变化时新建 ID。关系字段只保存目标 ID。 |
 | Excel 展示主键 | 最终 XLSX 用唯一、非空的名称识别、选择和引用业务概念；稳定 ID 不作为业务 Sheet 的阅读字段。 |
 | 名称投影 | `generate-sow` 把稳定 ID 关系转换为名称关系，并把可翻译的机器枚举转换为中文选项；名称变化不改变结构化对象身份。 |
@@ -43,11 +44,13 @@ setup
 
 `setup` 写入项目元数据并复制模板；`generate-sow` 生成待确认的交付文件。两者都不负责业务分析。
 
-普通首次生成仍按七阶段顺序逐项完成。上游修正发生在已有完整产物之后时，用户可显式调用
+普通首次生成仍按七阶段顺序逐项完成。上游修正发生在已有有效 Owner 产物之后时，用户可显式调用
 `reconcile`：Owner 仍分别拥有业务语义、稳定路径和确定性 validator，但不再要求用户逐阶段重启
-session。当前 Stage 在批准前按固定后缀完成各 Owner 的 `CHANGED/NO_CHANGE` staged pass、SOW
+session。当前 Stage 在批准前按固定后缀完成各 Owner 的 `CHANGED/NO_CHANGE/PENDING` staged pass、SOW
 package 复读及 canonical redo/diff/risk，并由完整 packet 绑定；一个 fresh-context Reviewer 与一次
-用户批准绑定同一 packet SHA-256，批准后只做 check/publish。六份稳定 JSON 集合保持不变。
+用户批准绑定同一 packet SHA-256，批准后只做 check/publish。`PENDING` 只允许出现在尚未首次发布的
+连续末端，并复用对应 Owner 的正常首次发布路径；中间缺失而更下游已发布时阻塞。六份稳定 JSON
+集合保持不变。
 
 五个专业 Owner 都遵守 candidate-first 生命周期：由当前 Stage 开展分析、设计或拆分，并在 work 目录提前形成和机械校验结构化
 candidate，再确定性生成 review 投影、风险摘要和 hash-bound review packet。packet 绑定本 Owner

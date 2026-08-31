@@ -101,3 +101,40 @@ Owner receipt 可累积 `verifiedClaims`。claim 文本 hash 与 anchor hash 均
 ## 预算与深度
 
 项目级 Owner 控制使用 `investigationMode`、`reviewDepth` 与 `tokenBudget`。达到预算时立即输出已核验数量、总 claim 数和剩余 claim ID，不静默重试或把未验证项视为通过。模型分流遵循[模型路由](model-routing.md)。
+
+## 结构化 Finding 路由
+
+当前 Owner 无法在自身写集合内修复时，Stage 输出一个由 `runtime/findings.py` 定义的路由对象；自由
+文本 `summary` 只解释问题，不决定路由：
+
+```json
+{
+  "findingId": "finding-example",
+  "discoveredBy": "generate-task",
+  "correctionOwner": "generate-design",
+  "category": "UPSTREAM",
+  "subjectIds": ["story-example"],
+  "summary": "已批准交付结果内缺少可实施的设计机制。",
+  "requiresUserDecision": false
+}
+```
+
+- `LOCAL` 表示当前 Owner 可在自身写集合内修复，`correctionOwner` 为当前 Owner。
+- `UPSTREAM` 表示另一个既定 Owner 可在不新增用户决策的情况下修正，`correctionOwner` 点名该 Owner。
+- `DECISION` 表示范围、责任、验收结果、商业承诺或服务容量需要用户决定，`correctionOwner` 为
+  `null`，`requiresUserDecision` 为 `true`。
+- `MECHANICAL` 表示 Schema、renderer、validator、receipt 或投影问题，不通过修改业务数据绕过。
+
+`discoveredBy` 与非空 `correctionOwner` 只允许五个专业 Owner；`subjectIds` 点名实际受影响对象。
+Stage 用 Owner 公开的 finding validator 校验后再停止或路由。该对象只承载机械路由元数据，不进入
+六份稳定业务 JSON，不替代 Reviewer 的 packet-bound finding ID，也不启用自动 reconciliation。
+
+## 确定性输出信任
+
+任何 `scripts/*.py` 返回等价于 `outcome: OK`（或该脚本定义的成功状态）且 `diagnostics` 为空时，
+该结构化结果就是同一 artifact 的最终机械依据。Stage 直接引用 stdout 已提供的 hash、摘要、数量、
+路径或状态字段并继续下一步。
+
+对同一 artifact 不再重新计算已返回的 hash、重新枚举刚写入的目录、重新读取刚写入的文件核对字节，
+也不再发起第二次等价的确定性调用。需要后续门禁时只运行合同明确列出的下一条命令；后续命令发现
+漂移或失败时，原样报告其 diagnostics。

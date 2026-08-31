@@ -165,6 +165,68 @@ def test_inspect_baseline_returns_compact_fixed_path_hashes_without_writes(
     assert after == before
 
 
+def test_inspect_baseline_marks_only_an_unpublished_tail_as_pending(
+    tmp_path: Path,
+) -> None:
+    impacts = {
+        "generate-design": "CHANGED",
+        "generate-story": "NO_CHANGE",
+        "generate-task": "PENDING",
+    }
+    project, manifest = build_project(
+        tmp_path,
+        start_owner="generate-design",
+        impacts=impacts,
+        prepared=True,
+    )
+
+    result = RECONCILE.inspect_baseline(project, "generate-design")
+
+    assert [owner["status"] for owner in result["owners"]] == [
+        "PUBLISHED",
+        "PUBLISHED",
+        "PENDING",
+    ]
+    pending = result["owners"][-1]
+    assert pending["owner"] == "generate-task"
+    assert pending["review"] == {
+        "path": ".ai-sow/reviews/generate-task.md",
+        "state": "MISSING",
+    }
+    assert pending["receipt"] == {
+        "path": ".ai-sow/validation/generate-task.json",
+        "state": "MISSING",
+        "validationInputs": [],
+    }
+    assert manifest["owners"][-1] == {
+        "owner": "generate-task",
+        "impact": "PENDING",
+    }
+    task = RECONCILE.OWNER_BY_NAME["generate-task"]
+    for path in task.ordered_paths:
+        assert operation(manifest, path)["before"] == {"state": "MISSING"}
+
+    write_packet_authorization(project)
+    assert run(project)["publication"] == "CHECKED"
+    assert run(project, "publish")["publication"] == "PUBLISHED"
+    for path in task.ordered_paths:
+        assert (project / path).is_file()
+
+
+def test_inspect_baseline_rejects_a_missing_middle_owner(
+    tmp_path: Path,
+) -> None:
+    project, _ = build_project(tmp_path, start_owner="generate-design")
+    story = RECONCILE.OWNER_BY_NAME["generate-story"]
+    for path in story.ordered_paths:
+        (project / path).unlink()
+
+    with pytest.raises(RECONCILE.ReconcileError) as captured:
+        RECONCILE.inspect_baseline(project, "generate-design")
+
+    assert captured.value.code == "OWNER_PENDING_SUFFIX_INVALID"
+
+
 def test_inspect_work_returns_named_candidate_hashes_without_writes(
     tmp_path: Path,
 ) -> None:
@@ -236,6 +298,9 @@ def test_prepare_changed_review_binds_exact_holistic_review(
         f".ai-sow/work/reconcile/{run_id}/review.md",
         holistic,
     )
+    design = RECONCILE.OWNER_BY_NAME["generate-design"]
+    for path in design.ordered_paths:
+        write(project, path, b"published baseline\n")
 
     result = RECONCILE.prepare_changed_review(
         project,
@@ -255,6 +320,36 @@ def test_prepare_changed_review_binds_exact_holistic_review(
     ) in projection
     assert projection.count("Impact: CHANGED") == 1
     assert result["sha256"] == RECONCILE.sha256_bytes(projection.encode())
+
+
+def test_prepare_changed_review_uses_pending_for_an_unpublished_owner(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    run_id = "b2c3d4e5f6a7"
+    write(
+        project,
+        ".ai-sow/work/generate-task/review.candidate.md",
+        b"# Task review\n",
+    )
+    write(
+        project,
+        f".ai-sow/work/reconcile/{run_id}/review.md",
+        b"frozen holistic review\n",
+    )
+
+    result = RECONCILE.prepare_changed_review(
+        project,
+        run_id,
+        "generate-task",
+    )
+
+    projection = (
+        project / ".ai-sow/work/generate-task/review.candidate.md"
+    ).read_text(encoding="utf-8")
+    assert "Impact: PENDING" in projection
+    assert result["impact"] == "PENDING"
 
 
 def test_stage_owner_adapter_uses_flat_staging_paths_and_never_overwrites(
@@ -415,12 +510,18 @@ def test_prepare_no_change_review_derives_all_ids_and_receipt_bindings(
     )
 
 
-def owner_review(review_hash: str, owner: str, revision: int) -> bytes:
+def owner_review(
+    review_hash: str,
+    owner: str,
+    revision: int,
+    impact: str,
+) -> bytes:
     return (
         f"# {owner}\n\n"
         f"Revision: {revision}\n"
         f"Reconciliation Run ID: {RUN_ID}\n"
         f"Reconciliation Review SHA-256: {review_hash}\n"
+        f"Impact: {impact}\n"
     ).encode()
 
 
@@ -552,11 +653,16 @@ def build_project(
         }
         output_payloads[spec.name] = (before_outputs, after_outputs)
         if spec.name in {entry["owner"] for entry in owner_entries}:
-            output_hashes[spec.name] = (
-                "; ".join(
+            before_hashes = (
+                "; ".join(f"{name}=MISSING" for name in spec.output_names)
+                if impact == "PENDING"
+                else "; ".join(
                     f"{name}={RECONCILE.sha256_bytes(before_outputs[path])}"
                     for name, path in zip(spec.output_names, spec.outputs, strict=True)
-                ),
+                )
+            )
+            output_hashes[spec.name] = (
+                before_hashes,
                 "; ".join(
                     f"{name}={RECONCILE.sha256_bytes(after_outputs[path])}"
                     for name, path in zip(spec.output_names, spec.outputs, strict=True)
@@ -592,23 +698,30 @@ def build_project(
     scoped_names = {spec.name for spec in suffix}
     operations: list[dict[str, object]] = []
     for spec in RECONCILE.OWNER_SPECS:
+        pending = impact_values.get(spec.name) == "PENDING"
         before_review = f"# {spec.name}\n\nRevision: 1\n".encode()
         before_outputs, after_outputs = output_payloads[spec.name]
-        write(project, spec.review, before_review)
-        for path, payload in before_outputs.items():
-            write(project, path, payload)
         before_receipt = owner_receipt(
             spec, project_payload, before_review, before_outputs
         )
-        write(project, spec.receipt, before_receipt)
+        if not pending:
+            write(project, spec.review, before_review)
+            for path, payload in before_outputs.items():
+                write(project, path, payload)
+            write(project, spec.receipt, before_receipt)
 
         if spec.name not in scoped_names:
             continue
-        after_review = owner_review(review_hash, spec.name, 2)
+        after_review = owner_review(
+            review_hash,
+            spec.name,
+            2,
+            impact_values[spec.name],
+        )
         after_receipt = owner_receipt(
             spec, project_payload, after_review, after_outputs
         )
-        if prepared and impact_values[spec.name] == "CHANGED":
+        if prepared and impact_values[spec.name] in {"CHANGED", "PENDING"}:
             for candidate_path, output_path in zip(
                 PREPARED_CANDIDATE_PATHS[spec.name], spec.outputs, strict=True
             ):
@@ -630,10 +743,14 @@ def build_project(
                     "owner": spec.name,
                     "action": "WRITE",
                     "path": path,
-                    "before": {
-                        "state": "FILE",
-                        "sha256": RECONCILE.sha256_bytes(before_payloads[path]),
-                    },
+                    "before": (
+                        {"state": "MISSING"}
+                        if pending
+                        else {
+                            "state": "FILE",
+                            "sha256": RECONCILE.sha256_bytes(before_payloads[path]),
+                        }
+                    ),
                     "after": {
                         "state": "FILE",
                         "sha256": RECONCILE.sha256_bytes(after_payloads[path]),

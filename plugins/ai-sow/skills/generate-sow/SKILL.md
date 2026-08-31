@@ -74,6 +74,7 @@ receipt 绑定的项目相对路径；普通项目文档路径保持原值。
 生成指纹中的生成器合同为 `receipt-only-v2`；工作簿投影语义变化必须提升该合同，避免新旧生成器把不同包树映射到同一不可变 `packageId`。相同输入和相同生成器合同必须产生相同 `packageId` 和逐字节相同的完整包树；已有相同包返回 `REUSED`，已有不同内容返回 `PACKAGE_CONTENT_MISMATCH`，绝不覆盖。不支持原子发布的文件系统返回 `PACKAGE_PUBLICATION_UNSUPPORTED`。失败 staging 由本次运行清理，不实现跨设备 copy、项目锁或对抗同权限竞态的文件系统协议。
 
 生成指纹使用 `ai-sow-package-v1`，并显式绑定生成器合同 `receipt-only-v2`。任何可能改变工作簿或 manifest 确定性字节的投影变更都必须提升该合同 token，并同步 `generate-sow` manifest Schema、`reconcile` publisher 与两条路径的回归测试；只修改插件版本而保留旧生成器合同不构成充分的 package identity 隔离。
+仓库验证器会把关键生成器文件与 `contracts/generator-fingerprint-baseline.json` 对账；有意改变投影时，必须在同一变更中提升 `generatorContract`，同步两条运行路径，并刷新该基线。
 
 成功结果必须已经由生成器确认：五份收据与五份评审均在 manifest 和包树中；六份稳定 JSON 的
 hash 一致；工作簿 Table 行数、公式原型、引用、样式和文本安全复读通过；交付包不含 repository、

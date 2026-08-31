@@ -1387,6 +1387,8 @@ def test_skill_uses_review_candidate_publish_stop_and_local_template() -> None:
         "review-packet.json", "approval.json", "不继承当前完整聊天",
         "SAME_INSTANCE", "DISTINCT_DELIVERY_OBJECTS", "STORY_OWNER_RETURN_REQUIRED",
         "TASK_LOCAL_CORRECTION", "最多两次成功 patch",
+        "category: DECISION", "category: UPSTREAM", "correctionOwner: generate-story",
+        "correctionOwner: generate-design", "requiresUserDecision: true",
     ):
         assert required in contract
     assert "Validator Agent" not in contract

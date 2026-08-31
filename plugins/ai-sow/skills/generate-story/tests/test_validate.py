@@ -19,6 +19,7 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.handoff import Artifact, OwnerContract, canonical_json_bytes, publish_owner, sha256_bytes
+from runtime.findings import build_finding
 from runtime.patch import apply_operations, patch_audit
 from runtime.project_io import ProjectFiles
 
@@ -449,6 +450,178 @@ def run_validator(
         text=True, encoding="utf-8",
         check=False,
     )
+
+
+def test_validate_finding_accepts_a_structured_upstream_route(
+    tmp_path: Path,
+) -> None:
+    finding = build_finding(
+        "finding-feature-overlap",
+        "generate-story",
+        "UPSTREAM",
+        "generate-design",
+        ["feature-shared-control"],
+        "横切 Feature 的交付结果与业务 Feature 重叠，需要 Design 收敛。",
+        False,
+    )
+    path = tmp_path / ".ai-sow/work/generate-story/finding.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(finding, ensure_ascii=False), encoding="utf-8")
+
+    result = run_validator(tmp_path, "validate-finding")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["outcome"] == "OK"
+
+
+def test_validate_finding_rejects_an_unknown_correction_owner(
+    tmp_path: Path,
+) -> None:
+    finding = build_finding(
+        "finding-feature-overlap",
+        "generate-story",
+        "UPSTREAM",
+        "generate-design",
+        ["feature-shared-control"],
+        "横切 Feature 的交付结果重叠。",
+        False,
+    )
+    finding["correctionOwner"] = "planning-owner"
+    path = tmp_path / ".ai-sow/work/generate-story/finding.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(finding, ensure_ascii=False), encoding="utf-8")
+
+    result = run_validator(tmp_path, "validate-finding")
+
+    assert result.returncode == 2
+    assert {
+        item["code"] for item in json.loads(result.stdout)["diagnostics"]
+    } == {"FINDING_ROUTING_INVALID"}
+
+
+def test_validate_finding_rejects_capacity_as_upstream_work(
+    tmp_path: Path,
+) -> None:
+    finding = build_finding(
+        "finding-dedicated-support",
+        "generate-story",
+        "UPSTREAM",
+        "generate-design",
+        ["feature-post-go-live-support"],
+        "客户购买专职驻场、固定班次与待命容量，需要形成商业承诺。",
+        False,
+    )
+    path = tmp_path / ".ai-sow/work/generate-story/finding.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(finding, ensure_ascii=False), encoding="utf-8")
+
+    result = run_validator(tmp_path, "validate-finding")
+
+    assert result.returncode == 2
+    diagnostics = json.loads(result.stdout)["diagnostics"]
+    assert any("must use category DECISION" in item["message"] for item in diagnostics)
+
+
+def test_validate_finding_requires_an_explicit_user_decision_flag(
+    tmp_path: Path,
+) -> None:
+    finding = build_finding(
+        "finding-dedicated-support",
+        "generate-story",
+        "DECISION",
+        None,
+        ["feature-post-go-live-support"],
+        "客户购买待命容量，需要确认服务边界。",
+        False,
+    )
+    path = tmp_path / ".ai-sow/work/generate-story/finding.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(finding, ensure_ascii=False), encoding="utf-8")
+
+    result = run_validator(tmp_path, "validate-finding")
+
+    assert result.returncode == 2
+    diagnostics = json.loads(result.stdout)["diagnostics"]
+    assert any(
+        "require requiresUserDecision=true" in item["message"]
+        for item in diagnostics
+    )
+
+
+def test_validate_finding_rejects_a_decision_with_a_correction_owner(
+    tmp_path: Path,
+) -> None:
+    finding = build_finding(
+        "finding-dedicated-support",
+        "generate-story",
+        "DECISION",
+        "generate-design",
+        ["feature-post-go-live-support"],
+        "客户购买待命容量，需要确认服务边界。",
+        True,
+    )
+    path = tmp_path / ".ai-sow/work/generate-story/finding.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(finding, ensure_ascii=False), encoding="utf-8")
+
+    result = run_validator(tmp_path, "validate-finding")
+
+    assert result.returncode == 2
+    diagnostics = json.loads(result.stdout)["diagnostics"]
+    assert any(
+        "DECISION findings must use correctionOwner=null" in item["message"]
+        for item in diagnostics
+    )
+
+
+@pytest.mark.parametrize(
+    ("category", "correction_owner", "requires_user_decision", "message"),
+    [
+        (
+            "LOCAL",
+            "generate-design",
+            False,
+            "LOCAL findings must use discoveredBy as correctionOwner",
+        ),
+        (
+            "UPSTREAM",
+            "generate-story",
+            False,
+            "UPSTREAM findings must name a different Owner as correctionOwner",
+        ),
+        (
+            "MECHANICAL",
+            "generate-story",
+            True,
+            "only DECISION findings may use requiresUserDecision=true",
+        ),
+    ],
+)
+def test_validate_finding_enforces_category_routing_semantics(
+    tmp_path: Path,
+    category: str,
+    correction_owner: str,
+    requires_user_decision: bool,
+    message: str,
+) -> None:
+    finding = build_finding(
+        "finding-routing-semantics",
+        "generate-story",
+        category,  # type: ignore[arg-type]
+        correction_owner,  # type: ignore[arg-type]
+        ["story-example"],
+        "结构化路由测试。",
+        requires_user_decision,
+    )
+    path = tmp_path / ".ai-sow/work/generate-story/finding.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(finding, ensure_ascii=False), encoding="utf-8")
+
+    result = run_validator(tmp_path, "validate-finding")
+
+    assert result.returncode == 2
+    diagnostics = json.loads(result.stdout)["diagnostics"]
+    assert any(message in item["message"] for item in diagnostics)
 
 
 STAGING_ROOT = ".ai-sow/.stage-0123456789ab"
@@ -1608,6 +1781,11 @@ def test_skill_uses_review_candidate_publish_and_stop_flow() -> None:
         "不得为实现机制创建 Story 或 AC",
         "decisionRationale",
         "纯实现集成",
+        "category: DECISION",
+        "category: UPSTREAM",
+        "correctionOwner: null",
+        "correctionOwner: generate-design",
+        "--mode validate-finding",
     ):
         assert required in contract
 
