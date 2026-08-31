@@ -1,743 +1,740 @@
-# AI SOW 决策驱动工作流重构设计
+# AI SOW Git 驱动、按需现状调查工作流优化方案
 
-状态：设计提案；尚未实施  
-日期：2026-08-31  
-适用范围：`plugins/ai-sow/` 的阶段职责、Owner seam、评审门禁、返工路径和最终生成边界  
-当前基线：插件 0.1.0、SOW 标准 v1.3
+- 状态：架构提案；尚未实施
+- 日期：2026-09-01
+- 目标版本：插件 0.2.0
+- 当前基线：插件 0.1.0-beta.1、SOW 标准 v1.3
+- 适用范围：`plugins/ai-sow/` 的项目初始化、现状调查、Owner 协作、评审批准、返工和最终生成
 
-详细领域对象、阶段输入输出、状态转换、门禁条件和回退合同见
-[AI SOW 决策驱动工作流详细合同](ai-sow-workflow-contract-spec.md)。
+本文件是工作流重构的当前上位方案。现行 0.1.0-beta.1 合同仍以
+[`AI_SOW_PLUGIN_DESIGN.md`](../../plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md) 和
+[`CONTEXT.md`](../../plugins/ai-sow/docs/CONTEXT.md) 为准；本提案未实施前，不得把下述目标行为解释为
+现有插件能力。原
+[`ai-sow-workflow-contract-spec.md`](ai-sow-workflow-contract-spec.md)
+保留为上一轮方案的历史分析，不再作为 0.2.0 的实施合同。
 
-## 1. 结论
+## 1. 执行摘要
 
-当前七阶段链路把“完成一个领域的完整成果”当作进入下一阶段的主要条件：
+本次优化保留 Requirement、As-Is、Design、Story、Task 和 SOW Compiler 的专业所有权，但改变三项
+底层机制：
+
+1. 每个 AI SOW 项目强制使用 Git；以小步提交、提交范围和批准引用承担版本历史、差异、回滚和
+   精确快照，不再让用户确认一串 artifact hash。
+2. `analyze-as-is` 保留为启动阶段，但只建立粗粒度 `CurrentStateMap`；之后任何 Owner 在真正需要
+   现状时，都可以发起 `CurrentStateNeed`，由 As-Is Owner 定向调查并增量更新共享 `asis.json`。
+3. 项目不只按“新项目/老项目”二分。Setup 记录 `GREENFIELD / EXISTING_SYSTEM / HYBRID / UNKNOWN`
+   的初始 `DeliveryContext` 和已知系统来源；具体调查方式由每个 Solution Area 的实际情况决定。
+
+目标流程仍保留熟悉的主线名称：
 
 ```text
 setup
   -> analyze-requirement
-  -> analyze-as-is
+  -> analyze-as-is       # 只建立现状地图和初始 Ledger
   -> generate-design
   -> generate-story
   -> generate-task
   -> generate-sow
 ```
 
-这种结构能够提供强追溯和明确数据所有权，但它把本应由下游决策决定深度的工作提前完成，主要表现为：
-
-- 在目标方案问题尚未出现前完整调查系统现状；
-- 在 Task 可估算性尚未验证前冻结 Story 和 AC；
-- 在资源、依赖和里程碑可行性尚未验证前完成估算；
-- 把确定性工作簿生成继续作为业务分析阶段；
-- 用阶段顺序近似真实依赖，导致局部修改扩大为整段返工。
-
-本设计把工作流改为“少量不可逆决策门禁 + 门禁内部定向迭代”：
+但该顺序不再表示“前一阶段一次性查清全部信息”。Design、Story 和 Task 都可以在需要时进入同一条
+调查回路：
 
 ```text
-初始化
-  -> 定义商业范围
-  -> 塑造交付方案
-  -> 形成可承诺估算
-  -> 编译并签署 SOW
+任一 Owner 发现现状信息不足
+  -> 提交 CurrentStateNeed
+  -> 查询共享 CurrentStateLedger
+  -> 选择仓库、文档、环境或问卷 Adapter
+  -> As-Is Owner 发布 InvestigationResult
+  -> 计算语义 Impact Closure
+  -> 原 Owner 继续，或由 Finding 路由上游修正
 ```
 
-核心决定如下：
+Requirement 不会被 Target Design 取代，As-Is 也不会并入 Design。决定“要做什么”的可能是业务范围、
+设计、Story 可验收性或 Task 可估算性；决定“什么时候查现状”的是当下是否出现了一个会影响范围、
+责任、方案、交付或估算的具体问题。
 
-1. SOW 的默认目标是形成可承诺的范围、人天和责任边界，不是完成系统尽调。
-2. 系统现状调查不再作为设计前一次性完成的完整阶段；它成为总体设计按决策调用的现状证据 module。
-3. As-Is 与 Design 的数据所有权仍然分离，防止把方案假设写成现状事实。
-4. 商业范围状态只由 Requirement Owner 拥有；Design 只决定 `NEEDS_DELIVERY / FULLY_COVERED`。
-5. Design、Story/AC 和 Task 保持不同 Owner，但在正式批准前通过候选结果双向收敛。
-6. Gate 2 只产生可复用的 `ESTIMATION_READY` Review；Gate 3 一次批准并发布全部专业聚合，不提前发布 Design/Delivery。
-7. 只有 Scope 和 Commitment 需要用户批准；Gate 2 是一个 fresh-context Judgment Reviewer 的 TL/BA 双视角检查。
-8. 角色批准绑定业务语义 hash；纯 Evidence rebind 由等价 attestation 处理，不重新请求商业批准。
-9. `generate-sow` 是确定性编译 module，不再承担业务内容决策。
-10. 上游修正按机械完整的决策依赖闭包重新打开成果，并复用闭包外 review、claim verification 和 context。
-11. Reviewer 对同一 Gate Packet 的首次判断不可被过程压力翻转；阶段对象数量只采用 validator 从
-    candidate 确定性投影的指标，不采用 Agent 自报统计。
+## 2. 当前问题
 
-## 2. 目标与非目标
+### 2.1 As-Is 仍然前置物化过多信息
 
-### 2.1 目标
+当前流程虽然允许 `BOUNDARY_DECLARED`、`NOT_APPLICABLE` 和 hypothesis 模式，但在 Design 前仍要求
+一次性形成九个 Topic 的状态、每个 BUSINESS Feature 的 Coverage，以及全部估算相关 Uncertainty 的
+关闭结论。这使 As-Is 在真实设计、验收和估算问题出现前，就承担了接近系统尽调的工作量。
 
-1. 每项调查、设计和评审工作都能说明它将改变哪个范围、责任、交付或估算决定。
-2. Brownfield 项目只调查足以确认 Effective Start、交付差值和估算工作模式的现状。
-3. Greenfield 项目不因固定 Topic 清单被迫制造现状 Item 或 Evidence。
-4. Story/AC 只有通过 Task 试拆分证明可估算后才正式冻结。
-5. 硬日期和窗口在 Gate 2 前筛查；承诺日期或迭代计划进入 SOW 时再用正式 Task 验证资源和依赖可行性。
-6. 普通路径业务批准恰有 Scope 和 Commitment 两次，不与内部文件数量绑定。
-7. Gate 2→Gate 3、局部修复和 Evidence rebind 能机械复用未变化 review、claim 和 context。
-8. 局部事实变化只重开实际依赖该事实的设计、交付和估算决定。
-9. 保留稳定数据 Owner、证据追溯、hash 绑定、隐私边界和确定性生成能力。
+### 2.2 现状需要不是 Design 独有
 
-### 2.2 非目标
+Design 会需要架构、集成和平台事实；Story 会需要当前业务流程、责任和可验收边界；Task 会需要具体
+资产、复用条件、迁移对象、工作模式和复杂度依据。把现状调查改成“由 Target Design 驱动”仍然过窄，
+只是把前置调查换成了另一个单一调用者。
 
-- 不把 Requirement、As-Is、Design、Delivery、Estimate 合并成一个共享业务 JSON。
-- 不让 Design Owner 声明未经 As-Is Owner 确认的当前事实。
-- 不建设完整企业架构库、CMDB、代码知识图谱产品或持续系统发现平台。
-- 不为了减少阶段数而创建通用 Owner runner 或配置驱动业务引擎。
-- 不改变 SOW v1.3 的基础人天、复杂度、SIT、UAT、风险、公式和取整权威。
-- 不在本设计中修改工作簿 Sheet、基础单元或计算公式。
-- 不在兼容性未知时静默迁移已有项目数据。
+### 2.3 Greenfield 与 Existing System 的证据渠道不同
 
-## 3. 问题发现
+纯 Greenfield 没有待搜索的目标系统代码，但仍有当前业务流程、外部系统、数据来源、组织标准、
+安全、部署和运维约束。Existing System 则通常有一个或多个本地/远程仓库、运行环境、历史文档或
+往期 SOW。用同一种固定仓库调查流程处理两者，会让 Greenfield 制造虚假现状，也让 Existing System
+漏掉可复核代码证据。
 
-### 3.1 现状调查发生得过早、过完整
+### 2.4 二元项目类型不足以描述真实项目
 
-业务需求批准后可以确定调查范围，但仍不能确定全部调查问题。真正有价值的问题通常来自候选设计，例如：
+“新建门户并接入现有 CRM”“重写服务但迁移既有数据”“新建应用并复用企业身份平台”都属于
+Hybrid。项目级类型只能提供启动路由，不能替代每个 Solution Area 的判断。
 
-- 现有身份平台是否支持目标租户声明；
-- 现有部署能力是否只可复用流水线，还是也可复用本项目切换方案；
-- 外部系统是否提供目标接口，以及哪一方负责适配；
-- 当前数据质量是否允许直接迁移。
+### 2.5 文件 hash 把正常迭代变成授权失效
 
-在设计假设出现前，按系统边界、能力、应用、集成、数据、平台、安全、运维和交付约束平均调查，只能形成通用盘点。它不能稳定判断哪些事实会改变 Story、Task、工作模式或人天。
+现有 candidate、context fragment、review、risk summary、Reviewer sidecar、approval sidecar 和
+receipt 通过多层 SHA-256 绑定。它能检测字节变化，但也会产生以下成本：
 
-当前合同已经部分承认这个问题：`hypothesis` 是默认 `investigationMode`，Topic 可以使用 `BOUNDARY_DECLARED` 或 `NOT_APPLICABLE`，As-Is 在深挖前应形成可证伪 premise。但 `investigationMode` 主要作为 Schema 和 context binding，系统仍依赖 Stage Agent 自觉收敛；它尚未形成机械调查边界。
+- 用户必须面对机器 hash，而不是直接批准可理解的变化；
+- 文案、路径或 Evidence anchor 变化容易使整份 packet 失效；
+- Owner receipt 和固定阶段后缀把文件变化近似为语义变化；
+- 工作流实现重复建设 Git 已经提供的历史、差异、快照和回滚能力。
 
-### 3.2 As-Is 数据面大于最终决策面
+### 2.6 固定后缀返工大于真实影响
 
-As-Is 稳定数据同时包含 Topic、Item、Commitment、Effective Start、Coverage、Uncertainty 和 Evidence。它们分别有合理用途，但容易让“能够记录”变成“应当完整记录”。
+Task 发现现状错误时，可能只影响工作模式，也可能推翻 Design、Story 甚至 BUSINESS 范围。固定从某个
+Owner 到末尾全部 `CHANGED/NO_CHANGE`，既不能准确表达影响，也要求为无变化 Owner 生成额外绑定。
 
-代表性端到端 fixture 包含：
+## 3. 目标与非目标
 
-- 9 个 Topic；
-- 11 个 Item；
-- 4 个 Commitment；
-- 11 个 Effective Start；
-- 12 个 Coverage；
-- 4 个 Uncertainty；
-- 7 个 Evidence。
+### 3.1 目标
 
-共 58 个结构化条目。最终工作簿的 `90-系统现状` 可见投影只使用 11 个 Effective Start。其他条目可以支持设计和审计，但该比例说明默认流程已经接近现状尽调，而不是最小估算证据链。该 fixture 只用于说明结构扩张，不作为生产项目平均值。
+1. 只在某个决定确实需要现状时调查，并建立最短、可复核的证据链。
+2. 保留共享 `asis.json`，让不同阶段积累和复用同一份当前状态知识。
+3. 保留 As-Is 单一写 Owner；其他 Owner 只能提出调查需求和消费结果。
+4. Setup 提前建立项目上下文和系统来源目录，使后续调查有的放矢。
+5. Greenfield 优先问卷，Existing System 优先仓库/文档证据，Hybrid 按 Solution Area 组合。
+6. Task 可以发现并路由上游问题，但不能直接修改 Design、Story 或 Requirement。
+7. 用 Git 小步提交替代自建 revision store 和工作流可见 hash 确认。
+8. 用稳定 ID、类型化引用和语义依赖图计算真实 Impact Closure。
+9. 保持 SOW v1.3 工作簿、基础人天、复杂度、公式、SIT、UAT、风险和取整权威不变。
+10. 最终包能够从一个精确 Approved Commit 确定性重建。
 
-### 3.3 下游无法精确选择所需现状
+### 3.2 非目标
 
-Design context 当前整体接收 Topic、Coverage、Commitment、Uncertainty、Effective Start、Item 和 Evidence。Task context 因缺少完整 Story 到 Effective Start 关系，保守加载全部 Effective Start。
+- 不把 Requirement、As-Is、Design、Delivery 和 Estimate 合并为一个共享业务文件。
+- 不把 As-Is Owner 变成持续扫描全部代码库的知识图谱系统。
+- 不允许下游 Owner 直接写上游稳定数据。
+- 不用 Git diff 代替领域语义、Owner 所有权、Finding 分类或 Impact Closure。
+- 不自动 push、创建远程仓库或把客户资料发送到外部服务。
+- 不在 0.1.0-beta.1 中原地改变合同语义。
 
-这使每一个新增现状事实产生持续携带成本：
+## 4. 统一领域语言
 
-```text
-新增 As-Is 事实
-  -> Design 阅读和评审成本
-  -> Story 引用选择成本
-  -> Task 工作模式判断成本
-  -> receipt、claim 和返工成本
-```
-
-问题不只是 token 使用量。过多候选事实会增加选错起点、误判复用和用户漏审关键差异的风险。
-
-### 3.4 Design 到 Story 是单向交接
-
-Design 回答系统如何变化，Story/AC 回答客户购买什么以及如何判断完成。两者责任不同，但不能完全串行：
-
-- Design 可能围绕技术模块完整，却无法形成独立验收和结算的 Story；
-- AC 细化可能暴露异常路径、迁移、切换、生产验证或责任边界缺失；
-- Story 若只能迁就已经冻结的 Design，就不能成为有效交付合同。
-
-当前单向流程把这种正常收敛变成跨阶段返工。
-
-### 3.5 Story/AC 在 Task 可估算性验证前冻结
-
-Task 试拆分最容易发现：
-
-- 一个 Story 包含多个独立交付对象；
-- AC 无法映射到具体工作；
-- Integration、迁移、发布或测试责任缺失；
-- 一个 Story 跨越多个团队或合同责任；
-- 任务只能用 `X` 复杂度，说明方案或范围仍不充分。
-
-Task Owner 不应反向修改 Story/AC，但 Task 试拆分应成为 Story/AC 正式批准的输入。先冻结再试拆分，会迫使 Task 适配错误合同，或触发不必要的完整返工。
-
-### 3.6 估算与资源、迭代可行性脱节
-
-人天正确不等于交付承诺可行。承诺日期或迭代计划还取决于：
-
-- 专业角色何时可用；
-- 哪些任务可并行；
-- 外部系统和客户团队配合窗口；
-- UAT、变更冻结和发布窗口；
-- 环境、数据和审批的前置依赖。
-
-如果 PM 只在 Task 完成后补充人员和迭代计划，计划只能被动接受估算，无法及时反馈分期、范围和方案。
-
-### 3.7 最终生成混合了内容批准与投影检查
-
-`generate-sow` 应只把已批准数据确定性投影到模板。若最终 Excel 评审仍重新决定需求、设计、Story、Task 或估算，则前置批准没有建立稳定商业合同。
-
-最终阶段应区分：
-
-- 机械一致性：漏行、名称投影、引用、公式原型、样式和 package hash；
-- 商业签署：范围、人天、责任、假设、里程碑和例外是否可以承诺。
-
-前者属于编译器验证，后者属于生成前的商业就绪门禁。
-
-### 3.8 批准对象过度贴合文件，而不是决策
-
-Candidate、review、risk summary、context fragment、claims 和 receipt 都需要校验与留痕，但不等于用户必须逐份批准。用户真正需要承担责任的是：
-
-- 商业范围；
-- 目标方案和上线责任；
-- Story/AC 交付合同；
-- Task、估算、资源与商业假设；
-- 最终签署版本。
-
-把每个中间 artifact 都升级为独立批准对象，会增加重复阅读，并让正常候选迭代承担正式返工成本。
-
-### 3.9 固定阶段后缀不能表达真实影响
-
-阶段顺序是安全的保守近似，但不是实际依赖图。例如：
-
-- 修复 Evidence anchor 不一定改变 Effective Start；
-- Effective Start 名称变化不一定改变 Design Decision；
-- Design 实现机制细化不一定改变 Story/AC；
-- Story 文案修正不一定改变 Task 或人天。
-
-按固定后缀整体复核会放大无语义变更；完全跳过又可能漏掉真实影响。正确依据应是稳定决策引用和语义变化类型。
-
-## 4. 设计原则
-
-### 4.1 SOW 不是系统尽调
-
-默认调查只服务以下决定：
-
-- Feature 当前覆盖；
-- 项目启动时可依赖的 Effective Start；
-- 目标交付差值；
-- Story 和 AC；
-- Task 数量、工作模式和复杂度；
-- 集成、迁移、发布、测试、支持和责任；
-- 人天、风险、资源和里程碑。
-
-不能改变这些决定的现状细节最多进入工作记录，不默认进入稳定 As-Is、review 或 claim。
-
-### 4.2 范围决定对象，设计决定问题，估算决定深度
-
-- 没有批准的业务范围，不启动系统性调查。
-- 没有候选设计或交付假设，不深挖通用 Topic。
-- 不能说明估算影响的问题，不作为正式估算 blocker。
-
-### 4.3 执行协同不等于数据所有权合并
-
-As-Is Owner 继续独占当前事实、证据和 Effective Start；Design Owner 继续独占目标设计和 TECHNICAL requirements；Delivery Owner 继续独占 Story/AC；Estimate Owner 继续独占 Task 和估算输入。
-
-Owner 间允许在同一个决策门禁内多次形成 candidate，但任何 Owner 都不能直接写另一个 Owner 的稳定结果。
-
-### 4.4 先用候选闭环，再批准不可逆决定
-
-候选 Design、Story/AC 和 Task 试拆分可以在 work/staging 中迭代。只有满足门禁后才发布稳定数据并请求用户批准。批准之后若语义变化，再按依赖闭包重开决定。
-
-### 4.5 未知按影响处理，不按是否存在处理
-
-未知问题只有在答案可能改变范围、责任、设计、交付对象、Task 数量、工作模式、复杂度、人天或里程碑时才阻塞可承诺 SOW。
-
-不影响估算的未知必须明确边界或风险处理，但不触发继续尽调。
-
-## 5. 目标工作流
-
-### 5.1 总览
-
-```text
-┌─────────────────────┐
-│ 1. 初始化           │
-│ 项目身份、模板、规则 │
-└─────────┬───────────┘
-          ↓
-┌─────────────────────┐
-│ 2. 定义商业范围     │
-│ 业务结果、范围、约束 │
-└─────────┬───────────┘
-          ↓
-┌─────────────────────────────────────────────┐
-│ 3. 塑造交付方案                            │
-│ 现状筛查 ↔ 方案假设 ↔ 定向调查 ↔ Design/Story │
-│                  ↔ 早期计划约束筛查           │
-└─────────┬───────────────────────────────────┘
-          ↓
-┌─────────────────────────────────────────────┐
-│ 4. 形成可承诺估算                          │
-│ Task 试拆分 ↔ Design/Story 修正             │
-│            ↔ 资源、依赖和迭代可行性        │
-└─────────┬───────────────────────────────────┘
-          ↓
-┌─────────────────────┐
-│ 5. 编译并签署 SOW   │
-│ 确定性生成、最终签署 │
-└─────────────────────┘
-```
-
-### 5.2 初始化
-
-职责保持机械化：
-
-- 建立项目身份；
-- 绑定插件和 SOW 标准版本；
-- 复制并复读模板；
-- 建立受管目录；
-- 校验运行环境。
-
-初始化不接收业务材料、代码库、往期 SOW 或目标方案，不承担专业判断。
-
-### 5.3 定义商业范围
-
-本阶段批准：
-
-- 业务目标和结果；
-- 可以独立纳入、排除或延期的 Feature；
-- 业务规则与验收意图；
-- 合同范围、明确排除和责任约束；
-- 来源中的技术输入清单，但不在本阶段决定技术方案。
-
-技术输入只作为 Design 决策队列交接，并为每项绑定一个可定向读取的原文 anchor。Design 必须逐条读取该片段自行确认，但不通读未入队来源；Requirement Owner 不把技术偏好直接编译成稳定 TECHNICAL requirement。
-
-**商业范围门禁：** 每个 Feature 足以确定是否属于本次项目；尚未解决且可能改变商业范围的问题已经回答、明确排除，或转为获批商业假设。
-
-### 5.4 塑造交付方案
-
-这是主要专业迭代区，内部包含五项协同工作。
-
-#### 5.4.1 现状快速筛查
-
-对每个范围内 Feature 只回答：
-
-1. `COMPLETE / PARTIAL / MISSING`；
-2. 是否存在可能影响方案或工作模式的 Effective Start；
-3. 是否存在与本期重叠的未完成往期承诺；
-4. 哪些未知可能推翻方案或估算。
-
-九个 Topic 继续作为防遗漏清单，但不是九项默认深挖任务。Topic 只有在影响当前 Feature、设计决定或估算时才展开 Item 和 Evidence；否则使用有依据的边界声明或不适用结论。
-
-迁移期间现有 As-Is 离线 review 必须至少把 Commitment、Uncertainty 和 Evidence 的稳定 ID 与名称
-成对投影，并由 Owner validator 对 candidate 逐条核对。该门禁先消除已知的评审盲区，不替代
-0.2.0 `CurrentStateLedger` 的 clean-cut 数据重塑。
-
-#### 5.4.2 形成可证伪方案假设
-
-Design Owner 为每个关键范围决定提出候选方案，并明确：
-
-- 依赖的当前事实；
-- 最小证伪方法；
-- 如果前提错误会影响什么；
-- 需要由 As-Is Owner 回答的精确问题。
-
-#### 5.4.3 定向现状调查
-
-As-Is 不对外暴露完整调查实现，只提供一个决策级接口：
-
-```text
-输入：
-- decisionId
-- investigationQuestion
-- affectedFeatureIds
-- materiality：可能改变哪些范围、责任或估算字段
-- allowedSources：获授权的仓库、文档、往期 SOW 或负责人
-
-输出：
-- verdict：SUPPORTED / FALSIFIED / UNKNOWN
-- effectiveStart：项目开始时可依赖的事实或明确 MISSING
-- evidence：一条最佳可复核 anchor；冲突时保留必要的竞争证据
-- impact：对 Design、Story、Task、工作模式、复杂度或责任的影响
-- handling：接受、修改方案、形成假设、安排 Discovery 或阻塞
-```
-
-只有以下情况继续深挖：
-
-- 当前证据互相冲突；
-- 第一条证据不足以支持高影响决定；
-- 运行行为无法由静态材料判断且会实质改变设计或估算。
-
-#### 5.4.4 Design 与 Story/AC candidate 共同收敛
-
-Design 回答系统变化，Story/AC 回答客户购买的可交付结果。两者在稳定发布前允许双向迭代：
-
-```text
-Design candidate
-  -> Story / AC candidate
-  -> 验收、结算、异常路径和责任检查
-  -> 必要时返回 Design candidate
-```
-
-#### 5.4.5 早期计划约束筛查
-
-Planning Owner 在 Scope Gate 后并行收集目标日期、UAT/冻结/发布窗口、关键角色硬性不可用区间和外部串行依赖，形成 work-only Planning Premise。Gate 2 只判断这些已知硬约束是否已明显否定当前方案，不提前制造 Task 级排期；最终容量和关键路径仍在下一阶段复核。
-
-**方案与交付门禁：**
-
-- BusinessScope 中每个 `IN_SCOPE` Feature 有明确 `NEEDS_DELIVERY / FULLY_COVERED` Delivery Disposition；
-- 每个需要交付的 Feature 有 Design 覆盖和至少一个 Story；
-- 每个 Story 有可观察 AC；
-- Integration、迁移、生产范围、发布、验证、运维移交和支持责任有明确结论；
-- 所有高影响现状前提已获支持，或已采用获批的安全处理；
-- 已知硬日期、窗口和容量约束没有使当前方案明显不可行；
-- Story/AC 尚未正式冻结，等待下一阶段 Task 试拆分。
-
-### 5.5 形成可承诺估算
-
-#### 5.5.1 Task 试拆分
-
-Estimate Owner 在 work/staging 中对 Story/AC candidate 试拆分 Task。试拆分只回答：
-
-- 每个 Story 是否能映射到独立基础单元实例；
-- AC 是否有实际工作覆盖；
-- 是否遗漏集成、迁移、发布、测试、诊断、培训或下线工作；
-- `新建 / 调整 / 接入复用` 是否有足够 Effective Start；
-- 是否存在重复计价；
-- 是否出现 `X` 复杂度或无法确定计数对象。
-
-若失败，Estimate Owner 返回结构化 finding，指明应由 Design 还是 Delivery Owner 修正；它不直接修改上游稳定数据。
-
-#### 5.5.2 冻结交付候选
-
-只有 Task 试拆分证明 Story/AC 可估算后，Design 与 Delivery candidate 才冻结为 Gate 3 输入，不在此时批准或发布。Estimate Owner 基于同一绑定 candidate 形成正式 Task 和 Estimate candidate；Planning Owner 形成始终存在的 PlanningDisposition candidate。Gate 3 一次批准和发布 Current State、Solution、Delivery、Estimate 与 PlanningDisposition。
-
-#### 5.5.3 资源与计划可行性
-
-PlanningDisposition 始终明确 `EFFORT_ONLY / MILESTONE_COMMITTED`。若承诺日期、里程碑或迭代计划，Planning Owner 必须基于正式 Task 确认：
-
-- 关键角色和容量；
-- 任务依赖与可并行性；
-- 客户、平台和第三方配合窗口；
-- UAT、变更冻结、发布和支持窗口；
-- 计划与估算、范围和责任一致。
-
-若只承诺工作量，PlanningDisposition 固定 `scheduleCommitment=NONE`，不要求虚构人员排期。承诺模式不属于 ProjectShell，单独改变模式不会使 Scope 或 Gate 2 stale。
-
-**可承诺估算门禁：**
-
-- Story/AC 已通过 Task 试拆分；
-- 每个 Task 有明确对象、工作模式和可接受复杂度；
-- 所有估算相关未知已经解决、由 Estimate Owner 量化为有限 allowance，或由 As-Is Owner 转入独立 Discovery SOW；
-- 没有重复计价或无责任方工作；
-- PlanningDisposition 与已批准 Planning Premise 一致，适用时资源与里程碑可行；
-- Gate 2 未变化专业判断已复用；
-- TL、BA 和 PM 分别批准其责任范围内的同一 `semanticApprovalHash`。
-
-### 5.6 编译并签署 SOW
-
-SOW Compiler 只执行：
-
-- 验证已批准商业 packet 和各 Owner 当前 receipt；
-- 将稳定 ID 投影为唯一名称；
-- 写入模板；
-- 保留 Table、公式、样式、保护和引用；
-- 复读工作簿和 package；
-- 内容寻址发布。
-
-它不得重新决定范围、设计、Story、AC、Task、工作模式、复杂度、人天、资源或计划。
-
-最终角色检查分为：
-
-1. **机械一致性检查：** 生成器和自动化验证负责；
-2. **签署检查：** TL、BA、PM 确认生成包正是前一步批准的商业 packet，没有新增决定。
-
-## 6. Owner 与 seam
-
-| Owner / Module | 独占内容 | 向其他 Owner 提供的 interface | 不得承担 |
-|---|---|---|---|
-| Setup Module | 项目身份、模板、运行环境 | 可复读 ProjectShell | 业务分析、承诺模式、Repo 调查 |
-| Requirement Owner | BUSINESS 范围、规则、验收意图 | 获批 Feature、技术输入队列及原文 anchor | TECHNICAL 方案 |
-| As-Is Owner | 当前事实、Evidence、Effective Start、Commitment、Discovery Requirement | 稳定可解析的决策级调查结果 | 目标设计、Task 工作模式 |
-| Design Owner | 目标方案、Delivery Disposition、TECHNICAL requirement、上线责任 | 设计 candidate 与决策依赖 | 商业范围、未经确认的现状 |
-| Delivery Owner | Story、AC、Integration、Assumption/Risk | 可验收交付合同 candidate | 技术实现 Task、计算人天 |
-| Estimate Owner | Task、工作模式、复杂度、估算输入、Allowance | 试拆分 findings 与正式 Estimate | 改写 Story/AC、创建 Discovery |
-| Planning Owner | Planning Premise、承诺模式、资源、依赖与条件性计划 | PlanningDisposition | 修改范围、Task、基础人天或公式 |
-| SOW Compiler | 名称投影、工作簿、manifest、package | 确定性交付包 | 新业务决定 |
-
-关键 seam 是 `Decision Investigation`。删除该 module 后，定向调查、证据选择、未知影响和现状/目标隔离会重新散落到 Design、Delivery 和 Estimate；因此它应是深 module，而不是一次性阶段或薄转发层。
-
-## 7. 调查深度与停止规则
-
-每个调查事实必须通过以下 materiality 判断：
-
-> 如果该事实不同，会不会改变 Feature 覆盖、Effective Start、Design Decision、Story/AC、Task 数量、工作模式、复杂度、SIT/UAT、风险、资源、里程碑或责任边界？
-
-| 结果 | 处理 |
+| 术语 | 定义 |
 |---|---|
-| 会改变 | 调查并建立最短证据链 |
-| 可能改变但未知 | 形成高影响 Uncertainty；解决、批准 allowance、安排 Discovery 或阻塞 |
-| 不会改变 | 最多写边界摘要，不创建稳定 Item/Evidence/claim |
-| 只增加系统理解 | 保留在临时工作记录，不进入默认 SOW 流程 |
+| `SowWorkspaceRepository` | 保存 `.ai-sow/` 工作流数据的强制 Git 工作树。它与被调查系统仓库是两个不同概念。 |
+| `DeliveryContext` | Setup 阶段的项目级启动路由：`GREENFIELD / EXISTING_SYSTEM / HYBRID / UNKNOWN`。它是初始提示，不是所有范围项的永久结论。 |
+| `SolutionArea` | 一组可独立判断交付方式和现状来源的业务/技术范围；状态为 `NEW_BUILD / CHANGE_EXISTING / INTEGRATE_EXISTING / MIGRATE_EXISTING / UNKNOWN`。 |
+| `SystemSource` | 现状调查可使用的仓库、文档、环境、往期 SOW 或负责人等逻辑来源。 |
+| `SourceBinding` | 把 `SystemSource` 绑定到本地路径、远程地址或宿主连接的本机配置；不得包含凭据。 |
+| `SourceRevision` | 某次调查实际读取的来源版本，例如目标仓库 Git commit 或文档修订号；它是 Evidence provenance，不是用户批准对象。 |
+| `CurrentStateMap` | As-Is 启动阶段生成的粗粒度导航图，只告诉后续 Owner 去哪里寻找事实，不声称已经完成调查。 |
+| `CurrentStateLedger` | 共享 `asis.json` 中随工作流增量积累的事实、Evidence、Effective Start、Commitment、Investigation Result 和 Uncertainty。 |
+| `CurrentStateNeed` | 任一 Owner 为完成当前专业判断而提出的最小现状问题。 |
+| `InvestigationRequest` | As-Is Owner 接受的 work-only 调查任务，包含问题、materiality、subject 和允许来源。 |
+| `InvestigationResult` | 可被后续 Owner 稳定引用的调查结论；包含 verdict、Evidence、适用范围、来源修订和未知处理。 |
+| `Finding` | Owner 无法在自己的写集合内修复时使用的结构化路由信息，继续使用 `LOCAL / UPSTREAM / DECISION / MECHANICAL`。 |
+| `ChangeSet` | 围绕同一目的的一组小步 Git commits；可以跨多个 Owner，但每个 commit 的写集合仍归属于一个 Owner。 |
+| `ImpactClosure` | 从变化的稳定 subject 沿类型化和显式语义依赖边得到的最小受影响对象集合。 |
+| `ApprovedCommit` | 用户或责任角色批准的精确 Git commit，由 AI SOW 管理的本地 approval ref 指向。 |
+| `PackageFingerprint` | 最终不可变 SOW 包的内容标识；它不参与普通阶段批准。 |
 
-默认停止条件：
+`GREENFIELD` 不等于“没有现状”；它只表示本项目不修改一个已经存在的目标实现。外部集成、当前流程、
+数据来源、组织和运行约束仍然是现状。`EXISTING_SYSTEM` 也不等于“必须能够访问代码”；缺少代码时
+必须登记 `ACCESS_GAP`，再明确使用文档、环境或访谈证据，不能悄悄降级为 Greenfield。
+
+## 5. Setup：Git、项目上下文与来源登记
+
+### 5.1 强制 Git
+
+Setup 必须在写入项目数据前确认：
+
+- `git` 命令可用；
+- 项目根位于非 bare Git 工作树；
+- `HEAD` 可解析；新仓库已经有初始化 commit；
+- Git author 配置可用于创建本地 commit；
+- AI SOW 受管路径没有来源不明的未提交修改；
+- 当前分支不是 detached HEAD，默认建议使用 `ai-sow/<project-id>`。
+
+不满足时返回稳定错误，例如 `GIT_REPOSITORY_REQUIRED`、`GIT_HEAD_REQUIRED`、
+`GIT_IDENTITY_REQUIRED` 或 `MANAGED_PATHS_DIRTY`。Setup 可以在用户明确同意后执行 `git init`、创建
+初始 commit 或新建 AI SOW 分支，但不能自动 push、改写已有历史或提交非 `.ai-sow/` 文件。
+
+Git 的写权限只覆盖 AI SOW 受管路径。提交前使用显式文件清单暂存，不得使用会带入用户其他修改的
+宽泛 `git add .`。
+
+### 5.2 项目上下文
+
+Setup 要求用户提供一个初始 `DeliveryContext`：
 
 ```text
-Feature
-  -> Coverage
-  -> Effective Start 或明确 MISSING
-  -> Delivery Delta
-  -> Design Decision
-  -> Story / AC
-  -> Task / 工作模式 / 复杂度
+GREENFIELD | EXISTING_SYSTEM | HYBRID | UNKNOWN
 ```
 
-链路完整，且没有未处理的高影响 Uncertainty 时停止调查。
+`UNKNOWN` 允许初始化，但在 As-Is Bootstrap 结束前必须解析为前三者之一。Requirement 后续识别出的
+每个 Solution Area 还要分别确定自己的状态；项目级值不强行覆盖局部事实。
 
-`exhaustive` 只用于用户明确购买系统尽调、架构评估或 Discovery 的场景。它不是普通实施 SOW 的高质量模式。
+### 5.3 系统来源
 
-## 8. 未知与 Discovery 处理
+Setup 同时登记已经知道的 `SystemSource`：
 
-可承诺估算不能用未经限定的未知替代事实。未知按影响和可界定程度处理：
+- `LOCAL_GIT_REPOSITORY`
+- `REMOTE_GIT_REPOSITORY`
+- `DOCUMENT_SET`
+- `RUNTIME_ENVIRONMENT`
+- `PRIOR_SOW`
+- `QUESTIONNAIRE_RESPONDENT`
 
-| 情况 | 处理 |
+对于 `EXISTING_SYSTEM` 和 `HYBRID`，Setup 至少需要一个可用来源，或者一条明确的 `ACCESS_GAP`。
+远程地址本身不是 Evidence；调查实际使用后，Result 必须记录读取到的 `SourceRevision`。
+
+稳定来源目录只保存 `sourceId`、类型、用途、责任方和 `AVAILABLE / UNAVAILABLE / UNKNOWN` 状态。
+本机绝对路径、私有远程地址和宿主连接标识写入 Git 忽略的
+`.ai-sow/local/source-bindings.json`；凭据永不写入项目。
+
+### 5.4 目标项目结构
+
+```text
+.ai-sow/
+├── project.json
+├── sources/catalog.json
+├── local/source-bindings.json       # gitignored
+├── inputs/
+├── work/
+├── reviews/
+├── data/
+│   ├── analyze-requirement/requirements.json
+│   ├── analyze-as-is/asis.json
+│   ├── generate-design/design.json
+│   ├── generate-design/requirements.json
+│   ├── generate-story/delivery.json
+│   └── generate-task/estimate.json
+├── validation/
+├── approvals/                       # gitignored 可读投影；权威批准是 Git ref
+└── outputs/
+```
+
+## 6. As-Is Bootstrap：先建地图，不做完整尽调
+
+`analyze-as-is` 仍然是主线阶段，但首次运行只完成以下工作：
+
+1. 确认项目级 `DeliveryContext`；
+2. 将 Requirement 识别出的范围划分为 Solution Area；
+3. 复核来源目录和访问缺口；
+4. 形成 `CurrentStateMap`；
+5. 记录少量已经确定、会影响全部后续工作的现状事实；
+6. 初始化共享 `CurrentStateLedger`。
+
+建议的地图字段为：
+
+```text
+repositories
+applicationLandmarks
+integrationLocations
+dataLocations
+deploymentLocations
+testAndOperationsLocations
+priorSowSources
+processAndOrganizationSources
+unknownAreas
+```
+
+地图条目只需要给出逻辑位置、用途、可访问性和适用 Solution Area。它不要求形成完整 Component、
+Integration、Data Asset 或 Evidence 清单，也不要求在 Design 前关闭全部九 Topic。
+
+### 6.1 Greenfield
+
+Greenfield 使用精简的现状基线问卷，优先确认：
+
+- 当前业务流程、参与者和责任边界；
+- 必须交互的外部系统；
+- 数据来源、数据所有者和迁移要求；
+- 组织既定的技术平台、安全与合规标准；
+- 部署、运维、支持和发布约束；
+- 已知决策与尚未决定的事项。
+
+这不是一次性问完未来可能出现的所有问题。问卷只建立后续可以复用的基线；Design、Story 或 Task
+后来出现新的 material question 时，仍然可以通过同一个 Questionnaire Adapter 追问。已经有有效答案
+的内容直接复用，不重复询问。问卷只是取证方式，不改变数据所有权：“当前使用 Azure AD”进入
+As-Is，“必须支持 MFA”进入 Requirement，“拟采用 Keycloak”进入 Design 或待决 Decision。
+
+### 6.2 Existing System
+
+Existing System 根据已登记来源生成粗粒度地图：读取仓库根、主要目录、入口文档、部署/配置位置和
+已知集成索引，但不默认展开全部源码、接口、数据模型或运行行为。只有后续 `CurrentStateNeed` 点名
+具体决定后，才进行定向搜索。
+
+### 6.3 Hybrid
+
+Hybrid 按 Solution Area 选择策略。例如“新建门户并接入现有 CRM”：
+
+- 门户实现标记为 `NEW_BUILD`，使用问卷确认平台和运营约束；
+- CRM 交互标记为 `INTEGRATE_EXISTING`，使用 CRM 仓库、接口文档或负责人证据；
+- 若存在客户数据迁移，再增加 `MIGRATE_EXISTING` Area 并调查源数据。
+
+## 7. 按需现状调查 Module
+
+### 7.1 Interface
+
+所有专业 Owner 使用同一个深 Module，而不是分别实现搜索逻辑：
+
+```text
+resolve_current_state_need(CurrentStateNeed) -> InvestigationResult
+```
+
+`CurrentStateNeed` 至少包含：
+
+```text
+needId
+requestingOwner
+question
+subjectIds
+materiality
+requiredByDecision
+allowedSourceIds
+```
+
+`InvestigationResult` 至少包含：
+
+```text
+resultId
+question
+verdict: CONFIRMED | REFUTED | PARTIAL | UNKNOWN
+statement
+applicableSubjectIds
+evidenceIds
+sourceRevisions
+effectiveStartIds
+uncertaintyId
+observedAt
+```
+
+Request 是 work-only 的执行输入；Result 必须在删除 Request 后仍可独立解释。其他 Owner 只引用
+`resultId`、相关 Stable ID 和当前 Result revision，不绑定整个 `asis.json` 的文件 hash。调用 Owner
+先明确自己正在形成的专业决定以及缺少的事实，再提出最小 Need；它既不先完成一次全量 As-Is，也不把
+未经验证的 Greenfield 假设直接固化为正式决定。
+
+### 7.2 Adapter 路由
+
+Module 根据 Solution Area、来源可用性和问题性质选择一个或多个 Adapter：
+
+| Adapter | 适用场景 |
 |---|---|
-| 高影响且无法界定上限 | 阻塞实施 SOW，先形成独立 Discovery/Assessment SOW |
-| 高影响但可限定最大工作 | 写入明确 allowance、触发条件、责任和超出处理，并由用户批准 |
-| 影响范围但由客户负责 | 写入前置条件、最晚提供时间和未满足后果 |
-| 不影响范围或人天 | 记录为非阻塞风险或边界，不继续调查 |
-| 证据冲突 | 不选择有利答案；记录竞争事实并交由责任人决定 |
+| `RepositorySearchAdapter` | Existing System 的实现、配置、测试和部署事实 |
+| `DocumentEvidenceAdapter` | 接口、架构、运行手册、往期 SOW 和治理标准 |
+| `EnvironmentInspectionAdapter` | 静态证据无法回答且获授权的运行行为 |
+| `QuestionnaireAdapter` | Greenfield 基线、组织事实、责任、访问缺口和无法从系统读取的信息 |
 
-Discovery 的输出必须是能够关闭实施估算问题的决定和证据，不是泛化的“进一步调研”。
+Greenfield 的“直接问”与 Existing System 的“去搜索”只是不同 Adapter，阶段调用者不需要维护两套
+流程。一个 Hybrid Need 也可以先搜索仓库，再用定向问题确认代码无法证明的责任或运营事实。
 
-## 9. Gate、批准与 Agent 编排
+### 7.3 调查停止规则
 
-### 9.1 Gate 与批准
+每个 Need 都必须回答：如果答案不同，会不会改变以下至少一项？
 
-目标工作流使用五个 Gate，但只有两个 Gate 承担业务批准：
+- BUSINESS 范围或责任；
+- Design Decision 或上线责任；
+- Story/AC 的交付结果；
+- Task 数量、基础单元、工作模式或复杂度；
+- Integration、迁移、SIT/UAT、风险、资源或里程碑。
 
-1. **Setup Gate：** 机械确认项目身份、运行时和模板，不接收承诺模式或专业判断。
-2. **Scope Gate：** BA 批准 BUSINESS Feature、范围、规则、验收意图和技术输入队列。
-3. **Solution Readiness Gate：** 一个 fresh-context Judgment Reviewer 使用 TL/BA 两个专业视角判断 candidate 是否可进入 Trial Estimate；不请求真人批准，不发布稳定 Design/Delivery。
-4. **Commitment Gate：** 复用未变化的 Gate 2 Review；TL、BA、PM 分别批准同一 `semanticApprovalHash`，一次确认方案、交付合同、Task、估算、假设、责任和 PlanningDisposition。
-5. **Compilation Gate：** 机械确认工作簿和 package 是 Commercial Packet 的确定性投影。
+如果不会改变，只记录必要边界，不继续调查。如果可能改变但无法获得足够证据，则形成明确
+Uncertainty、Allowance、Discovery 或 DECISION Finding。默认目标是最短充分证据链，不是最大系统理解。
 
-生成后另做一次签署确认，只核对 package ID、完整 `packetSha256`、`semanticApprovalHash` 和工作簿可打开，不重新批准业务内容。
+### 7.4 共享 Ledger 与单一写者
 
-初次 Role Approval 同时绑定完整 Packet 与业务语义 hash。纯 Evidence anchor/path 变化会产生新完整 Packet，但语义 hash 保持不变；只有独立 Reviewer 形成 Evidence Rebind Attestation 后才可复用原批准。事实陈述、责任、范围或估算变化不能使用该路径。
-
-### 9.2 Gate 2 到 Gate 3 的复用
-
-- Scope、Solution Readiness、Commitment 普通路径各最多一个完整 Judgment Reviewer；
-- Gate 2 产生 hash-bound `GateReviewReceipt(outcome=ESTIMATION_READY)`；
-- Gate 3 不重做未变化 Solution/Delivery 的完整性 Review，只审新增 Estimate/Planning、跨聚合一致性和风险；
-- Trial Finding 只对 `subjectIds` 的 Impact Closure 运行 Patch/Diff Reviewer；
-- candidate 聚合 hash 变化不等于全部 subject 专业判断失效；
-- 首次发布前也能按 claim text、anchor、source revision 和 policy version 复用事实核验。
-- 每个 Packet 的第一次 `PASS / BLOCKED` 判断按 Packet hash 内容寻址保存；没有新的 Packet hash 时，
-  重复 Reviewer 不能覆盖或翻转原判断。
-- Owner validator 直接输出绑定 candidate 的 `artifactMetrics`；Coordinator 和 Stage 只转发这些数量，
-  不从自然语言总结重新统计 Story、AC、Evidence、Task 或其他对象。
-- 现有 As-Is 迁移切片先机械保证 Commitment、Uncertainty 和 Evidence 的 ID/名称完整投影；目标
-  `CurrentStateLedger` 继续按新合同收窄数据面。
-
-### 9.3 Context 与 Agent 流
+目标 `asis.json` 继续是共享增量 Ledger，建议保留：
 
 ```text
-Coordinator
-  -> Owner-local projector / validator
-  -> Claim Verifier[]（按 claim 并行）
-  -> 一个 Gate Judgment Reviewer
-  -> Owner patch
-  -> Patch/Diff Reviewer（只读影响闭包）
-  -> Scope 或 Commitment 用户批准
-  -> deterministic publisher
+analysisScope
+map
+items
+commitments
+effectiveStarts
+evidence
+investigationResults
+uncertainties
 ```
 
-Coordinator 只读取 Gate manifest、diagnostics 和 receipt hash，不能读取完整业务原文或写 Owner candidate。Owner、Claim Verifier 和 Reviewer 都从 hash-bound Context Bundle 启动；Reviewer 不继承 Stage 聊天历史。同一 `(projectorVersion, subjectIds, inputHashes)` 只投影一次，同一 Agent 每个 fragment 每个 Gate run 最多读取一次。Commercial Packet 只引用专业 review/receipt/hash，不复制完整正文。
+Design、Story 和 Task 可以提出 Need，但只有 As-Is Owner 可以新增或修改上述现状数据。调用 Owner 在
+As-Is commit 完成后继续工作；任何 Owner 都不能把自己的假设直接写成当前事实。
 
-Gate 级机械判断只组合 Owner Validation Receipt 并检查跨 Owner 引用；HLD/Go-live、Delivery、Estimate 和 Planning 规则仍由各 Owner-local validator 独占。
+Result 的有效性按稳定 ID 和来源修订判断。目标仓库 commit 改变、问卷答案被责任人更新或出现竞争
+Evidence 时，只标记引用该 Result 的 subject 需要复核；不能因为 `asis.json` 其他区域变化就使全部
+下游失效。
 
-## 10. 依赖驱动返工
+## 8. Finding 与上游修正
 
-所有类型化 ID 引用由确定性 projector 生成结构依赖边；Owner 只补充结构字段无法表达的语义边。Gate 必须比较 Schema 应有边与实际精确集合，不能由 Reviewer 猜测是否漏边。
+Task 阶段发现的新事实可以证明上游错误，但必须通过 Finding 路由到拥有该语义的 Owner：
 
-语义变更后，从变化对象沿引用形成影响闭包：
+| 新发现的影响 | 修正路径 |
+|---|---|
+| 只改变 Task 基础单元、工作模式或复杂度 | `As-Is -> Task` |
+| 改变实现机制，但不改变客户购买的交付结果 | `As-Is -> Design -> Task`；Story 保持不变 |
+| 改变可验收交付结果或 Integration 边界 | `As-Is -> Design -> Story -> Task` |
+| 改变 BUSINESS 范围、责任或商业承诺 | `DECISION -> Requirement -> Design -> Story -> Task` |
+| 只修正 Evidence anchor，事实语义不变 | 只提交 As-Is 变化；下游不制造 `NO_CHANGE` 文件 |
+
+每个 Finding 至少包含 `findingId`、发现 Owner、目标 Owner、变化 subject、证据、建议影响类型和是否
+需要用户决策。Coordinator 根据稳定 ID 引用生成 `ImpactClosure`；Owner 仍只修改自己的 candidate。
+
+现有 `reconcile` 的角色应从“固定阶段后缀发布器”调整为 ChangeSet Coordinator：
+
+- 建立或恢复 ChangeSet；
+- 按 Impact Closure 调度受影响 Owner；
+- 验证每个 Owner 的写集合和 commit；
+- 汇总 review diff；
+- 不拥有任何业务 Schema，也不替 Owner 作专业判断。
+
+## 9. Git 驱动的版本、评审与批准
+
+### 9.1 小步提交
+
+Git commit 是工作流 revision。每个通过 Owner-local validator 的连贯语义变化形成一个 commit；无效
+草稿留在 work 目录，不因为每次编辑都创建历史。建议使用以下 subject 前缀：
 
 ```text
-Evidence / Current Fact
-  -> Effective Start / Coverage
-  -> Design Decision / Delivery Disposition
-  -> Story / AC / Integration
-  -> Task / Estimate
-  -> PlanningDisposition / Commercial Packet
-  -> SowPackage
+requirement:
+asis:
+design:
+story:
+task:
+sow:
 ```
 
-变更分为：
+跨 Owner ChangeSet 使用相同 trailer 串联：
 
-1. **展示变化：** 只重做投影和 Compilation。
-2. **Evidence rebind：** 形成语义等价 attestation，复用原业务批准。
-3. **局部语义变化：** 只重开实际引用对象及传递闭包，复用闭包外 review/claim/context。
-4. **范围或责任变化：** 从商业范围或方案门禁重开相关 Feature 的完整闭包。
-5. **承诺模式或计划变化：** 默认只重开 PlanningDisposition、Commercial Packet 和 Package；只有同时改变范围/方案时扩大闭包。
+```text
+AI-SOW-Change-Set: change-<id>
+AI-SOW-Owner: <owner>
+AI-SOW-Finding: <finding-id>          # 可选
+AI-SOW-Subjects: <stable-id-list>
+```
 
-任何 Owner 都只能修改自己的 candidate；Coordinator 只计算依赖、影响、复用和发布顺序，不拥有业务 Schema 或稳定数据。
+commit message 只保存稳定 ID 和非敏感摘要，不保存客户原文、私有仓库地址、凭据或完整工具输出。
 
-## 11. 迁移与发布边界
+### 9.2 Git 能替代什么
 
-本重构改变阶段 interface、批准门禁和 receipt 语义，必须作为新的插件合同发布，不能在 0.1.0 合同下原地重新解释。
+删除或大幅收窄以下自建机制：
 
-采用以下兼容策略：
+- packet SHA-256 的用户确认；
+- 每个输入、candidate、review 和输出的重复 named hash；
+- before/current hash 驱动的 `NO_CHANGE` receipt；
+- 按 packet hash 命名的 review 归档；
+- 自建不可变 revision store、活动指针、redo history 和自动回滚；
+- 因任意文件字节变化而使整阶段授权失效的规则。
 
-1. 插件版本升级到 0.2.0；Owner receipt、packet 和项目合同使用新的明确版本。
-2. SOW v1.3 的工作簿与计算规则保持不变，因此本重构本身不升级 SOW 标准版本。
-3. 0.1.0 项目数据不由 0.2.0 静默迁移或混读。检测到旧合同后 fail closed，并说明继续使用旧插件版本或显式重新进入最早受影响门禁。
-4. 不维护新旧两套长期兼容路径，也不添加 deprecated stage alias。
-5. 实现时一次迁移全部 Skill 调用、文档、Schema、fixture、validator、receipt、smoke 和发布元数据；不保留旧阶段作为隐藏回退。
-6. 如果未来确认必须自动迁移真实用户项目，迁移器作为独立、显式、可复读的产品能力设计，不夹入普通 Stage 调用。
+Git 提供 commit、tree、blob、diff、branch、merge-base 和恢复能力。Commit ID 可以由工具内部使用，
+但面向用户显示的是 ChangeSet 摘要、subject 列表和可读 diff，不要求用户复制或核对 SHA。
 
-## 12. 实施切片
+### 9.3 Git 不能替代什么
 
-### 12.1 固定新合同
+以下能力仍然必须由领域合同提供：
 
-- 定义五组目标阶段、五个 Gate 和 Scope/Commitment 两个业务批准点；
-- 定义 `Decision Investigation` interface 和稳定 Investigation Result；
-- 用 Delivery Disposition 替代 Design 对商业范围状态的重复表达；
-- 定义 Story/AC candidate、Task 试拆分和 Gate 3 原子发布 seam；
-- 定义 Planning Premise、PlanningDisposition 和条件性 Delivery Plan；
-- 定义 Owner Validation、Gate Review、Context、Claim Verification 和 Evidence Rebind 合同；
-- 定义不可覆盖的 Packet Reviewer Judgment 与 candidate-derived `artifactMetrics`；
-- 固定 0.2.0 版本与 receipt/packet 双 hash 合同。
+- Owner 写权限和稳定数据归属；
+- Stable ID 与类型化引用；
+- Finding 分类与用户决策路由；
+- Impact Closure；
+- Schema、业务 validator、HLD/Go-live 和估算规则；
+- Evidence provenance 和未知处理；
+- 最终 SOW 的确定性生成。
 
-### 12.2 重塑 Owner 数据与 handoff
+### 9.4 Review Snapshot 与批准
 
-- Requirement 只交接商业范围、技术输入队列和点名原文 anchor；
-- As-Is 只稳定保存决策相关事实、证据、稳定 Result 和 Discovery Requirement；
-- Design 显式记录所依赖的 Investigation Result；
-- Delivery candidate 显式关联所用 Effective Start；
-- Estimate context 只接收当前 Story 实际关联的 Effective Start，Allowance 由 Estimate 独占；
-- Planning 在 Gate 2 前筛查硬约束，在 Gate 3 发布 PlanningDisposition。
+Reviewer 和用户审查的是一个 Git commit range：
 
-### 12.3 建立门禁内部迭代
+```text
+last-approved-commit..candidate-commit
+```
 
-- Design 与 Delivery candidate 在 work/staging 内双向修正；
-- Task 试拆分只返回结构化 findings；
-- 上游 Owner 修复后只重跑 Impact Closure；
-- Gate 2 产生可复用 Gate Review Receipt；
-- Gate 3 前不发布 Current State、Solution、Delivery、Estimate 或 PlanningDisposition。
+Review material 投影以下内容：
 
-### 12.4 简化批准与最终生成
+- ChangeSet 目的；
+- 变化的 Stable IDs；
+- 语义 diff 与 Impact Closure；
+- Validator 结果；
+- 未解决 Finding、Uncertainty 和用户决策；
+- 对 SOW 范围、人天、责任和风险的影响。
 
-- 合并重复人类批准，Gate 2 只做 Agent 专业检查；
-- 将生成前 Commercial Packet 设为最终业务批准投影；
-- 分离完整 Packet hash 与业务语义 hash；
-- Evidence rebind 使用等价 attestation，不重批业务；
-- 将 `generate-sow` 收窄为确定性编译和 package 校验；
-- 最终 Excel 复核只验证投影一致性和签署版本。
+批准后，由 AI SOW 管理的本地 ref 指向 `ApprovedCommit`，例如：
 
-### 12.5 替换返工和重复读取机制
+```text
+refs/ai-sow/approved/scope
+refs/ai-sow/approved/commitment
+```
 
-- 从类型化引用机械派生完整依赖图；
-- 区分展示、Evidence rebind、局部语义、范围和计划变化；
-- 用 subject review、claim verification 和 Context Bundle binding 复用闭包外判断；
-- 删除固定后缀业务判断和 Gate 2→Gate 3 的重复专业复核；
-- 记录 GateRunMetrics，验证 fragment、anchor、Reviewer 和 approval 次数；
-- 保留 fail-fast、hash binding 和可恢复前向发布。
+用户批准的是可读 ChangeSet/Snapshot，不是 ref 名或 SHA。新的 commit 不会改写旧批准；它只让当前
+分支领先于 Approved Commit。插件根据变化 subject 判断需要重新打开哪个批准，而不是让所有 Owner
+重新确认。
 
-## 13. 验证策略
+批准 ref 默认只存在本地；插件不自动 push。若团队希望共享批准记录，可以显式发布约定 ref 或导出
+签署记录，但这不是本地工作流的前置条件。
 
-实现必须以行为场景证明新工作流，而不是只检查文案或 Schema 存在。
+### 9.5 简化 receipt
 
-### 13.1 Greenfield
+Owner receipt 只保存机械交接所需信息，不再复制文件 hash 树：
 
-- 九个 Topic 可以通过边界或不适用结论关闭；
-- 不制造虚假的现状 Item、Effective Start 或 Evidence；
-- Design 和 Story 仍能形成完整交付合同和估算。
+```json
+{
+  "owner": "generate-task",
+  "validatedCommit": "<git-commit>",
+  "changeSetId": "change-example",
+  "outputs": [".ai-sow/data/generate-task/estimate.json"],
+  "consumedSubjectIds": ["story-example"],
+  "validationOutcome": "PASSED"
+}
+```
 
-### 13.2 Brownfield 调整
+`validatedCommit` 由工具解析并展示为分支/ChangeSet，不要求用户操作。下游必须确认当前数据来自该
+commit 或其语义未变的后继，而不是重新计算并比较每个文件的 SHA。
 
-- 一个现有资产足以支持相关 Task 使用“调整”；
-- 不相关模块、配置和流程不进入稳定 As-Is；
-- Estimate context 只加载当前 Story 引用的 Effective Start。
+### 9.6 仍保留的 hash
 
-### 13.3 接入复用
+仅在确实需要内容完整性的 seam 保留显式 digest：
 
-- 调查明确既有能力保持不变和本项目侧责任；
-- Design、Story、Integration 和 Task 使用同一责任边界；
-- 普通依赖使用不会被错误计为独立接入 Task。
+- 非 Git 外部文件 Evidence 的内容 digest；
+- 最终不可变 SOW package 的 `PackageFingerprint`；
+- 生成器合同版本，避免不同投影语义复用同一 package ID。
 
-### 13.4 高影响未知
+目标系统 Git 仓库的 commit 属于 `SourceRevision`；它由 Git 管理，既不是自定义 artifact hash，也不
+要求用户批准。
 
-- 无法界定的未知阻塞实施 SOW，并生成具体 Discovery 输出要求；
-- 有上限的未知只能通过明确 allowance 和用户批准进入估算；
-- 非估算未知不触发无止境调查。
+## 10. 各阶段目标职责
 
-### 13.5 Task 试拆分反馈
+| 阶段 | 目标职责 | 现状调查行为 |
+|---|---|---|
+| `setup` | 建立 Git 工作区、项目身份、DeliveryContext、来源目录和模板 | 只验证来源可用性，不调查业务事实 |
+| `analyze-requirement` | 拥有 BUSINESS 范围、规则和验收意图 | 可提出 Need；不能把现状答案写入 Requirement |
+| `analyze-as-is` | 初始化 Map，拥有共享 Ledger，执行所有定向调查 | 唯一稳定写者 |
+| `generate-design` | 拥有目标设计、TECHNICAL requirement 和上线责任 | 按 Design Decision 提出 Need |
+| `generate-story` | 拥有 Story、AC、Integration 和 Assumption/Risk | 按交付、验收和责任问题提出 Need |
+| `generate-task` | 拥有 Task、工作模式、复杂度和估算输入 | 按可实施性和估算问题提出 Need；可路由上游 Finding |
+| `generate-sow` | 从 Approved Commit 确定性编译 package | 不产生新调查或业务决定 |
+| `reconcile` | 协调 ChangeSet 和 Impact Closure | 不拥有现状或其他业务数据 |
 
-- Task 发现 Story 不可估算时只返回 finding，不修改 Story/AC；
-- Delivery 或 Design 修复后只复审该 Story 的 Impact Closure；
-- Gate 2 未变化 subject 的 review、claim verification 和 context 继续复用；
-- Story/AC 只有通过试拆分后才发布。
+## 11. 最终生成与完成门禁
 
-### 13.6 资源和计划
+`generate-sow` 必须从精确 `ApprovedCommit` 读取六份稳定 JSON、模板和必要评审投影，而不是依赖当前
+工作目录中可能尚未批准的字节。生成前至少验证：
 
-- 已知硬日期、窗口和容量约束在 Gate 2 前完成粗粒度筛查；
-- 承诺里程碑的项目必须基于正式 Task 通过容量和依赖检查；
-- 只承诺人天时 PlanningDisposition 明确 `scheduleCommitment=NONE`，不制造排期；
-- 只改变承诺模式时不重开 Scope、Gate 2 或 Estimate。
+1. 所有 Investigation Result 引用存在且来源修订仍有效；
+2. `调整 / 接入复用` Task 有对应 Effective Start 和证据；
+3. Greenfield 的新建范围没有被迫引用虚假现状资产；
+4. 所有 material CurrentStateNeed 已关闭，或转为已批准 Uncertainty、Allowance 或 Discovery；
+5. 没有未解决的 `DECISION` 或会改变承诺的 Finding；
+6. 每个变化 subject 的 Impact Closure 已完成；
+7. 当前待生成 commit 已获得所需批准；
+8. AI SOW 受管路径干净；
+9. 工作簿仍符合 SOW v1.3 模板、公式和样式合同。
 
-### 13.7 局部返工
+manifest 至少记录：
 
-- Evidence anchor 修正且语义不变时形成 attestation，不重审无关专业判断或重批业务；
-- Effective Start 语义变化时只重开实际引用它的闭包；
-- 商业范围变化时完整重开相关 Feature 的下游决定；
-- 依赖图完整性由类型化引用精确集合测试，而不是只测试示例边。
+```text
+sourceCommit
+generatorContract
+packageFingerprint
+```
 
-### 13.8 最终生成
+相同 Approved Commit、模板和生成器合同必须产生相同 package。最终 package digest 只保护交付包，
+不重新引入逐阶段 hash 审批。
 
-- SOW Compiler 对相同商业 packet 产生相同 package；
-- 生成器不能修改或补充任何业务决定；
-- 工作簿继续遵守 SOW v1.3 模板公式和样式合同。
+## 12. 隐私与协作边界
 
-### 13.9 浪费与吞吐
+- Git 默认只记录在用户本机，不自动添加 remote 或 push。
+- Git 历史会保留已删除内容，因此客户原文、凭据、私有源码、绝对路径和完整工具输出不得进入 commit。
+- 私有路径和远程地址保留在 gitignored SourceBinding；稳定数据使用逻辑 `sourceId`。
+- 调查目标仓库默认只读；clone、fetch 或运行环境访问必须符合宿主授权和项目策略。
+- AI SOW 自动 commit 只暂存受管文件，发现同一受管文件有未知修改时 fail closed。
+- 最终包仍按项目隐私策略决定是否提交或分享。
 
-- 普通路径只有 Scope、Solution Readiness、Commitment 三次完整 Judgment Review；
-- Gate 3 不重跑未变化的 Gate 2 方案完整性判断；
-- 同一 claim/anchor/source revision/policy 最多核验一次，抽检除外；
-- 同一 Context Bundle fragment 每个 Agent/Gate run 最多读取一次；
-- 单 Story finding 的 reviewed subject 不包含 Impact Closure 外对象；
-- 普通路径只有 Scope、Commitment 两轮业务批准请求，Evidence rebind 的批准请求为零。
-- 同一 Packet 的 Reviewer 判断不能在无新输入的重复调用中翻转；
-- Stage 报告的领域对象数量与 Owner validator 的 `artifactMetrics` 原字节一致。
+## 13. 迁移与发布策略
 
-## 14. 验收标准
+本方案同时改变 Git 前置条件、Setup Schema、As-Is 生命周期、receipt、批准和 reconciliation 语义，
+属于 breaking contract，必须发布为插件 0.2.0，不能解释为 0.1.0-beta.1 的兼容增强。SOW 标准仍为
+v1.3，因为工作簿计算规则没有变化。
 
-1. 普通实施 SOW 不再要求在 Design 前完成完整九 Topic 深度调查。
-2. 每个稳定 As-Is Item、Evidence、Result 和 Uncertainty 都能追溯到具体 Feature、Design Decision 或估算影响。
-3. `hypothesis` 调查模式成为机械边界；默认不激活与当前决定无关的事实族。
-4. As-Is 与 Design 保持不同 Owner；Result 删除 work-only Request 后仍可独立解析。
-5. BusinessScope 独占商业范围状态，Design 只写 Delivery Disposition。
-6. Design 对 Technical Input 只读取点名原文 anchor，不通读未入队来源。
-7. Design 与 Story/AC candidate 在稳定批准前可以双向收敛。
-8. Story/AC 必须通过 Task 试拆分后才能正式发布；Gate 3 前不发布专业聚合。
-9. Estimate Owner 只能返回上游 finding，不能修改 Story、AC 或 Design；Allowance/Discovery 各有唯一 Owner。
-10. 已知计划硬约束在 Gate 2 前筛查，PlanningDisposition 不属于 ProjectShell。
-11. 用户只在 Scope Gate 和 Commitment Gate 批准业务责任；Gate 2 不产生额外真人批准。
-12. Gate 3 复用 Gate 2 Review，普通路径完整 Judgment Reviewer 恰为三次。
-13. Evidence rebind 保持 semantic hash，使用 attestation 且不请求新业务批准。
-14. 结构依赖边从类型化引用机械派生，Impact Closure 外 review、claim 和 context 可复用。
-15. Context/claim/GateRunMetrics 可以证明 fragment、anchor、Reviewer 和 approval 次数上限。
-16. `generate-sow` 只执行确定性投影、复读和 package 发布，不承担业务分析。
-17. SOW v1.3 模板、基础人天和计算权威保持不变。
-18. 新流程以插件 0.2.0 和新 receipt/packet 合同 clean cutover，不静默混读 0.1.0 项目数据。
-19. Greenfield、Brownfield、接入复用、高影响未知、Task 反馈、计划、Evidence rebind 和局部返工均有端到端行为与次数测试。
-20. 独立复制后的插件仍不读取 marketplace 根目录或其他插件文件。
-21. 同一 Packet 的首次 Reviewer 判断被内容寻址冻结；无新 Packet 时任何相反判断机械失败。
-22. 阶段完成和阻塞摘要中的对象数量来自 Owner validator 的 candidate-derived `artifactMetrics`，
-    不能由模型手算或覆盖。
-23. As-Is 人工评审面逐条包含 Commitment、Uncertainty 和 Evidence 的稳定 ID/名称映射，且映射
-    缺失或错配时由 Owner validator 阻塞。
+0.1.0 项目的显式迁移流程：
 
-## 15. 否决的方案
+1. 使用旧插件验证现有六份稳定 JSON、五份 Owner receipt 和模板；
+2. 初始化或确认 `SowWorkspaceRepository`；
+3. 将旧项目状态导入为只读 migration baseline commit；
+4. 声明 DeliveryContext，登记 SystemSource 和本地 SourceBinding；
+5. 从旧 As-Is 提取可复用 Stable ID，并生成初始 CurrentStateMap；
+6. 建立 approved baseline ref；
+7. 后续变化使用 0.2.0 ChangeSet 流程。
 
-### 15.1 只缩短 As-Is 提示词
+迁移必须是显式命令，完整复读后再 commit；不得静默混读 0.1.0 receipt 与 0.2.0 Git approval。若不
+迁移，项目继续使用与其合同匹配的 0.1.0 插件版本。
 
-否决。下游 context、稳定数据面、批准和返工仍鼓励完整调查，模型克制不能成为可靠产品边界。
+## 14. 实施切片
 
-### 15.2 把 As-Is 全部并入 Design Owner
+### 14.1 固定 0.2.0 合同
 
-否决。它会消除当前事实与目标方案之间最重要的责任隔离，设计假设容易被写成既有能力。
+- 定义本文件中的领域术语和 Schema；
+- 明确当前正式合同与目标合同的 clean cutover；
+- 定义 Git 错误、SourceBinding 隐私边界和受管写集合。
 
-### 15.3 Design 完成后再统一调查
+### 14.2 建立 Git Project Module
 
-否决。虽然问题更具体，但关键现状可能推翻已经完成的方案，返工风险过高。
+- 实现 repository preflight、managed-path status 和显式暂存；
+- 实现 Owner commit、ChangeSet trailer、approval ref 和 Approved Commit 读取；
+- 用 Git history 替换 packet archive、before/current hash 和 redo revision store；
+- 增加 dirty worktree、detached HEAD、空仓库和混入用户修改的测试。
 
-### 15.4 Task 阶段才确认现状
+### 14.3 扩展 Setup
 
-否决。此时发现的集成、数据、平台和责任问题通常需要修改 Design 或 Story，已经太晚。
+- 增加 DeliveryContext、SystemSource catalog 和 SourceBinding；
+- 对 Existing/Hybrid 强制来源或 ACCESS_GAP；
+- 支持用户确认后的 Git 初始化和 AI SOW 分支创建；
+- 保持不自动 push、不保存凭据。
 
-### 15.5 保持七阶段，只增加更多回退命令
+### 14.4 重塑 As-Is
 
-否决。它保留“阶段完整性优先于决策相关性”的根因，并继续扩大流程 interface。
+- 将首次 As-Is 收窄为 CurrentStateMap 和基线 Ledger；
+- 为 Greenfield 增加精简问卷 Adapter；
+- 为 Existing System 增加定向仓库/文档 Adapter；
+- 增加 CurrentStateNeed、InvestigationRequest 和 InvestigationResult；
+- 让 Result 使用 Stable ID 与 SourceRevision，而不是整体文件 hash。
 
-### 15.6 长期同时支持新旧工作流
+### 14.5 建立语义影响协调
 
-否决。双合同会把每个 Owner、validator、receipt、fixture、smoke 和文档都扩展成兼容矩阵，却不能提高新流程质量。
+- 从类型化 ID 引用机械生成依赖边；
+- 允许 Owner 补充 Schema 无法表达的语义边；
+- 把 Task Finding 路由到正确 Owner；
+- 将 `reconcile` 从固定后缀调整为 ChangeSet/ImpactClosure Coordinator。
+
+### 14.6 简化评审与批准
+
+- 以 Git commit range 生成 review material；
+- 让 Reviewer 和用户批准可读 ChangeSet；
+- 删除工作流可见 packet SHA 和无变化 Owner 的 rebind；
+- 保留 Owner-local validator 和必要的 fresh-context 专业评审。
+
+### 14.7 更新生成与迁移
+
+- 从 Approved Commit 构建最终包；
+- manifest 增加 `sourceCommit`；
+- 保留 package fingerprint 和 generator contract；
+- 提供显式 0.1.0 baseline migration。
+
+### 14.8 完成发布面
+
+- 同步 Skill、Schema、fixture、validator、README、设计文档、CONTEXT、CHANGELOG、manifest、版本和锁；
+- 增加复制插件 smoke，证明独立安装后仍可完成 Git workflow；
+- 在 macOS、Linux 和 Windows 上验证路径、Git 和确定性 package。
+
+## 15. 核心行为场景
+
+### 15.1 纯 Greenfield
+
+- Setup 选择 `GREENFIELD`，不要求目标代码仓库；
+- As-Is 通过基线问卷建立外部系统、数据、平台和运营地图；
+- Design/Story/Task 只在出现新问题时定向追问；
+- 不制造不存在的 Component 或 Effective Start；
+- 仍可形成完整新建 Task 和估算。
+
+### 15.2 Hybrid 新门户接入 CRM
+
+- 门户为 `NEW_BUILD`，CRM 为 `INTEGRATE_EXISTING`；
+- Setup 登记 CRM 远程仓库或接口文档；
+- As-Is 只建立两块导航地图；
+- Design 提问 CRM 身份和接口能力，Task 提问项目侧适配工作；
+- 两次 Result 写入同一 Ledger，但可以引用不同 SourceRevision。
+
+### 15.3 Existing System 调整
+
+- Setup 登记一个或多个本地/远程 Repo；
+- As-Is 只识别主要应用、集成、数据、部署和测试位置；
+- Task 为某个基础单元判断“调整”时，只搜索相关对象；
+- 不相关模块不进入稳定 As-Is 或 review。
+
+### 15.4 Task 推翻上游方案
+
+- Task 发现目标平台不支持 Design 假定的机制；
+- As-Is Owner 确认事实并 commit Result；
+- Task 发出 UPSTREAM Finding；
+- Design Owner 修改机制并 commit；
+- 若交付结果未变，Story 不产生无意义 commit；
+- Task 只重新处理 Impact Closure 中的对象。
+
+### 15.5 来源变化
+
+- 目标系统仓库从 SourceRevision A 更新到 B；
+- 只把引用 A 且其 anchor/语义可能变化的 Results 标记为待复核；
+- `asis.json` 中其他 Result 和闭包外批准继续有效。
+
+### 15.6 Existing System 无代码访问权
+
+- Setup 记录 `ACCESS_GAP`，并登记文档或负责人；
+- 调查使用文档和问卷 Evidence；
+- 关键实现事实无法确认时形成 Uncertainty/Discovery；
+- 不把项目误标为 Greenfield，也不伪造代码证据。
+
+## 16. 验收标准
+
+1. Setup 在任何项目数据写入前验证 Git，并且不能自动 push 或提交非受管文件。
+2. 每个项目明确 `GREENFIELD / EXISTING_SYSTEM / HYBRID`；`UNKNOWN` 不能越过 As-Is Bootstrap。
+3. Existing/Hybrid 必须登记来源或 ACCESS_GAP，私有 locator 不进入 tracked 稳定数据。
+4. 首次 As-Is 只生成 CurrentStateMap、初始 Ledger 和少量全局事实，不要求九 Topic 全面调查。
+5. Design、Story 和 Task 都能通过同一 Interface 请求现状，不复制调查实现。
+6. Greenfield 默认由 Questionnaire Adapter 提供现状，且后续只追问新增 material Need。
+7. Existing System 默认从地图定向搜索，不扫描与当前决定无关的仓库区域。
+8. `asis.json` 是共享增量 Ledger，但只有 As-Is Owner 能写稳定现状数据。
+9. Investigation Result 删除 work-only Request 后仍能独立解析，并保留 SourceRevision。
+10. Task Finding 能根据影响类型修正 Design、Story 或 Requirement 链路，Task 本身不越权写上游。
+11. 语义不变的 Evidence 修正不会制造下游 `NO_CHANGE` 文件或固定后缀重审。
+12. 每个受影响对象由 Stable ID 依赖图进入 Impact Closure，闭包外内容可以复用。
+13. 普通评审向用户展示 ChangeSet、subject 和可读 diff，不要求用户核对 SHA-256。
+14. Owner 变化形成小步 Git commit；跨 Owner 修正由 ChangeSet trailer 关联。
+15. 插件只暂存明确受管文件，遇到受管路径未知修改时 fail closed。
+16. Approval ref 精确指向 Approved Commit，新 commit 不覆盖既有批准。
+17. 最终包从 Approved Commit 确定性生成，并记录 `sourceCommit`、`generatorContract` 和
+    `packageFingerprint`。
+18. 只有外部非 Git Evidence 和最终 package 保留显式 digest；普通阶段不再维护重复 hash 树。
+19. 0.1.0 项目只能显式迁移，不与 0.2.0 receipt/approval 混读。
+20. SOW v1.3 的模板、基础人天、复杂度、SIT、UAT、风险、公式和样式保持不变。
+
+## 17. 否决的方案
+
+### 17.1 只分“新项目/老项目”
+
+否决。真实项目经常同时包含 New Build、Existing Integration 和 Migration；二元类型只能作为启动
+提示，不能表达 Solution Area。
+
+### 17.2 Greenfield 一次问完，后续禁止调查
+
+否决。Task 或 Story 仍可能出现初始化时无法预见的问题。正确边界是“不搜索不存在的目标系统，按需
+追问新增 material question”，不是“一次问卷永久封闭”。
+
+### 17.3 完全删除 As-Is 阶段
+
+否决。后续 Owner 需要一个共享地图、统一 Ledger、单一事实写者和证据 provenance。删除后会让每个
+阶段自行搜索并产生互相冲突的现状。
+
+### 17.4 只由 Design 驱动调查
+
+否决。Story 的验收边界和 Task 的实施/估算问题同样会产生新的现状需要。
+
+### 17.5 仍在 Design 前完成全面 As-Is
+
+否决。它继续把系统尽调成本前置，并在真实问题尚未出现时制造低价值事实。
+
+### 17.6 只在 Task 阶段调查
+
+否决。部分事实会在 Design 或 Story 阶段提前影响方案和交付结果；Task 可以调查和反馈，但不是唯一
+调查点。
+
+### 17.7 保留全部 packet hash，只在界面隐藏
+
+否决。复杂度仍然存在于 invalidation、rebind、归档和实现中，只是用户看不到。Git 已经提供对应的
+版本原语，应从合同中删除重复机制。
+
+### 17.8 只用 Git diff，不保留领域依赖
+
+否决。Git 能指出哪些行改变，不能判断某个 Effective Start 会影响哪些 Design Decision、Story 或
+Task。语义 Impact Closure 仍然不可替代。
+
+### 17.9 自动 push 作为完成条件
+
+否决。版本历史只要求本地 Git；远程分享涉及凭据、隐私和团队策略，必须由用户显式决定。
