@@ -56,6 +56,14 @@ Structure Counts: designItems=1, architectureDeltas=1, decisions=1, scopeDecisio
 
 renderer 根据 Scope Decision 自动找出 Design Item 集合相同或包含的 `IN_SCOPE` TECHNICAL Feature 对，并要求 `featureBoundaryReview` 逐对说明可独立验收的非重叠结果；缺失或多余的 Feature 对都会阻塞评审投影。
 
+### BUSINESS / TECHNICAL Boundary Matrix
+
+renderer 根据每个 TECHNICAL Feature 的 `relatedBusinessFeatureIds` 与双方 Scope Decision 自动投影下表；同一配对不能同时出现两个 `END_TO_END` Owner。
+
+| BUSINESS Feature | TECHNICAL Feature | BUSINESS Boundary | TECHNICAL Boundary | Result |
+|---|---|---|---|---|
+| feature-business-example | feature-technical-example | NONE | END_TO_END | SINGLE_END_TO_END_OWNER |
+
 ## TECHNICAL requirements
 
 分别列出 `SOURCE_INPUT` 与 `DESIGN_DERIVED` TECHNICAL Epic/Feature，并说明来源或派生关系。

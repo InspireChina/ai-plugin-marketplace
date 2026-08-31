@@ -5,17 +5,87 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 PLUGIN_ROOT = Path(__file__).parents[1]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from runtime.claims import build_claims, claim_metrics, validate_claims
+from runtime.claims import (
+    FACT_VERIFIER_ROUTE,
+    JUDGMENT_REVIEWER_ROUTE,
+    build_claims,
+    claim_metrics,
+    validate_claims,
+)
+from runtime.authorization import publish_file_transaction
+from runtime.context_pages import (
+    PAGE_BYTE_BUDGET,
+    PAGE_TOKEN_BUDGET,
+    context_budget,
+    expected_context_fragment,
+    read_protocol,
+    write_context_fragment,
+)
 from runtime.diagnostics import diagnostic_codes
 from runtime.fact_source import validate_unique_fact_sources
-from runtime.patch import apply_operations, patch_audit, validate_patch_audit
+from runtime.patch import (
+    DIFF_REVIEW_BYTE_BUDGET,
+    apply_operations,
+    patch_audit,
+    validate_patch_audit,
+)
 from runtime.project_io import ProjectFiles
-from runtime.review_checks import artifact_metrics, record_reviewer_judgment
+from runtime.review_checks import artifact_metrics, prepare_claims, record_reviewer_judgment
 from runtime.text_gates import validate_text_gates
+
+
+def test_context_pages_bind_order_hash_budget_and_truncation_recovery(tmp_path: Path) -> None:
+    files = ProjectFiles.open(tmp_path)
+    value = {"text": "证据" * 9_000}
+
+    entry = write_context_fragment(
+        files,
+        "evidence",
+        ".ai-sow/work/owner/context/evidence.json",
+        value,
+    )
+
+    assert entry == expected_context_fragment(
+        files,
+        "evidence",
+        ".ai-sow/work/owner/context/evidence.json",
+    )
+    assert len(entry["pages"]) > 1
+    assert [page["order"] for page in entry["pages"]] == list(
+        range(1, len(entry["pages"]) + 1)
+    )
+    assert all(page["bytes"] <= PAGE_BYTE_BUDGET for page in entry["pages"])
+    assert all(page["estimatedTokens"] <= PAGE_TOKEN_BUDGET for page in entry["pages"])
+    assert context_budget()["tokenEstimator"] == "utf8-bytes-upper-bound-v1"
+    assert read_protocol()["truncatedPageStatus"] == "NOT_READ"
+    assert "first unread page" in read_protocol()["recovery"]
+
+
+def test_input_context_does_not_publish_empty_review_claims_before_candidate(
+    tmp_path: Path,
+) -> None:
+    files = ProjectFiles.open(tmp_path)
+
+    claims = prepare_claims(
+        files,
+        tmp_path,
+        "generate-story",
+        (("delivery", ".ai-sow/work/generate-story/delivery.candidate.json"),),
+        ".ai-sow/work/generate-story/claims.json",
+    )
+
+    assert claims == {
+        "algorithm": "ai-sow-review-claims-v1",
+        "owner": "generate-story",
+        "status": "PENDING_CANDIDATE",
+    }
+    assert not (tmp_path / ".ai-sow/work/generate-story/claims.json").exists()
 
 
 def test_text_gates_catch_unanchored_claims_paths_and_bad_counts(tmp_path: Path) -> None:
@@ -40,6 +110,17 @@ def test_text_gates_reject_unanchored_absolute_claim() -> None:
         [("/summary", "不存在任何邮件相关配置。")],
     )
     assert diagnostic_codes(diagnostics) == {"ABSOLUTE_CLAIM_UNANCHORED"}
+
+
+def test_text_gates_accept_source_anchored_non_quantitative_absolute_claim() -> None:
+    diagnostics = validate_text_gates(
+        Path.cwd(),
+        [("/constraints", "只有获授权的业务角色可以维护客户档案。")],
+        absolute_claim_paths={"/constraints"},
+        evidence_anchor_paths={"/constraints"},
+    )
+
+    assert diagnostics == []
 
 
 def test_count_anchor_can_read_deterministic_repo_fact_pointer(tmp_path: Path) -> None:
@@ -146,6 +227,71 @@ def test_patch_closure_does_not_bridge_through_external_ids() -> None:
     assert audit["syncSuspects"] == ["ac-one", "story-one"]
 
 
+def test_patch_diff_review_contains_changed_fields_direct_closure_and_ac_mapping() -> None:
+    before = {
+        "stories": [
+            {
+                "storyId": "story-one",
+                "featureId": "feature-one",
+                "summary": "旧摘要",
+            }
+        ],
+        "acceptanceCriteria": [
+            {
+                "acceptanceCriterionId": "ac-one",
+                "storyId": "story-one",
+                "description": "旧验收",
+            }
+        ],
+    }
+    patch = {
+        "operations": [
+            {
+                "op": "replace",
+                "path": "/stories/0/summary",
+                "value": "新摘要",
+                "findingId": "F-1",
+            }
+        ],
+        "acknowledgedClosureIds": ["ac-one"],
+    }
+    after = apply_operations(before, patch["operations"])
+
+    audit = patch_audit(before, after, patch)
+
+    assert audit["diffReview"]["changedFields"] == [
+        {"after": "新摘要", "before": "旧摘要", "path": "/stories/0/summary"}
+    ]
+    assert audit["diffReview"]["directClosureIds"] == ["ac-one"]
+    assert audit["diffReview"]["acceptanceMappings"] == [
+        {
+            "acceptanceCriterionId": "ac-one",
+            "featureId": "feature-one",
+            "storyId": "story-one",
+        }
+    ]
+
+
+def test_patch_rejects_diff_review_over_hard_budget() -> None:
+    before = {"items": [{"itemId": "item-one", "summary": "短文本"}]}
+    patch = {
+        "operations": [
+            {
+                "op": "replace",
+                "path": "/items/0/summary",
+                "value": "变更" * DIFF_REVIEW_BYTE_BUDGET,
+                "findingId": "F-1",
+            }
+        ],
+        "acknowledgedClosureIds": [],
+    }
+    after = apply_operations(before, patch["operations"])
+
+    assert "PATCH_DIFF_BUDGET_EXCEEDED" in diagnostic_codes(
+        validate_patch_audit(before, after, patch)
+    )
+
+
 def test_patch_closure_diagnostic_exposes_atomic_retry_contract() -> None:
     before = {
         "items": [{"itemId": "item-source", "summary": "旧事实"}],
@@ -175,6 +321,42 @@ def test_patch_closure_diagnostic_exposes_atomic_retry_contract() -> None:
     assert closure_diagnostic["candidateUpdated"] is False
     assert closure_diagnostic["retryAllowed"] is True
     assert closure_diagnostic["consumesPatchRound"] is False
+
+
+def test_file_transaction_restores_prior_bytes_after_partial_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = ProjectFiles.open(tmp_path)
+    first = ".ai-sow/work/generate-story/first.json"
+    second = ".ai-sow/work/generate-story/second.json"
+    files.write_atomic(first, b"first-before\n")
+    files.write_atomic(second, b"second-before\n")
+    original_write = ProjectFiles.write_atomic
+    calls = 0
+
+    def fail_second_write(
+        target: ProjectFiles,
+        relative_path: str,
+        payload: bytes,
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected transaction failure")
+        original_write(target, relative_path, payload)
+
+    monkeypatch.setattr(ProjectFiles, "write_atomic", fail_second_write)
+
+    with pytest.raises(OSError, match="injected transaction failure"):
+        publish_file_transaction(
+            files,
+            {first: b"first-after\n", second: b"second-after\n"},
+            [],
+        )
+
+    assert files.read_bytes(first) == b"first-before\n"
+    assert files.read_bytes(second) == b"second-before\n"
 
 
 def test_artifact_metrics_are_deterministic_and_candidate_derived() -> None:
@@ -269,7 +451,44 @@ def test_claim_projection_is_deterministic_and_source_bound(tmp_path: Path) -> N
     first = build_claims("analyze-requirement", [("requirements", document)], project_root=tmp_path)
     second = build_claims("analyze-requirement", [("requirements", document)], project_root=tmp_path)
     assert first == second
+    assert first["claims"][0]["reviewRoute"] == FACT_VERIFIER_ROUTE
     assert validate_claims(first, "analyze-requirement", {"requirements": document}) == []
+
+
+def test_claim_routes_facts_to_low_cost_verifier_and_judgment_to_deep_reviewer(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.md"
+    source.write_text("当前接口已存在。\n", encoding="utf-8")
+    document = {
+        "evidence": [
+            {
+                "evidenceId": "evidence-interface",
+                "reference": "source.md",
+                "summary": "当前接口已存在。",
+            }
+        ],
+        "decisions": [
+            {
+                "decisionId": "decision-target",
+                "rationale": "目标方案采用异步事件。",
+            }
+        ],
+    }
+
+    claims = build_claims("generate-story", [("delivery", document)], project_root=tmp_path)
+
+    assert [claim["reviewRoute"] for claim in claims["claims"]] == [
+        FACT_VERIFIER_ROUTE,
+        JUDGMENT_REVIEWER_ROUTE,
+    ]
+    metrics = claim_metrics(claims)
+    assert metrics["remainingClaimIdsByRoute"][FACT_VERIFIER_ROUTE] == [
+        claims["claims"][0]["claimId"]
+    ]
+    assert metrics["remainingClaimIdsByRoute"][JUDGMENT_REVIEWER_ROUTE] == [
+        claims["claims"][1]["claimId"]
+    ]
 
 
 def test_claim_projection_preserves_stage_enrichment_and_reports_coverage(
@@ -330,6 +549,10 @@ def test_claim_projection_preserves_stage_enrichment_and_reports_coverage(
         "verifiedClaims": 1,
         "unverifiedClaims": 0,
         "remainingClaimIds": [],
+        "remainingClaimIdsByRoute": {
+            FACT_VERIFIER_ROUTE: [],
+            JUDGMENT_REVIEWER_ROUTE: [],
+        },
     }
 
 

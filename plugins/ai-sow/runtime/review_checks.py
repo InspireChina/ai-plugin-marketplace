@@ -211,13 +211,11 @@ def prepare_claims(
             value = files.read_json(path)
         except ProjectIOError as error:
             if error.code == "PROJECT_PATH_MISSING" and not required:
-                claims: dict[str, object] = {
+                return {
                     "algorithm": "ai-sow-review-claims-v1",
                     "owner": owner,
-                    "claims": [],
+                    "status": "PENDING_CANDIDATE",
                 }
-                files.write_atomic(output_path, canonical_json_bytes(claims))
-                return claims
             raise
         if not isinstance(value, dict):
             raise ValueError(f"claim source must be a JSON object: {path}")
@@ -258,12 +256,15 @@ def validate_review_artifacts(
     diagnostics = validate_claims(claims, owner, documents)
     anchors: list[dict[str, object]] = []
     factual_paths: set[str] = set()
+    evidence_anchor_paths: set[str] = set()
     if isinstance(claims, dict) and isinstance(claims.get("claims"), list):
         for claim in claims["claims"]:
             if not isinstance(claim, dict) or not isinstance(claim.get("ownerField"), str):
                 continue
             if claim.get("kind") == "FACTUAL":
                 factual_paths.add(claim["ownerField"])
+                if claim.get("anchors"):
+                    evidence_anchor_paths.add(claim["ownerField"])
             for anchor in claim.get("anchors", []):
                 if (
                     isinstance(anchor, dict)
@@ -278,6 +279,7 @@ def validate_review_artifacts(
             fields,
             count_anchors=anchors,
             absolute_claim_paths=factual_paths,
+            evidence_anchor_paths=evidence_anchor_paths,
         )
     )
     diagnostics.extend(validate_unique_fact_sources(fields))

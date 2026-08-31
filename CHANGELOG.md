@@ -4,6 +4,32 @@
 
 ## 0.1.0 - 未发布
 
+- `generate-task` 新增基础单元实例碰撞归一化：区分同一实例、不同交付对象和消费方接入，Renderer
+  显式投影潜在碰撞组；同一 API 下的业务操作与读模型可按 API/数据模型基础单元分别保留。轻量
+  diff-review 发现 patch 引入的 Task-local 误选时允许一次受限纠错与最终轻量复审；无法保留独立
+  Task 的 Story 返回 Story Owner 删除或合并，不再用人工测试或空壳 Task 填充。
+- 五个 Owner 的 context compiler 新增确定性分页合同：manifest 绑定页序、页 hash、32 KiB/8K
+  预算及截断恢复协议；输入 fragments 与 candidate-derived review claims 分离，不再在 candidate
+  尚未形成时发布空 claims。Claim 新增机器校验的 `FACT_VERIFIER_LOW / JUDGMENT_REVIEWER_DEEP`
+  路由与按路由剩余项指标。
+- diff-review 收敛为变更字段前后值、一跳直接闭包和相关 AC→Story→Feature 映射，设置 65536-byte
+  硬预算并在超限时原子拒绝。五个 renderer 新增 Schema 顶层集合→评审区段发布认证，generate-sow
+  增加长文本换行与行高持久化夹具。
+- Requirement patch 支持白名单约束的多候选事务；同一 finding 跨 requirements 与来源处置时一次
+  写入、一次 post-check、一次 packet 旋转，任一文档失败则整体回滚且不消耗修复轮次。
+- Design patch 同步把 `design.candidate.json` 与 `requirements.candidate.json` 纳入 Owner 白名单；
+  同一 Reviewer finding 跨目标设计和技术需求时可在一次 staging 事务中修复、复核并旋转 packet，
+  避免只能修改其中一份候选而留下跨文档不一致。
+- 把最终 E2E 暴露的三个下游返工点前移为审批前门禁：As-Is 在 packet 前阻断仍影响估算的
+  Uncertainty；Design 确定性投影 BUSINESS/TECHNICAL Feature 边界配对矩阵并拒绝双重
+  `END_TO_END` Owner；Story 在进入 Task 前要求 `OPERATIONAL_THRESHOLD` 具备量化阈值、明确
+  结果责任方及逐 Feature AC 映射。
+- 字段 patch 改为 candidate、audit、context、review projection、Owner post-check 和新 diff packet 的
+  staging 事务；失败不改当前工作集且不消耗修复轮次。五个 Owner 生成不同的新 packet 时会原子归档
+  旧 packet/reviewer/approval 到按旧 packet hash 命名的目录，并撤销当前路径上的旧授权 sidecar。
+- 确定性 package 指纹升级为 `receipt-only-v2`，manifest 显式记录 `generatorContract`，reconcile 强制
+  使用同一合同。generate-sow 成功 stdout 直接返回 workbook、manifest、package tree SHA-256 与
+  文件数，供 Stage 信任内建复读结果而不再扩展全量 hash 检查。
 - 按 Windows 全流程 E2E 的 26 条真实 findings 落地评审降本方案：新增 premises、确定性 repo facts、
   claims 分片与 hash 缓存、数量/绝对化/隐私门禁、唯一事实源、字段级 patch 与引用闭包、机械内循环、
   diff-review 以及逐 Owner 成本控制。保留原 Claude Haiku 4.5 / Sonnet 5 / Opus 路由，并增加 Codex

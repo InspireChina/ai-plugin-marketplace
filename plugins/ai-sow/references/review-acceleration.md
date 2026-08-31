@@ -8,14 +8,24 @@ Stage 在创建任何 Reviewer 前，自行循环运行公开的 renderer、`pre
 
 ## 断言核验与完备性
 
-`prepare_context.py` 将 candidate 的专业自由文本确定性投影为 work-only `claims.json`，并作为 context fragment 绑定 packet。每条 claim 只携带一个 Owner 字段及其最小 anchor。
+输入 context 与 review claims 是两个绑定对象：`fragments` 只包含上游输入闭包；candidate 尚未形成时
+manifest 的 `reviewClaims.status` 为 `PENDING_CANDIDATE`，且不得写空 `claims.json`。candidate 形成后
+重跑 `prepare_context.py`，将专业自由文本确定性投影为 work-only `claims.json`，以独立
+`reviewClaims.fragment` 绑定 packet。每条 claim 只携带一个 Owner 字段及其最小 anchor。
 
-- Claim Verifier 按 claim 分片并发，每片返回 `PASS`、`FAIL` 或 `UNVERIFIED`；`PASS` 必须引用原文行号。
+- `reviewRoute: FACT_VERIFIER_LOW` 只用于有可解析 anchor 的 `FACTUAL` claim；Claim Verifier 按 claim
+  分片并发，每片返回 `PASS`、`FAIL` 或 `UNVERIFIED`，`PASS` 必须引用原文行号。
+- 其他 claim 固定为 `reviewRoute: JUDGMENT_REVIEWER_DEEP`，不得进入廉价事实通道；结构、引用和
+  Schema 完整性继续由确定性 validator 处理，不创建模型 claim。
 - `analyze-requirement` 以来源处置条目为事实分片，不让单个 Reviewer 逐份顺序复读完整来源。
 - Judgment Reviewer 使用 fresh context，只处理证据充分性、设计缺陷和完备性，并执行模型路由规定的抽检。
 - 完备性只回答“事实族是否漏 claim”和“方案假设是否漏 premise”，不重新浏览全部仓库。
 
-含绝对化或数量表述的 FACTUAL claim 必须在 `anchors` 中增加机械 count anchor：`path` 点名最小依据，`glob` 只匹配项目内文件，`expr` 使用 `files`、`lines`、`regex:<pattern>` 或 `json:<JSON Pointer>`，`expected` 保存声明值。As-Is 的仓库数量优先用 `glob: .ai-sow/work/analyze-as-is/repo-facts.json` 加 `json:` pointer，不重新扫描仓库。
+含绝对化或数量表述的 FACTUAL claim 必须至少有一个可解析的最小来源 anchor；来源本身含该业务
+事实时交给低成本 verifier 逐行核验。由仓库或结构化投影推导、无法直接逐行核对的数量必须增加机械
+count anchor：`path` 点名最小依据，`glob` 只匹配项目内文件，`expr` 使用 `files`、`lines`、
+`regex:<pattern>` 或 `json:<JSON Pointer>`，`expected` 保存声明值。As-Is 的仓库数量优先用
+`glob: .ai-sow/work/analyze-as-is/repo-facts.json` 加 `json:` pointer，不重新扫描仓库。
 
 停止条件是“未验证 claim 数为零且完备性检查通过”，不是连续若干轮没有 finding。
 
@@ -62,11 +72,27 @@ patch 的固定结构如下；`acknowledgedClosureIds` 只能逐项列出已阅�
 }
 ```
 
+同一 finding 必须同步修改一个 Owner 的多个候选文档时，使用顶层 `documents` 数组；每项只允许
+`path / operations / acknowledgedClosureIds`，且 `path` 必须在 Owner wrapper 公布的候选白名单内。
+多文档不得与顶层单文档字段混用，所有文档、audit、context、review 和 post-check 只提交一次；任一
+文档失败则全部回滚且不消耗 patch 轮次。
+
 脚本比较 patch 前后字节并计算当前 Owner 文档内的引用传递闭包；上游 Feature、Decision、Commitment 等非本阶段所有的外部 ID 只作为叶子引用，不得充当连接两个 Owner 对象的遍历枢纽。有稳定 ID 的对象以 ID 标识，没有稳定 ID 但持有引用的对象以 `@<JSON Pointer>` 标识。声明外变化触发 `PATCH_FREEFORM_EDIT_DETECTED`；闭包内未修改且未明确确认的对象触发 `PATCH_CLOSURE_UNSYNCED`。
 
-`PATCH_CLOSURE_UNSYNCED` 是原子拒绝：脚本不写 candidate 或 audit，诊断返回 `candidateUpdated: false`、`retryAllowed: true`、`consumesPatchRound: false` 和确认字段名。一次 patch 轮次只在脚本返回 `OK`、候选实际更新时才消耗。只要 base/candidate 仍与 round-1 packet 原字节绑定、finding ID 未变化且没有扩大语义范围，Stage 必须按 `syncSuspects` 逐项修改或确认后重试一次；该修正重试不是新的 Reviewer 修复轮。修正后的命令再次被原子拒绝时才返回 `BLOCKED`。
+`PATCH_CLOSURE_UNSYNCED` 是原子拒绝：脚本不写 candidate 或 audit，诊断返回 `candidateUpdated: false`、`retryAllowed: true`、`consumesPatchRound: false` 和确认字段名。Owner-local `apply_patch.py` 把 candidate、audit、context、确定性 review 投影、Owner `review` post-check 与新 diff packet 作为一个 staging 事务；任一步骤失败都不改当前工作集，stdout 返回 `patchRoundConsumed: false`。只有整笔事务提交并返回 `OK` 才令 `patchRoundConsumed: true`，Stage 不再另行重跑 renderer 或 `review`。只要 base/candidate 仍与 round-1 packet 原字节绑定、finding ID 未变化且没有扩大语义范围，Stage 必须按 `syncSuspects` 逐项修改或确认后重试一次；该修正重试不是新的 Reviewer 修复轮。修正后的命令再次被原子拒绝时才返回 `BLOCKED`。
 
-修复后的复审由新的轻量 Reviewer 执行，只读取 patch diff、影响闭包和闭包字段原文，不加载仓库或 round-1 历史。
+任何 Owner 生成与当前内容不同的新 `review-packet.json` 时，都在同一文件事务中把旧 packet、`reviewer.json` 与 `approval.json` 归档到 `.ai-sow/work/<owner>/archive/<old-packet-sha256>/`，并从当前路径撤销旧授权；内容寻址的 `review-judgments/` 保持原位。新 packet 与当前 packet 原字节相同时不旋转 sidecar。
+
+修复后的复审由新的轻量 Reviewer 执行，只读取 `patch-audit.json` 中的 `diffReview`：变更字段前后值、
+一跳直接闭包、相关 `acceptanceCriterionId -> storyId -> featureId` 映射和新 packet 绑定，不加载传递
+闭包全文、仓库或 round-1 历史。`diffReview.payloadBytes` 的硬上限是 65536；超限触发
+`PATCH_DIFF_BUDGET_EXCEEDED`，原子拒绝且不消耗 patch 轮次。
+
+轻量 Reviewer 的第一次判断仍按新 packet 冻结。Owner Skill 只有在自身合同明确授权时，才可把
+“由首次 patch 引入、完全局限于当前 Owner candidate、无需改变上游语义且不扩大范围”的 finding
+归为一次纠错 patch；纠错继续使用 finding-bound 字段操作、原子 post-check、新 packet 和最终轻量
+diff-review。Owner Skill 必须同时规定成功 patch 与 Reviewer 的硬上限。需要修改上游 Owner 数据、
+最终轻量 Reviewer 仍有 finding 或超出显式额度时停止，不能通过重启 Reviewer 翻转同一 packet。
 
 ## 已验证断言复用
 

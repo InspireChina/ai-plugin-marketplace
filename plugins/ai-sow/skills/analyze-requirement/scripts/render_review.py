@@ -27,6 +27,31 @@ from runtime.project_io import ProjectFiles, ProjectIOError
 DEFAULT_CANDIDATE = ".ai-sow/work/analyze-requirement/requirements.candidate.json"
 DEFAULT_SOURCE_DISPOSITION = ".ai-sow/work/analyze-requirement/context/source-disposition.json"
 DEFAULT_OUTPUT = ".ai-sow/work/analyze-requirement/review.candidate.md"
+RENDERER_SCHEMA_COVERAGE = {
+    "requirements.epics": "Epic 与 Feature",
+    "requirements.features": "Epic 与 Feature",
+    "requirements.normalizedItems": "来源与归一化",
+    "requirements.sourceDocuments": "来源与归一化",
+    "sourceDisposition.items": "来源处置",
+    "sourceDisposition.schemaVersion": "@mechanical:source-disposition-schema",
+}
+RENDERER_FIELD_COVERAGE = {
+    "epic.commonConstraintsOutOfScope": "共同约束 / 排除",
+    "epic.description": "业务范围",
+    "epic.epicId": "Epic",
+    "epic.involvedSystemsData": "涉及系统 / 数据",
+    "epic.name": "名称",
+    "epic.source": "来源条目",
+    "epic.targetOutcome": "目标结果",
+    "epic.type": "@mechanical:BUSINESS-const",
+    "feature.constraintsNfr": "业务约束",
+    "feature.description": "业务能力与可观察结果",
+    "feature.epicId": "Epic",
+    "feature.featureId": "Feature",
+    "feature.involvedSystemsData": "涉及系统 / 数据",
+    "feature.name": "名称",
+    "feature.source": "来源条目",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,7 +81,9 @@ def render(
     data: dict[str, Any],
     source_disposition: dict[str, Any],
     questionnaire: str,
+    questionnaire_records: list[dict[str, str]] | None = None,
 ) -> bytes:
+    questionnaire_records = questionnaire_records or []
     sources = data.get("sourceDocuments")
     normalized = data.get("normalizedItems")
     epics = data.get("epics")
@@ -108,21 +135,23 @@ def render(
         "",
         "## Epic 与 Feature",
         "",
-        "| Epic | 名称 | 业务范围 | 目标结果 | 共同约束 / 排除 | 来源条目 |",
-        "|---|---|---|---|---|---|",
+        "| Epic | 名称 | 业务范围 | 涉及系统 / 数据 | 目标结果 | 共同约束 / 排除 | 来源条目 |",
+        "|---|---|---|---|---|---|---|",
         *[
             f"| {cell(item['epicId'])} | {cell(item['name'])} | {cell(item['description'])} | "
+            f"{cell(optional(item, 'involvedSystemsData'))} | "
             f"{cell(optional(item, 'targetOutcome'))} | "
             f"{cell(optional(item, 'commonConstraintsOutOfScope'))} | "
             f"{cell(joined(item['source']['normalizedItemIds']))} |"
             for item in epics
         ],
         "",
-        "| Feature | Epic | 名称 | 业务能力与可观察结果 | 业务约束 | 来源条目 |",
-        "|---|---|---|---|---|---|",
+        "| Feature | Epic | 名称 | 业务能力与可观察结果 | 涉及系统 / 数据 | 业务约束 | 来源条目 |",
+        "|---|---|---|---|---|---|---|",
         *[
             f"| {cell(item['featureId'])} | {cell(item['epicId'])} | {cell(item['name'])} | "
-            f"{cell(item['description'])} | {cell(optional(item, 'constraintsNfr'))} | "
+            f"{cell(item['description'])} | {cell(optional(item, 'involvedSystemsData'))} | "
+            f"{cell(optional(item, 'constraintsNfr'))} | "
             f"{cell(joined(item['source']['normalizedItemIds']))} |"
             for item in features
         ],
@@ -134,6 +163,25 @@ def render(
         "## 问卷状态",
         "",
         f"Questionnaire: {questionnaire}",
+        "",
+        "| Question ID | Status | Answer | Disposition |",
+        "|---|---|---|---|",
+        *(
+            [
+                f"| {cell(record['Question ID'])} | {cell(record['Status'])} | "
+                f"{cell(record['Answer'])} | {cell(record['Disposition'])} |"
+                for record in questionnaire_records
+            ]
+            or ["| NONE | NONE | NONE | NONE |"]
+        ),
+        "",
+        "Approved Default Items: "
+        + str(
+            sum(
+                record.get("Status") == "APPROVED_DEFAULT"
+                for record in questionnaire_records
+            )
+        ),
         "",
         "阻塞问卷必须在进入 Reviewer 前为 CLOSED；APPROVED_DEFAULT 只保留为下游假设候选。",
         "",
@@ -169,7 +217,17 @@ def main() -> int:
         if not isinstance(source_disposition, dict):
             raise ValueError("source disposition must be a JSON object")
         questionnaire = requirement_validator.current_questionnaire_declaration(files)
-        payload = render(candidate, source_disposition, questionnaire)
+        questionnaire_records: list[dict[str, str]] = []
+        if questionnaire == requirement_validator.QUESTIONNAIRE_PATH:
+            questionnaire_records, _ = requirement_validator.parse_questionnaire(
+                files.read_bytes(questionnaire).decode("utf-8")
+            )
+        payload = render(
+            candidate,
+            source_disposition,
+            questionnaire,
+            questionnaire_records,
+        )
         files.write_atomic(args.output, payload)
         print(
             json.dumps(

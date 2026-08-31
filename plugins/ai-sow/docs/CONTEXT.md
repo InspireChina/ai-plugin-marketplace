@@ -140,6 +140,10 @@ Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start�
 
 一个 Task 只能包含一个基础单元实例、一种工作模式和一个复杂度结论。重复实例拆成多个 Task；一个 Task 可以包含多少工作，以基础单元的计数口径和复杂度标准为准。必要的设计、实现或配置、开发自测、单元级验证、说明和基本联调，都计入该基础单元，不再固定拆成一条“设计”Task 和一条“实现”Task。
 
+潜在重复先按交付对象判定。同一个基础单元实例只保留一个 producing Task；如果同一 API 表面下实际包含不同对象，例如客户可见业务操作与 PostgreSQL/ElasticSearch 的 schema、索引、访问层或读模型投影，则分别保留并选择 `BU-BUSINESS-SERVICE-API`、`BU-DATA-MODEL` 等真实基础单元。消费方只有存在可独立估算的项目侧接入工作时才使用“接入复用”，普通调用不生成 Task。Renderer 会列出“相同基础单元 + 相同 Effective Start”的潜在碰撞组，Reviewer 再归类为 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER`。
+
+去重后没有独立基础单元实例的 Story 不能靠 UAT、人工测试或空壳 Task 填充。Task Owner 返回 `STORY_OWNER_RETURN_REQUIRED` 并点名受影响 Story/AC，由 Story Owner 在自己的评审和批准边界内删除或合并；Task Owner 仍不反向修改 Delivery。轻量 diff-review 发现仅限 Task candidate 的碰撞或基础单元误选时，可使用一次受限纠错 patch 和最终轻量复审，不把可本地修复的问题直接升级为终局阻塞。
+
 识别 Integration 不依赖 Story 类型。先根据已有证据登记 Integration；是否需要生成“内部系统对接”或“外部系统对接”Task、使用哪种工作模式、复杂度如何，都在拆分 Task 时确定。集成 Task 必须引用已经登记的 Integration，不能为了生成 Task 而倒推一个没有依据的 Integration。
 
 `generate-task` 的 `read_template.py` 只读取项目模板中合并后的基础单元/人天配置表和项目参数里的复杂度系数；`validate.py` 检查 Story/As-Is 引用、Story 是否拆出了必要 Task、工作模式依据、S/L 偏离理由以及模板组合。两者都不调用 setup 或 generate-sow 的代码。

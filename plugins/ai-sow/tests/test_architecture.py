@@ -127,6 +127,22 @@ def _writes_to_stdout(tree: ast.AST) -> bool:
     )
 
 
+def assigned_string(path: Path, name: str) -> str | None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if (
+            isinstance(target, ast.Name)
+            and target.id == name
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            return node.value.value
+    return None
+
+
 def test_skill_entry_scripts_pin_utf8_standard_streams() -> None:
     """Windows 控制台代码页不是 UTF-8，未固定编码的脚本会输出调用方无法解码的字节。"""
     unpinned: list[str] = []
@@ -147,6 +163,8 @@ def test_skill_entry_scripts_pin_utf8_standard_streams() -> None:
 def test_runtime_is_plugin_shared_owner_agnostic_infrastructure() -> None:
     assert {path.name for path in RUNTIME.glob("*.py")} == {
         "__init__.py",
+        "authorization.py",
+        "context_pages.py",
         "claims.py",
         "controls.py",
         "diagnostics.py",
@@ -162,6 +180,14 @@ def test_runtime_is_plugin_shared_owner_agnostic_infrastructure() -> None:
         assert "skills/" not in text
         assert "skills." not in text
         assert "urn:ai-sow:" not in text
+
+
+def test_generator_contract_is_versioned_and_reconcile_uses_the_same_contract() -> None:
+    generator = PLUGIN_ROOT / "skills/generate-sow/scripts/generate_sow.py"
+    reconcile = PLUGIN_ROOT / "skills/reconcile/scripts/reconcile.py"
+
+    assert assigned_string(generator, "GENERATOR_CONTRACT") == "receipt-only-v2"
+    assert assigned_string(reconcile, "GENERATOR_CONTRACT") == "receipt-only-v2"
 
 
 def test_shared_review_gates_have_one_implementation_and_all_owners_call_them() -> None:

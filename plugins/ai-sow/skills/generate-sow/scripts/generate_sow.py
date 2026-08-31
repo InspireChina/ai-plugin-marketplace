@@ -40,7 +40,7 @@ from workbook import write_workbook
 
 PLUGIN_VERSION = "0.1.0"
 PACKAGE_ALGORITHM = "ai-sow-package-v1"
-GENERATOR_CONTRACT = "receipt-only-v1"
+GENERATOR_CONTRACT = "receipt-only-v2"
 PROJECT_PATH = ".ai-sow/project.json"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 OUTPUTS_PATH = ".ai-sow/outputs"
@@ -405,6 +405,14 @@ def tree_digests(root: Path) -> dict[str, str]:
     }
 
 
+def package_tree_sha256(root: Path) -> str:
+    entries = [
+        {"path": path, "sha256": digest}
+        for path, digest in tree_digests(root).items()
+    ]
+    return sha256_bytes(canonical_json_bytes(entries))
+
+
 def expected_package_paths() -> set[str]:
     return {
         "manifest.json",
@@ -468,6 +476,7 @@ def package_manifest(
     manifest: dict[str, object] = {
         "packageId": package_id,
         "fingerprintAlgorithm": PACKAGE_ALGORITHM,
+        "generatorContract": GENERATOR_CONTRACT,
         "generationFingerprint": fingerprint,
         "generatedWorkbookSha256": sha256_bytes(workbook_payload),
         "projectId": project["projectId"],
@@ -596,12 +605,21 @@ def main() -> int:
         data = {key: load_object(files, path) for key, path in DATA_PATHS.items()}
         verify_owner_handoffs(files, data)
         package_id, package_path, publication = build_package(files, project, data)
+        package_root = files.resolve(package_path, expect="dir")
+        workbook_payload = (package_root / "sow.xlsx").read_bytes()
+        manifest_payload = (package_root / "manifest.json").read_bytes()
+        file_count = len(tree_digests(package_root))
         result: dict[str, object] = {
             "outcome": "OK",
             "summary": "SOW package generated",
             "packageId": package_id,
             "packagePath": package_path,
             "publication": publication,
+            "generatorContract": GENERATOR_CONTRACT,
+            "workbookSha256": sha256_bytes(workbook_payload),
+            "manifestSha256": sha256_bytes(manifest_payload),
+            "packageTreeSha256": package_tree_sha256(package_root),
+            "fileCount": file_count,
             "diagnostics": [],
         }
         print(json.dumps(result, ensure_ascii=False))

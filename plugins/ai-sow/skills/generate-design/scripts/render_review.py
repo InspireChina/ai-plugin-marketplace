@@ -27,6 +27,14 @@ DEFAULT_DESIGN = ".ai-sow/work/generate-design/design.candidate.json"
 DEFAULT_TECHNICAL = ".ai-sow/work/generate-design/requirements.candidate.json"
 DEFAULT_SOURCE = ".ai-sow/work/generate-design/review-source.json"
 DEFAULT_OUTPUT = ".ai-sow/work/generate-design/review.candidate.md"
+RENDERER_SCHEMA_COVERAGE = {
+    "design.architectureDeltas": "Architecture Delta",
+    "design.decisions": "Design Decision",
+    "design.designItems": "目标设计",
+    "design.scopeDecisions": "Scope",
+    "technicalRequirements.epics": "TECHNICAL requirements",
+    "technicalRequirements.features": "TECHNICAL requirements",
+}
 MANUAL_COUNT_PATTERN = re.compile(
     r"(?:\d+|[零一二三四五六七八九十百]+)\s*(?:个|项|条|份)?\s*"
     r"(?:Design\s+Items?|Architecture\s+Deltas?|Design\s+Decisions?|"
@@ -158,6 +166,54 @@ def feature_boundary_rows(
     ] or ["| NONE | NONE | NONE |"]
 
 
+def business_technical_boundary_rows(
+    design: dict[str, Any],
+    technical: dict[str, Any],
+) -> list[str]:
+    scopes = {
+        entry["featureId"]: entry for entry in objects(design, "scopeDecisions")
+    }
+    rows: list[str] = []
+    for technical_feature in objects(technical, "features"):
+        technical_feature_id = technical_feature["featureId"]
+        technical_scope = scopes.get(technical_feature_id, {})
+        technical_boundary = technical_scope.get("requiredIntegrationBoundary", "UNDECLARED")
+        technical_decision = technical_scope.get("decision", "UNDECLARED")
+        related = technical_feature.get("relatedBusinessFeatureIds", [])
+        if not isinstance(related, list):
+            raise ValueError("relatedBusinessFeatureIds must be an array")
+        for business_feature_id in related:
+            business_scope = scopes.get(business_feature_id, {})
+            business_boundary = business_scope.get("requiredIntegrationBoundary", "UNDECLARED")
+            business_decision = business_scope.get("decision", "UNDECLARED")
+            both_in_scope = business_decision == technical_decision == "IN_SCOPE"
+            result = (
+                "DUPLICATE_END_TO_END"
+                if both_in_scope
+                and business_boundary == technical_boundary == "END_TO_END"
+                else "SINGLE_END_TO_END_OWNER"
+                if both_in_scope and "END_TO_END" in {business_boundary, technical_boundary}
+                else "NO_END_TO_END_OWNER"
+                if both_in_scope
+                else "NOT_BOTH_IN_SCOPE"
+            )
+            rows.append(
+                "| "
+                + " | ".join(
+                    cell(value)
+                    for value in (
+                        business_feature_id,
+                        technical_feature_id,
+                        business_boundary,
+                        technical_boundary,
+                        result,
+                    )
+                )
+                + " |"
+            )
+    return rows or ["| NONE | NONE | NONE | NONE | NONE |"]
+
+
 def render(
     design: dict[str, Any],
     technical: dict[str, Any],
@@ -188,6 +244,7 @@ def render(
     )
     concerns = objects(source, "concerns")
     boundary_rows = feature_boundary_rows(design, technical, source)
+    business_technical_rows = business_technical_boundary_rows(design, technical)
     rows = []
     for concern in concerns:
         rows.append(
@@ -239,6 +296,12 @@ def render(
         "| Feature A | Feature B | 非重叠交付边界 |",
         "|---|---|---|",
         *boundary_rows,
+        "",
+        "### BUSINESS / TECHNICAL Boundary Matrix",
+        "",
+        "| BUSINESS Feature | TECHNICAL Feature | BUSINESS Boundary | TECHNICAL Boundary | Result |",
+        "|---|---|---|---|---|",
+        *business_technical_rows,
         "",
         "## TECHNICAL requirements",
         "",

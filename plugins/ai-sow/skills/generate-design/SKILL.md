@@ -54,7 +54,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 读取本合同及其直接要求的参考后，第一条项目命令必须是下方公开的 `prepare_context.py`；不得先用
 `rg`、`rg --files`、`find`、`git status` 或其他命令枚举项目、`.ai-sow` 或插件，也不得先运行
 `--help`。该命令本身是 Requirement 与 As-Is handoff 的唯一启动门禁；成功后 Stage 只读取其
-`context/manifest.json` 点名的 fragment 和完成专业设计确需的原始 source anchor，不复读完整上游
+`context/manifest.json` 点名的 page 和完成专业设计确需的原始 source anchor，不复读完整上游
 artifact 或无关 work-only 目录。
 
 `context/source-anchors.json` 同时保留证据的逻辑 `reference` 和可读取文件的项目相对
@@ -75,13 +75,13 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
 ## 工作流
 
 1. 当前 Stage 是本 Skill 的唯一用户接口，第一条项目命令直接运行 `prepare_context.py`，由它验证 Requirement 与 As-Is receipt。任一上游 handoff 为 missing、invalid、stale 或 unsupported 时，原样报告对应 Owner 并停止；不重跑上游 validator，不修改上游稳定数据。除第 11 步的一个 Reviewer 外，普通流程全部工作都由当前 Stage 直接完成。
-2. `prepare_context.py` 把 BUSINESS Requirements、As-Is Coverage、Uncertainty、Effective Start 与 source anchor 收敛为 `.ai-sow/work/generate-design/context/` 的确定性闭包。当前 Stage 只读这个闭包和 manifest 点名的必要原始来源，在 `.ai-sow/work/generate-design/` 保存分析。
+2. `prepare_context.py` 把 BUSINESS Requirements、As-Is Coverage、Uncertainty、Effective Start 与 source anchor 收敛为 `.ai-sow/work/generate-design/context/` 的确定性分页闭包。当前 Stage 按 manifest 页序各读取一次；首次 candidate 尚未形成时 `reviewClaims.status` 为 `PENDING_CANDIDATE`，不写空 claims。第 10 步重跑 context 后才生成并独立绑定 `reviewClaims.fragment`。
 3. 相对于同一组 Effective Start 形成目标方案、Design Item 和 Architecture Delta；该组起点同时供下游 Task 工作模式判断使用，设计不得另建一套 As-Is 基线。Design Item、Architecture Delta 和 Design Decision 都同时保存稳定 ID 与非空名称。`CARRY_FORWARD` Commitment 是待交付工作；重要 Uncertainty 必须形成设计决策、prerequisite、定向 evidence request 或 scope boundary。
 4. 为每个 BUSINESS 和 TECHNICAL Feature 恰好给出一个 `IN_SCOPE`、`FULLY_COVERED` 或 `OUT_OF_SCOPE` Scope Decision。`IN_SCOPE` 引用 Design Item，并显式声明 `requiredIntegrationBoundary` 与 `requiredDecisionKinds`；每项类型化义务由关联 Design Decision 与 Evidence 履行。`FULLY_COVERED` 引用有 Evidence 的 Effective Start；BUSINESS Feature 还需同组 `COMPLETE` Coverage。
-5. 来源明示的技术要求编译为 `SOURCE_INPUT` TECHNICAL Epic/Feature，并追溯到已登记 `sourceDocumentId` 与具体 `sourceReferences`。设计决策产生的技术要求使用 `DESIGN_DERIVED`，并严格遵守[派生理由合同](references/derived-rationale.md)。两个 `IN_SCOPE` TECHNICAL Feature 的 `designItemIds` 完全相同或存在包含关系时，必须分别具有可独立验收的非重叠结果，并在 work-only `featureBoundaryReview` 中明确两者边界；否则在本阶段合并或重划 Feature，不能把重叠范围留给 Story Owner。Task 可实施性反馈只细化已有 Design Decision、Design Item 或职责相同的 TECHNICAL Feature；不得仅因实现机制新增 Feature，也不得要求下游修改已批准的 Story/AC。只有用户明确批准新的独立交付结果时才新增 Feature 并交由 `generate-story` 评估。
+5. 来源明示的技术要求编译为 `SOURCE_INPUT` TECHNICAL Epic/Feature，并追溯到已登记 `sourceDocumentId` 与具体 `sourceReferences`。设计决策产生的技术要求使用 `DESIGN_DERIVED`，并严格遵守[派生理由合同](references/derived-rationale.md)。两个 `IN_SCOPE` TECHNICAL Feature 的 `designItemIds` 完全相同或存在包含关系时，必须分别具有可独立验收的非重叠结果，并在 work-only `featureBoundaryReview` 中明确两者边界；否则在本阶段合并或重划 Feature，不能把重叠范围留给 Story Owner。每个 TECHNICAL Feature 与其 `relatedBusinessFeatureIds` 组成的 BUSINESS/TECHNICAL 配对由 renderer 确定性投影边界矩阵；同一配对需要端到端交付时只能有一个 `END_TO_END` Owner，双方都声明 `END_TO_END` 会以 `DESIGN_BOUNDARY_END_TO_END_DUPLICATE` 阻塞。Task 可实施性反馈只细化已有 Design Decision、Design Item 或职责相同的 TECHNICAL Feature；不得仅因实现机制新增 Feature，也不得要求下游修改已批准的 Story/AC。只有用户明确批准新的独立交付结果时才新增 Feature 并交由 `generate-story` 评估。
 6. 每个 Design Decision 同时关联 Design Item 与 Feature；非 `NEW` Architecture Delta 引用 Effective Start。孤立 Design Item、把 `CARRY_FORWARD` 标为 `FULLY_COVERED`，或 `affectsEstimate = true` 的 Uncertainty 均阻止门禁通过。
 7. 当前 Stage 一次形成两份 work-only candidate：`.ai-sow/work/generate-design/design.candidate.json` 与 `.ai-sow/work/generate-design/requirements.candidate.json`。两份候选共同构成一个评审版本；任一份变化都使整个版本失效。
-8. 当前 Stage 按[评审模板](references/review-template.md)形成 `.ai-sow/work/generate-design/review-source.json`，再运行 `render_review.py` 确定性生成 `.ai-sow/work/generate-design/review.candidate.md`。存在 Design Item 集合重叠的 `IN_SCOPE` TECHNICAL Feature 时，`featureBoundaryReview` 为每个 Feature 对提供两个 `featureIds` 和非空 `nonOverlapRationale`；renderer 会指出缺失的 Feature 对。评审必须包含两个固定门禁：
+8. 当前 Stage 按[评审模板](references/review-template.md)形成 `.ai-sow/work/generate-design/review-source.json`，再运行 `render_review.py` 确定性生成 `.ai-sow/work/generate-design/review.candidate.md`。存在 Design Item 集合重叠的 `IN_SCOPE` TECHNICAL Feature 时，`featureBoundaryReview` 为每个 Feature 对提供两个 `featureIds` 和非空 `nonOverlapRationale`；renderer 会指出缺失的 Feature 对。renderer 还从两份 candidate 自动投影 `BUSINESS / TECHNICAL Boundary Matrix`，逐对展示双方边界与唯一 Owner 结论，不由 review-source 手写。评审必须包含两个固定门禁：
 
    `targetDesign`、`architectureDeltaReview`、`designDecisionReview`、`scopeReview` 与
    `technicalRequirementsReview` 只总结专业结论，不得手写 Design Item、Architecture Delta、
@@ -102,7 +102,7 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
    "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root .
    "<python-bin>" "<skill-root>/scripts/validate.py" --project-root . --mode review --review-path .ai-sow/work/generate-design/review.candidate.md
    ```
-11. 当前 Stage 为当前 packet 启动一个不继承当前完整聊天的完整 Reviewer Agent。Reviewer 以当前 packet、评审、风险摘要、闭包和必要来源独立审查专业遗漏、HLD/Go-live、范围边界及两份候选忠实度。Reviewer 返回 findings 时，Stage 先按共享合同用 `record-reviewer` 冻结 `BLOCKED` 与全部 finding ID，再确认两份被审 candidate 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，并运行 Owner-local patch；不得直接编辑 candidate 或整段重写。一次 patch 只修改 `design.candidate.json` 或 `requirements.candidate.json` 之一：
+11. 当前 Stage 为当前 packet 启动一个不继承当前完整聊天的完整 Reviewer Agent。Reviewer 以当前 packet、评审、风险摘要、闭包和必要来源独立审查专业遗漏、HLD/Go-live、范围边界及两份候选忠实度。Reviewer 返回 findings 时，Stage 先按共享合同用 `record-reviewer` 冻结 `BLOCKED` 与全部 finding ID，再确认两份被审 candidate 仍与 packet 绑定字节一致，把字段变更及 finding ID 写入 `patch.json`，并运行 Owner-local patch；不得直接编辑 candidate 或整段重写。只涉及一份候选时使用单文档 patch；同一 finding 必须同步修改 `design.candidate.json` 与 `requirements.candidate.json` 时，按共享合同使用顶层 `documents` 数组并在一次事务中提交：
 
     ```text
     "<python-bin>" "<skill-root>/scripts/apply_patch.py" \
@@ -113,7 +113,7 @@ Evidence、repository/prior SOW snapshot 只存在于 `source-anchors.json`。St
       --audit .ai-sow/work/generate-design/patch-audit.json
     ```
 
-    `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才重建 context、review、risk summary 与 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整来源或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。Reviewer PASS 后 Stage 只运行“精确 Reviewer 绑定”命令，用固定算法 `ai-sow-owner-reviewer-v1` 写 `reviewer.json`，绑定精确 packet SHA-256。
+    `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。脚本在 staging 中整体重建 context、review、risk summary 并运行两份 candidate 的 Owner `review` post-check；只有新 diff packet 全部通过后才原子提交并返回 `patchRoundConsumed: true`，否则当前两个 candidate、packet 与授权 sidecar 保持原字节。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整来源或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。Reviewer PASS 后 Stage 只运行“精确 Reviewer 绑定”命令，用固定算法 `ai-sow-owner-reviewer-v1` 写 `reviewer.json`，绑定精确 packet SHA-256。
 12. 将 Reviewer 已绑定的同一 packet 提交用户。用户明确批准 Owner 与精确 packet SHA-256 后，用固定算法 `ai-sow-owner-approval-v1` 写 `approval.json`；候选、上下文、review、risk 或 input 任一字节变化都必须重新生成 packet 并重新整体评审、批准。
 13. 当前 Stage 只运行 `--mode publish-approved`。确定性脚本校验两个 sidecar 后，按 candidate 原字节同时发布 Design 与 TECHNICAL requirements、正式 review 与 0.3 receipt；不得在此阶段重做分析、改候选或启动 Reviewer：
 

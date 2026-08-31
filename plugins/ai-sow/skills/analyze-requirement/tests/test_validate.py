@@ -8,11 +8,18 @@ from pathlib import Path
 
 import pytest
 
+PLUGIN_ROOT = Path(__file__).parents[3]
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
+
+from runtime.patch import apply_operations, patch_audit
+
 
 SKILL_ROOT = Path(__file__).parents[1]
 SCRIPT = SKILL_ROOT / "scripts/validate.py"
 CONTEXT_SCRIPT = SKILL_ROOT / "scripts/prepare_context.py"
 RENDER_SCRIPT = SKILL_ROOT / "scripts/render_review.py"
+APPLY_PATCH_SCRIPT = SKILL_ROOT / "scripts/apply_patch.py"
 FIXTURE = SKILL_ROOT / "fixtures/requirements.valid.json"
 REVIEW_TEMPLATE = SKILL_ROOT / "references/review-template.md"
 E2E_DESCRIPTOR = SKILL_ROOT / "fixtures/e2e-cases/explicit-architecture.json"
@@ -349,6 +356,61 @@ def test_review_projects_design_input_and_cross_domain_scope_boundary(tmp_path: 
     assert "source-disposition-profile-api" in review
     assert "source-disposition-existing-platforms" in review
     assert ", ".join(item["featureId"] for item in payload["features"]) in review
+    assert payload["epics"][0]["involvedSystemsData"] in review
+    assert payload["epics"][0]["targetOutcome"] in review
+    assert payload["features"][0]["involvedSystemsData"] in review
+    assert payload["features"][0]["constraintsNfr"] in review
+
+
+def test_review_projects_questionnaire_answer_status_disposition_and_default_count(
+    tmp_path: Path,
+) -> None:
+    prepare_valid(tmp_path)
+    questionnaire = tmp_path / ".ai-sow/reviews/analyze-requirement-questionnaire.md"
+    questionnaire.write_text(questionnaire_record(), encoding="utf-8")
+
+    assert run_context(tmp_path).returncode == 0
+    result = run_renderer(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    review = (
+        tmp_path / ".ai-sow/work/analyze-requirement/review.candidate.md"
+    ).read_text(encoding="utf-8")
+    assert "| ARQ-001 | APPROVED_DEFAULT | 同意暂按保留三年处理。 | ASSUMPTION_CANDIDATE |" in review
+    assert "Approved Default Items: 1" in review
+
+
+def test_questionnaire_derived_requirement_claims_bind_question_anchor(
+    tmp_path: Path,
+) -> None:
+    payload = prepare_valid(tmp_path)
+    feature_id = payload["features"][0]["featureId"]
+    questionnaire = tmp_path / ".ai-sow/reviews/analyze-requirement-questionnaire.md"
+    questionnaire.write_text(
+        questionnaire_record(
+            status="CLOSED",
+            disposition=f"INCORPORATED_BUSINESS:{feature_id}",
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_context(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    claims = json.loads(
+        (tmp_path / ".ai-sow/work/analyze-requirement/claims.json").read_text(
+            encoding="utf-8"
+        )
+    )["claims"]
+    constraint_claim = next(
+        claim
+        for claim in claims
+        if claim["ownerField"] == "/requirements/features/0/constraintsNfr"
+    )
+    assert any(
+        anchor["path"].endswith("analyze-requirement-questionnaire.md#ARQ-001")
+        for anchor in constraint_claim["anchors"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -954,6 +1016,95 @@ def test_open_critical_questionnaire_blocks_before_reviewer_packet(tmp_path: Pat
     assert not review_path(tmp_path).exists()
     assert not stable_path(tmp_path).exists()
     assert not validation_path(tmp_path).exists()
+
+
+def test_requirement_multi_document_patch_commits_candidates_and_post_check_atomically(
+    tmp_path: Path,
+) -> None:
+    prepare_review_candidate(tmp_path)
+    requirements_path = candidate_path(tmp_path)
+    disposition_path = source_disposition_path(tmp_path)
+    requirements = json.loads(requirements_path.read_text(encoding="utf-8"))
+    disposition = json.loads(disposition_path.read_text(encoding="utf-8"))
+    requirement_operations = [
+        {
+            "op": "replace",
+            "path": "/features/0/description",
+            "value": requirements["features"][0]["description"] + "评审补充。",
+            "findingId": "ARQ-F-1",
+        }
+    ]
+    disposition_operations = [
+        {
+            "op": "replace",
+            "path": "/items/0/rationale",
+            "value": disposition["items"][0]["rationale"] + "评审补充。",
+            "findingId": "ARQ-F-1",
+        }
+    ]
+
+    def document_patch(
+        path: str,
+        before: dict[str, object],
+        operations: list[dict[str, object]],
+    ) -> dict[str, object]:
+        after = apply_operations(before, operations)
+        draft = {"operations": operations, "acknowledgedClosureIds": []}
+        return {
+            "path": path,
+            "operations": operations,
+            "acknowledgedClosureIds": patch_audit(before, after, draft)[
+                "syncSuspects"
+            ],
+        }
+
+    patch_path = tmp_path / ".ai-sow/work/analyze-requirement/multi-patch.json"
+    patch_path.write_text(
+        json.dumps(
+            {
+                "documents": [
+                    document_patch(
+                        ".ai-sow/work/analyze-requirement/requirements.candidate.json",
+                        requirements,
+                        requirement_operations,
+                    ),
+                    document_patch(
+                        ".ai-sow/work/analyze-requirement/source-disposition.json",
+                        disposition,
+                        disposition_operations,
+                    ),
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    audit_path = ".ai-sow/work/analyze-requirement/multi-patch-audit.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(APPLY_PATCH_SCRIPT),
+            "--project-root",
+            str(tmp_path),
+            "--patch",
+            ".ai-sow/work/analyze-requirement/multi-patch.json",
+            "--audit",
+            audit_path,
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout
+    assert json.loads(result.stdout)["patchRoundConsumed"] is True
+    assert "评审补充。" in requirements_path.read_text(encoding="utf-8")
+    assert "评审补充。" in disposition_path.read_text(encoding="utf-8")
+    audit = json.loads((tmp_path / audit_path).read_text(encoding="utf-8"))
+    assert audit["algorithm"] == "ai-sow-multi-field-patch-v1"
+    assert len(audit["documents"]) == 2
 
 
 def test_review_mode_preserves_existing_formal_bytes(tmp_path: Path) -> None:

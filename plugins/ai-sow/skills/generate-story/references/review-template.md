@@ -13,7 +13,7 @@ Stable IDs: story-example, ac-example, integration-example, assumption-example
 
 ## Acceptance Criteria
 
-逐个 Story 列出有序、独立、可观察且可判定通过或不通过的 AC，并说明 UAT 分母、上线前置、失败/回滚边界和责任方。
+逐个 Story 列出有序、独立、可观察且可判定通过或不通过的 AC，并说明 UAT 分母、上线前置、失败/回滚边界和责任方。对每个关联范围内 Feature 的 `OPERATIONAL_THRESHOLD` Design Decision，核对决策正文包含量化阈值与明确责任团队/角色，且相关 AC 通过 `approvalDecisionIds` 引用；这些 Task-readiness 条件必须在 Story 批准前闭合。
 
 ## Integration
 

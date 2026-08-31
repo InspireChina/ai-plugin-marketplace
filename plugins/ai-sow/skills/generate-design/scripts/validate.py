@@ -26,7 +26,14 @@ for import_root in (SCRIPT_ROOT, PLUGIN_ROOT):
 
 from review_gates import validate_design_gates
 from runtime.diagnostics import diagnostic as diag
+from runtime.authorization import publish_review_packet
 from runtime.controls import validate_manifest_controls
+from runtime.context_pages import (
+    context_budget,
+    expected_context_fragment,
+    expected_review_claims,
+    read_protocol,
+)
 from runtime.handoff import (
     Artifact,
     MatchResult,
@@ -76,7 +83,6 @@ CONTEXT_FRAGMENT_SPECS = (
     ("uncertainties", ".ai-sow/work/generate-design/context/uncertainties.json"),
     ("effectiveStart", ".ai-sow/work/generate-design/context/effective-start.json"),
     ("sourceAnchors", ".ai-sow/work/generate-design/context/source-anchors.json"),
-    ("claims", ".ai-sow/work/generate-design/claims.json"),
 )
 CLAIMS_PATH = ".ai-sow/work/generate-design/claims.json"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
@@ -696,6 +702,33 @@ def validate_semantics(
                         f"unknown BUSINESS Feature: {reference}",
                     )
                 )
+
+    scope_by_feature = {
+        entry["featureId"]: entry for entry in design["scopeDecisions"]
+    }
+    for feature in technical["features"]:
+        technical_scope = scope_by_feature.get(feature["featureId"])
+        if technical_scope is None or technical_scope.get("decision") != "IN_SCOPE":
+            continue
+        for business_feature_id in feature["relatedBusinessFeatureIds"]:
+            business_scope = scope_by_feature.get(business_feature_id)
+            if business_scope is None or business_scope.get("decision") != "IN_SCOPE":
+                continue
+            if (
+                business_scope.get("requiredIntegrationBoundary") == "END_TO_END"
+                and technical_scope.get("requiredIntegrationBoundary") == "END_TO_END"
+            ):
+                diagnostics.append(
+                    diag(
+                        "DESIGN_BOUNDARY_END_TO_END_DUPLICATE",
+                        "BUSINESS and related TECHNICAL Features cannot both own END_TO_END delivery",
+                        featureIds=[business_feature_id, feature["featureId"]],
+                        boundaries={
+                            business_feature_id: "END_TO_END",
+                            feature["featureId"]: "END_TO_END",
+                        },
+                    )
+                )
     for epic_id in sorted(technical_epic_ids - referenced_epics):
         diagnostics.append(diag("EPIC_WITHOUT_FEATURE", f"technical Epic has no Feature: {epic_id}"))
 
@@ -1027,10 +1060,13 @@ def context_packet_entry(
     expected_fields = {
         "algorithm",
         "claimMetrics",
+        "contextBudget",
         "fragments",
         "inputArtifacts",
         "owner",
         "ownerControl",
+        "readProtocol",
+        "reviewClaims",
         "selectedEffectiveStartItemIds",
         "selectedFeatureIds",
     }
@@ -1058,6 +1094,16 @@ def context_packet_entry(
                 CONTEXT_MANIFEST_PATH,
             )
         )
+    if manifest.get("contextBudget") != context_budget() or manifest.get(
+        "readProtocol"
+    ) != read_protocol():
+        diagnostics.append(
+            diag(
+                "CONTEXT_MANIFEST_INVALID",
+                "context budget or read protocol is invalid",
+                CONTEXT_MANIFEST_PATH,
+            )
+        )
     diagnostics.extend(
         validate_manifest_controls(
             files,
@@ -1079,20 +1125,10 @@ def context_packet_entry(
     expected_fragments: list[dict[str, object]] = []
     for name, path in CONTEXT_FRAGMENT_SPECS:
         try:
-            payload = files.read_bytes(path)
-        except ProjectIOError:
-            diagnostics.append(
-                diag("CONTEXT_FRAGMENT_MISSING", "context fragment is unavailable", path)
-            )
+            expected_fragments.append(expected_context_fragment(files, name, path))
+        except ProjectIOError as error:
+            diagnostics.append(diag(error.code, str(error), error.relative_path))
             continue
-        expected_fragments.append(
-            {
-                "bytes": len(payload),
-                "name": name,
-                "path": path,
-                "sha256": sha256_bytes(payload),
-            }
-        )
     if manifest.get("fragments") != expected_fragments:
         diagnostics.append(
             diag(
@@ -1101,11 +1137,25 @@ def context_packet_entry(
                 CONTEXT_MANIFEST_PATH,
             )
         )
+    expected_claims: dict[str, object] | None = None
+    try:
+        expected_claims = expected_review_claims(files, CLAIMS_PATH)
+    except ProjectIOError as error:
+        diagnostics.append(diag(error.code, str(error), error.relative_path))
+    if expected_claims is not None and manifest.get("reviewClaims") != expected_claims:
+        diagnostics.append(
+            diag(
+                "CONTEXT_REVIEW_CLAIMS_STALE",
+                "review claims do not match the current manifest",
+                CONTEXT_MANIFEST_PATH,
+            )
+        )
     if diagnostics:
         return None, diagnostics
     return {
         "fragments": expected_fragments,
         "manifest": file_entry("manifest", CONTEXT_MANIFEST_PATH, manifest_payload),
+        "reviewClaims": expected_claims,
     }, []
 
 
@@ -1382,7 +1432,16 @@ def main() -> int:
                     try:
                         files.write_atomic(args.risk_summary_path, summary_payload)
                         packet_payload = canonical_json_bytes(expected_packet)
-                        files.write_atomic(args.packet_path, packet_payload)
+                        if args.staging_root is None:
+                            publish_review_packet(
+                                files,
+                                packet_path=args.packet_path,
+                                packet_payload=packet_payload,
+                                reviewer_path=REVIEWER_PATH,
+                                approval_path=APPROVAL_PATH,
+                            )
+                        else:
+                            files.write_atomic(args.packet_path, packet_payload)
                     except ProjectIOError as error:
                         diagnostics.append(
                             diag(error.code, str(error), error.relative_path)

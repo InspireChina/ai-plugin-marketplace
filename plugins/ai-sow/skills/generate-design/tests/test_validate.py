@@ -395,6 +395,11 @@ def test_renderer_owns_candidate_structure_counts(tmp_path: Path) -> None:
         f"technicalEpics={len(technical['epics'])}, "
         f"technicalFeatures={len(technical['features'])}"
     ) in review
+    assert "### BUSINESS / TECHNICAL Boundary Matrix" in review
+    assert (
+        "| feature-customer-profile | feature-profile-api | NONE | END_TO_END | "
+        "SINGLE_END_TO_END_OWNER |"
+    ) in review
 
     mutate_json(
         tmp_path,
@@ -485,6 +490,40 @@ def test_renderer_requires_explicit_boundary_for_overlapping_technical_features(
     assert "前者验收 API 业务操作边界" in review
 
 
+def test_design_boundary_matrix_rejects_duplicate_end_to_end(
+    tmp_path: Path,
+) -> None:
+    prepare(tmp_path)
+
+    def duplicate_end_to_end_owner(value: dict[str, object]) -> None:
+        business_scope = next(
+            entry
+            for entry in value["scopeDecisions"]  # type: ignore[index]
+            if entry["featureId"] == "feature-customer-profile"
+        )
+        business_scope["requiredIntegrationBoundary"] = "END_TO_END"
+
+    mutate_json(
+        tmp_path,
+        ".ai-sow/work/generate-design/design.candidate.json",
+        duplicate_end_to_end_owner,
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert "DESIGN_BOUNDARY_END_TO_END_DUPLICATE" in codes(result)
+    diagnostic = next(
+        entry
+        for entry in json.loads(result.stdout)["diagnostics"]
+        if entry["code"] == "DESIGN_BOUNDARY_END_TO_END_DUPLICATE"
+    )
+    assert diagnostic["featureIds"] == [
+        "feature-customer-profile",
+        "feature-profile-api",
+    ]
+
+
 def bind_review_packet(root: Path) -> str:
     packet = (root / ".ai-sow/work/generate-design/review-packet.json").read_bytes()
     digest = sha256_bytes(packet)
@@ -540,8 +579,9 @@ def test_prepare_context_closes_business_asis_uncertainty_start_and_source_ancho
         "uncertainties",
         "effectiveStart",
         "sourceAnchors",
-        "claims",
     ]
+    assert manifest["reviewClaims"]["status"] == "READY"
+    assert manifest["reviewClaims"]["fragment"]["name"] == "claims"
     business = json.loads((context_root / "business-requirements.json").read_text(encoding="utf-8"))
     assert business["features"] == REQUIREMENTS["features"]
     assert set(business) == {"epics", "features"}
@@ -1235,6 +1275,12 @@ def test_skill_defines_review_candidate_publish_stop_flow() -> None:
     assert "当前 Stage 是本 Skill 的唯一用户接口" in contract
     assert "外层 Stage、一个 Reviewer 和一次 hash-bound 用户批准" in contract
     assert "Stage 直接调用本 Owner 的确定性脚本" in contract
+
+
+def test_patch_wrapper_owns_both_design_candidates() -> None:
+    wrapper = (SKILL_ROOT / "scripts/apply_patch.py").read_text(encoding="utf-8")
+
+    assert 'additional_candidates=(f"{WORK_ROOT}/requirements.candidate.json",)' in wrapper
 
 
 def test_local_review_gate_has_no_runtime_or_cross_skill_import() -> None:

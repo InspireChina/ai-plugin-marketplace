@@ -35,7 +35,7 @@ PACKET_ALGORITHM = "ai-sow-reconciliation-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-reconciliation-reviewer-v1"
 APPROVAL_ALGORITHM = "ai-sow-reconciliation-approval-v1"
 PACKAGE_ALGORITHM = "ai-sow-package-v1"
-GENERATOR_CONTRACT = "receipt-only-v1"
+GENERATOR_CONTRACT = "receipt-only-v2"
 PROJECT_PATH = ".ai-sow/project.json"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 ASIS_PATH = ".ai-sow/data/analyze-as-is/asis.json"
@@ -267,6 +267,7 @@ PACKAGE_RECEIPT_BINDINGS = (
 PACKAGE_MANIFEST_KEYS = {
     "packageId",
     "fingerprintAlgorithm",
+    "generatorContract",
     "generationFingerprint",
     "generatedWorkbookSha256",
     "projectId",
@@ -2143,6 +2144,12 @@ def validate_package(
         if isinstance(fingerprint, str) and HASH_PATTERN.fullmatch(fingerprint)
         else None
     )
+    if package_manifest.get("generatorContract") != GENERATOR_CONTRACT:
+        raise ReconcileError(
+            "PACKAGE_GENERATOR_CONTRACT_MISMATCH",
+            manifest_path,
+            "package generator contract does not match the reconciliation publisher",
+        )
     if (
         package_manifest.get("fingerprintAlgorithm") != PACKAGE_ALGORITHM
         or package_manifest.get("packageId") != expected_package_id

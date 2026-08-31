@@ -23,7 +23,14 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.diagnostics import diagnostic as diag
+from runtime.authorization import publish_review_packet
 from runtime.controls import validate_manifest_controls
+from runtime.context_pages import (
+    context_budget,
+    expected_context_fragment,
+    expected_review_claims,
+    read_protocol,
+)
 from runtime.handoff import (
     Artifact,
     MatchResult,
@@ -67,7 +74,6 @@ CONTEXT_FRAGMENT_SPECS = (
     ("evidenceInventory", ".ai-sow/work/analyze-as-is/context/evidence-inventory.json"),
     ("premises", ".ai-sow/work/analyze-as-is/premises.json"),
     ("repoFacts", ".ai-sow/work/analyze-as-is/repo-facts.json"),
-    ("claims", ".ai-sow/work/analyze-as-is/claims.json"),
 )
 PREMISES_PATH = ".ai-sow/work/analyze-as-is/premises.json"
 REPO_FACTS_PATH = ".ai-sow/work/analyze-as-is/repo-facts.json"
@@ -1267,6 +1273,24 @@ def validate_semantics(
     return diagnostics
 
 
+def validate_design_readiness(data: dict[str, Any]) -> list[dict[str, object]]:
+    unresolved = [
+        entry
+        for entry in data["uncertainties"]
+        if entry.get("affectsEstimate") is True
+    ]
+    if not unresolved:
+        return []
+    return [
+        diag(
+            "DESIGN_READINESS_ESTIMATE_UNCERTAINTY_UNRESOLVED",
+            "As-Is approval requires estimate-affecting Uncertainties to be resolved before Design starts",
+            uncertaintyIds=[entry["uncertaintyId"] for entry in unresolved],
+            owners=[entry["owner"] for entry in unresolved],
+        )
+    ]
+
+
 def repository_path(scope: dict[str, Any], repo_id: str, anchor: str) -> str | None:
     snapshot = next((entry for entry in scope["repositorySnapshots"] if entry["repoId"] == repo_id), None)
     if snapshot is None:
@@ -1572,10 +1596,13 @@ def context_packet_entry(
     if set(manifest) != {
         "algorithm",
         "claimMetrics",
+        "contextBudget",
         "fragments",
         "inputArtifacts",
         "owner",
         "ownerControl",
+        "readProtocol",
+        "reviewClaims",
         "selectedEvidenceIds",
         "selectedTopicIds",
         "selectionRule",
@@ -1594,6 +1621,16 @@ def context_packet_entry(
     if manifest.get("owner") != SUBJECT:
         diagnostics.append(
             diag("CONTEXT_MANIFEST_INVALID", "context manifest owner is invalid", CONTEXT_MANIFEST_PATH)
+        )
+    if manifest.get("contextBudget") != context_budget() or manifest.get(
+        "readProtocol"
+    ) != read_protocol():
+        diagnostics.append(
+            diag(
+                "CONTEXT_MANIFEST_INVALID",
+                "context budget or read protocol is invalid",
+                CONTEXT_MANIFEST_PATH,
+            )
         )
     diagnostics.extend(
         validate_manifest_controls(
@@ -1622,23 +1659,28 @@ def context_packet_entry(
     expected_fragments: list[dict[str, object]] = []
     for name, path in CONTEXT_FRAGMENT_SPECS:
         try:
-            payload = files.read_bytes(path)
-        except ProjectIOError:
-            diagnostics.append(diag("CONTEXT_FRAGMENT_MISSING", "context fragment is unavailable", path))
+            expected_fragments.append(expected_context_fragment(files, name, path))
+        except ProjectIOError as error:
+            diagnostics.append(diag(error.code, str(error), error.relative_path))
             continue
-        expected_fragments.append(
-            {
-                "bytes": len(payload),
-                "name": name,
-                "path": path,
-                "sha256": sha256_bytes(payload),
-            }
-        )
     if fragments != expected_fragments:
         diagnostics.append(
             diag(
                 "CONTEXT_FRAGMENT_STALE",
                 "context fragment hashes do not match the current manifest",
+                CONTEXT_MANIFEST_PATH,
+            )
+        )
+    expected_claims: dict[str, object] | None = None
+    try:
+        expected_claims = expected_review_claims(files, CLAIMS_PATH)
+    except ProjectIOError as error:
+        diagnostics.append(diag(error.code, str(error), error.relative_path))
+    if expected_claims is not None and manifest.get("reviewClaims") != expected_claims:
+        diagnostics.append(
+            diag(
+                "CONTEXT_REVIEW_CLAIMS_STALE",
+                "review claims do not match the current manifest",
                 CONTEXT_MANIFEST_PATH,
             )
         )
@@ -1648,6 +1690,7 @@ def context_packet_entry(
         {
             "fragments": expected_fragments,
             "manifest": file_entry("manifest", CONTEXT_MANIFEST_PATH, manifest_payload),
+            "reviewClaims": expected_claims,
         },
         [],
     )
@@ -1840,6 +1883,8 @@ def main() -> int:
             diagnostics.extend(upstream_diagnostics)
             if not diagnostics:
                 diagnostics.extend(validate_semantics(data, feature_ids, requirement_ids))
+                if not diagnostics and args.mode in {"review", "publish-approved"}:
+                    diagnostics.extend(validate_design_readiness(data))
                 if not diagnostics and args.mode == "review":
                     diagnostics.extend(
                         validate_accelerated_review_inputs(files, args.project_root, data)
@@ -1899,7 +1944,16 @@ def main() -> int:
                     try:
                         files.write_atomic(args.risk_summary_path, summary_payload)
                         packet_payload = canonical_json_bytes(expected_packet)
-                        files.write_atomic(args.packet_path, packet_payload)
+                        if args.staging_root is None:
+                            publish_review_packet(
+                                files,
+                                packet_path=args.packet_path,
+                                packet_payload=packet_payload,
+                                reviewer_path=REVIEWER_PATH,
+                                approval_path=APPROVAL_PATH,
+                            )
+                        else:
+                            files.write_atomic(args.packet_path, packet_payload)
                     except ProjectIOError as error:
                         diagnostics.append(diag(error.code, str(error), error.relative_path))
                 else:

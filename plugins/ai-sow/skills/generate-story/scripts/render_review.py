@@ -28,6 +28,12 @@ DEFAULT_CANDIDATE = ".ai-sow/work/generate-story/delivery.candidate.json"
 DEFAULT_OUTPUT = ".ai-sow/work/generate-story/review.candidate.md"
 CONTEXT_ROOT = ".ai-sow/work/generate-story/context"
 QUESTION_PATTERN = re.compile(r"analyze-requirement-questionnaire#([A-Za-z][A-Za-z0-9-]*)")
+RENDERER_SCHEMA_COVERAGE = {
+    "delivery.acceptanceCriteria": "Acceptance Criteria",
+    "delivery.assumptions": "Assumption / Risk",
+    "delivery.integrations": "Integration",
+    "delivery.stories": "Feature → Story",
+}
 
 
 def parse_args() -> argparse.Namespace:

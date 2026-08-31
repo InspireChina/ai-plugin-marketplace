@@ -25,6 +25,16 @@ from runtime.project_io import ProjectFiles, ProjectIOError
 DEFAULT_CANDIDATE = ".ai-sow/work/analyze-as-is/asis.candidate.json"
 DEFAULT_OUTPUT = ".ai-sow/work/analyze-as-is/review.candidate.md"
 QUESTIONNAIRE_PATH = ".ai-sow/work/analyze-as-is/questionnaire.md"
+RENDERER_SCHEMA_COVERAGE = {
+    "asis.analysisScope": "调查范围",
+    "asis.commitments": "Commitment",
+    "asis.coverage": "Coverage",
+    "asis.effectiveStartItems": "Effective Start",
+    "asis.evidence": "Evidence",
+    "asis.items": "Item",
+    "asis.topicAssessments": "九个 Topic",
+    "asis.uncertainties": "Uncertainty",
+}
 
 
 def parse_args() -> argparse.Namespace:

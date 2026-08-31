@@ -23,6 +23,12 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.handoff import Artifact, canonical_json_bytes, sha256_bytes
+from runtime.context_pages import (
+    context_budget,
+    read_protocol,
+    write_context_fragments,
+    write_review_claims,
+)
 from runtime.claims import build_claims, claim_metrics, validate_claims
 from runtime.controls import owner_control
 from runtime.project_io import ProjectFiles, ProjectIOError
@@ -40,7 +46,6 @@ FRAGMENT_SPECS = (
     ("evidenceInventory", f"{CONTEXT_ROOT}/evidence-inventory.json"),
     ("premises", PREMISES_PATH),
     ("repoFacts", REPO_FACTS_PATH),
-    ("claims", CLAIMS_PATH),
 )
 
 
@@ -199,22 +204,11 @@ def main() -> int:
             },
             "premises": premises,
             "repoFacts": repo_facts,
-            "claims": claims,
         }
-        fragment_entries: list[dict[str, object]] = []
-        for name, path in FRAGMENT_SPECS:
-            payload = canonical_json_bytes(fragments[name])
-            files.write_atomic(path, payload)
-            fragment_entries.append(
-                {
-                    "bytes": len(payload),
-                    "name": name,
-                    "path": path,
-                    "sha256": sha256_bytes(payload),
-                }
-            )
+        fragment_entries = write_context_fragments(files, FRAGMENT_SPECS, fragments)
         manifest = {
             "algorithm": "ai-sow-analyze-as-is-context-v1",
+            "contextBudget": context_budget(),
             "fragments": fragment_entries,
             "inputArtifacts": [input_entry(artifact) for artifact in inputs],
             "owner": asis_validator.SUBJECT,
@@ -222,6 +216,8 @@ def main() -> int:
                 files.read_json(asis_validator.PROJECT_PATH), asis_validator.SUBJECT
             ),
             "claimMetrics": claim_metrics(claims),
+            "readProtocol": read_protocol(),
+            "reviewClaims": write_review_claims(files, CLAIMS_PATH, claims),
             "selectedEvidenceIds": [
                 entry["evidenceId"] for entry in candidate["evidence"]
             ],

@@ -22,7 +22,13 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from runtime.handoff import canonical_json_bytes, sha256_bytes
+from runtime.context_pages import (
+    context_budget,
+    read_protocol,
+    write_context_fragments,
+    write_review_claims,
+)
+from runtime.handoff import canonical_json_bytes
 from runtime.claims import build_claims, claim_metrics, validate_claims
 from runtime.controls import owner_control
 from runtime.project_io import ProjectFiles, ProjectIOError
@@ -128,12 +134,29 @@ def main() -> int:
             requirement_validator.CLAIMS_PATH,
             requirement_validator.VALIDATION_PATH,
         )
+        questionnaire_anchors = {
+            "evidence": [
+                {
+                    "evidenceId": record["Question ID"].lower(),
+                    "reference": (
+                        f"{requirement_validator.QUESTIONNAIRE_PATH}#"
+                        f"{record['Question ID']}"
+                    ),
+                    "supportsIds": [record["Disposition"].split(":", 1)[1]],
+                }
+                for record in records
+                if record.get("Disposition", "").startswith(
+                    "INCORPORATED_BUSINESS:"
+                )
+            ]
+        }
         claims = build_claims(
             requirement_validator.SUBJECT,
             (("requirements", candidate), ("sourceDisposition", source_disposition)),
             project_root=args.project_root,
             previous_verified=previous_verified,
             previous_claims=existing_claims(files, requirement_validator.CLAIMS_PATH),
+            anchor_documents=(questionnaire_anchors,),
         )
         claim_diagnostics = validate_claims(
             claims,
@@ -152,22 +175,15 @@ def main() -> int:
                 "declaration": questionnaire_declaration,
                 "records": records,
             },
-            "claims": claims,
         }
-        fragment_entries: list[dict[str, object]] = []
-        for name, path in requirement_validator.CONTEXT_FRAGMENT_SPECS:
-            payload = canonical_json_bytes(fragments[name])
-            files.write_atomic(path, payload)
-            fragment_entries.append(
-                {
-                    "bytes": len(payload),
-                    "name": name,
-                    "path": path,
-                    "sha256": sha256_bytes(payload),
-                }
-            )
+        fragment_entries = write_context_fragments(
+            files,
+            requirement_validator.CONTEXT_FRAGMENT_SPECS,
+            fragments,
+        )
         manifest = {
             "algorithm": requirement_validator.CONTEXT_ALGORITHM,
+            "contextBudget": context_budget(),
             "fragments": fragment_entries,
             "inputArtifacts": [requirement_validator.input_entry(artifact) for artifact in inputs],
             "owner": requirement_validator.SUBJECT,
@@ -176,6 +192,12 @@ def main() -> int:
                 requirement_validator.SUBJECT,
             ),
             "claimMetrics": claim_metrics(claims),
+            "readProtocol": read_protocol(),
+            "reviewClaims": write_review_claims(
+                files,
+                requirement_validator.CLAIMS_PATH,
+                claims,
+            ),
         }
         files.write_atomic(MANIFEST_PATH, canonical_json_bytes(manifest))
         print(

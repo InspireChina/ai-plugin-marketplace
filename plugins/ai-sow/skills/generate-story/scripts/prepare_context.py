@@ -21,7 +21,14 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from runtime.handoff import canonical_json_bytes, sha256_bytes
+from runtime.context_pages import (
+    PENDING_CLAIM_METRICS,
+    context_budget,
+    read_protocol,
+    write_context_fragments,
+    write_review_claims,
+)
+from runtime.handoff import canonical_json_bytes
 from runtime.claims import claim_metrics
 from runtime.controls import owner_control
 from runtime.project_io import ProjectFiles, ProjectIOError
@@ -35,7 +42,6 @@ FRAGMENT_SPECS = (
     ("asIs", f"{CONTEXT_ROOT}/as-is.json"),
     ("design", f"{CONTEXT_ROOT}/design.json"),
     ("questionnaire", f"{CONTEXT_ROOT}/questionnaire.json"),
-    ("claims", ".ai-sow/work/generate-story/claims.json"),
 )
 DESIGN_GO_LIVE_COLUMNS = (
     "Concern",
@@ -299,7 +305,7 @@ def main() -> int:
             go_live_rows(files),
             questionnaire_records(files),
         )
-        fragments["claims"] = prepare_claims(
+        claims = prepare_claims(
             files,
             args.project_root,
             story_validator.SUBJECT,
@@ -307,23 +313,13 @@ def main() -> int:
             ".ai-sow/work/generate-story/claims.json",
             validation_path=story_validator.VALIDATION_PATH,
         )
-        fragment_entries: list[dict[str, object]] = []
-        for name, path in FRAGMENT_SPECS:
-            payload = canonical_json_bytes(fragments[name])
-            files.write_atomic(path, payload)
-            fragment_entries.append(
-                {
-                    "bytes": len(payload),
-                    "name": name,
-                    "path": path,
-                    "sha256": sha256_bytes(payload),
-                }
-            )
+        fragment_entries = write_context_fragments(files, FRAGMENT_SPECS, fragments)
         input_errors, inputs = story_validator.owner_inputs(files)
         if input_errors:
             raise ProjectIOError("CONTEXT_INPUT_INVALID", MANIFEST_PATH, str(input_errors))
         manifest = {
             "algorithm": "ai-sow-generate-story-context-v1",
+            "contextBudget": context_budget(),
             "concernIds": list(story_validator.GO_LIVE_CONCERNS),
             "fragments": fragment_entries,
             "inputArtifacts": [story_validator.input_entry(item) for item in inputs],
@@ -331,7 +327,17 @@ def main() -> int:
             "ownerControl": owner_control(
                 files.read_json(story_validator.PROJECT_PATH), story_validator.SUBJECT
             ),
-            "claimMetrics": claim_metrics(fragments["claims"]),
+            "claimMetrics": (
+                PENDING_CLAIM_METRICS
+                if claims.get("status") == "PENDING_CANDIDATE"
+                else claim_metrics(claims)
+            ),
+            "readProtocol": read_protocol(),
+            "reviewClaims": write_review_claims(
+                files,
+                story_validator.CLAIMS_PATH,
+                claims,
+            ),
             "selectedEffectiveStartItemIds": sorted(effective_start_ids),
             "selectedFeatureIds": sorted(feature_ids),
             "selectedQuestionIds": sorted(

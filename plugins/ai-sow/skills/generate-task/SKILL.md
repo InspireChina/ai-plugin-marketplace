@@ -56,20 +56,29 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    ```text
    "<python-bin>" "<skill-root>/scripts/prepare_context.py" --project-root .
    ```
-2. 当前 Stage Agent 先读取 `.ai-sow/work/generate-task/context/manifest.json`，再用一个工具回合把 manifest 点名的五个 fragment 各读取且只读取一次；不得预先加载完整上游 artifact，也不得在随后回合用 `jq`、`sed` 或其他命令重新筛选、摘要或复读这些 fragment。closure 成功后从固定路径 `<skill-root>/contracts/estimate.schema.json` 读取 Schema 一次，并读取[评审模板](references/review-template.md)。路径映射是确定的：若 `SKILL.md` 位于 `<plugin-root>/skills/generate-task/SKILL.md`，Schema 就位于 `<plugin-root>/skills/generate-task/contracts/estimate.schema.json`，绝不位于 `<plugin-root>/contracts/`。不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema，也不得使用 `find` 或读取 test 代替合同。
+2. 当前 Stage Agent 先读取 `.ai-sow/work/generate-task/context/manifest.json`，再严格按五个输入 fragment 的 `pages[].order` 各读取一次；被截断 page 视为 `NOT_READ`，从同一 manifest 的首个未读页恢复。首次运行时 `reviewClaims.status` 为 `PENDING_CANDIDATE`，不得把空 claims 当评审输入。不得预先加载完整上游 artifact，也不得在随后回合重新筛选、摘要或复读已完成 page。closure 成功后从固定路径 `<skill-root>/contracts/estimate.schema.json` 读取 Schema 一次，并读取[评审模板](references/review-template.md)。路径映射是确定的：若 `SKILL.md` 位于 `<plugin-root>/skills/generate-task/SKILL.md`，Schema 就位于 `<plugin-root>/skills/generate-task/contracts/estimate.schema.json`，绝不位于 `<plugin-root>/contracts/`。不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema，也不得使用 `find` 或读取 test 代替合同。
 3. context compiler 已用权威项目模板和同一模板读取器生成 `template-catalog.json`；它是普通运行中唯一需要读取的模板目录投影，包含 37 项基础单元、13 个任务族、计数口径、包含/排除边界、可用工作模式和 S/M/L/X 规则。普通 candidate 流程不得运行 `read_template.py`，不得再次读取项目 XLSX，也不得读取 Skill-local `fixtures/sow-template.xlsx`；fixture 只属于构建和测试。基础人天、倍率、公式、SIT、UAT、风险和取整值不进入 context、Python 或稳定 JSON。
 4. 按计数口径识别实例，一实例一行。每个 Story 至少一条 Task；AC 与 Task 在同一 Story 内是多对多关系：每条 AC 至少由一个 Task 覆盖，多个不同基础单元 Task 可以共同满足同一 AC，一条 Task 也可以支持多条 AC。重复实例分行，不保存 `quantity`，也不保存 `professionalDomain`、`activity`、基础人天、倍率、Task 人天或 `sitEstimates`。不得为了适配 Task 计数口径反向拆分或改写已批准 Story/AC。
+
+   形成 candidate 前对共享 API、组件、数据对象或 Effective Start 的潜在碰撞逐组归一化：
+
+   - `SAME_INSTANCE`：两个 Task 实际指向同一个基础单元实例时，只保留 producing Story 下的一条；其他 Story 不复制计价行。
+   - `DISTINCT_DELIVERY_OBJECTS`：同一技术表面下存在可分别验收的工作对象时保留多条 Task，并按各自对象选择不同基础单元。例如客户可见查询操作使用 `BU-BUSINESS-SERVICE-API`，PostgreSQL/ElasticSearch schema、索引、访问层和读模型投影使用 `BU-DATA-MODEL`；“都涉及同一 API”本身既不要求合并，也不允许把不同对象都计为 API。
+   - `REUSE_CONSUMER`：消费方只有存在 Schema 允许且可独立估算的注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作时才生成 `接入复用` Task；普通调用或无项目侧交付时不生成 Task。
+
+   去重后若某 Story 没有任何独立基础单元实例或同 Story AC 无法覆盖，说明该 Story 本身不再可独立估算。Task Owner 不生成填充用人工测试或空壳 Task，也不直接改写 Delivery；返回 `STORY_OWNER_RETURN_REQUIRED` 并点名 Story、AC、候选 Task 和归并理由，由 `generate-story` Owner 在自己的 candidate、Reviewer 与批准边界内删除或合并 Story。该结果是正常 Owner 路由，不冻结一个明知可修复的 Task packet。
 5. 工作模式只允许 `新建 / 调整 / 接入复用`。每个 Task 最多用一个 `matchedEffectiveStartItemId` 引用足以证明工作模式的 Effective Start；它与 Design 使用同一组项目起点，不另建 Task 专用现状。调整和接入复用必须以 `workModeEvidence` 点名同一个 Effective Start，名称与上游记录完全一致，并在 Task 名称或理由中出现。只有该 Effective Start 的名称或摘要明确点名当前基础单元可调整的既有资产时才选择 `调整`；一般治理、平台、交付或运行边界本身不等于既有迁移方案、切换方案或测试资产，此时为新实例选择 `新建`，但按第 6 步继续引用受作用的 Effective Start。例如，复用既有 CI/CD 执行本项目的新切换仍是 `新建` 的发布切换；只有修改已存在的本项目切换方案或切换清单才是 `调整`。接入复用必须按 Schema 枚举顺序形成可独立估算的 `projectSideWorkTypes` 和 `projectSideWorkCommitment`，并令 `workModeRationale = "<effectiveStartItemName>保持不变；<projectSideWorkCommitment>。"` 精确成立；普通依赖引入或常规调用不单独生成 Task。最终工作簿将该 ID 显示为“关联现状条目”，名称直接来自 `90-系统现状` 的可见明细表。
 6. “替换”和“退役”不是工作模式。替换按替代能力、独立数据迁移、一个发布切换实例及系统功能下线拆分；新建的数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，也必须引用所作用的 Effective Start。
 7. 按当前基础单元自己的标准选择 `S / M / L`。S/L 的 `complexityRationale` 写出实例偏离 M 的具体事实；M 不保存该字段。命中 X 时继续拆分、澄清，或先生成专题调研/架构方案设计 Task，不能进入正式 Estimate。
 8. 每个顶级 Integration 恰好由一个内部或外部系统对接 Task 实现。Task 的 Story、Integration owner 和基础单元必须一致；非集成 Task 不得填写 `integrationId`。缺少登记时返回 `generate-story` 或 `generate-design`，不得临时编造。
 9. 每个 Story 最多一个“发布切换”Task；数据迁移单列。“问题诊断与恢复”与“同一根因问题整改”不得为同一 Story 重复计算诊断。只有已批准范围明确要求时才生成用户培训；不得生成泛化上线后支持、待命或容量 Task。
-10. 当前 Stage Agent 在 `.ai-sow/work/generate-task/` 形成 `estimate.candidate.json`，再调用确定性 renderer 从该 candidate 与项目模板哈希生成 `review.candidate.md`。不得手写或局部修补 review 投影；candidate 变化后必须整体重跑 renderer。投影覆盖 Story→Task、AC 多对多完整覆盖、基础单元、工作模式、复杂度、现状依据、Integration 一对一、Task 计价遗漏/重复/排除理由和实际使用的估算前提。多个 Task 引用同一 AC 是业务追溯，不等于基础单元重复计价。批准前不得改写正式 `.ai-sow/reviews/generate-task.md`、Estimate 或 receipt：
+10. 当前 Stage Agent 在 `.ai-sow/work/generate-task/` 形成 `estimate.candidate.json`，先重跑 `prepare_context.py` 生成 candidate-derived `claims.json` 并独立绑定 `reviewClaims.fragment`，再调用确定性 renderer 从该 candidate 与项目模板哈希生成 `review.candidate.md`。不得手写或局部修补 review 投影；candidate 变化后必须整体重跑 context compiler 与 renderer。投影覆盖 Story→Task、AC 多对多完整覆盖、基础单元、工作模式、复杂度、现状依据、Integration 一对一、Task 计价遗漏/重复/排除理由和实际使用的估算前提。多个 Task 引用同一 AC 是业务追溯，不等于基础单元重复计价。批准前不得改写正式 `.ai-sow/reviews/generate-task.md`、Estimate 或 receipt：
 
    ```text
+   "<python-bin>" "<skill-root>/scripts/prepare_context.py" --project-root .
    "<python-bin>" "<skill-root>/scripts/render_review.py" --project-root . --candidate .ai-sow/work/generate-task/estimate.candidate.json --output .ai-sow/work/generate-task/review.candidate.md
    ```
-11. 对候选与评审运行审批前闭环。`review` 模式执行全部确定性门禁，生成 `risk-summary.md` 和 canonical `review-packet.json`；packet 精确绑定 context manifest 与五个 evidence fragment。上游 handoff、input、context 或模板错误必须原样报告并停止。若首次 `review` 只返回当前 Task candidate 可修复的机械 diagnostics，机械门禁只允许一次整体修正：当前 Stage 仅使用公开 diagnostics、已读取的 Schema/context/模板目录整体复核全部 Task，重跑 renderer 和 `review`；不得读取 validator 源码、fixture 或完整上游。第二次仍为 `BLOCKED` 则原样报告并停止。该机械修正在 Reviewer 创建之前完成，不占用第 12 步的一次专业 finding 修复额度。work-only `review.candidate.md` 中的 `Reviewer: PASS` 与 `User Approval: APPROVED` 是拟发布的最终声明，在 `reviewer.json` 和 `approval.json` 精确绑定当前 packet 前没有授权效力：
+11. 对候选与评审运行审批前闭环。`review` 模式执行全部确定性门禁，生成 `risk-summary.md` 和 canonical `review-packet.json`；packet 精确绑定 context manifest、五个分页输入 fragment 与独立 review claims。上游 handoff、input、context 或模板错误必须原样报告并停止。若首次 `review` 只返回当前 Task candidate 可修复的机械 diagnostics，机械门禁只允许一次整体修正：当前 Stage 仅使用公开 diagnostics、已读取的 Schema/context/模板目录整体复核全部 Task，重跑 context compiler、renderer 和 `review`；不得读取 validator 源码、fixture 或完整上游。第二次仍为 `BLOCKED` 则原样报告并停止。该机械修正在 Reviewer 创建之前完成，不占用第 12 步的一次专业 finding 修复额度。work-only `review.candidate.md` 中的 `Reviewer: PASS` 与 `User Approval: APPROVED` 是拟发布的最终声明，在 `reviewer.json` 和 `approval.json` 精确绑定当前 packet 前没有授权效力：
 
    packet 的固定算法 token 为 `ai-sow-owner-review-packet-v1`；它属于 Owner-local 审批合同，不进入公共 runtime。
 
@@ -87,7 +96,9 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
      --audit .ai-sow/work/generate-task/patch-audit.json
    ```
 
-   `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才整体重跑 renderer 与 `review` 并形成新 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整上游、模板目录或 round-1 历史。轻量 Reviewer 仍有 findings 时 `BLOCKED`，不创建第三个 Reviewer。Reviewer `PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令，把下列对象按递归 key 排序、紧凑分隔符和一个结尾换行写入 work-only `reviewer.json`：
+   `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。脚本在 staging 中整体重建 context、review、risk summary 并运行 Owner `review` post-check；只有新 diff packet 全部通过后才原子提交并返回 `patchRoundConsumed: true`，否则当前 candidate、packet 与授权 sidecar 保持原字节。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整上游、模板目录或 round-1 历史。
+
+   轻量 Reviewer 的 finding 先按新 packet 冻结。若 finding 仅涉及当前 Estimate 的去重、基础单元改选、工作模式、边界说明或引用同步，且不改变上游 Story/AC、Integration 或交付范围，则归为 `TASK_LOCAL_CORRECTION`：允许一次追加的 finding-bound 字段 patch，仍由同一 Owner-local patch 事务重建全部投影和新 packet，再交给一个最终轻量 fresh-context Reviewer。整个 Owner 周期最多两次成功 patch、一个完整 Reviewer 和两个轻量 Reviewer；最终轻量 Reviewer 仍有 finding 才 `BLOCKED`。若 finding 需要删除或合并 Story/AC，则不伪造 Task-local 修复，按第 4 步返回 `STORY_OWNER_RETURN_REQUIRED`。Reviewer `PASS` 后 Stage 只运行“精确 Reviewer 绑定”命令，把下列对象按递归 key 排序、紧凑分隔符和一个结尾换行写入 work-only `reviewer.json`：
 
    ```json
    {"algorithm":"ai-sow-owner-reviewer-v1","decision":"PASS","owner":"generate-task","packetSha256":"<packet-sha256>"}
@@ -111,7 +122,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 ## 完成条件
 
-每个 Story 至少有一条 Task，每条 AC 至少由一个同 Story Task 覆盖；AC 与 Task 允许多对多追溯，Task 拆分不得反向修改 Story/AC。每条 Task 只对应一个模板允许的基础单元实例与工作模式。调整/接入复用、需要作用于现状的新建工作、复杂度偏离、Integration 一对一、发布切换、迁移及诊断/整改边界均有可追溯证据。稳定 Estimate 不保存任何计算结果；项目模板仍是基础人天、倍率、公式、SIT、UAT、风险和取整的唯一权威。Estimate 原字节发布并签发 receipt 后只推荐 `generate-sow` 与 PM 补充项并停止。
+每个保留的 Story 至少有一条独立 Task，每条 AC 至少由一个同 Story Task 覆盖；AC 与 Task 允许多对多追溯，Task 拆分不得反向修改 Story/AC。潜在实例碰撞已按 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER` 归一化；无法保留独立 Task 的 Story 已返回 Story Owner 删除或合并，而不是用测试或空壳 Task 填充。每条 Task 只对应一个模板允许的基础单元实例与工作模式。调整/接入复用、需要作用于现状的新建工作、复杂度偏离、Integration 一对一、发布切换、迁移及诊断/整改边界均有可追溯证据。稳定 Estimate 不保存任何计算结果；项目模板仍是基础人天、倍率、公式、SIT、UAT、风险和取整的唯一权威。Estimate 原字节发布并签发 receipt 后只推荐 `generate-sow` 与 PM 补充项并停止。
 
 ## Reconciliation Adapter
 

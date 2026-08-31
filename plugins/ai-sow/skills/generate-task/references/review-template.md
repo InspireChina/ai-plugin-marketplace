@@ -42,7 +42,11 @@ Integration Map: integration-example=task-example
 
 说明没有遗漏 Story 或 AC；多个 Task 引用同一 AC 只表示共同满足该业务验收条件，不视为重复计价。另行证明没有重复计算基础单元、发布切换、诊断/整改或 Integration，并记录明确排除项。
 
+Renderer 把“相同基础单元 + 相同 Effective Start”的 Task 组列为潜在实例碰撞，但不机械判定重复。Reviewer 必须按交付对象和计数口径把每组归为 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER`：同一实例只保留一个 producing Task；同一 API 下的外部业务操作与内部读模型等不同交付对象可保留，但应分别选择实际基础单元；消费方只有存在可独立估算的项目侧接入工作时才生成 `接入复用` Task。
+
 Scope Review: PASSED
+Potential Instance Collisions: <base-unit>@<effective-start>=task-example,task-example-two
+Collision Classification: SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER
 
 ## 估算前提
 

@@ -494,8 +494,11 @@ def test_prepare_context_writes_owner_local_reference_closure_without_calculatio
         ".ai-sow/work/generate-task/context/as-is.json",
         ".ai-sow/work/generate-task/context/technical-requirements.json",
         ".ai-sow/work/generate-task/context/template-catalog.json",
-        ".ai-sow/work/generate-task/claims.json",
     ]
+    assert manifest["reviewClaims"]["status"] == "READY"
+    assert manifest["reviewClaims"]["fragment"]["path"] == (
+        ".ai-sow/work/generate-task/claims.json"
+    )
     assert manifest["selectedEffectiveStartItemIds"] == [
         "effective-start-customer-api",
         "effective-start-hosting-architecture",
@@ -504,6 +507,63 @@ def test_prepare_context_writes_owner_local_reference_closure_without_calculatio
     assert "M档人天" not in serialized
     assert "complexityFactors" not in serialized
     assert "ROUND_STORY" not in serialized
+
+
+def test_renderer_surfaces_potential_instance_collision_without_merging_distinct_units(
+    tmp_path: Path,
+) -> None:
+    prepare(tmp_path)
+
+    def add_query_tasks(value: dict[str, object]) -> None:
+        tasks = value["tasks"]  # type: ignore[index]
+        tasks.extend(
+            [
+                {
+                    "taskId": "task-profile-query-api",
+                    "storyId": "story-customer-profile",
+                    "acceptanceCriterionIds": ["ac-profile-visible"],
+                    "name": "调整客户档案查询 API",
+                    "baseUnit": "BU-BUSINESS-SERVICE-API",
+                    "workMode": "调整",
+                    "workModeRationale": "调整现有客户档案查询接口。",
+                    "complexity": "M",
+                    "matchedEffectiveStartItemId": "effective-start-customer-api",
+                    "rationale": "按一个客户档案查询业务操作计数。",
+                },
+                {
+                    "taskId": "task-profile-query-projection",
+                    "storyId": "story-profile-hosting-discovery",
+                    "acceptanceCriterionIds": ["ac-profile-hosting-decision"],
+                    "name": "调整客户档案查询投影",
+                    "baseUnit": "BU-BUSINESS-SERVICE-API",
+                    "workMode": "调整",
+                    "workModeRationale": "调整现有客户档案读模型投影。",
+                    "complexity": "M",
+                    "matchedEffectiveStartItemId": "effective-start-customer-api",
+                    "rationale": "按一个客户档案详情和列表接口组计数。",
+                },
+            ]
+        )
+
+    mutate_candidate(tmp_path, add_query_tasks)
+    rendered = run_renderer(tmp_path)
+    assert rendered.returncode == 0, rendered.stdout
+    review_path = tmp_path / ".ai-sow/work/generate-task/review.candidate.md"
+    review = review_path.read_text(encoding="utf-8")
+    assert (
+        "Potential Instance Collisions: "
+        "BU-BUSINESS-SERVICE-API@effective-start-customer-api="
+        "task-profile-query-api,task-profile-query-projection"
+    ) in review
+
+    def separate_read_model(value: dict[str, object]) -> None:
+        value["tasks"][-1]["baseUnit"] = "BU-DATA-MODEL"  # type: ignore[index]
+
+    mutate_candidate(tmp_path, separate_read_model)
+    rendered = run_renderer(tmp_path)
+    assert rendered.returncode == 0, rendered.stdout
+    review = review_path.read_text(encoding="utf-8")
+    assert "Potential Instance Collisions: NONE" in review
 
 
 def test_prepare_context_accepts_repository_anchored_document_evidence(
@@ -664,8 +724,9 @@ def test_review_mode_writes_hash_bound_packet_without_formal_publication(tmp_pat
         "asIs",
         "technicalRequirements",
         "templateCatalog",
-        "claims",
     ]
+    assert packet["context"]["reviewClaims"]["status"] == "READY"
+    assert packet["context"]["reviewClaims"]["fragment"]["name"] == "claims"
     assert packet["riskSummary"]["sha256"] == sha256_bytes(risk_path.read_bytes())
     assert "Task Count: 3" in risk_path.read_text(encoding="utf-8")
     assert not (tmp_path / ".ai-sow/reviews/generate-task.md").exists()
@@ -1324,6 +1385,8 @@ def test_skill_uses_review_candidate_publish_stop_and_local_template() -> None:
         "estimate.candidate.json", "只推荐用户显式调用 `generate-sow`", "PM 补充项",
         "然后 STOP", "fixtures/sow-template.xlsx", "不得重新诊断 Story 或 Design",
         "review-packet.json", "approval.json", "不继承当前完整聊天",
+        "SAME_INSTANCE", "DISTINCT_DELIVERY_OBJECTS", "STORY_OWNER_RETURN_REQUIRED",
+        "TASK_LOCAL_CORRECTION", "最多两次成功 patch",
     ):
         assert required in contract
     assert "Validator Agent" not in contract
@@ -1339,6 +1402,8 @@ def test_review_template_documents_task_maps_and_rebind_declarations() -> None:
         "Stable IDs: task-example",
         "Integration Map: integration-example=task-example",
         "Scope Review: PASSED",
+        "Potential Instance Collisions:",
+        "SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER",
         "Template SHA-256: <64-lowercase-hex>",
         "Impact: NO_CHANGE",
         "Previous Receipt SHA-256: generate-story=<old-hash>",

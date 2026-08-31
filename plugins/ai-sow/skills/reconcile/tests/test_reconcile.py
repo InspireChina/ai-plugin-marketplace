@@ -659,7 +659,7 @@ def build_project(
 
     fingerprint_payload = {
         "algorithm": "ai-sow-package-v1",
-        "generatorContract": "receipt-only-v1",
+        "generatorContract": RECONCILE.GENERATOR_CONTRACT,
         "projectIdentity": {
             key: PROJECT_VALUE[key]
             for key in ("projectId", "pluginVersion", "sowStandardVersion")
@@ -716,6 +716,7 @@ def build_project(
     package_manifest = {
         "packageId": package_id,
         "fingerprintAlgorithm": "ai-sow-package-v1",
+        "generatorContract": RECONCILE.GENERATOR_CONTRACT,
         "generationFingerprint": package_fingerprint,
         "generatedWorkbookSha256": RECONCILE.sha256_bytes(workbook_payload),
         "projectId": PROJECT_VALUE["projectId"],
@@ -1395,6 +1396,21 @@ def test_fake_but_self_consistent_package_fingerprint_is_blocked(tmp_path: Path)
         run(project)
 
     assert captured.value.code == "PACKAGE_FINGERPRINT_MISMATCH"
+
+
+def test_package_generator_contract_must_match_reconcile(tmp_path: Path) -> None:
+    project, manifest = build_project(tmp_path)
+    root = package_root(project, manifest)
+    package_manifest_path = root / "manifest.json"
+    package_manifest = json.loads(package_manifest_path.read_text(encoding="utf-8"))
+    package_manifest["generatorContract"] = "receipt-only-v1"
+    package_manifest_path.write_bytes(RECONCILE.canonical_json_bytes(package_manifest))
+    refresh_package_tree(project, manifest)
+
+    with pytest.raises(RECONCILE.ReconcileError) as captured:
+        run(project)
+
+    assert captured.value.code == "PACKAGE_GENERATOR_CONTRACT_MISMATCH"
 
 
 def test_package_template_digest_must_match_formal_template(tmp_path: Path) -> None:

@@ -23,7 +23,14 @@ for import_root in (SCRIPT_ROOT, PLUGIN_ROOT):
 import validate as design_validator
 from runtime.claims import claim_metrics
 from runtime.controls import owner_control
-from runtime.handoff import canonical_json_bytes, sha256_bytes
+from runtime.context_pages import (
+    PENDING_CLAIM_METRICS,
+    context_budget,
+    read_protocol,
+    write_context_fragments,
+    write_review_claims,
+)
+from runtime.handoff import canonical_json_bytes
 from runtime.project_io import ProjectFiles, ProjectIOError
 from runtime.review_checks import prepare_claims
 
@@ -36,7 +43,6 @@ FRAGMENT_SPECS = (
     ("uncertainties", f"{CONTEXT_ROOT}/uncertainties.json"),
     ("effectiveStart", f"{CONTEXT_ROOT}/effective-start.json"),
     ("sourceAnchors", f"{CONTEXT_ROOT}/source-anchors.json"),
-    ("claims", ".ai-sow/work/generate-design/claims.json"),
 )
 
 
@@ -190,20 +196,8 @@ def main() -> int:
             "uncertainties": uncertainties,
             "effectiveStart": effective_start,
             "sourceAnchors": source_anchors,
-            "claims": claims,
         }
-        fragment_entries: list[dict[str, object]] = []
-        for name, path in FRAGMENT_SPECS:
-            payload = canonical_json_bytes(fragments[name])
-            files.write_atomic(path, payload)
-            fragment_entries.append(
-                {
-                    "bytes": len(payload),
-                    "name": name,
-                    "path": path,
-                    "sha256": sha256_bytes(payload),
-                }
-            )
+        fragment_entries = write_context_fragments(files, FRAGMENT_SPECS, fragments)
         input_errors, inputs = design_validator.owner_inputs(files)
         if input_errors:
             raise ProjectIOError(
@@ -211,6 +205,7 @@ def main() -> int:
             )
         manifest = {
             "algorithm": "ai-sow-generate-design-context-v1",
+            "contextBudget": context_budget(),
             "fragments": fragment_entries,
             "inputArtifacts": [
                 design_validator.input_entry(artifact) for artifact in inputs
@@ -219,7 +214,17 @@ def main() -> int:
             "ownerControl": owner_control(
                 files.read_json(design_validator.PROJECT_PATH), design_validator.SUBJECT
             ),
-            "claimMetrics": claim_metrics(claims),
+            "claimMetrics": (
+                PENDING_CLAIM_METRICS
+                if claims.get("status") == "PENDING_CANDIDATE"
+                else claim_metrics(claims)
+            ),
+            "readProtocol": read_protocol(),
+            "reviewClaims": write_review_claims(
+                files,
+                design_validator.CLAIMS_PATH,
+                claims,
+            ),
             "selectedEffectiveStartItemIds": sorted(
                 entry["effectiveStartItemId"]
                 for entry in list_at(asis, "effectiveStartItems")

@@ -72,12 +72,55 @@ def package_tree(root: Path) -> dict[str, str]:
     }
 
 
+def package_tree_sha256(root: Path) -> str:
+    entries = [
+        {"path": path, "sha256": digest}
+        for path, digest in package_tree(root).items()
+    ]
+    return hashlib.sha256(GENERATOR.canonical_json_bytes(entries)).hexdigest()
+
+
 def table_index(workbook: openpyxl.Workbook) -> dict[str, tuple[object, object]]:
     return {
         name: (worksheet, worksheet.tables[name])
         for worksheet in workbook.worksheets
         for name in worksheet.tables
     }
+
+
+def test_long_text_fixture_preserves_wrapping_and_expands_visible_row_height(
+    tmp_path: Path,
+) -> None:
+    template = FIXTURE / ".ai-sow/templates/sow-template.xlsx"
+    workbook = openpyxl.load_workbook(template, data_only=False)
+    description = "项目开工时可依赖现有能力，但生产切换仍需逐项验证。" * 24
+
+    WORKBOOK.fill_table(
+        workbook,
+        "AsIsDetailTable",
+        [
+            {
+                "主题名称": "应用与组件",
+                "现状条目名称": "长文本布局认证",
+                "现状描述": description,
+                "起点可用性": "当前已存在",
+            }
+        ],
+    )
+    output = tmp_path / "long-text-certification.xlsx"
+    workbook.save(output)
+
+    reloaded = openpyxl.load_workbook(output, data_only=False)
+    worksheet, table = table_index(reloaded)["AsIsDetailTable"]
+    min_col, min_row, max_col, _ = range_boundaries(table.ref)
+    headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+    description_column = min_col + headers.index("现状描述")
+    data_row = min_row + 1
+
+    assert worksheet.cell(data_row, description_column).value == description
+    assert worksheet.cell(data_row, description_column).alignment.wrap_text is True
+    assert worksheet.row_dimensions[data_row].height is not None
+    assert worksheet.row_dimensions[data_row].height > 100
 
 
 def test_as_is_projection_distinguishes_current_and_expected_start_availability() -> None:
@@ -144,6 +187,17 @@ def test_receipt_only_generation_is_deterministic_and_reuses_identical_package(t
     second_package = second_project / str(second_result["packagePath"])
     assert package_tree(first_package) == package_tree(second_package)
     assert (first_package / "sow.xlsx").read_bytes() == REFERENCE_WORKBOOK.read_bytes()
+    assert first_result["generatorContract"] == "receipt-only-v2"
+    assert first_result["workbookSha256"] == hashlib.sha256(
+        (first_package / "sow.xlsx").read_bytes()
+    ).hexdigest()
+    assert first_result["manifestSha256"] == hashlib.sha256(
+        (first_package / "manifest.json").read_bytes()
+    ).hexdigest()
+    assert first_result["packageTreeSha256"] == package_tree_sha256(first_package)
+    assert first_result["fileCount"] == len(package_tree(first_package))
+    manifest = json.loads((first_package / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["generatorContract"] == "receipt-only-v2"
 
     repeated, repeated_result = run_generator(first_project)
     assert repeated.returncode == 0
@@ -173,6 +227,7 @@ def test_package_fingerprint_binds_every_source_name_path_and_hash(
         "pluginVersion": project["pluginVersion"],
         "sowStandardVersion": project["sowStandardVersion"],
     }
+    assert payload["generatorContract"] == "receipt-only-v2"
     assert payload["project"] == expected("project", GENERATOR.PROJECT_PATH, GENERATOR.PROJECT_PATH)
     assert payload["inputs"] == [
         expected(name, GENERATOR.PACKAGE_DATA_PATHS[name], source_path)
@@ -511,6 +566,7 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
         workbook.close()
 
     manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["generatorContract"] == "receipt-only-v2"
     assert set(manifest["inputs"]) == {
         "sourceRequirements",
         "asis",
@@ -544,7 +600,7 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
         for item in asis["analysisScope"]["priorSowSnapshots"]
     ]
     schema = json.loads((SKILL_ROOT / "contracts/manifest.schema.json").read_text(encoding="utf-8"))
-    assert schema["$id"] == "urn:ai-sow:generate-sow:manifest:0.2"
+    assert schema["$id"] == "urn:ai-sow:generate-sow:manifest:0.3"
 
 
 def test_unsupported_project_version_is_rejected(tmp_path: Path) -> None:

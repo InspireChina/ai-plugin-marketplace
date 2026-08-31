@@ -46,6 +46,8 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 - 当前 Stage Agent 就是当前宿主 task，也是本 Skill 的唯一用户接口：直接与用户协作，完成来源登记、业务分析、问卷关闭、candidate、确定性 review 投影、机械校验和最多一次字段级 finding 修复。不要为 Stage 工作另派 Agent。
 - 只有 candidate 通过机械校验并形成 hash-bound `review-packet.json` 后，才创建一个 fresh Reviewer Agent。Reviewer 不继承当前完整聊天，只读取 packet、其中绑定的 candidate、context、review、risk summary 和项目内来源；它只返回 `PASS` 或带证据 findings，不修改文件。
 - 当前 packet 只创建一个完整 Reviewer。Reviewer 返回 findings 时，Stage 先按共享合同用 `record-reviewer` 冻结 `BLOCKED` 与全部 finding ID，再确认被审 candidate 仍与 packet 绑定字节一致，把每项字段变更写入 `patch.json`，并通过 Owner-local `scripts/apply_patch.py` 应用；不得直接编辑 candidate 或整段重写。Requirement finding 可分别作用于 `requirements.candidate.json` 或 `source-disposition.json`，一次 patch 只修改其中一个文件：
+- 同一 finding 跨 `requirements.candidate.json` 与 `source-disposition.json` 时，不得拆成两次成功
+  patch；改用共享合同的顶层 `documents` 数组，让两个白名单候选与 post-check 在一个事务中提交。
 
   ```text
   "<python-bin>" "<skill-root>/scripts/apply_patch.py" \
@@ -56,7 +58,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
     --audit .ai-sow/work/analyze-requirement/patch-audit.json
   ```
 
-  `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才重建 context、review、risk summary 与 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整来源或 round-1 历史。轻量 Reviewer 仍有 findings 时返回 `BLOCKED`，不创建第三个 Reviewer。
+  `PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。脚本在 staging 中整体重建 context、review、risk summary 并运行 Owner `review` post-check；只有新 diff packet 全部通过后才原子提交并返回 `patchRoundConsumed: true`，否则当前 candidate、packet 与授权 sidecar 保持原字节。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载完整来源或 round-1 历史。轻量 Reviewer 仍有 findings 时返回 `BLOCKED`，不创建第三个 Reviewer。
 - 确定性脚本是机械门禁，不是 Agent。原样报告 outcome、diagnostics、hash 与 receipt，不解释或放宽失败。
 
 Reviewer 不可用、packet 无法稳定绑定，或需要的用户事实仍缺失时返回 `BLOCKED`。不得让 Stage 自审，也不得创建第二个 Reviewer 规避 findings。
@@ -119,7 +121,7 @@ Stage 在 work-only 路径形成完整候选：
   --review-path .ai-sow/work/analyze-requirement/review.candidate.md
 ```
 
-`prepare_context.py` 先按 Skill-local schema 校验来源处置表，再固化当前项目、已登记来源、逐项处置和问卷终态的 Owner-local closure。`render_review.py` 从 candidate 与已固化处置 fragment 确定性投影专业评审材料。`--mode review` 重新校验 Schema、来源字节、BUSINESS Owner-local ID/关系、问卷终态和 review 声明，写入：
+`prepare_context.py` 先按 Skill-local schema 校验来源处置表，再固化当前项目、已登记来源、逐项处置和问卷终态的 Owner-local closure。输入 fragment 按 manifest 固定预算分页并按页序各读取一次；`claims.json` 作为独立 `reviewClaims.fragment` 绑定，不混入输入 fragments。`render_review.py` 从 candidate 与已固化处置 fragment 确定性投影专业评审材料。`--mode review` 重新校验 Schema、来源字节、BUSINESS Owner-local ID/关系、问卷终态和 review 声明，写入：
 
 ```text
 .ai-sow/work/analyze-requirement/context/manifest.json

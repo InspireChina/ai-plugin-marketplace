@@ -107,6 +107,7 @@ def validate_text_gates(
     count_anchors: Sequence[Mapping[str, Any]] = (),
     limited_prefixes: Sequence[str] = DEFAULT_LIMITED_PREFIXES,
     absolute_claim_paths: set[str] | None = None,
+    evidence_anchor_paths: set[str] | None = None,
 ) -> list[dict[str, object]]:
     """Validate local-path privacy and evidence-bound absolute/count claims."""
 
@@ -155,6 +156,8 @@ def validate_text_gates(
                 )
             )
         if anchors_by_path.get(path):
+            continue
+        if evidence_anchor_paths is not None and path in evidence_anchor_paths:
             continue
         if absolute_claim_paths is not None and path not in absolute_claim_paths:
             continue

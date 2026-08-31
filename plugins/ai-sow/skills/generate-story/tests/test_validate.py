@@ -14,10 +14,12 @@ PLUGIN_ROOT = SKILL_ROOT.parents[1]
 SCRIPT = SKILL_ROOT / "scripts/validate.py"
 PREPARE_CONTEXT = SKILL_ROOT / "scripts/prepare_context.py"
 RENDER_REVIEW = SKILL_ROOT / "scripts/render_review.py"
+APPLY_PATCH = SKILL_ROOT / "scripts/apply_patch.py"
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.handoff import Artifact, OwnerContract, canonical_json_bytes, publish_owner, sha256_bytes
+from runtime.patch import apply_operations, patch_audit
 from runtime.project_io import ProjectFiles
 
 
@@ -466,6 +468,42 @@ def run_script(script: Path, root: Path, *arguments: str) -> subprocess.Complete
     )
 
 
+def write_field_patch(
+    root: Path,
+    operations: list[dict[str, object]],
+) -> None:
+    candidate_path = root / ".ai-sow/work/generate-story/delivery.candidate.json"
+    before = json.loads(candidate_path.read_text(encoding="utf-8"))
+    after = apply_operations(before, operations)
+    draft = {"operations": operations, "acknowledgedClosureIds": []}
+    suspects = patch_audit(before, after, draft)["syncSuspects"]
+    write_bytes(
+        root,
+        ".ai-sow/work/generate-story/patch.json",
+        canonical_json_bytes(
+            {
+                "operations": operations,
+                "acknowledgedClosureIds": suspects,
+            }
+        ),
+    )
+
+
+def run_field_patch(root: Path) -> subprocess.CompletedProcess[str]:
+    return run_script(
+        APPLY_PATCH,
+        root,
+        "--base",
+        ".ai-sow/work/generate-story/delivery.candidate.json",
+        "--candidate",
+        ".ai-sow/work/generate-story/delivery.candidate.json",
+        "--patch",
+        ".ai-sow/work/generate-story/patch.json",
+        "--audit",
+        ".ai-sow/work/generate-story/patch-audit.json",
+    )
+
+
 def design_review() -> bytes:
     rows = []
     for concern in GO_LIVE_CONCERNS:
@@ -529,6 +567,143 @@ def test_integration_review_projection_includes_boundary_and_target_kind(tmp_pat
         "Delivery Boundary | Target Kind | Design Decisions | Decision Rationale |"
     ) in review
     assert "| INTERNAL | END_TO_END | SYSTEM | decision-profile-api | — |" in review
+
+
+def test_patch_transaction_commits_post_check_and_archives_stale_authorization(
+    tmp_path: Path,
+) -> None:
+    prepare_candidate_first(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-story/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    old_packet_path = tmp_path / ".ai-sow/work/generate-story/review-packet.json"
+    old_packet = old_packet_path.read_bytes()
+    old_packet_hash = bind_review_packet(tmp_path)
+    old_reviewer = (tmp_path / ".ai-sow/work/generate-story/reviewer.json").read_bytes()
+    old_approval = (tmp_path / ".ai-sow/work/generate-story/approval.json").read_bytes()
+    write_field_patch(
+        tmp_path,
+        [
+            {
+                "op": "replace",
+                "path": "/stories/0/name",
+                "value": "客户档案结果交付（已澄清）",
+                "findingId": "STORY-REVIEW-001",
+            }
+        ],
+    )
+
+    result = run_field_patch(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+    payload = result_payload(result)
+    assert payload["outcome"] == "OK"
+    assert payload["patchRoundConsumed"] is True
+    assert "已澄清" in (
+        tmp_path / ".ai-sow/work/generate-story/delivery.candidate.json"
+    ).read_text(encoding="utf-8")
+    assert old_packet_path.read_bytes() != old_packet
+    archive = tmp_path / ".ai-sow/work/generate-story/archive" / old_packet_hash
+    assert (archive / "review-packet.json").read_bytes() == old_packet
+    assert (archive / "reviewer.json").read_bytes() == old_reviewer
+    assert (archive / "approval.json").read_bytes() == old_approval
+    assert not (tmp_path / ".ai-sow/work/generate-story/reviewer.json").exists()
+    assert not (tmp_path / ".ai-sow/work/generate-story/approval.json").exists()
+
+
+def test_patch_transaction_rolls_back_when_owner_post_check_fails(tmp_path: Path) -> None:
+    prepare_candidate_first(tmp_path)
+    reviewed = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-story/review.candidate.md",
+    )
+    assert reviewed.returncode == 0, reviewed.stdout
+    candidate_path = tmp_path / ".ai-sow/work/generate-story/delivery.candidate.json"
+    packet_path = tmp_path / ".ai-sow/work/generate-story/review-packet.json"
+    candidate_before = candidate_path.read_bytes()
+    packet_before = packet_path.read_bytes()
+    bind_review_packet(tmp_path)
+    reviewer_before = (tmp_path / ".ai-sow/work/generate-story/reviewer.json").read_bytes()
+    approval_before = (tmp_path / ".ai-sow/work/generate-story/approval.json").read_bytes()
+    write_bytes(
+        tmp_path,
+        ".ai-sow/work/generate-story/patch-audit.json",
+        b"previous audit\n",
+    )
+    write_field_patch(
+        tmp_path,
+        [
+            {
+                "op": "replace",
+                "path": "/stories/0/featureId",
+                "value": "feature-unknown",
+                "findingId": "STORY-REVIEW-002",
+            }
+        ],
+    )
+
+    result = run_field_patch(tmp_path)
+
+    assert result.returncode == 2
+    payload = result_payload(result)
+    assert payload["outcome"] == "BLOCKED"
+    assert payload["patchRoundConsumed"] is False
+    assert "PATCH_POST_CHECK_FAILED" in codes(result)
+    assert candidate_path.read_bytes() == candidate_before
+    assert packet_path.read_bytes() == packet_before
+    assert (
+        tmp_path / ".ai-sow/work/generate-story/patch-audit.json"
+    ).read_bytes() == b"previous audit\n"
+    assert (
+        tmp_path / ".ai-sow/work/generate-story/reviewer.json"
+    ).read_bytes() == reviewer_before
+    assert (
+        tmp_path / ".ai-sow/work/generate-story/approval.json"
+    ).read_bytes() == approval_before
+    assert not (tmp_path / ".ai-sow/work/generate-story/archive").exists()
+
+
+def test_new_review_packet_rotates_current_authorization_sidecars(tmp_path: Path) -> None:
+    prepare_candidate_first(tmp_path)
+    first_review = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-story/review.candidate.md",
+    )
+    assert first_review.returncode == 0, first_review.stdout
+    old_packet_path = tmp_path / ".ai-sow/work/generate-story/review-packet.json"
+    old_packet = old_packet_path.read_bytes()
+    old_packet_hash = bind_review_packet(tmp_path)
+    old_reviewer = (tmp_path / ".ai-sow/work/generate-story/reviewer.json").read_bytes()
+    old_approval = (tmp_path / ".ai-sow/work/generate-story/approval.json").read_bytes()
+    mutate(
+        tmp_path,
+        ".ai-sow/work/generate-story/delivery.candidate.json",
+        lambda value: value["stories"][0].update(
+            {"name": "客户档案结果交付（新 packet）"}
+        ),
+    )
+    assert run_script(PREPARE_CONTEXT, tmp_path).returncode == 0
+    assert run_script(RENDER_REVIEW, tmp_path).returncode == 0
+
+    second_review = run_validator(
+        tmp_path,
+        "review",
+        review_path=".ai-sow/work/generate-story/review.candidate.md",
+    )
+
+    assert second_review.returncode == 0, second_review.stdout
+    assert old_packet_path.read_bytes() != old_packet
+    archive = tmp_path / ".ai-sow/work/generate-story/archive" / old_packet_hash
+    assert (archive / "review-packet.json").read_bytes() == old_packet
+    assert (archive / "reviewer.json").read_bytes() == old_reviewer
+    assert (archive / "approval.json").read_bytes() == old_approval
+    assert not (tmp_path / ".ai-sow/work/generate-story/reviewer.json").exists()
+    assert not (tmp_path / ".ai-sow/work/generate-story/approval.json").exists()
 
 
 def bind_review_packet(root: Path) -> str:
@@ -1062,6 +1237,75 @@ def test_rejects_integration_boundary_mismatch(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "INTEGRATION_BOUNDARY_MISMATCH" in codes(result)
+
+
+def test_task_readiness_lint_requires_ownership_and_thresholds(
+    tmp_path: Path,
+) -> None:
+    design = copy.deepcopy(DESIGN)
+    design["decisions"].append(
+        {
+            "designDecisionId": "decision-profile-performance",
+            "name": "客户档案性能门禁",
+            "decision": "发布前观察客户档案 API 的运行表现。",
+            "rationale": "生产发布需要可判定的性能门禁。",
+            "designItemIds": ["design-customer-profile"],
+            "effectiveStartItemIds": ["effective-start-customer-api"],
+            "relatedFeatureIds": ["feature-profile-api"],
+            "decisionKind": "OPERATIONAL_THRESHOLD",
+            "evidenceIds": ["evidence-customer-api"],
+        }
+    )
+    design["scopeDecisions"][1]["requiredDecisionKinds"].append(
+        "OPERATIONAL_THRESHOLD"
+    )
+    delivery = fixture("delivery.valid.json")
+    delivery["acceptanceCriteria"][1]["approvalDecisionIds"].append(
+        "decision-profile-performance"
+    )
+    prepare(tmp_path, design=design, delivery=delivery)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 2
+    assert {
+        "TASK_READINESS_OWNERSHIP_MISSING",
+        "TASK_READINESS_THRESHOLD_MISSING",
+    }.issubset(codes(result))
+
+
+def test_task_readiness_accepts_owned_quantified_threshold(
+    tmp_path: Path,
+) -> None:
+    design = copy.deepcopy(DESIGN)
+    design["decisions"].append(
+        {
+            "designDecisionId": "decision-profile-performance",
+            "name": "客户档案性能门禁",
+            "decision": (
+                "客户档案 API P95 <= 2.5 秒，统计窗口 5 分钟；"
+                "平台运维团队负责告警与回滚决策。"
+            ),
+            "rationale": "生产发布需要可判定且有明确责任方的性能门禁。",
+            "designItemIds": ["design-customer-profile"],
+            "effectiveStartItemIds": ["effective-start-customer-api"],
+            "relatedFeatureIds": ["feature-profile-api"],
+            "decisionKind": "OPERATIONAL_THRESHOLD",
+            "evidenceIds": ["evidence-customer-api"],
+        }
+    )
+    design["scopeDecisions"][1]["requiredDecisionKinds"].append(
+        "OPERATIONAL_THRESHOLD"
+    )
+    delivery = fixture("delivery.valid.json")
+    delivery["acceptanceCriteria"][1]["approvalDecisionIds"].append(
+        "decision-profile-performance"
+    )
+    prepare(tmp_path, design=design, delivery=delivery)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
 
 
 def test_accepts_integration_without_typed_design_decision_when_reason_is_explicit(

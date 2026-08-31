@@ -25,8 +25,17 @@ NARRATIVE_FIELDS = {
     "handling",
     "workModeRationale",
     "complexityRationale",
+    "commonConstraintsOutOfScope",
+    "constraintsNfr",
+    "deliveryBoundary",
+    "gapRationale",
+    "involvedSystemsData",
+    "outcome",
+    "targetOutcome",
 }
 FACTUAL_PARENT_COLLECTIONS = {"evidence", "sourceDocuments"}
+FACT_VERIFIER_ROUTE = "FACT_VERIFIER_LOW"
+JUDGMENT_REVIEWER_ROUTE = "JUDGMENT_REVIEWER_DEEP"
 
 
 def _claim_id(owner: str, owner_field: str, text: str) -> str:
@@ -218,6 +227,11 @@ def build_claims(
                             claim["confidence"] = prior["confidence"]
                         if isinstance(prior.get("derivedFrom"), str):
                             claim["derivedFrom"] = prior["derivedFrom"]
+                    claim["reviewRoute"] = (
+                        FACT_VERIFIER_ROUTE
+                        if claim["kind"] == "FACTUAL" and anchors
+                        else JUDGMENT_REVIEWER_ROUTE
+                    )
                     cached = previous.get(claim_id)
                     current_anchor = anchors[0] if anchors else {}
                     if (
@@ -248,6 +262,10 @@ def claim_metrics(value: object) -> dict[str, object]:
         claims = []
     verified: list[str] = []
     remaining: list[str] = []
+    routes: dict[str, list[str]] = {
+        FACT_VERIFIER_ROUTE: [],
+        JUDGMENT_REVIEWER_ROUTE: [],
+    }
     for claim in claims:
         if not isinstance(claim, dict) or not isinstance(claim.get("claimId"), str):
             continue
@@ -256,11 +274,17 @@ def claim_metrics(value: object) -> dict[str, object]:
             verified.append(claim["claimId"])
         else:
             remaining.append(claim["claimId"])
+            route = claim.get("reviewRoute")
+            if isinstance(route, str) and route in routes:
+                routes[route].append(claim["claimId"])
     return {
         "totalClaims": len(verified) + len(remaining),
         "verifiedClaims": len(verified),
         "unverifiedClaims": len(remaining),
         "remainingClaimIds": sorted(remaining),
+        "remainingClaimIdsByRoute": {
+            route: sorted(claim_ids) for route, claim_ids in sorted(routes.items())
+        },
     }
 
 
@@ -346,6 +370,19 @@ def validate_claims(
             diagnostics.append(diagnostic("CLAIMS_INVALID", "claim anchors are invalid", path))
         if claim.get("kind") == "FACTUAL" and not anchors:
             diagnostics.append(diagnostic("CLAIM_ANCHOR_MISSING", "factual claim requires an anchor", path))
+        expected_route = (
+            FACT_VERIFIER_ROUTE
+            if claim.get("kind") == "FACTUAL" and anchors
+            else JUDGMENT_REVIEWER_ROUTE
+        )
+        if claim.get("reviewRoute") != expected_route:
+            diagnostics.append(
+                diagnostic(
+                    "CLAIM_REVIEW_ROUTE_INVALID",
+                    "claim reviewRoute does not match its kind and anchors",
+                    path,
+                )
+            )
         derived_from = claim.get("derivedFrom")
         if derived_from is not None and (
             not isinstance(derived_from, str)

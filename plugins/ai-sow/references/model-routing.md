@@ -11,4 +11,8 @@
 | As-Is 前提证伪 | Sonnet 5 | `gpt-5.6-terra`，`high` |
 | 证据充分性、设计缺陷、业务完备性 | Opus，不可降级 | `gpt-5.6-sol`，`max`，不可降级 |
 
-只有 `confidence: HIGH` 且至少有一个可解析 anchor 的 `FACTUAL` claim 可进入廉价通道；其他 claim 直接进入深度判断通道。事实核验 `PASS` 必须给出原文行号，给不出时返回 `UNVERIFIED`。深度判断 Reviewer 随机复验至少 10% 的廉价通道 `PASS`，并覆盖缓存命中项；命中一个假阴性就把当前批次全部升级到深度判断模型重跑。
+只有 `confidence: HIGH` 且至少有一个可解析 anchor 的 `FACTUAL` claim 会被编译为
+`reviewRoute: FACT_VERIFIER_LOW`；其他 claim 必须是 `reviewRoute: JUDGMENT_REVIEWER_DEEP`。Validator
+机械复算该路由并拒绝手工降级。事实核验 `PASS` 必须给出原文行号，给不出时返回 `UNVERIFIED`。
+深度判断 Reviewer 随机复验至少 10% 的廉价通道 `PASS`，并覆盖缓存命中项；命中一个假阴性就把
+当前批次全部升级到深度判断模型重跑。

@@ -358,7 +358,9 @@ def run_project_facts(project_root: Path) -> subprocess.CompletedProcess[str]:
 
 
 def prepare_review_candidate(project_root: Path) -> tuple[bytes, bytes]:
-    prepare_brownfield(project_root)
+    payload = prepare_brownfield(project_root)
+    resolve_estimate_readiness(payload)
+    write_json(project_root, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
     (project_root / ".ai-sow/reviews/analyze-as-is.md").unlink()
     context = run_context(project_root)
     assert context.returncode == 0, context.stdout + context.stderr
@@ -368,6 +370,20 @@ def prepare_review_candidate(project_root: Path) -> tuple[bytes, bytes]:
         (project_root / ".ai-sow/work/analyze-as-is/asis.candidate.json").read_bytes(),
         (project_root / ".ai-sow/work/analyze-as-is/review.candidate.md").read_bytes(),
     )
+
+
+def resolve_estimate_readiness(payload: dict[str, Any]) -> None:
+    resolved_ids = {
+        entry["uncertaintyId"]
+        for entry in payload["uncertainties"]
+        if entry["affectsEstimate"] is True
+    }
+    for entry in payload["uncertainties"]:
+        if entry["uncertaintyId"] in resolved_ids:
+            entry["affectsEstimate"] = False
+    for assessment in payload["topicAssessments"]:
+        if resolved_ids.intersection(assessment["uncertaintyIds"]):
+            assessment["status"] = "BOUNDARY_DECLARED"
 
 
 def bind_review_packet(project_root: Path) -> str:
@@ -1245,8 +1261,9 @@ def test_prepare_context_writes_owner_local_evidence_closure(tmp_path: Path) -> 
         "evidenceInventory",
         "premises",
         "repoFacts",
-        "claims",
     ]
+    assert manifest["reviewClaims"]["status"] == "READY"
+    assert manifest["reviewClaims"]["fragment"]["name"] == "claims"
     assert manifest["selectedTopicIds"] == [
         "SYSTEM_CONTEXT",
         "CAPABILITY",
@@ -1333,10 +1350,29 @@ def test_review_mode_writes_bound_packet_without_formal_publication(tmp_path: Pa
         "sha256": sha256_bytes(review),
     }
     assert packet["riskSummary"]["sha256"] == sha256_bytes(risk_path.read_bytes())
-    assert "Estimate-affecting Uncertainties: 1" in risk_path.read_text(encoding="utf-8")
+    assert "Estimate-affecting Uncertainties: 0" in risk_path.read_text(encoding="utf-8")
     assert not (tmp_path / ".ai-sow/reviews/analyze-as-is.md").exists()
     assert not (tmp_path / ".ai-sow/data/analyze-as-is/asis.json").exists()
     assert not (tmp_path / ".ai-sow/validation/analyze-as-is.json").exists()
+
+
+def test_design_readiness_blocks_unresolved_estimate_uncertainty(
+    tmp_path: Path,
+) -> None:
+    prepare_brownfield(tmp_path)
+    (tmp_path / ".ai-sow/reviews/analyze-as-is.md").unlink()
+    assert run_context(tmp_path).returncode == 0
+    assert run_renderer(tmp_path).returncode == 0
+
+    result = run_validator(
+        tmp_path,
+        "review",
+        review_override=".ai-sow/work/analyze-as-is/review.candidate.md",
+    )
+
+    assert result.returncode == 2
+    assert "DESIGN_READINESS_ESTIMATE_UNCERTAINTY_UNRESOLVED" in codes(result)
+    assert not (tmp_path / ".ai-sow/work/analyze-as-is/review-packet.json").exists()
 
 
 def test_publish_approved_requires_both_sidecars_without_formal_writes(tmp_path: Path) -> None:
@@ -1449,7 +1485,9 @@ def test_publish_approved_rejects_drift_before_formal_writes(
 def test_candidate_first_lifecycle_preserves_selected_questionnaire_records(
     tmp_path: Path,
 ) -> None:
-    prepare_brownfield(tmp_path)
+    payload = prepare_brownfield(tmp_path)
+    resolve_estimate_readiness(payload)
+    write_json(tmp_path, ".ai-sow/work/analyze-as-is/asis.candidate.json", payload)
     questionnaire = questionnaire_record()
     write_bytes(
         tmp_path,

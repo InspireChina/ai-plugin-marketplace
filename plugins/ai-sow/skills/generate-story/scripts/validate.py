@@ -23,7 +23,14 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from runtime.diagnostics import diagnostic as diag
+from runtime.authorization import publish_review_packet
 from runtime.controls import validate_manifest_controls
+from runtime.context_pages import (
+    context_budget,
+    expected_context_fragment,
+    expected_review_claims,
+    read_protocol,
+)
 from runtime.handoff import (
     Artifact,
     MatchResult,
@@ -74,7 +81,6 @@ CONTEXT_FRAGMENT_SPECS = (
     ("asIs", ".ai-sow/work/generate-story/context/as-is.json"),
     ("design", ".ai-sow/work/generate-story/context/design.json"),
     ("questionnaire", ".ai-sow/work/generate-story/context/questionnaire.json"),
-    ("claims", ".ai-sow/work/generate-story/claims.json"),
 )
 CLAIMS_PATH = ".ai-sow/work/generate-story/claims.json"
 REVIEW_PACKET_ALGORITHM = "ai-sow-owner-review-packet-v1"
@@ -115,6 +121,15 @@ HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 STABLE_ID_PATTERN = re.compile(r"\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b")
 QUESTION_ANCHOR_PATTERN = re.compile(r"analyze-requirement-questionnaire#([A-Za-z][A-Za-z0-9-]*)")
 EMPTY = {"", "-", "—", "N/A", "NONE", "NOT_APPLICABLE"}
+TASK_READINESS_THRESHOLD_PATTERN = re.compile(
+    r"(?:\bP\d{2}\b|[<>]=?|≤|≥|\d+(?:\.\d+)?\s*(?:%|ms|毫秒|s|秒|分钟|小时|次|项|个))",
+    re.IGNORECASE,
+)
+TASK_READINESS_OWNER_PATTERN = re.compile(
+    r"(?:负责人|责任方|责任团队|由.{1,40}(?:团队|部门|角色|人员|运维).{0,12}(?:负责|承担)|"
+    r"(?:团队|部门|角色|人员|运维).{0,12}(?:负责|承担)|\bowner\s*[:：])",
+    re.IGNORECASE,
+)
 
 REQUIREMENT_CONTRACT = OwnerContract(
     subject="analyze-requirement",
@@ -698,6 +713,7 @@ def validate_semantics(
     }
     sequences: dict[str, list[int]] = defaultdict(list)
     carried_by_feature: dict[str, set[str]] = defaultdict(set)
+    decision_refs_by_feature: dict[str, set[str]] = defaultdict(set)
     for criterion in delivery["acceptanceCriteria"]:
         story_id = criterion["storyId"]
         story = stories.get(story_id)
@@ -768,6 +784,7 @@ def validate_semantics(
             if decision is None:
                 diagnostics.append(diag("DECISION_REF_UNKNOWN", f"unknown Design Decision: {decision_id}"))
             elif story is not None:
+                decision_refs_by_feature[story["featureId"]].add(decision_id)
                 if story["featureId"] not in decision.get("relatedFeatureIds", []):
                     diagnostics.append(
                         diag(
@@ -775,6 +792,50 @@ def validate_semantics(
                             f"Design Decision is unrelated to AC Story Feature: {decision_id}",
                         )
                     )
+
+    for decision_id, decision in decisions.items():
+        if decision.get("decisionKind") != "OPERATIONAL_THRESHOLD":
+            continue
+        related_in_scope = [
+            feature_id
+            for feature_id in decision.get("relatedFeatureIds", [])
+            if feature_id in in_scope
+        ]
+        if not related_in_scope:
+            continue
+        decision_text = f"{decision.get('decision', '')} {decision.get('rationale', '')}"
+        if TASK_READINESS_OWNER_PATTERN.search(decision_text) is None:
+            diagnostics.append(
+                diag(
+                    "TASK_READINESS_OWNERSHIP_MISSING",
+                    "operational threshold must name the team, role, or party accountable for the outcome",
+                    decisionId=decision_id,
+                    featureIds=related_in_scope,
+                )
+            )
+        if TASK_READINESS_THRESHOLD_PATTERN.search(decision_text) is None:
+            diagnostics.append(
+                diag(
+                    "TASK_READINESS_THRESHOLD_MISSING",
+                    "operational threshold must contain a measurable numeric or percentile threshold",
+                    decisionId=decision_id,
+                    featureIds=related_in_scope,
+                )
+            )
+        unmapped = [
+            feature_id
+            for feature_id in related_in_scope
+            if decision_id not in decision_refs_by_feature[feature_id]
+        ]
+        if unmapped:
+            diagnostics.append(
+                diag(
+                    "TASK_READINESS_THRESHOLD_UNMAPPED",
+                    "operational threshold must be referenced by Acceptance Criteria for every related IN_SCOPE Feature",
+                    decisionId=decision_id,
+                    featureIds=unmapped,
+                )
+            )
     for story_id in sorted(set(stories) - set(sequences)):
         diagnostics.append(diag("AC_COVERAGE_MISSING", f"Story has no AC: {story_id}"))
     for story_id, actual in sequences.items():
@@ -1287,11 +1348,14 @@ def context_packet_entry(
     if set(manifest) != {
         "algorithm",
         "claimMetrics",
+        "contextBudget",
         "concernIds",
         "fragments",
         "inputArtifacts",
         "owner",
         "ownerControl",
+        "readProtocol",
+        "reviewClaims",
         "selectedEffectiveStartItemIds",
         "selectedFeatureIds",
         "selectedQuestionIds",
@@ -1310,6 +1374,16 @@ def context_packet_entry(
     if manifest.get("owner") != SUBJECT:
         diagnostics.append(
             diag("CONTEXT_MANIFEST_INVALID", "context manifest owner is invalid", CONTEXT_MANIFEST_PATH)
+        )
+    if manifest.get("contextBudget") != context_budget() or manifest.get(
+        "readProtocol"
+    ) != read_protocol():
+        diagnostics.append(
+            diag(
+                "CONTEXT_MANIFEST_INVALID",
+                "context budget or read protocol is invalid",
+                CONTEXT_MANIFEST_PATH,
+            )
         )
     diagnostics.extend(
         validate_manifest_controls(
@@ -1338,13 +1412,10 @@ def context_packet_entry(
     expected_fragments: list[dict[str, object]] = []
     for name, path in CONTEXT_FRAGMENT_SPECS:
         try:
-            payload = files.read_bytes(path)
-        except ProjectIOError:
-            diagnostics.append(diag("CONTEXT_FRAGMENT_MISSING", "context fragment is unavailable", path))
+            expected_fragments.append(expected_context_fragment(files, name, path))
+        except ProjectIOError as error:
+            diagnostics.append(diag(error.code, str(error), error.relative_path))
             continue
-        expected_fragments.append(
-            {"bytes": len(payload), "name": name, "path": path, "sha256": sha256_bytes(payload)}
-        )
     if fragments != expected_fragments:
         diagnostics.append(
             diag(
@@ -1353,11 +1424,25 @@ def context_packet_entry(
                 CONTEXT_MANIFEST_PATH,
             )
         )
+    expected_claims: dict[str, object] | None = None
+    try:
+        expected_claims = expected_review_claims(files, CLAIMS_PATH)
+    except ProjectIOError as error:
+        diagnostics.append(diag(error.code, str(error), error.relative_path))
+    if expected_claims is not None and manifest.get("reviewClaims") != expected_claims:
+        diagnostics.append(
+            diag(
+                "CONTEXT_REVIEW_CLAIMS_STALE",
+                "review claims do not match the current manifest",
+                CONTEXT_MANIFEST_PATH,
+            )
+        )
     if diagnostics:
         return None, diagnostics
     return {
         "fragments": expected_fragments,
         "manifest": file_entry("manifest", CONTEXT_MANIFEST_PATH, manifest_payload),
+        "reviewClaims": expected_claims,
     }, []
 
 
@@ -1584,7 +1669,16 @@ def main() -> int:
                     try:
                         files.write_atomic(args.risk_summary_path, summary_payload)
                         packet_payload = canonical_json_bytes(expected_packet)
-                        files.write_atomic(args.packet_path, packet_payload)
+                        if args.staging_root is None:
+                            publish_review_packet(
+                                files,
+                                packet_path=args.packet_path,
+                                packet_payload=packet_payload,
+                                reviewer_path=REVIEWER_PATH,
+                                approval_path=APPROVAL_PATH,
+                            )
+                        else:
+                            files.write_atomic(args.packet_path, packet_payload)
                     except ProjectIOError as error:
                         diagnostics.append(diag(error.code, str(error), error.relative_path))
                 else:

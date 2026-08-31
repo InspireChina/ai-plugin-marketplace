@@ -28,6 +28,9 @@ from runtime.project_io import ProjectFiles, ProjectIOError
 DEFAULT_CANDIDATE = ".ai-sow/work/generate-task/estimate.candidate.json"
 DEFAULT_OUTPUT = ".ai-sow/work/generate-task/review.candidate.md"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
+RENDERER_SCHEMA_COVERAGE = {
+    "estimate.tasks": "Story → Task",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +63,24 @@ def mapping(tasks: list[dict[str, Any]], source: str) -> str:
     ) or "NONE"
 
 
+def potential_instance_collisions(
+    tasks: list[dict[str, Any]],
+) -> list[tuple[str, list[str]]]:
+    grouped: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for task in tasks:
+        base_unit = task.get("baseUnit")
+        effective_start = task.get("matchedEffectiveStartItemId")
+        task_id = task.get("taskId")
+        if not all(isinstance(value, str) for value in (base_unit, effective_start, task_id)):
+            continue
+        grouped[(base_unit, effective_start)].append(task_id)
+    return [
+        (f"{base_unit}@{effective_start}", sorted(task_ids))
+        for (base_unit, effective_start), task_ids in sorted(grouped.items())
+        if len(task_ids) > 1
+    ]
+
+
 def render(
     estimate: dict[str, Any],
     template_hash: str,
@@ -87,6 +108,10 @@ def render(
         for task in tasks
         if isinstance((identifier := task.get("matchedEffectiveStartItemId")), str)
     }
+    collision_groups = potential_instance_collisions(tasks)
+    collision_declaration = "; ".join(
+        f"{key}={','.join(task_ids)}" for key, task_ids in collision_groups
+    ) or "NONE"
     lines = [
         "# Task 拆分评审",
         "",
@@ -215,6 +240,19 @@ def render(
         "## 遗漏 / 重叠 / 排除理由",
         "",
         "Scope Review: PASSED",
+        f"Potential Instance Collisions: {collision_declaration}",
+        "Collision Classification: SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER",
+        "",
+        "| 潜在碰撞键 | Task | 评审要求 |",
+        "|---|---|---|",
+        *(
+            [
+                f"| {cell(key)} | {cell(','.join(task_ids))} | "
+                "按交付对象与基础单元计数口径判定去重、区分或接入复用 |"
+                for key, task_ids in collision_groups
+            ]
+            or ["| NONE | NONE | 无共享基础单元与 Effective Start 的候选组 |"]
+        ),
         "",
         "| Task | 独立计价实例 | 非重复计价边界 |",
         "|---|---|---|",

@@ -106,6 +106,8 @@ Requirement handoff 无效时立即停止，报告对应 Owner Skill 和项目�
 
 在生成评审前一次性自检全部候选：Item、Commitment、Effective Start、Uncertainty 与 Evidence 的显示名跨集合唯一；每条 Uncertainty 被同 Topic 的 `uncertaintyIds` 反向列出；`IMPLEMENTED` Commitment 至少关联一个 Item；Commitment 的每个 `relatedFeatureId` 都在对应 Coverage 的 `commitmentIds` 中，`NEEDS_DECISION` 与 `UNVERIFIED` 另有 Coverage→Uncertainty 决策链；Coverage 理由出现的 `commitment-*` 必须属于本行 `commitmentIds`。Evidence anchor 必须解析到单个文件，目录不构成证据。候选中的显式“几类/几项/几个/几份”枚举与同一 Evidence 的文件、节点、边数量必须内部一致；Effective Start 可见摘要使用名称和业务语言，不写 `asis-*`、`commitment-*` 等稳定 ID。
 
+Design-readiness 是 As-Is 批准前门禁：任何 `affectsEstimate = true` 的 Uncertainty 都必须在本阶段通过证据或问卷取得 answer、owner 与 closure 后消除，或在证据证明不影响估算时改为 `affectsEstimate = false` 并保留边界。`review` 与 `publish-approved` 遇到未关闭项时返回 `DESIGN_READINESS_ESTIMATE_UNCERTAINTY_UNRESOLVED`，不生成 packet，也不把问题推迟到 Design。
+
 ## 候选评审与发布
 
 Stage 先确定性准备 Owner-local closure 并投影 review：
@@ -117,7 +119,7 @@ Stage 先确定性准备 Owner-local closure 并投影 review：
   --project-root "<project-root>"
 ```
 
-`prepare_context.py` 只保存 Requirements receipt closure、九个 Topic、登记 repository/prior SOW 和 Evidence inventory/项目相对 anchor；源码、往期 SOW 正文、完整工具输出、凭据和本机绝对路径不进入 fragment。`render_review.py` 从同一 candidate 确定性生成 `.ai-sow/work/analyze-as-is/review.candidate.md`，完整投影调查范围、Topic、Item、Commitment、Effective Start、Coverage、Uncertainty、Evidence、问卷记录和稳定 ID。
+`prepare_context.py` 只保存 Requirements receipt closure、九个 Topic、登记 repository/prior SOW 和 Evidence inventory/项目相对 anchor；源码、往期 SOW 正文、完整工具输出、凭据和本机绝对路径不进入 fragment。输入 fragment 按 manifest 固定预算分页，`claims.json` 以独立 `reviewClaims.fragment` 绑定。`render_review.py` 从同一 candidate 确定性生成 `.ai-sow/work/analyze-as-is/review.candidate.md`，完整投影调查范围、Topic、Item、Commitment、Effective Start、Coverage、Uncertainty、Evidence、问卷记录和稳定 ID。
 
 随后生成 hash-bound packet：
 
@@ -143,7 +145,7 @@ Reviewer 返回 findings 时，Stage 先按共享合同用 `record-reviewer` 冻
   --audit .ai-sow/work/analyze-as-is/patch-audit.json
 ```
 
-`PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。只有脚本返回 `OK` 才重新生成 context、review、risk summary 与 packet。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载仓库、完整证据或 round-1 历史。轻量 Reviewer 仍有 findings 时返回 `BLOCKED`，不创建第三个 Reviewer，也不写 Reviewer sidecar 或任何正式路径。
+`PATCH_FREEFORM_EDIT_DETECTED` 表示存在声明外变化；`PATCH_CLOSURE_UNSYNCED` 表示引用闭包尚未逐项修改或确认。脚本在 staging 中整体重建 context、review、risk summary 并运行 Owner `review` post-check；只有新 diff packet 全部通过后才原子提交并返回 `patchRoundConsumed: true`，否则当前 candidate、packet 与授权 sidecar 保持原字节。修复后的 packet 由一个新的轻量 fresh-context Reviewer 做 diff-review；它只读取 `patch-audit.json`、影响闭包字段原文及新 packet 绑定，不加载仓库、完整证据或 round-1 历史。轻量 Reviewer 仍有 findings 时返回 `BLOCKED`，不创建第三个 Reviewer，也不写 Reviewer sidecar 或任何正式路径。
 
 Reviewer `PASS` 后，Stage 向用户展示 Owner、packet path、精确 SHA-256、risk summary 和正式目标路径。只有用户明确批准该精确 packet，才写 canonical `.ai-sow/work/analyze-as-is/approval.json`，使用 `ai-sow-owner-approval-v1` 并绑定相同 packet SHA-256，然后只运行：
 
