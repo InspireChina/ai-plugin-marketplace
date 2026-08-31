@@ -20,8 +20,9 @@
 
 1. 每个 AI SOW 项目强制使用 Git；以小步提交、提交范围和批准引用承担版本历史、差异、回滚和
    精确快照，不再让用户确认一串 artifact hash。
-2. `analyze-as-is` 保留为启动阶段，但只建立粗粒度 `CurrentStateMap`；之后任何 Owner 在真正需要
-   现状时，都可以发起 `CurrentStateNeed`，由 As-Is Owner 定向调查并增量更新共享 `asis.json`。
+2. `analyze-as-is` 保留为启动阶段，但只建立粗粒度 `CurrentStateMap`；之后任何阶段在真正需要
+   现状时，都可以发起 `CurrentStateNeed`，由当前 Agent 继续调查和更新，并使用 As-Is 合同验证共享
+   `asis.json`。
 3. 项目不只按“新项目/老项目”二分。Setup 记录 `GREENFIELD / EXISTING_SYSTEM / HYBRID / UNKNOWN`
    的初始 `DeliveryContext` 和已知系统来源；具体调查方式由每个 Solution Area 的实际情况决定。
 
@@ -41,13 +42,14 @@ setup
 调查回路：
 
 ```text
-任一 Owner 发现现状信息不足
+任一阶段发现现状信息不足
   -> 提交 CurrentStateNeed
   -> 查询共享 CurrentStateLedger
   -> 选择仓库、文档、环境或问卷 Adapter
-  -> As-Is Owner 发布 InvestigationResult
+  -> 当前 Agent 更新 InvestigationResult
+  -> 运行 As-Is ContractValidator
   -> 计算语义 Impact Closure
-  -> 原 Owner 继续，或由 Finding 路由上游修正
+  -> 当前 Agent 继续，或形成跨合同 ChangeSet
 ```
 
 Requirement 不会被 Target Design 取代，As-Is 也不会并入 Design。决定“要做什么”的可能是业务范围、
@@ -102,10 +104,10 @@ receipt 通过多层 SHA-256 绑定。它能检测字节变化，但也会产生
 
 1. 只在某个决定确实需要现状时调查，并建立最短、可复核的证据链。
 2. 保留共享 `asis.json`，让不同阶段积累和复用同一份当前状态知识。
-3. 保留 As-Is 单一写 Owner；其他 Owner 只能提出调查需求和消费结果。
+3. 保留 As-Is Schema、语义规则和 validator 的唯一合同权威；不再要求由特定 Owner Agent 执行写入。
 4. Setup 提前建立项目上下文和系统来源目录，使后续调查有的放矢。
 5. Greenfield 优先问卷，Existing System 优先仓库/文档证据，Hybrid 按 Solution Area 组合。
-6. 任一下游阶段都可以发现上游问题；相关上游与下游在同一 ChangeSet 中整体分析，按 Owner 分别写入和验证。
+6. 任一下游阶段都可以发现上游问题；发现者负责同一 ChangeSet 的整体分析和更新，各 ContractValidator 分别验证。
 7. 用 Git 小步提交替代自建 revision store 和工作流可见 hash 确认。
 8. 用稳定 ID、类型化引用和语义依赖图计算真实 Impact Closure。
 9. 保持 SOW v1.3 工作簿、基础人天、复杂度、公式、SIT、UAT、风险和取整权威不变。
@@ -114,9 +116,9 @@ receipt 通过多层 SHA-256 绑定。它能检测字节变化，但也会产生
 ### 3.2 非目标
 
 - 不把 Requirement、As-Is、Design、Delivery 和 Estimate 合并为一个共享业务文件。
-- 不把 As-Is Owner 变成持续扫描全部代码库的知识图谱系统。
-- 不允许任何 Owner 绕过其他 Owner 的写集合和 validator 直接发布跨域稳定数据。
-- 不用 Git diff 代替领域语义、Owner 所有权、Finding 分类或 Impact Closure。
+- 不把 As-Is 合同变成持续扫描全部代码库的知识图谱系统。
+- 不允许 ChangeAuthor 绕过目标数据的 Schema、ContractValidator 或专业 Review 直接发布变更。
+- 不用 Git diff 代替领域语义、合同归属、Finding 分类或 Impact Closure。
 - 不自动 push、创建远程仓库或把客户资料发送到外部服务。
 - 不在 0.1.0-beta.1 中原地改变合同语义。
 
@@ -132,13 +134,15 @@ receipt 通过多层 SHA-256 绑定。它能检测字节变化，但也会产生
 | `SourceRevision` | 某次调查实际读取的来源版本，例如目标仓库 Git commit 或文档修订号；它是 Evidence provenance，不是用户批准对象。 |
 | `CurrentStateMap` | As-Is 启动阶段生成的粗粒度导航图，只告诉后续 Owner 去哪里寻找事实，不声称已经完成调查。 |
 | `CurrentStateLedger` | 共享 `asis.json` 中随工作流增量积累的事实、Evidence、Effective Start、Commitment、Investigation Result 和 Uncertainty。 |
-| `CurrentStateNeed` | 任一 Owner 为完成当前专业判断而提出的最小现状问题。 |
-| `InvestigationRequest` | As-Is Owner 接受的 work-only 调查任务，包含问题、materiality、subject 和允许来源。 |
+| `ContractOwner` | 某类稳定数据的 Schema、语义规则、稳定路径、validator 和专业 Review 策略的权威归属；它不是必须亲自写文件的 Agent。 |
+| `ChangeAuthor` | 发现问题并负责整个 ChangeSet 的当前 Agent；它可以分析和更新闭包内多个合同的数据，但必须使用各自合同验证。 |
+| `CurrentStateNeed` | 任一阶段为完成当前专业判断而提出的最小现状问题。 |
+| `InvestigationRequest` | Current-State Module 接受的 work-only 调查任务，包含问题、materiality、subject 和允许来源。 |
 | `InvestigationResult` | 可被后续 Owner 稳定引用的调查结论；包含 verdict、Evidence、适用范围、来源修订和未知处理。 |
-| `Finding` | Owner 无法在自己的写集合内修复时使用的结构化路由信息，继续使用 `LOCAL / UPSTREAM / DECISION / MECHANICAL`。 |
-| `ChangeSet` | 一次跨 Owner 修正的整体分析、PatchSet、验证、评审和 Git commits；可以覆盖上游根因及受影响下游，但每个 OwnerPatch 的写集合仍归属于对应 Owner。 |
-| `OwnerPatch` | ChangeSet 中由一个 Owner 负责的字段级变更，包含目标 subject、操作、理由和预期影响；多个 OwnerPatch 共同组成一个逻辑 PatchSet。 |
-| `OwnerPatchSet` | 同一 ChangeSet 中所有 OwnerPatch 的完整集合；它们共享 baseline、Finding 和 ImpactClosure，并作为一个整体接受跨 Owner 检查。 |
+| `Finding` | 当前阶段发现本地或跨合同问题时使用的结构化路由信息，继续使用 `LOCAL / UPSTREAM / DECISION / MECHANICAL`。 |
+| `ChangeSet` | ChangeAuthor 围绕同一问题完成的整体分析、PatchSet、验证、评审和原子 Git revision；可以覆盖上游根因及受影响下游。 |
+| `ContractPatch` | ChangeSet 中面向一个 ContractOwner 合同的字段级验证分区，包含目标 subject、操作、理由和预期影响；它由 ChangeAuthor 编写，不代表执行者身份。 |
+| `ContractPatchSet` | 同一 ChangeSet 中所有 ContractPatch 的完整集合；它们共享 baseline、Finding 和 ImpactClosure，并作为一个整体接受跨合同检查。 |
 | `ImpactClosure` | 从变化的稳定 subject 沿类型化和显式语义依赖边得到的最小受影响对象集合。 |
 | `ApprovedCommit` | 用户或责任角色批准的精确 Git commit，由 AI SOW 管理的本地 approval ref 指向。 |
 | `PackageFingerprint` | 最终不可变 SOW 包的内容标识；它不参与普通阶段批准。 |
@@ -280,7 +284,7 @@ Hybrid 按 Solution Area 选择策略。例如“新建门户并接入现有 CRM
 
 ### 7.1 Interface
 
-所有专业 Owner 使用同一个深 Module，而不是分别实现搜索逻辑：
+所有专业阶段使用同一个深 Module，而不是分别实现搜索逻辑：
 
 ```text
 resolve_current_state_need(CurrentStateNeed) -> InvestigationResult
@@ -290,7 +294,7 @@ resolve_current_state_need(CurrentStateNeed) -> InvestigationResult
 
 ```text
 needId
-requestingOwner
+requestingStage
 question
 subjectIds
 materiality
@@ -313,8 +317,8 @@ uncertaintyId
 observedAt
 ```
 
-Request 是 work-only 的执行输入；Result 必须在删除 Request 后仍可独立解释。其他 Owner 只引用
-`resultId`、相关 Stable ID 和当前 Result revision，不绑定整个 `asis.json` 的文件 hash。调用 Owner
+Request 是 work-only 的执行输入；Result 必须在删除 Request 后仍可独立解释。其他阶段只引用
+`resultId`、相关 Stable ID 和当前 Result revision，不绑定整个 `asis.json` 的文件 hash。调用阶段
 先明确自己正在形成的专业决定以及缺少的事实，再提出最小 Need；它既不先完成一次全量 As-Is，也不把
 未经验证的 Greenfield 假设直接固化为正式决定。
 
@@ -345,7 +349,7 @@ Greenfield 的“直接问”与 Existing System 的“去搜索”只是不同 
 如果不会改变，只记录必要边界，不继续调查。如果可能改变但无法获得足够证据，则形成明确
 Uncertainty、Allowance、Discovery 或 DECISION Finding。默认目标是最短充分证据链，不是最大系统理解。
 
-### 7.4 共享 Ledger 与单一写者
+### 7.4 共享 Ledger 与单一合同权威
 
 目标 `asis.json` 继续是共享增量 Ledger，建议保留：
 
@@ -360,8 +364,10 @@ investigationResults
 uncertainties
 ```
 
-Design、Story 和 Task 可以提出 Need，但只有 As-Is Owner 可以新增或修改上述现状数据。调用 Owner 在
-As-Is commit 完成后继续工作；任何 Owner 都不能把自己的假设直接写成当前事实。
+Design、Story 和 Task 阶段都可以提出 Need。发现 Need 的当前 Agent 同时成为 `ChangeAuthor`，可以在
+同一上下文中完成调查、更新 As-Is candidate 并继续后续分析，不需要切换给一个 As-Is Agent。每次
+更新仍必须遵守 As-Is Schema、Evidence provenance、Stable ID 和未知处理规则，并通过 As-Is
+ContractValidator；未经验证的假设不能作为当前事实发布。
 
 Result 的有效性按稳定 ID 和来源修订判断。目标仓库 commit 改变、问卷答案被责任人更新或出现竞争
 Evidence 时，只标记引用该 Result 的 subject 需要复核；不能因为 `asis.json` 其他区域变化就使全部
@@ -369,16 +375,16 @@ Evidence 时，只标记引用该 Result 的 subject 需要复核；不能因为
 
 ## 8. 下游反馈与链路整体修正
 
-任一下游 Owner 都可以发现可能属于上游的问题。发现者只需要声明观察事实、关联 subject、潜在根因
-和业务影响，不需要先判断完整修正路径，也不能直接发布其他 Owner 的稳定数据。`LOCAL` Finding
-留在当前 Owner；`UPSTREAM` Finding 进入链路整体修正；`DECISION` Finding 先取得用户决定，再确定
-修正根。Coordinator 以需要跨 Owner 处理的 Finding 为根同时向两个方向分析：
+任一下游阶段都可以发现可能属于上游的问题。发现问题的当前 Agent 成为 ChangeAuthor，负责观察
+事实、定位关联 subject，并继续完成整条影响链的分析和更新，不需要把工作交接给各 ContractOwner
+对应的 Agent。`LOCAL` Finding 留在当前合同；`UPSTREAM` Finding 进入链路整体修正；`DECISION`
+Finding 先取得用户决定，再确定修正根。ChangeAuthor 使用 ChangeSet Module 同时向两个方向分析：
 
-1. 向上定位一个或多个最早需要改变语义的 Root Owner 和 Root Subject；
+1. 向上定位一个或多个最早需要改变语义的 Root Contract 和 Root Subject；
 2. 从全部 Root Subject 向下计算实际受影响的 `ImpactClosure`；
 3. 将根因与闭包内对象放入同一个 ChangeSet，而不是逐阶段启动独立返工。
 
-### 8.1 一个 ChangeSet，多个 OwnerPatch
+### 8.1 一个 ChangeSet，多个 ContractPatch
 
 用户所说的“形成一个 patch”，在领域上应表达为一个 ChangeSet，而不是一份可以任意修改所有文件的
 通用 JSON Patch。ChangeSet 至少包含：
@@ -388,45 +394,50 @@ baselineCommit
 findingIds
 rootSubjectIds
 impactClosure
-ownerPatches[]
+contractPatches[]
 unaffectedSubjects[]
 validationSummary
 ```
 
-每个 `OwnerPatch` 只描述一个 Owner 写集合内的字段变化：
+每个 `ContractPatch` 只描述一个 ContractOwner 合同内的字段变化：
 
 ```text
-owner
+targetContract
 targetSubjectIds
 operations
 rationale
 expectedEffects
 ```
 
-这样可以一次看清整条链路将如何收敛，同时继续由 Owner-local Schema、规则和 validator 保证专业
-正确性。若某个闭包内对象经过整体分析后不需要语义变化，就写入 work-only `unaffectedSubjects` 及
-理由，不生成空 Patch、`NO_CHANGE` receipt 或占位 commit。
+ChangeAuthor 编写全部 ContractPatch，因此可以一次看清并更新整条链路；ContractPatch 只是把同一 PatchSet
+按合同切开。ChangeAuthor 在编写前必须加载每个目标合同的 Schema、专业规则和 Review Policy，写入后
+分别调用对应 ContractValidator。只有某个合同的专业 Review 明确认为现有上下文不足时，才升级到新的
+专业 Reviewer，而不是默认切换写入 Agent。若某个闭包内对象经过整体分析后不需要语义变化，就写入
+work-only `unaffectedSubjects` 及理由，不生成空 Patch、`NO_CHANGE` receipt 或占位 commit。
 
-### 8.2 整体分析、分 Owner 验证、一次批准
+### 8.2 整体分析与更新、分合同验证、一次批准
 
 ChangeSet 使用同一个 staged view 完成以下流程：
 
 ```text
 Finding
-  -> 定位 Root Owner(s) / Root Subject(s)
+  -> 当前 Agent 成为 ChangeAuthor
+  -> 定位 Root Contract(s) / Root Subject(s)
   -> 计算 ImpactClosure
-  -> 整体形成 OwnerPatchSet
-  -> 按依赖顺序执行 Owner-local validator
-  -> 执行一次跨 Owner 引用与承诺一致性检查
-  -> 在临时 ChangeSet branch/worktree 中形成分 Owner 小步 commits
-  -> 对完整 commit range 做一次 Review / Approval
+  -> 整体形成 ContractPatchSet
+  -> ChangeAuthor 将全部 Patch 写入统一 staged view
+  -> 分别执行各 ContractValidator / Review Policy
+  -> 执行一次跨合同引用与承诺一致性检查
+  -> 在临时 ChangeSet branch/worktree 中形成一个原子 commit
+  -> 对完整 ChangeSet 做一次 Review / Approval
   -> 移动 Approved Commit ref
 ```
 
-“整体”指所有 Patch 都基于同一 baseline、同一 Finding 和同一闭包共同推导，不再等待上一个阶段正式
-发布后由下一个阶段从头分析。“分别”指 OwnerPatch 仍按上游到下游顺序写入 staged view，并由各自
-validator 对同一完整 staged closure 验证。任一 OwnerPatch 或跨 Owner 检查失败，整个 ChangeSet 留在
-临时分支修正，Approved Commit 不移动，因此不会发布半条链路。
+“整体”同时包括分析和写入：ChangeAuthor 基于同一 baseline、Finding 和闭包共同推导并应用全部
+Patch，不再等待上一个阶段正式发布后由下一个阶段从头分析。“分别”只指验证分区：每个
+ContractValidator 都读取同一完整 staged closure，并只判定自己合同内的规则；Schema 无法覆盖的专业
+判断继续使用该合同的 Review Policy。任一 ContractPatch、ContractValidator 或跨合同检查失败，仍由
+同一个 ChangeAuthor 在临时分支修正整个 PatchSet，Approved Commit 不移动，因此不会发布半条链路。
 
 ### 8.3 示例：下游发现 Design 问题
 
@@ -436,31 +447,35 @@ validator 对同一完整 staged closure 验证。任一 OwnerPatch 或跨 Owner
 Finding from Task
   -> Root Subject: Design Decision D1
   -> ImpactClosure: D1 + Story S2 + Task T7/T8
-  -> OwnerPatchSet:
+  -> ContractPatchSet:
        DesignPatch(D1)
        StoryPatch(S2) 或 unaffected(S2)
        TaskPatch(T7/T8)
 ```
 
-Design、Story 和 Task 在一个 ChangeSet 中完成整体推导。Story 如果交付结果不变，只记录为什么不受
-影响；如果 AC 或 Integration 边界需要改变，则形成真实 StoryPatch。最终只评审完整 ChangeSet，不再
-执行“先改 Design 并批准，再启动 Story，再启动 Task”的串行返工。
+发现问题的 Task Agent 直接作为 ChangeAuthor，在一个 ChangeSet 中完成 Design、Story 和 Task 的整体
+推导与更新。Story 如果交付结果不变，只记录为什么不受影响；如果 AC 或 Integration 边界需要改变，
+则由同一个 ChangeAuthor 形成真实 StoryPatch。Design、Story 和 Task 的 validator 仍分别运行；最终只
+评审完整 ChangeSet，不再执行“先交给 Design Agent，再启动 Story Agent，最后返回 Task Agent”的串行
+返工。
 
-现有 `reconcile` 的角色应从“固定阶段后缀发布器”调整为 ChangeSet Coordinator：
+现有 `reconcile` 应从一个需要接管工作的协调 Stage 收窄为 ChangeSet Module，由发现问题的
+ChangeAuthor 在当前上下文直接调用：
 
 - 建立或恢复 ChangeSet 和统一 staged view；
 - 定位 Root Subject 并计算 Impact Closure；
-- 协调 Owner 共同形成 PatchSet；
-- 调用 Owner-local validator 和跨 Owner 一致性检查；
-- 汇总一个 review diff 和 commit range；
-- 不拥有任何业务 Schema，也不替 Owner 作专业判断。
+- 接收 ChangeAuthor 形成的完整 PatchSet；
+- 调用 ContractValidator 和跨合同一致性检查；
+- 形成一个原子 commit 和 review diff；
+- 不创建新的 Agent，不拥有任何业务 Schema，也不替合同 validator 作判断。
 
 ## 9. Git 驱动的版本、评审与批准
 
 ### 9.1 小步提交
 
-Git commit 是工作流 revision。每个通过 Owner-local validator 的连贯语义变化形成一个 commit；无效
-草稿留在 work 目录，不因为每次编辑都创建历史。建议使用以下 subject 前缀：
+Git commit 是工作流 revision。一个通过全部相关 ContractValidator 和跨合同检查的 ChangeSet 形成
+一个原子 commit；“小步”以一个可独立解释和回滚的语义变化为单位，不以 ContractOwner 数量拆分。
+无效草稿留在 work 目录，不因为每次编辑都创建历史。建议使用以下 subject 前缀：
 
 ```text
 requirement:
@@ -469,13 +484,15 @@ design:
 story:
 task:
 sow:
+change:
 ```
 
-跨 Owner ChangeSet 使用相同 trailer 串联：
+跨合同 ChangeSet 使用 trailer 记录作者上下文和验证范围：
 
 ```text
 AI-SOW-Change-Set: change-<id>
-AI-SOW-Owner: <owner>
+AI-SOW-Author-Stage: <stage>
+AI-SOW-Contracts: <contract-list>
 AI-SOW-Finding: <finding-id>          # 可选
 AI-SOW-Subjects: <stable-id-list>
 ```
@@ -500,7 +517,7 @@ Git 提供 commit、tree、blob、diff、branch、merge-base 和恢复能力。C
 
 以下能力仍然必须由领域合同提供：
 
-- Owner 写权限和稳定数据归属；
+- ContractOwner 的 Schema、语义规则、稳定路径和验证权威；
 - Stable ID 与类型化引用；
 - Finding 分类与用户决策路由；
 - Impact Closure；
@@ -533,7 +550,7 @@ refs/ai-sow/approved/commitment
 ```
 
 用户批准的是可读 ChangeSet/Snapshot，不是 ref 名或 SHA。新的 commit 不会改写旧批准；它只让当前
-分支领先于 Approved Commit。插件根据变化 subject 判断需要重新打开哪个批准，而不是让所有 Owner
+分支领先于 Approved Commit。插件根据变化 subject 判断需要重新打开哪个批准，而不是让所有合同
 重新确认。
 
 批准 ref 默认只存在本地；插件不自动 push。若团队希望共享批准记录，可以显式发布约定 ref 或导出
@@ -541,11 +558,11 @@ refs/ai-sow/approved/commitment
 
 ### 9.5 简化 receipt
 
-Owner receipt 只保存机械交接所需信息，不再复制文件 hash 树：
+每个受影响合同的 validation receipt 只保存机械交接所需信息，不再复制文件 hash 树：
 
 ```json
 {
-  "owner": "generate-task",
+  "contractOwner": "generate-task",
   "validatedCommit": "<git-commit>",
   "changeSetId": "change-example",
   "outputs": [".ai-sow/data/generate-task/estimate.json"],
@@ -570,16 +587,19 @@ commit 或其语义未变的后继，而不是重新计算并比较每个文件�
 
 ## 10. 各阶段目标职责
 
-| 阶段 | 目标职责 | 现状调查行为 |
+下表中的“合同权威”只表示 Schema、规则、稳定路径、validator 和 Review Policy 的归属，不限定由哪个
+Agent 写入。正常阶段和跨合同修正都由当前 Agent 作为 ChangeAuthor 持续执行。
+
+| 阶段 / Module | 合同权威 | ChangeAuthor 行为 |
 |---|---|---|
-| `setup` | 建立 Git 工作区、项目身份、DeliveryContext、来源目录和模板 | 只验证来源可用性，不调查业务事实 |
-| `analyze-requirement` | 拥有 BUSINESS 范围、规则和验收意图 | 可提出 Need；不能把现状答案写入 Requirement |
-| `analyze-as-is` | 初始化 Map，拥有共享 Ledger，执行所有定向调查 | 唯一稳定写者 |
-| `generate-design` | 拥有目标设计、TECHNICAL requirement 和上线责任 | 按 Design Decision 提出 Need |
-| `generate-story` | 拥有 Story、AC、Integration 和 Assumption/Risk | 按交付、验收和责任问题提出 Need |
-| `generate-task` | 拥有 Task、工作模式、复杂度和估算输入 | 按可实施性和估算问题提出 Need 或跨 Owner Finding |
-| `generate-sow` | 从 Approved Commit 确定性编译 package | 不产生新调查或业务决定 |
-| `reconcile` | 协调 ChangeSet 和 Impact Closure | 不拥有现状或其他业务数据 |
+| `setup` | Git 工作区、项目身份、DeliveryContext、来源目录和模板 | 初始化或复读项目，不调查业务事实 |
+| `analyze-requirement` | BUSINESS 范围、规则和验收意图 | 可更新 Requirement，也可提出 Need 或跨合同 Finding |
+| `analyze-as-is` | Map、共享 Ledger、Evidence 和 Investigation Result | 可在任一阶段更新 As-Is candidate，并运行 As-Is ContractValidator |
+| `generate-design` | 目标设计、TECHNICAL requirement 和上线责任 | 可更新 Design，也可提出 Need 或跨合同 Finding |
+| `generate-story` | Story、AC、Integration 和 Assumption/Risk | 可更新 Delivery，也可提出 Need 或跨合同 Finding |
+| `generate-task` | Task、工作模式、复杂度和估算输入 | 可更新 Estimate，也可提出 Need 或跨合同 Finding |
+| `generate-sow` | 确定性 package 投影 | 从 Approved Commit 生成，不产生新调查或业务决定 |
+| ChangeSet Module（原 `reconcile`） | staging、Impact Closure、validator 调度和原子 Git revision | 由当前 ChangeAuthor 调用，不创建新的协调 Agent |
 
 ## 11. 最终生成与完成门禁
 
@@ -646,7 +666,7 @@ v1.3，因为工作簿计算规则没有变化。
 ### 14.2 建立 Git Project Module
 
 - 实现 repository preflight、managed-path status 和显式暂存；
-- 实现 Owner commit、ChangeSet trailer、approval ref 和 Approved Commit 读取；
+- 实现原子 ChangeSet commit、trailer、approval ref 和 Approved Commit 读取；
 - 用 Git history 替换 packet archive、before/current hash 和 redo revision store；
 - 增加 dirty worktree、detached HEAD、空仓库和混入用户修改的测试。
 
@@ -668,16 +688,16 @@ v1.3，因为工作簿计算规则没有变化。
 ### 14.5 建立语义影响协调
 
 - 从类型化 ID 引用机械生成依赖边；
-- 允许 Owner 补充 Schema 无法表达的语义边；
-- 把下游 Finding 路由到 Root Owner(s)，并生成完整 Impact Closure；
-- 将 `reconcile` 从固定后缀调整为 ChangeSet/ImpactClosure Coordinator。
+- 允许 ChangeAuthor 补充 Schema 无法表达的语义边；
+- 把下游 Finding 定位到 Root Contract(s)，并生成完整 Impact Closure；
+- 将 `reconcile` 从协调 Stage 收窄为当前 ChangeAuthor 调用的 ChangeSet Module。
 
 ### 14.6 简化评审与批准
 
 - 以 Git commit range 生成 review material；
 - 让 Reviewer 和用户批准可读 ChangeSet；
-- 删除工作流可见 packet SHA 和无变化 Owner 的 rebind；
-- 保留 Owner-local validator 和必要的 fresh-context 专业评审。
+- 删除工作流可见 packet SHA 和无变化合同的 rebind；
+- 保留 ContractValidator 和必要的 fresh-context 专业评审，但不要求切换写入 Agent。
 
 ### 14.7 更新生成与迁移
 
@@ -719,12 +739,12 @@ v1.3，因为工作簿计算规则没有变化。
 
 ### 15.4 下游发现上游问题
 
-- 下游 Owner 发现问题并发出 UPSTREAM Finding；
-- Coordinator 定位 Root Subject 并计算上下游 Impact Closure；
-- 相关 Owner 基于同一 baseline 整体形成 OwnerPatchSet；
-- 每个 OwnerPatch 在统一 staged view 中分别验证；
+- 下游当前 Agent 发现问题并发出 UPSTREAM Finding，同时成为 ChangeAuthor；
+- ChangeAuthor 定位 Root Subject 并计算上下游 Impact Closure；
+- 同一个 ChangeAuthor 基于同一 baseline 形成并应用完整 ContractPatchSet；
+- 各 ContractValidator 在统一 staged view 中分别验证；
 - 未变化 subject 只记录 unaffected 理由，不产生空 Patch 或 commit；
-- 完整 ChangeSet 只进行一次 Review 和 Approval。
+- 完整 ChangeSet 形成一个原子 commit，只进行一次 Review 和 Approval。
 
 ### 15.5 来源变化
 
@@ -748,13 +768,13 @@ v1.3，因为工作簿计算规则没有变化。
 5. Design、Story 和 Task 都能通过同一 Interface 请求现状，不复制调查实现。
 6. Greenfield 默认由 Questionnaire Adapter 提供现状，且后续只追问新增 material Need。
 7. Existing System 默认从地图定向搜索，不扫描与当前决定无关的仓库区域。
-8. `asis.json` 是共享增量 Ledger，但只有 As-Is Owner 能写稳定现状数据。
+8. `asis.json` 是共享增量 Ledger；任一 ChangeAuthor 都能更新，但必须通过 As-Is ContractValidator。
 9. Investigation Result 删除 work-only Request 后仍能独立解析，并保留 SourceRevision。
-10. 任一下游 Finding 都能定位 Root Owner(s)，并让相关上下游在一个 ChangeSet 中整体分析、分 Owner 验证。
+10. 任一下游 Finding 都能定位 Root Contract(s)，并由发现者在一个 ChangeSet 中整体分析和更新、分合同验证。
 11. 语义不变的 Evidence 修正不会制造下游 `NO_CHANGE` 文件或固定后缀重审。
 12. 每个受影响对象由 Stable ID 依赖图进入 Impact Closure，闭包外内容可以复用。
 13. 普通评审向用户展示 ChangeSet、subject 和可读 diff，不要求用户核对 SHA-256。
-14. Owner 变化形成小步 Git commit；跨 Owner 修正由 ChangeSet trailer 关联。
+14. 一个可独立解释和回滚的 ChangeSet 形成一个原子 Git commit，并在 trailer 中记录作者阶段和受影响合同。
 15. 插件只暂存明确受管文件，遇到受管路径未知修改时 fail closed。
 16. Approval ref 精确指向 Approved Commit，新 commit 不覆盖既有批准。
 17. 最终包从 Approved Commit 确定性生成，并记录 `sourceCommit`、`generatorContract` 和
@@ -777,8 +797,8 @@ v1.3，因为工作簿计算规则没有变化。
 
 ### 17.3 完全删除 As-Is 阶段
 
-否决。后续 Owner 需要一个共享地图、统一 Ledger、单一事实写者和证据 provenance。删除后会让每个
-阶段自行搜索并产生互相冲突的现状。
+否决。后续阶段需要一个共享地图、统一 Ledger、单一合同权威和证据 provenance。执行者可以是任一
+ChangeAuthor，但删除 As-Is 合同后，各阶段会自行定义事实结构和验证规则并产生冲突。
 
 ### 17.4 只由 Design 驱动调查
 
