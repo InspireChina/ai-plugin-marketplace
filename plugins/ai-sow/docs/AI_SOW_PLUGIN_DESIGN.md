@@ -2,7 +2,7 @@
 
 - 状态：当前正式合同
 - SOW 标准：v1.3
-- 插件合同版本：0.1.0
+- 插件合同版本：0.1.0-beta.1
 - 适用宿主：Codex 与 Claude Code；支持 macOS、Linux 和 Windows 11 x64
 - 领域语义：[CONTEXT.md](CONTEXT.md)
 - 计算权威：[sow-template.xlsx](../skills/setup/assets/sow-template.xlsx)
@@ -185,7 +185,7 @@ Reviewer。需要改 Story/AC 时改走 `STORY_OWNER_RETURN_REQUIRED`；最终�
 
 ### generate-sow
 
-当前 Stage Agent 直接调用一次确定性生成器。生成器验证五个 Owner receipt、六份稳定数据、五份批准 review 与项目模板的当前 hash，并把稳定 ID 关系投影为唯一、非空的名称关系，把可翻译的枚举投影为中文，再确定性复读和发布工作簿及自包含交付包；普通生成不创建模型 Reviewer。package 指纹使用 `ai-sow-package-v1` 并绑定 `receipt-only-v2` 生成器合同；任何会改变工作簿或 manifest 确定性字节的投影变更必须提升该合同，并同步 reconciliation publisher 与跨路径测试。成功 stdout 直接返回 workbook、manifest、package tree SHA-256 和文件数，Stage 信任该内建复读摘要，不再自行全量哈希。As-Is 的仓库 `DOCUMENT` Evidence 通过 `repositorySnapshots` 把逻辑 `<repoId>:<anchor>` 解析为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。生成器不读取上游 schema、不重诊断上游业务语义，也不执行 Excel 公式。SIT 由集成 Task 触发，UAT 由 Story 的 `uatRelevant` 决定。
+当前 Stage Agent 直接调用一次确定性生成器。生成器验证五个 Owner receipt、六份稳定数据、五份批准 review 与项目模板的当前 hash，并把稳定 ID 关系投影为唯一、非空的名称关系，把可翻译的枚举投影为中文，再确定性复读和发布工作簿及自包含交付包；普通生成不创建模型 Reviewer。package 指纹使用 `ai-sow-package-v1` 并绑定 `receipt-only-v3` 生成器合同；任何会改变工作簿或 manifest 确定性字节的投影变更必须提升该合同，并同步 reconciliation publisher 与跨路径测试。成功 stdout 直接返回 workbook、manifest、package tree SHA-256 和文件数，Stage 信任该内建复读摘要，不再自行全量哈希。As-Is 的仓库 `DOCUMENT` Evidence 通过 `repositorySnapshots` 把逻辑 `<repoId>:<anchor>` 解析为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。生成器不读取上游 schema、不重诊断上游业务语义，也不执行 Excel 公式。SIT 由集成 Task 触发，UAT 由 Story 的 `uatRelevant` 决定。
 
 ### reconcile
 
@@ -236,7 +236,7 @@ operation 已完成；内部前向恢复前缀仍只按实际发生字节变化�
 | `91-项目参数` | PARAMETER | S/M/L 复杂度系数及 SIT、UAT、风险和取整参数 |
 | `92-基础人天` | BASE UNIT | 37 项基础单元、13 个任务族、逐单元标准与三个工作模式的人天列 |
 
-模板 prototype 提供业务表数据行的最小高度；生成器按最终可见换行文本与模板列宽确定性扩大行高，且对 `03-SOW主表` 的公式汇总列只使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。该投影语义由生成指纹中的 `receipt-only-v2` 生成器合同隔离，后续任何改变工作簿确定性字节的投影合同变化都必须提升该值，避免与旧包发生不可变 `packageId` 碰撞。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式汇总，并为每条内容添加项目符号；不得依赖 `_xlfn._xlws.` 动态工作表函数。五张受保护业务表只锁定公式与关系派生单元格及单元格格式；白色输入单元格保持可编辑，同时允许用户调整列宽与行高、使用表头筛选与排序。
+模板 prototype 提供业务表数据行的最小高度；生成器按最终可见换行文本与模板列宽确定性扩大行高，且对 `03-SOW主表` 的公式汇总列只使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。该投影语义由生成指纹中的 `receipt-only-v3` 生成器合同隔离，后续任何改变工作簿确定性字节的投影合同变化都必须提升该值，避免与旧包发生不可变 `packageId` 碰撞。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式汇总，并为每条内容添加项目符号；不得依赖 `_xlfn._xlws.` 动态工作表函数。五张受保护业务表只锁定公式与关系派生单元格及单元格格式；白色输入单元格保持可编辑，同时允许用户调整列宽与行高、使用表头筛选与排序。
 
 选填需求字段只有在内容具体时生成；省略时工作簿留空。`DESIGN_DERIVED` 理由必须关联具体决策、产生原因和缺失影响。Story 不保存类型；Task 不保存任务族、活动、数量或计算人天。每个可独立引用的结构化实体同时保存必填 ID 与非空名称，关系只保存 ID；业务 Sheet 不显示稳定 ID，并按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列实际存在的层级列。稳定 JSON 的 `baseUnit` 保留基础单元 ID，任务页投影基础单元名称；每个 Task 最多保存一个 `matchedEffectiveStartItemId`，每个 Story 最多保存一个 `assumptionId`。任务页将该 ID 显示为“关联现状条目”，下拉直接引用 `90-系统现状` 可见表中的唯一名称；任务页不展示集成点，集成页只在故事名称后展示唯一关联的集成任务名称。`90-系统现状` 不展开 Item、Commitment、Coverage、Uncertainty 或 Evidence，只显示 Effective Start 的主题、名称、现状描述和起点可用性；现状描述直接使用 Effective Start `summary`，不拼接来源 Item/Commitment 摘要；主题与起点可用性为浅黄色下拉，名称与描述为白色自由文本，整页不启用保护。工作簿内修改不回写稳定 JSON、评审或 manifest。模板按基础单元名称和工作模式对应的人天列取得 M 档基础人天，再按项目参数中的复杂度倍率计算；生成器只接受当前模板合同，不迁移旧模板。
 

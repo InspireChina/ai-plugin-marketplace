@@ -1,7 +1,7 @@
 {
-  "generatorContract": "receipt-only-v2",
+  "generatorContract": "receipt-only-v3",
   "files": {
-    "scripts/generate_sow.py": "76eb7ab479b96626234e16209e9fe14c462150f7658d401c0bb6a8213240d80b",
+    "scripts/generate_sow.py": "50d88ac17420c773fa62255803d3d5d43d0626b99c2ccf82dd59f5db17954c2b",
     "scripts/workbook.py": "7ff3785d35385a86487e37096daa78da8c87a3de4f84e0ad8e653a4dd935d6d4"
   }
 }

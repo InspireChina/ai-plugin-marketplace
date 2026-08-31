@@ -24,10 +24,10 @@ SCHEMA_SHA256 = {
     "skills/analyze-requirement/contracts/source-requirements.schema.json": "8ca6d9738ba0eeebe253d5d7e3bd164c019a54bc318b536012e6a6b5f3bf4e98",
     "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
     "skills/generate-design/contracts/design.schema.json": "a28fe5d9107f411ff582c4145e2b2e89403f4bdad09cf72f4a0d03501c2f089d",
-    "skills/generate-sow/contracts/manifest.schema.json": "fdec89cda680fb839e306f6788047575167a5b9f7f4851fbaa6bacaea21e7e60",
+    "skills/generate-sow/contracts/manifest.schema.json": "c881cf3bd7bd0d3961a14d77e077709b874818eb4259f986bc9cb2d944ef1eac",
     "skills/generate-story/contracts/delivery.schema.json": "fcd0e1549aa7a222649b8fb02c741619378afe632f34c66edc470caf05cfb3f0",
     "skills/generate-task/contracts/estimate.schema.json": "a1b5bbd829fc9bc5b2f3de29a0c07bd1f5daee81950cfc00fe47781701f35116",
-    "skills/setup/contracts/project.schema.json": "76de2afbaaa8e1edecec8199e849adf04c4966883067e272d9838d2bd4537639",
+    "skills/setup/contracts/project.schema.json": "66c62f87bf37346f72cbd9ef6cc26715e4a995639e7dd19454ffc0dad9aa9247",
 }
 
 SCHEMA_ENUMS = {
@@ -186,7 +186,8 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_manifest_identity_and_contract_version_match(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
-        release_version = "0.1.0"
+        release_version = "0.1.0-beta.1"
+        runtime_version = "0.1.0b1"
         manifest = json.loads(
             (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
         )
@@ -213,11 +214,11 @@ class RepositoryLayoutTests(unittest.TestCase):
         )
         self.assertRegex(
             pyproject_text,
-            r'(?ms)^\[project\].*?^version = "0\.1\.0"$',
+            rf'(?ms)^\[project\].*?^version = "{re.escape(runtime_version)}"$',
         )
         self.assertRegex(
             lock_text,
-            r'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "0\.1\.0"$',
+            rf'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "{re.escape(runtime_version)}"$',
         )
         self.assertEqual(project["sowStandardVersion"], "1.3")
         for relative in (

@@ -7,7 +7,7 @@
 
 | 插件 | 版本 | 用途 |
 | --- | --- | --- |
-| [AI SOW](plugins/ai-sow/README.md) | 0.1.0 | 分析范围、核对系统现状、估算交付工作并生成可评审的 XLSX。 |
+| [AI SOW](plugins/ai-sow/README.md) | 0.1.0-beta.1 | 分析范围、核对系统现状、估算交付工作并生成可评审的 XLSX。 |
 
 ## 支持平台
 

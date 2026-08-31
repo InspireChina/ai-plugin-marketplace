@@ -186,8 +186,8 @@ def test_generator_contract_is_versioned_and_reconcile_uses_the_same_contract() 
     generator = PLUGIN_ROOT / "skills/generate-sow/scripts/generate_sow.py"
     reconcile = PLUGIN_ROOT / "skills/reconcile/scripts/reconcile.py"
 
-    assert assigned_string(generator, "GENERATOR_CONTRACT") == "receipt-only-v2"
-    assert assigned_string(reconcile, "GENERATOR_CONTRACT") == "receipt-only-v2"
+    assert assigned_string(generator, "GENERATOR_CONTRACT") == "receipt-only-v3"
+    assert assigned_string(reconcile, "GENERATOR_CONTRACT") == "receipt-only-v3"
 
 
 def test_shared_review_gates_have_one_implementation_and_all_owners_call_them() -> None:

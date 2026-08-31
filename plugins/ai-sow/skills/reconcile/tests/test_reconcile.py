@@ -22,7 +22,7 @@ RUN_ID = "a1b2c3d4e5f6"
 PROJECT_VALUE = {
     "projectId": "sample-project",
     "name": "示例项目",
-    "pluginVersion": "0.1.0",
+    "pluginVersion": "0.1.0-beta.1",
     "sowStandardVersion": "1.3",
 }
 TEMPLATE_PAYLOAD = b"authoritative-template"

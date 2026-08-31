@@ -187,7 +187,7 @@ def test_receipt_only_generation_is_deterministic_and_reuses_identical_package(t
     second_package = second_project / str(second_result["packagePath"])
     assert package_tree(first_package) == package_tree(second_package)
     assert (first_package / "sow.xlsx").read_bytes() == REFERENCE_WORKBOOK.read_bytes()
-    assert first_result["generatorContract"] == "receipt-only-v2"
+    assert first_result["generatorContract"] == "receipt-only-v3"
     assert first_result["workbookSha256"] == hashlib.sha256(
         (first_package / "sow.xlsx").read_bytes()
     ).hexdigest()
@@ -197,7 +197,7 @@ def test_receipt_only_generation_is_deterministic_and_reuses_identical_package(t
     assert first_result["packageTreeSha256"] == package_tree_sha256(first_package)
     assert first_result["fileCount"] == len(package_tree(first_package))
     manifest = json.loads((first_package / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["generatorContract"] == "receipt-only-v2"
+    assert manifest["generatorContract"] == "receipt-only-v3"
 
     repeated, repeated_result = run_generator(first_project)
     assert repeated.returncode == 0
@@ -222,13 +222,13 @@ def test_package_fingerprint_binds_every_source_name_path_and_hash(
             "sha256": hashlib.sha256((project_root / source_path).read_bytes()).hexdigest(),
         }
 
-    assert payload["generatorContract"] == "receipt-only-v2"
+    assert payload["generatorContract"] == "receipt-only-v3"
     assert payload["projectIdentity"] == {
         "projectId": project["projectId"],
         "pluginVersion": project["pluginVersion"],
         "sowStandardVersion": project["sowStandardVersion"],
     }
-    assert payload["generatorContract"] == "receipt-only-v2"
+    assert payload["generatorContract"] == "receipt-only-v3"
     assert payload["project"] == expected("project", GENERATOR.PROJECT_PATH, GENERATOR.PROJECT_PATH)
     assert payload["inputs"] == [
         expected(name, GENERATOR.PACKAGE_DATA_PATHS[name], source_path)
@@ -567,7 +567,7 @@ def test_workbook_projects_six_jsons_and_preserves_dynamic_tables_and_formulas(t
         workbook.close()
 
     manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["generatorContract"] == "receipt-only-v2"
+    assert manifest["generatorContract"] == "receipt-only-v3"
     assert set(manifest["inputs"]) == {
         "sourceRequirements",
         "asis",

@@ -54,7 +54,7 @@ def project_payload() -> dict[str, str]:
     return {
         "projectId": "customer-portal",
         "name": "客户门户",
-        "pluginVersion": "0.1.0",
+        "pluginVersion": "0.1.0-beta.1",
         "sowStandardVersion": "1.3",
     }
 

@@ -35,7 +35,7 @@ PACKET_ALGORITHM = "ai-sow-reconciliation-review-packet-v1"
 REVIEWER_ALGORITHM = "ai-sow-reconciliation-reviewer-v1"
 APPROVAL_ALGORITHM = "ai-sow-reconciliation-approval-v1"
 PACKAGE_ALGORITHM = "ai-sow-package-v1"
-GENERATOR_CONTRACT = "receipt-only-v2"
+GENERATOR_CONTRACT = "receipt-only-v3"
 PROJECT_PATH = ".ai-sow/project.json"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 ASIS_PATH = ".ai-sow/data/analyze-as-is/asis.json"
@@ -2532,7 +2532,7 @@ def candidate_bindings(
                 raise ReconcileError(
                     "RECONCILIATION_CANDIDATE_MISSING",
                     candidate_path,
-                    "CHANGED Owner candidate is required before assemble",
+                    "CHANGED or PENDING Owner candidate is required before assemble",
                 ) from error
             if payload != payloads[output_path]:
                 raise ReconcileError(

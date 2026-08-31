@@ -33,7 +33,7 @@ from runtime.project_io import ProjectFiles  # noqa: E402
 PROJECT = {
     "projectId": "project-task-tests",
     "projectName": "Task validator tests",
-    "pluginVersion": "0.1.0",
+    "pluginVersion": "0.1.0-beta.1",
     "sowStandardVersion": "1.3",
 }
 SOURCE_PATH = "sources/task-source.md"
