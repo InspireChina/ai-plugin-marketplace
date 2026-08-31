@@ -222,6 +222,7 @@ def test_package_fingerprint_binds_every_source_name_path_and_hash(
             "sha256": hashlib.sha256((project_root / source_path).read_bytes()).hexdigest(),
         }
 
+    assert payload["generatorContract"] == "receipt-only-v2"
     assert payload["projectIdentity"] == {
         "projectId": project["projectId"],
         "pluginVersion": project["pluginVersion"],
