@@ -659,7 +659,7 @@ def build_project(
 
     fingerprint_payload = {
         "algorithm": "ai-sow-package-v1",
-        "generatorContract": "receipt-only-v1",
+        "generatorContract": "receipt-only-v2",
         "projectIdentity": {
             key: PROJECT_VALUE[key]
             for key in ("projectId", "pluginVersion", "sowStandardVersion")

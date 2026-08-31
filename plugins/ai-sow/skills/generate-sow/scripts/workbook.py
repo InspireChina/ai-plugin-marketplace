@@ -87,6 +87,9 @@ DETERMINISTIC_ZIP_TIME = (2000, 1, 1, 0, 0, 0)
 # 工作簿字节不同，package 复用和 manifest 绑定会失效。
 DETERMINISTIC_CREATE_SYSTEM = 3
 DETERMINISTIC_UNIX_MODE = 0o600
+WRAPPED_LINE_HEIGHT = 15
+WRAPPED_ROW_PADDING = 4
+MAX_EXCEL_ROW_HEIGHT = 409.5
 
 
 def safe_text(value: object) -> object:
@@ -245,6 +248,12 @@ def build_rows(
         entry["effectiveStartItemId"]: entry["name"]
         for entry in data["asis"]["effectiveStartItems"]
     }
+    acceptance_names_by_story: dict[str, list[str]] = {}
+    for entry in delivery["acceptanceCriteria"]:
+        acceptance_names_by_story.setdefault(entry["storyId"], []).append(entry["name"])
+    task_names_by_story: dict[str, list[str]] = {}
+    for entry in estimate["tasks"]:
+        task_names_by_story.setdefault(entry["storyId"], []).append(entry["name"])
     asis = data["asis"]
     for label, entries in (
         ("Epic", requirements["epics"]),
@@ -285,6 +294,14 @@ def build_rows(
                 "子需求名称": features[entry["featureId"]]["name"],
                 "故事名称": entry["name"],
                 "UAT适用": "是" if entry["uatRelevant"] else "否",
+                "验收条件": "\n".join(
+                    f"• {name}"
+                    for name in acceptance_names_by_story.get(entry["storyId"], [])
+                ),
+                "任务明细": "\n".join(
+                    f"• {name}"
+                    for name in task_names_by_story.get(entry["storyId"], [])
+                ),
                 "关联假设/风险名称": assumptions[entry["assumptionId"]]["name"]
                 if entry.get("assumptionId")
                 else "",
@@ -528,22 +545,31 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
                 cell.value = value
                 if isinstance(value, str):
                     cell.data_type = "s"
-        if table_name in ASIS_TABLES:
-            wrapped_lines = max(
-                (
-                    wrapped_line_count(
-                        cell.value,
-                        effective_cell_width(worksheet, cell),
-                    )
-                    for cell in worksheet[row][min_col - 1 : max_col]
-                    if cell.alignment.wrap_text and isinstance(cell.value, str)
-                ),
-                default=1,
-            )
-            worksheet.row_dimensions[row].height = max(
+        wrapped_lines = max(
+            (
+                wrapped_line_count(
+                    visible_value,
+                    effective_cell_width(worksheet, cell),
+                )
+                for column_offset, cell in enumerate(
+                    worksheet[row][min_col - 1 : max_col]
+                )
+                for visible_value in [
+                    payload.get(headers[column_offset])
+                    if column_offset in formulas
+                    else cell.value
+                ]
+                if cell.alignment.wrap_text and isinstance(visible_value, str)
+            ),
+            default=1,
+        )
+        worksheet.row_dimensions[row].height = min(
+            MAX_EXCEL_ROW_HEIGHT,
+            max(
                 prototype_height or 15,
-                wrapped_lines * 15,
-            )
+                wrapped_lines * WRAPPED_LINE_HEIGHT + WRAPPED_ROW_PADDING,
+            ),
+        )
 
     new_max_row = min_row + len(physical_rows)
     for row in range(new_max_row + 1, worksheet.max_row + 1):
