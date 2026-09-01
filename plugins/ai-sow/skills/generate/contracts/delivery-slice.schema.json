@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:delivery-slice:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "inputRevisionId",
+    "scopeSha256",
+    "impactPlanSha256",
+    "replacesFeatureIds",
+    "stories",
+    "acceptanceCriteria",
+    "tasks",
+    "dependencies"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-delivery-slice-v1"},
+    "inputRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "scopeSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "impactPlanSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "replacesFeatureIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+    "stories": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/story"}},
+    "acceptanceCriteria": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/acceptanceCriterion"}},
+    "tasks": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/task"}},
+    "dependencies": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/dependency"}}
+  }
+}

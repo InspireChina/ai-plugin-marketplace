@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:scope-slice:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "inputRevisionId",
+    "impactPlanSha256",
+    "replacesFeatureIds",
+    "epics",
+    "features",
+    "commitments",
+    "effectiveStartItems",
+    "designItems",
+    "designDecisions",
+    "integrations",
+    "nfrs",
+    "assumptions",
+    "responsibilityBoundaries"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-scope-slice-v1"},
+    "inputRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "impactPlanSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "replacesFeatureIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+    "epics": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/epic"}},
+    "features": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/feature"}},
+    "commitments": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/commitment"}},
+    "effectiveStartItems": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/effectiveStartItem"}},
+    "designItems": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/designItem"}},
+    "designDecisions": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/designDecision"}},
+    "integrations": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/integration"}},
+    "nfrs": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/nfr"}},
+    "assumptions": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/assumption"}},
+    "responsibilityBoundaries": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:common:1#/$defs/responsibilityBoundary"}}
+  }
+}

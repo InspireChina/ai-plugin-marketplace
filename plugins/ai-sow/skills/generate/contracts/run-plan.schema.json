@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:run-plan:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "runId",
+    "pendingManifestPath",
+    "action",
+    "targetRevisionId",
+    "targetGenerationId",
+    "impact",
+    "scopeCompilerContract",
+    "deliveryCompilerContract",
+    "rendererContract"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-run-plan-v1"},
+    "runId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+    "pendingManifestPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
+    "action": {"type": "string", "enum": ["REUSE", "RENDER_ONLY", "FULL_COMPILE", "SLICE_COMPILE", "RESUME_PENDING"]},
+    "targetRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "targetGenerationId": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9]{6}$"}]},
+    "impact": {"$ref": "#/$defs/impact"},
+    "scopeCompilerContract": {"const": "scope-compiler-v1"},
+    "deliveryCompilerContract": {"const": "delivery-compiler-v1"},
+    "rendererContract": {"const": "generation-renderer-v1"}
+  },
+  "$defs": {
+    "impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "baselineGenerationId", "baselineRevisionId", "changedSourceIds", "changedAnchorIds", "affectedFeatureIds", "escalation", "reasonCodes"],
+      "properties": {
+        "action": {"type": "string", "enum": ["REUSE", "RENDER_ONLY", "FULL_COMPILE", "SLICE_COMPILE", "RESUME_PENDING"]},
+        "baselineGenerationId": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9]{6}$"}]},
+        "baselineRevisionId": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9]{6}$"}]},
+        "changedSourceIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/idArray"},
+        "changedAnchorIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/idArray"},
+        "affectedFeatureIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/idArray"},
+        "escalation": {"type": "string", "enum": ["NONE", "FEATURE", "DOMAIN", "FULL"]},
+        "reasonCodes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

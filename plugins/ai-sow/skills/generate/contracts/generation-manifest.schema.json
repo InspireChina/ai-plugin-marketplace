@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:generation-manifest:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "generationId",
+    "revisionId",
+    "inputManifestPath",
+    "inputManifestSha256",
+    "scopePath",
+    "scopeSha256",
+    "deliveryPath",
+    "deliverySha256",
+    "templatePath",
+    "templateSha256",
+    "workbookPath",
+    "workbookSha256",
+    "notesPath",
+    "notesSha256",
+    "scopeCompilerContract",
+    "deliveryCompilerContract",
+    "rendererContract",
+    "changeCounts",
+    "finalReview",
+    "finalReviewSha256"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-generation-manifest-v1"},
+    "generationId": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "revisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "inputManifestPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
+    "inputManifestSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "scopePath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
+    "scopeSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "deliveryPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
+    "deliverySha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "templatePath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
+    "templateSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "workbookPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
+    "workbookSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "notesPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
+    "notesSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "scopeCompilerContract": {"const": "scope-compiler-v1"},
+    "deliveryCompilerContract": {"const": "delivery-compiler-v1"},
+    "rendererContract": {"const": "generation-renderer-v1"},
+    "changeCounts": {"$ref": "#/$defs/changeCounts"},
+    "finalReview": {"$ref": "urn:ai-sow:generate:final-review:1"},
+    "finalReviewSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"}
+  },
+  "$defs": {
+    "changeCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["features", "stories", "tasks"],
+      "properties": {
+        "features": {"type": "integer", "minimum": 0},
+        "stories": {"type": "integer", "minimum": 0},
+        "tasks": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

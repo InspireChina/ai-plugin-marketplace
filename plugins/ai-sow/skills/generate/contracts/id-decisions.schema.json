@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:id-decisions:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "decisions"],
+  "properties": {
+    "contract": {"const": "ai-sow-id-decisions-v1"},
+    "decisions": {"type": "array", "items": {"$ref": "#/$defs/idDecision"}}
+  },
+  "$defs": {
+    "idDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "objectId", "disposition", "meaningPreserved", "rationale"],
+      "properties": {
+        "objectType": {
+          "type": "string",
+          "enum": ["EPIC", "FEATURE", "COMMITMENT", "EFFECTIVE_START_ITEM", "DESIGN_ITEM", "DESIGN_DECISION", "INTEGRATION", "NFR", "ASSUMPTION", "STORY", "ACCEPTANCE_CRITERION", "TASK", "DEPENDENCY"]
+        },
+        "objectId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+        "disposition": {"type": "string", "enum": ["NEW", "UNCHANGED", "CLARIFIED", "CHANGED"]},
+        "previousId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+        "meaningPreserved": {"type": "boolean"},
+        "rationale": {"type": "string", "minLength": 1, "pattern": "[\\u3400-\\u9fff]"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"disposition": {"enum": ["UNCHANGED", "CLARIFIED"]}}, "required": ["disposition"]},
+          "then": {"required": ["previousId"], "properties": {"meaningPreserved": {"const": true}}}
+        },
+        {
+          "if": {"properties": {"disposition": {"const": "CHANGED"}}, "required": ["disposition"]},
+          "then": {"required": ["previousId"], "properties": {"meaningPreserved": {"const": false}}}
+        },
+        {
+          "if": {"properties": {"disposition": {"const": "NEW"}}, "required": ["disposition"]},
+          "then": {"not": {"required": ["previousId"]}, "properties": {"meaningPreserved": {"const": false}}}
+        }
+      ]
+    }
+  }
+}

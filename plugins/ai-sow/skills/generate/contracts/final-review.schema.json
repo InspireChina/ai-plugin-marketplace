@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:final-review:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "runId", "inputRevisionId", "scopeSha256", "deliverySha256", "packetSha256", "decision", "notes", "questions"],
+  "properties": {
+    "contract": {"const": "ai-sow-final-review-v1"},
+    "runId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+    "inputRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "scopeSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "deliverySha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "packetSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "decision": {"type": "string", "enum": ["PASS", "PASS_WITH_NOTES", "BLOCKED"]},
+    "notes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/reviewNote"}},
+    "questions": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/blockingQuestion"}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "PASS"}}, "required": ["decision"]},
+      "then": {"properties": {"notes": {"maxItems": 0}, "questions": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"decision": {"const": "PASS_WITH_NOTES"}}, "required": ["decision"]},
+      "then": {"properties": {"notes": {"minItems": 1}, "questions": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"decision": {"const": "BLOCKED"}}, "required": ["decision"]},
+      "then": {"properties": {"questions": {"minItems": 1}}}
+    }
+  ],
+  "$defs": {
+    "reviewNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["noteId", "category", "subjectIds", "summary", "sowNotesText"],
+      "properties": {
+        "noteId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+        "category": {"type": "string", "enum": ["ASSUMPTION", "RESPONSIBILITY", "EXCLUSION", "DESIGN_TASK", "ESTIMATE_BOUNDARY", "CHANGE_TRIGGER"]},
+        "subjectIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+        "summary": {"type": "string", "minLength": 1},
+        "sowNotesText": {"type": "string", "minLength": 1}
+      }
+    },
+    "blockingQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockingConditionId", "subjectIds", "summary", "question"],
+      "properties": {
+        "blockingConditionId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+        "subjectIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+        "summary": {"type": "string", "minLength": 1},
+        "question": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

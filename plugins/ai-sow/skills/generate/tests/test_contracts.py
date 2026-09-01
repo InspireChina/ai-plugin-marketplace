@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -12,12 +14,34 @@ from referencing import Registry, Resource
 SKILL_ROOT = Path(__file__).parents[1]
 CONTRACTS = SKILL_ROOT / "contracts"
 FIXTURES = SKILL_ROOT / "fixtures"
+SCRIPTS = SKILL_ROOT / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+from contracts import (  # noqa: E402
+    canonical_json_bytes,
+    load_schema_registry,
+    validate_contract,
+    validate_final_review,
+    validate_generation_hash_closure,
+    validate_id_decisions,
+)
+from models import Diagnostic  # noqa: E402
+
+
 SCHEMA_IDS = {
     "common.schema.json": "urn:ai-sow:generate:common:1",
     "request.schema.json": "urn:ai-sow:generate:request:1",
     "input-manifest.schema.json": "urn:ai-sow:generate:input-manifest:1",
     "scope-bundle.schema.json": "urn:ai-sow:generate:scope-bundle:1",
     "delivery-bundle.schema.json": "urn:ai-sow:generate:delivery-bundle:1",
+    "scope-slice.schema.json": "urn:ai-sow:generate:scope-slice:1",
+    "delivery-slice.schema.json": "urn:ai-sow:generate:delivery-slice:1",
+    "id-decisions.schema.json": "urn:ai-sow:generate:id-decisions:1",
+    "run-plan.schema.json": "urn:ai-sow:generate:run-plan:1",
+    "final-review.schema.json": "urn:ai-sow:generate:final-review:1",
+    "generation-manifest.schema.json": "urn:ai-sow:generate:generation-manifest:1",
+    "current.schema.json": "urn:ai-sow:generate:current:1",
 }
 
 
@@ -194,3 +218,143 @@ def test_brownfield_fixture_covers_cross_feature_and_design_required_cases() -> 
     design_task = next(task for task in delivery["tasks"] if task["taskKind"] == "DESIGN")
     assert design_task["storyId"] == "story-refund-processing"
     assert not any(story.get("storyType") == "DESIGN" for story in delivery["stories"])
+
+
+def valid_id_decisions() -> dict[str, object]:
+    return {
+        "contract": "ai-sow-id-decisions-v1",
+        "decisions": [
+            {
+                "objectType": "FEATURE",
+                "objectId": "feature-refund-processing",
+                "disposition": "UNCHANGED",
+                "previousId": "feature-refund-processing",
+                "meaningPreserved": True,
+                "rationale": "交付含义未变化，保留原有 Feature ID。",
+            }
+        ],
+    }
+
+
+def valid_final_review() -> dict[str, object]:
+    return {
+        "contract": "ai-sow-final-review-v1",
+        "runId": "run-000001",
+        "inputRevisionId": "000001",
+        "scopeSha256": "1" * 64,
+        "deliverySha256": "2" * 64,
+        "packetSha256": "3" * 64,
+        "decision": "PASS",
+        "notes": [],
+        "questions": [],
+    }
+
+
+def valid_generation_manifest() -> dict[str, object]:
+    review = valid_final_review()
+    return {
+        "contract": "ai-sow-generation-manifest-v1",
+        "generationId": "000001",
+        "revisionId": "000001",
+        "inputManifestPath": ".ai-sow/inputs/revisions/000001/manifest.json",
+        "inputManifestSha256": "4" * 64,
+        "scopePath": ".ai-sow/generations/000001/scope.json",
+        "scopeSha256": "1" * 64,
+        "deliveryPath": ".ai-sow/generations/000001/delivery.json",
+        "deliverySha256": "2" * 64,
+        "templatePath": "skills/generate/assets/sow-template.xlsx",
+        "templateSha256": "5" * 64,
+        "workbookPath": ".ai-sow/generations/000001/package/sow.xlsx",
+        "workbookSha256": "6" * 64,
+        "notesPath": ".ai-sow/generations/000001/package/sow-notes.md",
+        "notesSha256": "7" * 64,
+        "scopeCompilerContract": "scope-compiler-v1",
+        "deliveryCompilerContract": "delivery-compiler-v1",
+        "rendererContract": "generation-renderer-v1",
+        "changeCounts": {
+            "features": 1,
+            "stories": 1,
+            "tasks": 2,
+        },
+        "finalReview": review,
+        "finalReviewSha256": __import__("hashlib").sha256(
+            canonical_json_bytes(review)
+        ).hexdigest(),
+    }
+
+
+def test_registry_loader_loads_every_contract_once() -> None:
+    registry = load_schema_registry(SKILL_ROOT)
+    for schema_id in SCHEMA_IDS.values():
+        assert registry.get(schema_id).contents["$id"] == schema_id
+
+
+def test_canonical_json_bytes_are_utf8_sorted_compact_and_newline_terminated() -> None:
+    assert canonical_json_bytes({"z": 1, "a": "中文"}) == (
+        '{"a":"中文","z":1}\n'.encode("utf-8")
+    )
+
+
+def test_models_are_frozen() -> None:
+    diagnostic = Diagnostic(code="EXAMPLE", message="示例", path="/x", details={})
+    with pytest.raises(FrozenInstanceError):
+        diagnostic.code = "CHANGED"  # type: ignore[misc]
+
+
+def test_changed_meaning_cannot_reuse_previous_id(registry: Registry) -> None:
+    value = valid_id_decisions()
+    value["decisions"][0].update(
+        {
+            "disposition": "CHANGED",
+            "previousId": value["decisions"][0]["objectId"],
+            "meaningPreserved": False,
+        }
+    )
+    assert "ID_CHANGED_REUSES_PREVIOUS" in {
+        diagnostic.code for diagnostic in validate_id_decisions(value, registry)
+    }
+
+
+def test_blocked_review_requires_minimal_questions(registry: Registry) -> None:
+    review = valid_final_review()
+    review.update({"decision": "BLOCKED", "questions": []})
+    assert "FINAL_REVIEW_BLOCKED_QUESTIONS_REQUIRED" in {
+        diagnostic.code for diagnostic in validate_final_review(review, registry)
+    }
+
+
+def test_final_review_requires_exact_packet_binding(registry: Registry) -> None:
+    review = valid_final_review()
+    assert "FINAL_REVIEW_PACKET_HASH_MISMATCH" in {
+        diagnostic.code
+        for diagnostic in validate_final_review(
+            review, registry, expected_packet_sha256="f" * 64
+        )
+    }
+
+
+def test_current_pointer_has_no_mutable_status_fields(registry: Registry) -> None:
+    current = {
+        "contract": "ai-sow-current-v1",
+        "generationId": "000001",
+        "revisionId": "000001",
+        "generationManifestPath": ".ai-sow/generations/000001/manifest.json",
+        "generationManifestSha256": "8" * 64,
+        "state": "RUNNING",
+    }
+    assert "CONTRACT_UNEXPECTED_PROPERTY" in {
+        diagnostic.code
+        for diagnostic in validate_contract(current, "current.schema.json", registry)
+    }
+
+
+def test_generation_hash_closure_binds_review_and_paths(registry: Registry) -> None:
+    manifest = valid_generation_manifest()
+    assert validate_generation_hash_closure(manifest, registry) == ()
+
+    manifest["scopePath"] = ".ai-sow/generations/000002/scope.json"
+    manifest["finalReviewSha256"] = "0" * 64
+    assert {
+        diagnostic.code
+        for diagnostic in validate_generation_hash_closure(manifest, registry)
+    } == {"GENERATION_PATH_ID_MISMATCH", "GENERATION_REVIEW_HASH_MISMATCH"}
