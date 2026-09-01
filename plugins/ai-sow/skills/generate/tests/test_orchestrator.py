@@ -193,9 +193,17 @@ def publish_synthetic_current(project: Path, prepared: dict[str, object]) -> Non
         "scopeCompilerContract": "scope-compiler-v1",
         "deliveryCompilerContract": "delivery-compiler-v1",
         "rendererContract": "generation-renderer-v1",
-        "changeCounts": {"features": 1, "stories": 1, "tasks": 1},
+        "decision": "PASS",
+        "reviewMode": "AUTOMATIC_FINAL_REVIEW",
+        "impact": plan["impact"],
+        "changeCounts": {
+            "features": {"added": 1, "updated": 0, "removed": 0},
+            "recomputedStories": 1,
+            "recomputedTasks": 1,
+        },
         "finalReview": review,
         "finalReviewSha256": sha256_bytes(canonical_json_bytes(review)),
+        "publicationComplete": True,
     }
     write_json(staged / "manifest.json", manifest)
     publish_success(

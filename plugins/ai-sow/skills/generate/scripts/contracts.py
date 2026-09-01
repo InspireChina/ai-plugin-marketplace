@@ -293,4 +293,12 @@ def validate_generation_hash_closure(
                     "只有通过或带说明通过的终审才能进入 generation。",
                 )
             )
+        if value.get("decision") != review.get("decision"):
+            diagnostics.append(
+                _diagnostic(
+                    "GENERATION_DECISION_MISMATCH",
+                    "/decision",
+                    "generation decision 与内嵌终审不一致。",
+                )
+            )
     return _sort_diagnostics(diagnostics)

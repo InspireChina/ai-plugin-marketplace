@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -198,7 +199,7 @@ def render_package(
                 workbook_path,
                 input_hashes,
             )
-        except (OSError, KeyError, TypeError, ValueError) as error:
+        except (OSError, KeyError, TypeError, ValueError, zipfile.BadZipFile) as error:
             raise PackageRenderError(
                 "WORKBOOK_RENDER_FAILED", "工作簿渲染失败。"
             ) from error

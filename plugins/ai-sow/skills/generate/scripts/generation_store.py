@@ -4,13 +4,14 @@ import json
 import os
 import re
 import stat
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-if str(PLUGIN_ROOT) not in __import__("sys").path:
-    __import__("sys").path.insert(0, str(PLUGIN_ROOT))
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
 
 from contracts import (  # noqa: E402
     canonical_json_bytes,
@@ -130,7 +131,6 @@ def _verify_generation(
         ("inputManifestPath", "inputManifestSha256"),
         ("scopePath", "scopeSha256"),
         ("deliveryPath", "deliverySha256"),
-        ("templatePath", "templateSha256"),
         ("workbookPath", "workbookSha256"),
         ("notesPath", "notesSha256"),
     ):
@@ -162,6 +162,12 @@ def load_current(files: ProjectFiles) -> CurrentGeneration | None:
         current.get("generationManifestSha256"),
     )
     manifest = _verify_generation(files, generation_id, revision_id)
+    if current.get("decision") != manifest.get("decision"):
+        raise _error(
+            "PROJECT_CURRENT_DECISION_MISMATCH",
+            ".ai-sow/current.json",
+            "current decision does not match its generation manifest",
+        )
     return CurrentGeneration(
         generation_id=generation_id,
         revision_id=revision_id,
@@ -280,6 +286,17 @@ def publish_success(
             "staged generation IDs do not match publication targets",
         )
 
+    files.write_atomic(
+        PUBLICATION_LEDGER,
+        canonical_json_bytes(
+            {
+                "revisionId": target_revision_id,
+                "generationId": target_generation_id,
+                "publicationComplete": False,
+            }
+        ),
+    )
+
     if pending_root is not None:
         pending_manifest = _staged_json(Path(pending_root) / "manifest.json")
         if pending_manifest.get("revisionId") != target_revision_id:
@@ -305,6 +322,7 @@ def publish_success(
         "contract": "ai-sow-current-v1",
         "generationId": target_generation_id,
         "revisionId": target_revision_id,
+        "decision": manifest["decision"],
         "generationManifestPath": manifest_path,
         "generationManifestSha256": sha256_bytes(files.read_bytes(manifest_path)),
     }
@@ -322,6 +340,15 @@ def publish_success(
     decision = review.get("decision") if isinstance(review, Mapping) else None
     change_counts = manifest.get("changeCounts")
     counts = dict(change_counts) if isinstance(change_counts, Mapping) else {}
+    feature_counts = counts.get("features")
+    feature_values = (
+        {
+            key: int(feature_counts.get(key, 0))
+            for key in ("added", "updated", "removed")
+        }
+        if isinstance(feature_counts, Mapping)
+        else {"added": 0, "updated": 0, "removed": 0}
+    )
     return PublicationResult(
         outcome="PUBLISHED",
         decision=decision if decision in {"PASS", "PASS_WITH_NOTES", "BLOCKED"} else None,
@@ -329,9 +356,9 @@ def publish_success(
         revision_id=target_revision_id,
         workbook_path=str(manifest["workbookPath"]),
         notes_path=str(manifest["notesPath"]),
-        feature_counts={"changed": int(counts.get("features", 0))},
-        recomputed_story_count=int(counts.get("stories", 0)),
-        recomputed_task_count=int(counts.get("tasks", 0)),
+        feature_counts=feature_values,
+        recomputed_story_count=int(counts.get("recomputedStories", 0)),
+        recomputed_task_count=int(counts.get("recomputedTasks", 0)),
         questions=(),
     )
 

@@ -3,11 +3,12 @@
   "$id": "urn:ai-sow:generate:current:1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contract", "generationId", "revisionId", "generationManifestPath", "generationManifestSha256"],
+  "required": ["contract", "generationId", "revisionId", "decision", "generationManifestPath", "generationManifestSha256"],
   "properties": {
     "contract": {"const": "ai-sow-current-v1"},
     "generationId": {"type": "string", "pattern": "^[0-9]{6}$"},
     "revisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "decision": {"type": "string", "enum": ["PASS", "PASS_WITH_NOTES"]},
     "generationManifestPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
     "generationManifestSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"}
   }

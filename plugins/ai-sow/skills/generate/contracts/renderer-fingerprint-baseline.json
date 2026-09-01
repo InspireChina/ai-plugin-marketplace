@@ -1,7 +1,7 @@
 {
   "rendererContract": "generation-renderer-v1",
   "files": {
-    "scripts/package_renderer.py": "ee1728510507f299134298e61a9928e8199a589a61a26f1e06bcba905b4dddb7",
+    "scripts/package_renderer.py": "93bab67386002d429f59edc035472f88de22431b41926a972ce1f06a4b7cc3d6",
     "scripts/workbook.py": "1db282f6994cdfa02336ed9f45c1dd551562de3172b0c552810c63fd3204af6e"
   }
 }

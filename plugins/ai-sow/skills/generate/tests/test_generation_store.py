@@ -18,7 +18,12 @@ if str(PLUGIN_ROOT) not in sys.path:
 
 import generation_store  # noqa: E402
 from contracts import canonical_json_bytes, sha256_bytes  # noqa: E402
-from generation_store import allocate_next_ids, load_current, publish_success  # noqa: E402
+from generation_store import (  # noqa: E402
+    allocate_next_ids,
+    cleanup_interrupted_publication,
+    load_current,
+    publish_success,
+)
 from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
 
 
@@ -140,9 +145,26 @@ def stage_generation(
             "scopeCompilerContract": "scope-compiler-v1",
             "deliveryCompilerContract": "delivery-compiler-v1",
             "rendererContract": "generation-renderer-v1",
-            "changeCounts": {"features": 1, "stories": 1, "tasks": 1},
+            "decision": "PASS",
+            "reviewMode": "AUTOMATIC_FINAL_REVIEW",
+            "impact": {
+                "action": "FULL_COMPILE",
+                "baselineGenerationId": None,
+                "baselineRevisionId": None,
+                "changedSourceIds": [],
+                "changedAnchorIds": [],
+                "affectedFeatureIds": ["feature-refund-processing"],
+                "escalation": "FULL",
+                "reasonCodes": ["NO_CURRENT_GENERATION"],
+            },
+            "changeCounts": {
+                "features": {"added": 1, "updated": 0, "removed": 0},
+                "recomputedStories": 1,
+                "recomputedTasks": 1,
+            },
             "finalReview": review,
             "finalReviewSha256": sha256_bytes(canonical_json_bytes(review)),
+            "publicationComplete": True,
         },
     )
     return staged
@@ -210,6 +232,11 @@ def test_crash_before_pointer_swap_preserves_previous_generation(
             staged_generation_root=staged2,
         )
     assert files.read_bytes(".ai-sow/current.json") == previous
+    current = load_current(files)
+    cleanup_interrupted_publication(files, current)
+    assert not (files.root / ".ai-sow/inputs/revisions/000002").exists()
+    assert not (files.root / ".ai-sow/generations/000002").exists()
+    assert pending2.exists()
 
 
 def test_immutable_tree_rejects_different_bytes(tmp_path: Path) -> None:

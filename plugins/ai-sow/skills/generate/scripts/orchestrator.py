@@ -18,6 +18,7 @@ from contracts import (  # noqa: E402
     sha256_bytes,
     validate_contract,
     validate_final_review,
+    validate_generation_hash_closure,
 )
 from delivery_compiler import compile_delivery, read_template_catalog  # noqa: E402
 from final_review import build_review_packet, record_review  # noqa: E402
@@ -25,10 +26,12 @@ from generation_store import (  # noqa: E402
     allocate_next_ids,
     cleanup_interrupted_publication,
     load_current,
+    publish_success,
 )
 from impact import compute_impact_plan, finalize_impact_plan  # noqa: E402
 from intake import IntakeRequestError, load_request, prepare_pending  # noqa: E402
 from models import CurrentGeneration, Diagnostic, ImpactPlan, RunPlan  # noqa: E402
+from package_renderer import PackageRenderError, render_package  # noqa: E402
 from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
 from scope_compiler import compile_scope, impact_plan_sha256  # noqa: E402
 
@@ -48,6 +51,7 @@ DELIVERY_PATH = f"{WORK_ROOT}/delivery.candidate.json"
 REVIEW_PACKET_PATH = f"{WORK_ROOT}/review-packet.json"
 FINAL_REVIEW_PATH = f"{WORK_ROOT}/final-review.json"
 GENERATION_ROOT = f"{WORK_ROOT}/generation"
+DISCLAIMER = "本次生成不代表客户签署、验收完成或产生法律效力。"
 
 
 def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
@@ -250,6 +254,10 @@ def _clear_downstream(files: ProjectFiles, *, keep_scope: bool = False) -> None:
             raise
 
 
+def _clear_staged_generation(files: ProjectFiles) -> None:
+    files.remove_managed_tree(GENERATION_ROOT, allowed_roots=(WORK_ROOT,))
+
+
 def _pending_is_valid(files: ProjectFiles, plan: RunPlan) -> bool:
     try:
         manifest = _mapping(files, plan.pending_manifest_path)
@@ -344,6 +352,7 @@ def prepare_run(
             revisionId=current.revision_id,
             workbookPath=current.workbook_path,
             notesPath=current.notes_path,
+            disclaimer=DISCLAIMER,
         )
 
     render_only = impact.action == "RENDER_ONLY"
@@ -565,6 +574,241 @@ def accept_review(project_root: Path, review_result_path: str) -> dict[str, obje
     )
 
 
+def _object_map(
+    bundle: Mapping[str, object] | None,
+    collection: str,
+    id_field: str,
+) -> dict[str, Mapping[str, object]]:
+    if bundle is None:
+        return {}
+    return {
+        str(item[id_field]): item
+        for item in _mappings(bundle.get(collection))
+        if isinstance(item.get(id_field), str)
+    }
+
+
+def _changed_ids(
+    previous: Mapping[str, object] | None,
+    current: Mapping[str, object],
+    collection: str,
+    id_field: str,
+) -> tuple[set[str], set[str], set[str]]:
+    before = _object_map(previous, collection, id_field)
+    after = _object_map(current, collection, id_field)
+    added = set(after) - set(before)
+    removed = set(before) - set(after)
+    updated = {
+        object_id
+        for object_id in set(before) & set(after)
+        if canonical_json_bytes(before[object_id]) != canonical_json_bytes(after[object_id])
+    }
+    return added, updated, removed
+
+
+def _publication_counts(
+    previous_scope: Mapping[str, object] | None,
+    previous_delivery: Mapping[str, object] | None,
+    scope: Mapping[str, object],
+    delivery: Mapping[str, object],
+) -> dict[str, object]:
+    added, updated, removed = _changed_ids(
+        previous_scope, scope, "features", "featureId"
+    )
+    story_changes = _changed_ids(
+        previous_delivery, delivery, "stories", "storyId"
+    )
+    task_changes = _changed_ids(previous_delivery, delivery, "tasks", "taskId")
+    return {
+        "features": {
+            "added": len(added),
+            "updated": len(updated),
+            "removed": len(removed),
+        },
+        "recomputedStories": len(set().union(*story_changes)),
+        "recomputedTasks": len(set().union(*task_changes)),
+    }
+
+
+def _valid_review_for_publication(
+    files: ProjectFiles,
+    plan: RunPlan,
+    scope: Mapping[str, object],
+    delivery: Mapping[str, object],
+) -> tuple[Mapping[str, object] | None, tuple[Diagnostic, ...]]:
+    try:
+        review = _mapping(files, FINAL_REVIEW_PATH)
+        packet_sha = sha256_bytes(files.read_bytes(REVIEW_PACKET_PATH))
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            return None, (
+                _diagnostic(
+                    "FINAL_REVIEW_NOT_ACCEPTED", "发布前必须完成通过的跨层终审。"
+                ),
+            )
+        raise
+    diagnostics = list(
+        validate_final_review(
+            review, SCHEMA_REGISTRY, expected_packet_sha256=packet_sha
+        )
+    )
+    if review.get("decision") not in {"PASS", "PASS_WITH_NOTES"}:
+        diagnostics.append(
+            _diagnostic(
+                "FINAL_REVIEW_NOT_ACCEPTED", "只有通过的终审才能进入发布。"
+            )
+        )
+    if (
+        review.get("runId") != plan.run_id
+        or review.get("inputRevisionId") != plan.target_revision_id
+        or review.get("scopeSha256") != sha256_bytes(canonical_json_bytes(scope))
+        or review.get("deliverySha256") != sha256_bytes(canonical_json_bytes(delivery))
+    ):
+        diagnostics.append(
+            _diagnostic(
+                "FINAL_REVIEW_BINDING_MISMATCH",
+                "终审未绑定当前运行的输入、Scope 或 Delivery。",
+            )
+        )
+    return review, tuple(
+        sorted(diagnostics, key=lambda item: (item.path, item.code, item.message))
+    )
+
+
+def publish_run(project_root: Path) -> dict[str, object]:
+    files = ProjectFiles.open(project_root)
+    plan = _plan_from_value(files.read_json(RUN_PLAN_PATH))
+    if plan.target_generation_id is None:
+        return _blocked("GENERATION_ID_MISSING", "运行计划缺少目标 generation ID。")
+    current = load_current(files)
+    previous_scope, previous_delivery = _previous_bundles(files, current)
+    review_mode = "AUTOMATIC_FINAL_REVIEW"
+    pending_root: Path | None
+
+    if plan.action == "RENDER_ONLY":
+        if current is None:
+            return _blocked("CURRENT_GENERATION_MISSING", "仅渲染需要有效 current。")
+        current_manifest = _mapping(files, current.manifest_path)
+        scope = _mapping(files, current.scope_path)
+        delivery = _mapping(files, current.delivery_path)
+        review_value = current_manifest.get("finalReview")
+        if not isinstance(review_value, Mapping):
+            return _blocked("FINAL_REVIEW_NOT_ACCEPTED", "current 缺少有效终审。")
+        review = review_value
+        review_sha = str(current_manifest["finalReviewSha256"])
+        review_mode = "REUSED_SCOPE_REVIEW"
+        pending_root = None
+        counts = {
+            "features": {"added": 0, "updated": 0, "removed": 0},
+            "recomputedStories": 0,
+            "recomputedTasks": 0,
+        }
+    else:
+        if not _scope_is_current(files, plan) or not _delivery_is_current(files, plan):
+            return _blocked(
+                "DELIVERY_NOT_ACCEPTED", "发布前必须接受当前 Scope 和 Delivery。"
+            )
+        scope = _mapping(files, SCOPE_PATH)
+        delivery = _mapping(files, DELIVERY_PATH)
+        review, diagnostics = _valid_review_for_publication(
+            files, plan, scope, delivery
+        )
+        if diagnostics or review is None:
+            return _result(
+                "BLOCKED", "终审尚未允许发布。", diagnostics=diagnostics
+            )
+        review_sha = sha256_bytes(files.read_bytes(FINAL_REVIEW_PATH))
+        pending_root = files.resolve(
+            str(Path(plan.pending_manifest_path).parent), expect="dir"
+        )
+        counts = _publication_counts(
+            previous_scope, previous_delivery, scope, delivery
+        )
+
+    input_manifest = _mapping(files, plan.pending_manifest_path)
+    try:
+        _clear_staged_generation(files)
+        rendered = render_package(
+            generation_id=plan.target_generation_id,
+            template_path=files.resolve(TEMPLATE_PATH),
+            output_root=files.root / GENERATION_ROOT,
+            input_manifest=input_manifest,
+            scope=scope,
+            delivery=delivery,
+            review=review,
+        )
+    except PackageRenderError as error:
+        return _blocked(error.code, str(error), GENERATION_ROOT)
+
+    staged_root = Path(rendered.root)
+    data_root = staged_root / "data"
+    data_root.mkdir()
+    scope_payload = canonical_json_bytes(scope)
+    delivery_payload = canonical_json_bytes(delivery)
+    (data_root / "scope.json").write_bytes(scope_payload)
+    (data_root / "delivery.json").write_bytes(delivery_payload)
+    generation_root = f".ai-sow/generations/{plan.target_generation_id}"
+    manifest = {
+        "contract": "ai-sow-generation-manifest-v1",
+        "generationId": plan.target_generation_id,
+        "revisionId": plan.target_revision_id,
+        "inputManifestPath": (
+            f".ai-sow/inputs/revisions/{plan.target_revision_id}/manifest.json"
+        ),
+        "inputManifestSha256": sha256_bytes(
+            files.read_bytes(plan.pending_manifest_path)
+        ),
+        "scopePath": f"{generation_root}/data/scope.json",
+        "scopeSha256": sha256_bytes(scope_payload),
+        "deliveryPath": f"{generation_root}/data/delivery.json",
+        "deliverySha256": sha256_bytes(delivery_payload),
+        "templatePath": TEMPLATE_PATH,
+        "templateSha256": sha256_bytes(files.read_bytes(TEMPLATE_PATH)),
+        "workbookPath": f"{generation_root}/output/sow.xlsx",
+        "workbookSha256": rendered.workbook_sha256,
+        "notesPath": f"{generation_root}/output/sow-notes.md",
+        "notesSha256": rendered.notes_sha256,
+        "scopeCompilerContract": plan.scope_compiler_contract,
+        "deliveryCompilerContract": plan.delivery_compiler_contract,
+        "rendererContract": plan.renderer_contract,
+        "decision": review["decision"],
+        "reviewMode": review_mode,
+        "impact": _impact_value(plan.impact),
+        "changeCounts": counts,
+        "finalReview": review,
+        "finalReviewSha256": review_sha,
+        "publicationComplete": True,
+    }
+    manifest_diagnostics = validate_generation_hash_closure(
+        manifest, SCHEMA_REGISTRY
+    )
+    if manifest_diagnostics:
+        return _result(
+            "BLOCKED",
+            "generation manifest 未通过发布前校验。",
+            diagnostics=manifest_diagnostics,
+        )
+    (staged_root / "manifest.json").write_bytes(canonical_json_bytes(manifest))
+    publication = publish_success(
+        files,
+        target_revision_id=plan.target_revision_id,
+        target_generation_id=plan.target_generation_id,
+        pending_root=pending_root,
+        staged_generation_root=staged_root,
+    )
+    return _result(
+        "PUBLISHED",
+        "已发布新的不可变 SOW generation。",
+        decision=publication.decision,
+        featureCounts=dict(publication.feature_counts),
+        recomputedStoryCount=publication.recomputed_story_count,
+        recomputedTaskCount=publication.recomputed_task_count,
+        workbookPath=publication.workbook_path,
+        notesPath=publication.notes_path,
+        disclaimer=DISCLAIMER,
+    )
+
+
 def status(project_root: Path) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     plan_value = _optional_json(files, RUN_PLAN_PATH)
@@ -580,6 +824,7 @@ def status(project_root: Path) -> dict[str, object]:
             revisionId=current.revision_id,
             workbookPath=current.workbook_path,
             notesPath=current.notes_path,
+            disclaimer=DISCLAIMER,
         )
     plan = _plan_from_value(plan_value)
     if not _pending_is_valid(files, plan):
@@ -691,6 +936,10 @@ def run_mode(
                     "CLI_ARGUMENTS_INVALID", "accept-review 必须且只提供 --review。"
                 )
             return accept_review(project_root, review)
+        if mode == "publish":
+            if any(value is not None for value in (request, candidate, ids, review)):
+                return _blocked("CLI_ARGUMENTS_INVALID", "publish 不接受工件参数。")
+            return publish_run(project_root)
         if mode == "status":
             if any(value is not None for value in (request, candidate, ids, review)):
                 return _blocked("CLI_ARGUMENTS_INVALID", "status 不接受工件参数。")
@@ -719,6 +968,7 @@ def _parser() -> argparse.ArgumentParser:
             "accept-delivery",
             "prepare-review",
             "accept-review",
+            "publish",
             "status",
         ),
     )

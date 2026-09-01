@@ -271,15 +271,28 @@ def valid_generation_manifest() -> dict[str, object]:
         "scopeCompilerContract": "scope-compiler-v1",
         "deliveryCompilerContract": "delivery-compiler-v1",
         "rendererContract": "generation-renderer-v1",
+        "decision": "PASS",
+        "reviewMode": "AUTOMATIC_FINAL_REVIEW",
+        "impact": {
+            "action": "FULL_COMPILE",
+            "baselineGenerationId": None,
+            "baselineRevisionId": None,
+            "changedSourceIds": [],
+            "changedAnchorIds": [],
+            "affectedFeatureIds": ["feature-refund-processing"],
+            "escalation": "FULL",
+            "reasonCodes": ["NO_CURRENT_GENERATION"],
+        },
         "changeCounts": {
-            "features": 1,
-            "stories": 1,
-            "tasks": 2,
+            "features": {"added": 1, "updated": 0, "removed": 0},
+            "recomputedStories": 1,
+            "recomputedTasks": 2,
         },
         "finalReview": review,
         "finalReviewSha256": __import__("hashlib").sha256(
             canonical_json_bytes(review)
         ).hexdigest(),
+        "publicationComplete": True,
     }
 
 

@@ -22,9 +22,13 @@
     "scopeCompilerContract",
     "deliveryCompilerContract",
     "rendererContract",
+    "decision",
+    "reviewMode",
+    "impact",
     "changeCounts",
     "finalReview",
-    "finalReviewSha256"
+    "finalReviewSha256",
+    "publicationComplete"
   ],
   "properties": {
     "contract": {"const": "ai-sow-generation-manifest-v1"},
@@ -45,19 +49,32 @@
     "scopeCompilerContract": {"const": "scope-compiler-v1"},
     "deliveryCompilerContract": {"const": "delivery-compiler-v1"},
     "rendererContract": {"const": "generation-renderer-v1"},
+    "decision": {"type": "string", "enum": ["PASS", "PASS_WITH_NOTES"]},
+    "reviewMode": {"type": "string", "enum": ["AUTOMATIC_FINAL_REVIEW", "REUSED_SCOPE_REVIEW"]},
+    "impact": {"$ref": "urn:ai-sow:generate:run-plan:1#/$defs/impact"},
     "changeCounts": {"$ref": "#/$defs/changeCounts"},
     "finalReview": {"$ref": "urn:ai-sow:generate:final-review:1"},
-    "finalReviewSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"}
+    "finalReviewSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
+    "publicationComplete": {"const": true}
   },
   "$defs": {
     "changeCounts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["features", "stories", "tasks"],
+      "required": ["features", "recomputedStories", "recomputedTasks"],
       "properties": {
-        "features": {"type": "integer", "minimum": 0},
-        "stories": {"type": "integer", "minimum": 0},
-        "tasks": {"type": "integer", "minimum": 0}
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["added", "updated", "removed"],
+          "properties": {
+            "added": {"type": "integer", "minimum": 0},
+            "updated": {"type": "integer", "minimum": 0},
+            "removed": {"type": "integer", "minimum": 0}
+          }
+        },
+        "recomputedStories": {"type": "integer", "minimum": 0},
+        "recomputedTasks": {"type": "integer", "minimum": 0}
       }
     }
   }
