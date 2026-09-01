@@ -421,3 +421,57 @@ def test_project_view_tombstone_rejects_directories_in_either_layer(
             view.tombstone(relative_path)
         assert raised.value.code == "PROJECT_PATH_TYPE"
         assert view.resolve(relative_path, expect="dir").is_dir()
+
+
+def test_publish_tree_new_creates_reuses_and_rejects_extra_files(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    source = tmp_path / "source"
+    project.mkdir()
+    (source / "nested").mkdir(parents=True)
+    (source / "a.txt").write_bytes(b"a")
+    (source / "nested/b.txt").write_bytes(b"b")
+    files = ProjectFiles.open(project)
+
+    assert files.publish_tree_new(source, ".ai-sow/data/tree") == "CREATED"
+    assert files.publish_tree_new(source, ".ai-sow/data/tree") == "REUSED"
+    files.write_atomic(".ai-sow/data/tree/extra.txt", b"extra")
+    with pytest.raises(ProjectIOError) as raised:
+        files.publish_tree_new(source, ".ai-sow/data/tree")
+    assert raised.value.code == "PROJECT_CONTENT_CONFLICT"
+
+
+@requires_symlinks
+def test_publish_tree_new_rejects_symlinked_source_entry(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    source = tmp_path / "source"
+    project.mkdir()
+    source.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside")
+    (source / "link.txt").symlink_to(outside)
+
+    with pytest.raises(ProjectIOError) as raised:
+        ProjectFiles.open(project).publish_tree_new(source, ".ai-sow/data/tree")
+    assert raised.value.code == "PROJECT_PATH_UNSAFE"
+    assert not (project / ".ai-sow/data/tree/link.txt").exists()
+
+
+def test_remove_managed_tree_requires_an_exact_narrow_allowed_root(tmp_path: Path) -> None:
+    files = ProjectFiles.open(tmp_path)
+    files.write_atomic(".ai-sow/work/nested/value.json", b"{}\n")
+    files.remove_managed_tree(
+        ".ai-sow/work/nested",
+        allowed_roots=(".ai-sow/work",),
+    )
+    assert not (tmp_path / ".ai-sow/work/nested").exists()
+
+    for broad in (
+        ".ai-sow",
+        ".ai-sow/inputs",
+        ".ai-sow/inputs/revisions",
+        ".ai-sow/generations",
+        ".ai-sow/$UNRESOLVED",
+    ):
+        with pytest.raises(ProjectIOError) as raised:
+            files.remove_managed_tree(broad, allowed_roots=(broad,))
+        assert raised.value.code == "PROJECT_DELETE_SCOPE_INVALID"

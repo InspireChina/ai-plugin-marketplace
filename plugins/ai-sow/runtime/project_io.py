@@ -75,6 +75,19 @@ def _path_too_long(error: OSError, relative_path: str) -> "ProjectIOError | None
     )
 
 
+def _fsync_directory(path: Path) -> None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
+
+
 @dataclass(frozen=True)
 class ProjectFiles:
     root: Path
@@ -358,6 +371,206 @@ class ProjectFiles:
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _tree_files(root: Path, relative_path: str) -> dict[str, Path]:
+        try:
+            root_snapshot = root.lstat()
+        except OSError as error:
+            raise ProjectIOError(
+                "PROJECT_PATH_MISSING",
+                relative_path,
+                f"tree root does not exist: {relative_path}",
+            ) from error
+        if _is_unsafe(root_snapshot):
+            raise ProjectIOError(
+                "PROJECT_PATH_UNSAFE",
+                relative_path,
+                f"tree contains a symlink or reparse point: {relative_path}",
+            )
+        if not stat.S_ISDIR(root_snapshot.st_mode):
+            raise ProjectIOError(
+                "PROJECT_PATH_TYPE",
+                relative_path,
+                f"tree root is not a directory: {relative_path}",
+            )
+
+        files: dict[str, Path] = {}
+
+        def visit(directory: Path, prefix: tuple[str, ...]) -> None:
+            try:
+                children = sorted(directory.iterdir(), key=lambda item: item.name)
+            except OSError as error:
+                raise ProjectIOError(
+                    "PROJECT_PATH_UNREADABLE",
+                    relative_path,
+                    f"tree cannot be read: {relative_path}",
+                ) from error
+            for child in children:
+                child_relative = prefix + (child.name,)
+                child_path = "/".join(child_relative)
+                snapshot = child.lstat()
+                if _is_unsafe(snapshot):
+                    raise ProjectIOError(
+                        "PROJECT_PATH_UNSAFE",
+                        f"{relative_path}/{child_path}",
+                        "tree contains a symlink or reparse point",
+                    )
+                if stat.S_ISDIR(snapshot.st_mode):
+                    visit(child, child_relative)
+                elif stat.S_ISREG(snapshot.st_mode):
+                    files[child_path] = child
+                else:
+                    raise ProjectIOError(
+                        "PROJECT_PATH_TYPE",
+                        f"{relative_path}/{child_path}",
+                        "tree contains a special file",
+                    )
+
+        visit(root, ())
+        return files
+
+    def publish_tree_new(
+        self,
+        source: Path,
+        relative_root: str,
+    ) -> Literal["CREATED", "REUSED"]:
+        self._parts(relative_root)
+        source_files = self._tree_files(Path(source), relative_root)
+        try:
+            destination = self.resolve(relative_root, expect="dir")
+            destination_existed = True
+            destination_files = self._tree_files(destination, relative_root)
+        except ProjectIOError as error:
+            if error.code != "PROJECT_PATH_MISSING":
+                raise
+            destination_existed = False
+            destination_files = {}
+
+        extra_files = sorted(set(destination_files) - set(source_files))
+        if extra_files:
+            raise ProjectIOError(
+                "PROJECT_CONTENT_CONFLICT",
+                f"{relative_root}/{extra_files[0]}",
+                "immutable destination contains an unexpected file",
+            )
+
+        self.ensure_dir(relative_root)
+        created = not destination_existed
+        for child_relative, child in source_files.items():
+            outcome = self.publish_new(
+                f"{relative_root}/{child_relative}",
+                child.read_bytes(),
+            )
+            created = created or outcome == "CREATED"
+
+        destination = self.resolve(relative_root, expect="dir")
+        final_files = self._tree_files(destination, relative_root)
+        if set(final_files) != set(source_files):
+            raise ProjectIOError(
+                "PROJECT_CONTENT_CONFLICT",
+                relative_root,
+                "immutable destination file set does not match staged tree",
+            )
+        for directory in sorted(
+            {path.parent for path in final_files.values()} | {destination},
+            key=lambda item: len(item.parts),
+            reverse=True,
+        ):
+            _fsync_directory(directory)
+        return "CREATED" if created else "REUSED"
+
+    @staticmethod
+    def _valid_delete_root(parts: tuple[str, ...]) -> bool:
+        if parts in {
+            (".ai-sow", "work"),
+            (".ai-sow", "inputs", "pending"),
+        }:
+            return True
+        if len(parts) == 2 and re.fullmatch(r"\.candidate-[0-9a-f]{12}", parts[1]):
+            return parts[0] == ".ai-sow"
+        if len(parts) == 4 and parts[:3] == (".ai-sow", "inputs", "revisions"):
+            return bool(re.fullmatch(r"[0-9]{6}", parts[3]))
+        if len(parts) == 3 and parts[:2] == (".ai-sow", "generations"):
+            return bool(re.fullmatch(r"[0-9]{6}", parts[2]))
+        return False
+
+    def remove_managed_tree(
+        self,
+        relative_root: str,
+        *,
+        allowed_roots: tuple[str, ...],
+    ) -> None:
+        target_parts = self._parts(relative_root)
+        if any(any(character in part for character in "$~*?[]{}") for part in target_parts):
+            raise ProjectIOError(
+                "PROJECT_DELETE_SCOPE_INVALID",
+                relative_root,
+                "managed delete target contains unresolved or wildcard syntax",
+            )
+        normalized_allowed: list[tuple[str, ...]] = []
+        for allowed in allowed_roots:
+            allowed_parts = self._parts(allowed)
+            if not self._valid_delete_root(allowed_parts):
+                raise ProjectIOError(
+                    "PROJECT_DELETE_SCOPE_INVALID",
+                    relative_root,
+                    "managed delete root is broader than an allowed exact target",
+                )
+            normalized_allowed.append(allowed_parts)
+        if not any(
+            len(target_parts) >= len(allowed)
+            and target_parts[: len(allowed)] == allowed
+            for allowed in normalized_allowed
+        ):
+            raise ProjectIOError(
+                "PROJECT_DELETE_SCOPE_INVALID",
+                relative_root,
+                "managed delete target is outside its allowed roots",
+            )
+
+        target = self.root.joinpath(*target_parts)
+        try:
+            snapshot = target.lstat()
+        except FileNotFoundError:
+            return
+        if _is_unsafe(snapshot):
+            raise ProjectIOError(
+                "PROJECT_PATH_UNSAFE",
+                relative_root,
+                "managed delete target is a symlink or reparse point",
+            )
+        if not stat.S_ISDIR(snapshot.st_mode):
+            raise ProjectIOError(
+                "PROJECT_PATH_TYPE",
+                relative_root,
+                "managed delete target is not a directory",
+            )
+
+        def remove(directory: Path) -> None:
+            for child in sorted(directory.iterdir(), key=lambda item: item.name):
+                child_snapshot = child.lstat()
+                if _is_unsafe(child_snapshot):
+                    raise ProjectIOError(
+                        "PROJECT_PATH_UNSAFE",
+                        relative_root,
+                        "managed delete tree contains a symlink or reparse point",
+                    )
+                if stat.S_ISDIR(child_snapshot.st_mode):
+                    remove(child)
+                    child.rmdir()
+                elif stat.S_ISREG(child_snapshot.st_mode):
+                    child.unlink()
+                else:
+                    raise ProjectIOError(
+                        "PROJECT_PATH_TYPE",
+                        relative_root,
+                        "managed delete tree contains a special file",
+                    )
+
+        remove(target)
+        target.rmdir()
+        _fsync_directory(target.parent)
 
 
 @dataclass(frozen=True)
