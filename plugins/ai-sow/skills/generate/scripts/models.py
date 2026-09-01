@@ -139,8 +139,16 @@ class ScopeCompilation:
 @dataclass(frozen=True)
 class BaseUnitRule:
     base_unit: str
+    name: str
+    task_family_id: str
+    task_family: str
+    count_rule: str
+    includes: str
+    excludes: str
     allowed_work_modes: tuple[str, ...]
     allowed_complexities: tuple[Literal["S", "M", "L"], ...]
+    complexity_standards: Mapping[str, str]
+    split_rule: str
 
 
 @dataclass(frozen=True)

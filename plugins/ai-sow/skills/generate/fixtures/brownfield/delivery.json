@@ -27,7 +27,7 @@
       "storyId": "story-refund-processing",
       "taskKind": "DESIGN",
       "name": "设计退款流程恢复目标与方案",
-      "baseUnit": "BU-SOLUTION-DESIGN",
+      "baseUnit": "BU-ARCHITECTURE-DESIGN",
       "workMode": "新建",
       "workModeRationale": "往期 SOW 未包含退款流程恢复目标设计。",
       "complexity": "M",
@@ -43,7 +43,7 @@
       "storyId": "story-refund-processing",
       "taskKind": "IMPLEMENTATION",
       "name": "调整退款编排流程",
-      "baseUnit": "BU-BUSINESS-FLOW",
+      "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "调整",
       "workModeRationale": "在既有退款接口基础上调整退款编排流程。",
       "workModeEvidence": {
@@ -53,19 +53,41 @@
       "complexity": "M",
       "acceptanceCriterionIds": ["ac-refund-result"],
       "designItemIds": ["design-item-refund-orchestration"],
+      "integrationIds": [],
+      "nfrIds": ["nfr-recovery-objective"],
+      "dependsOnTaskIds": ["task-payment-refund-integration"],
+      "matchedEffectiveStartItemId": "effective-start-refund-api",
+      "rationale": "按一个既有退款业务操作调整实例计价。"
+    },
+    {
+      "taskId": "task-payment-refund-integration",
+      "storyId": "story-refund-processing",
+      "taskKind": "IMPLEMENTATION",
+      "name": "接入支付平台退款接口",
+      "baseUnit": "BU-EXTERNAL-INTEGRATION",
+      "workMode": "新建",
+      "workModeRationale": "本期首次交付支付平台退款集成。",
+      "complexity": "M",
+      "acceptanceCriterionIds": ["ac-refund-result"],
+      "designItemIds": ["design-item-refund-orchestration"],
       "integrationIds": ["integration-payment-refund"],
       "nfrIds": ["nfr-recovery-objective"],
       "dependsOnTaskIds": ["task-refund-recovery-design"],
-      "matchedEffectiveStartItemId": "effective-start-refund-api",
-      "rationale": "按一个既有退款编排流程调整实例计价。"
+      "rationale": "按一个外部支付平台退款对接实例计价。"
     }
   ],
   "dependencies": [
     {
       "dependencyId": "dependency-recovery-before-build",
       "predecessorTaskId": "task-refund-recovery-design",
+      "successorTaskId": "task-payment-refund-integration",
+      "rationale": "接入实现前必须明确恢复目标和设计边界。"
+    },
+    {
+      "dependencyId": "dependency-integration-before-orchestration",
+      "predecessorTaskId": "task-payment-refund-integration",
       "successorTaskId": "task-refund-orchestration",
-      "rationale": "实现前必须明确恢复目标和设计边界。"
+      "rationale": "退款编排完成前必须具备支付平台退款对接。"
     }
   ]
 }
