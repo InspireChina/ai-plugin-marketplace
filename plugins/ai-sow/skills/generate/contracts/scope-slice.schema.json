@@ -8,6 +8,7 @@
     "inputRevisionId",
     "impactPlanSha256",
     "replacesFeatureIds",
+    "newAnchorMappings",
     "epics",
     "features",
     "commitments",
@@ -24,6 +25,11 @@
     "inputRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
     "impactPlanSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
     "replacesFeatureIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+    "newAnchorMappings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/newAnchorMapping"}
+    },
     "epics": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/epic"}},
     "features": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/feature"}},
     "commitments": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/commitment"}},
@@ -34,5 +40,28 @@
     "nfrs": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/nfr"}},
     "assumptions": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:scope-bundle:1#/$defs/assumption"}},
     "responsibilityBoundaries": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:common:1#/$defs/responsibilityBoundary"}}
+  },
+  "$defs": {
+    "newAnchorMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRef", "confidence"],
+      "properties": {
+        "sourceRef": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRef"},
+        "featureId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+        "domainId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+        "confidence": {"type": "string", "enum": ["UNIQUE", "DOMAIN", "UNKNOWN"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"confidence": {"const": "UNIQUE"}}, "required": ["confidence"]},
+          "then": {"required": ["featureId"]}
+        },
+        {
+          "if": {"properties": {"confidence": {"const": "DOMAIN"}}, "required": ["confidence"]},
+          "then": {"required": ["domainId"]}
+        }
+      ]
+    }
   }
 }

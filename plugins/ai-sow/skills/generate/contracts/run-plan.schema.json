@@ -38,8 +38,15 @@
         "baselineRevisionId": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9]{6}$"}]},
         "changedSourceIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/idArray"},
         "changedAnchorIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/idArray"},
-        "affectedFeatureIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/idArray"},
-        "escalation": {"type": "string", "enum": ["NONE", "FEATURE", "DOMAIN", "FULL"]},
+        "affectedFeatureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "按上一 Scope 顺序列出的确定性 Feature 闭包。"
+        },
+        "escalation": {
+          "type": "string",
+          "enum": ["NONE", "FEATURE", "DOMAIN", "FULL"],
+          "description": "新增或无法唯一映射的输入只允许扩大、不得缩小重算边界。"
+        },
         "reasonCodes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
       }
     }

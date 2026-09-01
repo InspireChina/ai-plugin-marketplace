@@ -1,0 +1,30 @@
+{
+  "contract": "ai-sow-incremental-change-cases-v1",
+  "cases": [
+    {
+      "caseId": "unchanged",
+      "expectedAction": "REUSE",
+      "expectedAffectedFeatureIds": []
+    },
+    {
+      "caseId": "template-only",
+      "expectedAction": "RENDER_ONLY",
+      "expectedAffectedFeatureIds": []
+    },
+    {
+      "caseId": "prd-feature-edit",
+      "expectedAction": "SLICE_COMPILE",
+      "expectedAffectedFeatureIds": ["feature-refund"]
+    },
+    {
+      "caseId": "shared-integration",
+      "expectedAction": "SLICE_COMPILE",
+      "expectedAffectedFeatureIds": ["feature-refund", "feature-ledger"]
+    },
+    {
+      "caseId": "compiler-contract-change",
+      "expectedAction": "FULL_COMPILE",
+      "expectedAffectedFeatureIds": ["feature-refund", "feature-ledger"]
+    }
+  ]
+}
