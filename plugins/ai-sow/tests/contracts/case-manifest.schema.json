@@ -1,24 +1,57 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:tests:case-manifest:1",
+  "$id": "urn:ai-sow:tests:case-manifest:2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["entries"],
+  "required": ["contract", "cases"],
   "properties": {
-    "entries": {
+    "contract": {"const": "ai-sow-e2e-case-manifest-v1"},
+    "cases": {
       "type": "array",
-      "minItems": 5,
-      "maxItems": 5,
+      "minItems": 2,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["ownerSkill", "path", "sha256"],
+        "required": [
+          "caseId",
+          "mode",
+          "requestPath",
+          "scopeSlicePath",
+          "scopeIdDecisionsPath",
+          "deliverySlicePath",
+          "deliveryIdDecisionsPath",
+          "finalReviewPath",
+          "expectedDecision",
+          "expectedCounts"
+        ],
         "properties": {
-          "ownerSkill": {"enum": ["analyze-as-is", "analyze-requirement", "generate-design", "generate-story", "generate-task"]},
-          "path": {"type": "string", "minLength": 1},
-          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          "caseId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "mode": {"enum": ["GREENFIELD", "BROWNFIELD"]},
+          "requestPath": {"$ref": "#/$defs/path"},
+          "scopeSlicePath": {"$ref": "#/$defs/path"},
+          "scopeIdDecisionsPath": {"$ref": "#/$defs/path"},
+          "deliverySlicePath": {"$ref": "#/$defs/path"},
+          "deliveryIdDecisionsPath": {"$ref": "#/$defs/path"},
+          "finalReviewPath": {"$ref": "#/$defs/path"},
+          "expectedDecision": {"enum": ["PASS", "PASS_WITH_NOTES"]},
+          "expectedCounts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["features", "stories", "tasks"],
+            "properties": {
+              "features": {"type": "integer", "minimum": 0},
+              "stories": {"type": "integer", "minimum": 0},
+              "tasks": {"type": "integer", "minimum": 0}
+            }
+          },
+          "expectedWorkbookSha256": {"$ref": "#/$defs/sha256"},
+          "expectedNotesSha256": {"$ref": "#/$defs/sha256"}
         }
       }
     }
+  },
+  "$defs": {
+    "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.).+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
   }
 }

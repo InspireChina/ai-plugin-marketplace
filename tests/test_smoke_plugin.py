@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,24 +31,14 @@ class PluginSmokeTests(unittest.TestCase):
             )
             self.assertEqual(report["pluginName"], "ai-sow")
             self.assertEqual(report["pluginVersion"], "0.1.0-beta.1")
-            self.assertEqual(report["setupOutcome"], "OK")
-            self.assertEqual(report["ownerReceiptCount"], 5)
-            self.assertEqual(report["generateOutcome"], "OK")
-            self.assertTrue(Path(report["workbookPath"]).is_file())
-
-            setup_project = json.loads(
-                (Path(report["greenfieldProject"]) / ".ai-sow/project.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(
-                setup_project,
-                {
-                    "projectId": "smoke-greenfield",
-                    "name": "Smoke Greenfield",
-                    "pluginVersion": "0.1.0-beta.1",
-                    "sowStandardVersion": "1.3",
-                },
-            )
-            self.assertTrue(report["asisOwnsTechnicalIntake"])
+            self.assertEqual(report["publicSkills"], ["generate"])
+            self.assertEqual(report["greenfieldOutcome"], "PUBLISHED")
+            self.assertEqual(report["brownfieldOutcome"], "PUBLISHED")
+            self.assertEqual(report["blockedResumeOutcome"], "PUBLISHED")
+            self.assertEqual(report["reuseOutcome"], "REUSED")
+            self.assertEqual(report["marketplaceReadCount"], 0)
+            for path in report["workbookPaths"]:
+                self.assertTrue(Path(path).is_file())
 
 
 if __name__ == "__main__":

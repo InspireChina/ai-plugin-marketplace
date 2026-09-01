@@ -1,0 +1,15 @@
+{
+  "contract": "ai-sow-id-decisions-v1",
+  "decisions": [
+    {"objectType": "EPIC", "objectId": "epic-refund-upgrade", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "FEATURE", "objectId": "feature-refund-processing", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "FEATURE", "objectId": "feature-refund-notification", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "COMMITMENT", "objectId": "commitment-refund-audit", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "EFFECTIVE_START_ITEM", "objectId": "effective-start-refund-api", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "DESIGN_ITEM", "objectId": "design-item-refund-orchestration", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "DESIGN_DECISION", "objectId": "decision-refund-orchestration", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "INTEGRATION", "objectId": "integration-payment-refund", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "NFR", "objectId": "nfr-recovery-objective", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "ASSUMPTION", "objectId": "assumption-payment-sandbox", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"}
+  ]
+}
