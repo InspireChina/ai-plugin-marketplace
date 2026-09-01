@@ -17,9 +17,19 @@
   ],
   "properties": {
     "contract": {"const": "ai-sow-run-plan-v1"},
-    "runId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
-    "pendingManifestPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
-    "action": {"type": "string", "enum": ["REUSE", "RENDER_ONLY", "FULL_COMPILE", "SLICE_COMPILE", "RESUME_PENDING"]},
+    "runId": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+      "description": "由目标 revision 与 generation 确定的当前运行 ID。"
+    },
+    "pendingManifestPath": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath",
+      "description": "语义编译指向 pending manifest；仅渲染指向已发布 revision manifest。"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["REUSE", "RENDER_ONLY", "FULL_COMPILE", "SLICE_COMPILE", "RESUME_PENDING"],
+      "description": "按合同与输入差异确定的唯一合法执行路径。"
+    },
     "targetRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
     "targetGenerationId": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9]{6}$"}]},
     "impact": {"$ref": "#/$defs/impact"},

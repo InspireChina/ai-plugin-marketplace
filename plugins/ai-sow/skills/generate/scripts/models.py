@@ -10,6 +10,15 @@ RunAction = Literal[
     "REUSE", "RENDER_ONLY", "FULL_COMPILE", "SLICE_COMPILE", "RESUME_PENDING"
 ]
 ReviewDecision = Literal["PASS", "PASS_WITH_NOTES", "BLOCKED"]
+OrchestratorOutcome = Literal[
+    "READY_FOR_SCOPE",
+    "READY_FOR_DELIVERY",
+    "REVIEW_REQUIRED",
+    "READY_TO_RENDER",
+    "PUBLISHED",
+    "REUSED",
+    "BLOCKED",
+]
 
 
 @dataclass(frozen=True)
