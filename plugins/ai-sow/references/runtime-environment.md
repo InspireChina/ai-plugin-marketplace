@@ -1,6 +1,6 @@
 # 插件运行时环境合同
 
-普通插件用户无需预装 Python、`uv` 或 Python 依赖。权威流程从 `generate` 开始：generate bootstrap 在
+普通插件用户无需预装 Python、`uv` 或 Python 依赖。权威流程从 `ai-sow:generate` 开始：generate bootstrap 在
 插件安装副本内准备 `uv 0.11.7`、managed Python 3.12、锁定依赖和 `.venv`，再调用唯一生成编排器。
 
 generate 使用平台脚本，而不是要求用户预先执行环境命令：
@@ -19,11 +19,10 @@ macOS、Linux 和 Windows 11 x64 都受支持。Windows 上未启用长路径支
 
 ## 标准输出编码
 
-所有 Skill 脚本的 stdout 与 stderr 一律是 UTF-8，调用方按 UTF-8 解码，不依赖宿主 locale
-或 Windows 控制台代码页：
+所有公开执行结果一律是 UTF-8 JSON，调用方按 UTF-8 解码，不依赖宿主 locale 或 Windows 控制台
+代码页：
 
-- 每个写 stdout 的 Python 入口脚本在产生任何输出前调用
-  `sys.stdout.reconfigure(encoding="utf-8")` 与 `sys.stderr.reconfigure(encoding="utf-8")`；
+- `orchestrator.py` 直接向 `sys.stdout.buffer` 写 canonical UTF-8 JSON bytes；
 - `bootstrap.ps1` 设置 `[Console]::OutputEncoding` 为无 BOM 的 UTF-8，并置 `PYTHONUTF8=1`；
 - `bootstrap.ps1` 自身以 UTF-8 **带 BOM** 保存。Windows PowerShell 5.1 会把无 BOM 的 `.ps1`
   按 ANSI 代码页解码，中文诊断会损坏，非 ASCII 内容还可能直接导致脚本解析失败；
@@ -38,9 +37,9 @@ macOS、Linux 和 Windows 11 x64 都受支持。Windows 上未启用长路径支
 
 ## Windows 长路径
 
-未启用长路径支持的 Windows 把路径限制在 `MAX_PATH`（260）以内。本插件最深的受管路径是
-`.ai-sow/.stage-<12 hex>/outputs/sow-sha256-<64 hex>/sources/data/<owner>/<file>`，长度 162
-个字符，因此项目根目录必须短于 97 个字符。
+未启用长路径支持的 Windows 把路径限制在 `MAX_PATH`（260）以内。不可变 input revision、generation
+及其临时发布目录包含固定宽度的 revision/generation 标识与 hash 文件名，因此项目根目录必须短于
+97 个字符。
 
 generate bootstrap 在写入任何项目文件前计算该预算，不足时返回 `WINDOWS_LONG_PATH_REQUIRED` 并且不创建
 `.ai-sow`；`runtime/project_io.py` 另把写入期的 `ERROR_FILENAME_EXCED_RANGE` 转换成
@@ -54,7 +53,7 @@ generate bootstrap 在写入任何项目文件前计算该预算，不足时返�
 generate 从已加载的 `SKILL.md` 解析 `<plugin-root>`，由平台 bootstrap 调用唯一 `orchestrator.py`。
 `uv --version` 可以带平台/安装来源后缀，但首个版本 token 必须精确为 `0.11.7`。以后调用复用同一
 插件 `.venv`；插件升级后若环境不存在、损坏或版本不符，bootstrap 只刷新插件安装副本的运行时，
-不要求用户打开终端或手工安装工具。
+不要求用户打开终端或手工安装工具。所有业务模式都留在 `generate` 内部，不形成额外公开命令。
 
 仓库贡献者和 CI 可以继续使用根 README/CONTRIBUTING 中的 `uv` 开发命令；该开发工具链不属于
 普通插件用户的安装前置条件。

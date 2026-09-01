@@ -1,212 +1,147 @@
 # AI SOW 术语与数据约定
 
-本文件统一当前插件使用的术语。各 Skill 先完成分析、设计或任务拆分，交由用户确认；确认后，再把需要交给下一步和写入 XLSX 的结论整理成规定格式的数据。
+本文件统一 `ai-sow:generate` 使用的领域语言。用户只接触一个生成入口；`intake`、
+`scope_compiler`、`delivery_compiler`、`final_review` 和 `package_renderer` 是内部模块。
 
-## 1. 交付成果与计算依据
-
-| 术语 | 定义 |
-|---|---|
-| 评审材料 | 各 Skill 在整理正式数据前形成的分析、设计或拆分结果，供用户阅读和确认；具体形式由该 Skill 决定。 |
-| 数据整理 | 用户确认后，把评审材料中的最终结论整理为本 Skill 规定的 Schema 数据。结构化数据不能代替分析和判断过程。 |
-| 正式交接数据 | 五个 Skill 产生的六份 JSON：来源需求、As-Is、设计、设计产生的技术需求、交付内容和估算输入。 |
-| 项目元数据 | 由 setup 初始化的 `.ai-sow/project.json`；只登记 `projectId`、`name`、`pluginVersion`、`sowStandardVersion`，不计入上述六份正式交接数据。 |
-| 数据归属 | 每项正式数据只由一个 Skill 负责。后续 Skill 只读取 `.ai-sow/data/...`，不修改上一步的文件。 |
-| Finding 路由 | 当前 Owner 无法在自身写集合内修复时使用的 work-only 机械元数据，分类为 `LOCAL / UPSTREAM / DECISION / MECHANICAL`；它点名发现 Owner、修正 Owner、subject 和用户决策要求，不进入六份正式交接数据。 |
-| 影响集协调 | 已有有效 Owner 产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；连续未发布末端可标为 `PENDING` 并走各 Owner 的首次发布路径，它不拥有稳定业务数据。 |
-| 固定 ID | 使用小写 kebab-case 和对象前缀，并且在项目数据中唯一，例如 `feature-order-status`。每个可独立引用的实体同时保存必填、非空的 `name`；所指内容不变时沿用原 ID，内容发生实质变化时新建 ID。关系字段只保存目标 ID。 |
-| Excel 展示主键 | 最终 XLSX 用唯一、非空的名称识别、选择和引用业务概念；稳定 ID 不作为业务 Sheet 的阅读字段。 |
-| 名称投影 | `generate-sow` 把稳定 ID 关系转换为名称关系，并把可翻译的机器枚举转换为中文选项；名称变化不改变结构化对象身份。 |
-| 计算依据 | `.ai-sow/templates/sow-template.xlsx`。任务规则、基础人天、复杂度、系数、公式、取整和最终人天不在 Python 或 JSON 中重复保存。 |
-| 配套 Markdown | 与当前 SOW 标准版本一致的任务分类和开发交付人天说明，用于解释分类、填写、验收和估算规则，不另设一套计算口径。 |
-| 最终 XLSX | 把六份正式数据按名称投影写入模板后生成的工作簿。Excel 打开工作簿后按模板公式计算；插件不执行公式，也不读取缓存中的计算结果。 |
-
-数组中的先后顺序就是最终展示顺序。只有 AcceptanceCriterion 使用同一 Story 内从 1 开始的连续 `sequence`；该字段保留在稳定 JSON 中用于确定性排序，但不显示在最终工作簿。一对多关系由子项保存父项 ID。
-
-## 2. 处理顺序与数据路径
-
-```text
-setup
-  -> analyze-requirement
-  -> analyze-as-is
-  -> generate-design
-  -> generate-story
-  -> generate-task
-  -> generate-sow
-```
-
-| 负责 Skill | 正式输出 |
-|---|---|
-| `analyze-requirement` | `.ai-sow/data/analyze-requirement/requirements.json` |
-| `analyze-as-is` | `.ai-sow/data/analyze-as-is/asis.json` |
-| `generate-design` | `.ai-sow/data/generate-design/design.json` 与独立的 `requirements.json` |
-| `generate-story` | `.ai-sow/data/generate-story/delivery.json` |
-| `generate-task` | `.ai-sow/data/generate-task/estimate.json` |
-
-`setup` 写入项目元数据并复制模板；`generate-sow` 生成待确认的交付文件。两者都不负责业务分析。
-
-普通首次生成仍按七阶段顺序逐项完成。上游修正发生在已有有效 Owner 产物之后时，用户可显式调用
-`reconcile`：Owner 仍分别拥有业务语义、稳定路径和确定性 validator，但不再要求用户逐阶段重启
-session。当前 Stage 在批准前按固定后缀完成各 Owner 的 `CHANGED/NO_CHANGE/PENDING` staged pass、SOW
-package 复读及 canonical redo/diff/risk，并由完整 packet 绑定；一个 fresh-context Reviewer 与一次
-用户批准绑定同一 packet SHA-256，批准后只做 check/publish。`PENDING` 只允许出现在尚未首次发布的
-连续末端，并复用对应 Owner 的正常首次发布路径；中间缺失而更下游已发布时阻塞。六份稳定 JSON
-集合保持不变。
-
-五个专业 Owner 都遵守 candidate-first 生命周期：由当前 Stage 开展分析、设计或拆分，并在 work 目录提前形成和机械校验结构化
-candidate，再确定性生成 review 投影、风险摘要和 hash-bound review packet。packet 绑定本 Owner
-的 named inputs、candidate、context manifest/fragments、review 与风险摘要，供完整 fresh-context
-Reviewer 与用户确认；Reviewer findings 只通过字段 patch 修复，并由新的轻量 fresh-context Reviewer
-复核 patch diff 与影响闭包。packet 不是稳定 JSON，也不能代替专业分析。用户批准精确 packet 后才按 candidate
-原字节发布稳定交接数据，任一绑定字节变化都必须重新整体评审和批准。
-
-## 3. 需求
+## 1. 生成、审核与发布
 
 | 术语 | 定义 |
 |---|---|
-| 原始输入 | 用户提供的文件、文本、访谈或仓库，只在处理过程中读取，不写入正式数据或交付文件。 |
-| normalizedItem | 从来源材料中抽取、合并并去重后的最小条目，用于记录每项来源需求对应哪些原始材料。 |
-| 来源处置 | `analyze-requirement` 的 work-only 完整来源检查表；把决策相关陈述唯一分类为 `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`，由 review packet 绑定并投影到正式 review，但不新增稳定 JSON。 |
+| 标准请求 | 一次调用实际使用的项目身份、模式、责任边界、PRD、HLD、往期 SOW、补充材料和问卷答案。 |
+| pending 输入 | 尚未成功发布的请求快照；`BLOCKED` 后补充内容合并到这里。 |
+| input revision | 成功执行所使用的不可变输入、锚点、答案和 hash 集合。 |
+| ScopeBundle | 范围稳定数据，拥有 Epic、Feature、Effective Start、DesignItem、Integration、NFR 与 SourceRef。 |
+| DeliveryBundle | 交付稳定数据，拥有 Story、AcceptanceCriterion、Task、依赖、假设/风险和估算投影。 |
+| 自动终审 | 对完整受影响闭包执行的跨层检查，结果为 `PASS / PASS_WITH_NOTES / BLOCKED`。 |
+| generation | 一次成功发布的 ScopeBundle、DeliveryBundle、manifest、工作簿和配套说明；发布后不可变。 |
+| current | `.ai-sow/current.json` 指向的最近成功 generation。 |
+| last-known-good | 新请求失败、崩溃或阻断时仍由 current 指向的上一份有效结果。 |
+| Package | `sow.xlsx` 与 `sow-notes.md`；只投影已通过终审的稳定数据，不拥有新的范围事实。 |
+
+`PASS_WITH_NOTES` 表示范围和估算已有固定边界，但仍需披露假设、责任、排除项、Design Task 或变更
+触发条件；它不是无限责任。只有无法建立可信范围或估算，且不同解释会实质改变交付时才允许
+`BLOCKED`。
+
+## 2. 来源角色与权威
+
+| 来源 | 权威语义 |
+|---|---|
+| PRD | 业务目标、In/Out Scope、Feature、业务规则、角色、场景和验收意图 |
+| HLD | 系统上下文、目标架构、Integration、数据、NFR、环境、部署和上线约束 |
+| PRIOR_SOW | Brownfield 的合同 As-Is、历史承诺、Effective Start 和延续范围 |
+| SUPPLEMENT | 当前事实、明确决策、责任说明，以及原型的功能和交互证据 |
+| SOW_TEMPLATE | 基础单元、基础人天、复杂度、SIT、UAT、风险、公式和取整 |
+
+PRD/HLD 只接受 UTF-8 Markdown；PRIOR_SOW 只接受 `.xlsx`；SUPPLEMENT 接受 UTF-8 纯文本、HTML、
+TypeScript、TSX 或 `.xlsx`。原型需要提取页面、动作、触发、状态、校验、权限、异常和可观察结果，
+必要时运行 Demo 并用浏览器自动化或 Computer Use 核验。任何推断都不能静默覆盖明确来源。
+
+## 3. 需求与范围
+
+| 术语 | 定义 |
+|---|---|
 | Epic | 围绕同一业务结果或技术目标的一组 Feature。 |
-| Feature | 可以独立纳入、排除、延期和评审的最小需求范围；每个 Feature 只属于一个 Epic。 |
-| 来源业务需求 | `SOURCE_INPUT` BUSINESS Epic 与 Feature，由 `analyze-requirement` 负责，每项需求都要关联相应的 normalizedItem。 |
-| 技术需求 | `SOURCE_INPUT / DESIGN_DERIVED` TECHNICAL Epic 与 Feature，由 `generate-design` 负责；设计产生的技术需求必须对应到设计决策、适用的有效起点和具体原因。 |
-| 需求合并结果 | 后续 Skill 在内存中按“来源需求在前、设计产生的技术需求在后”的顺序合并；不另存第三份 merged requirements。 |
+| Feature | 可以独立纳入、排除、延期、交付和评审的最小需求范围。 |
+| SourceRef | 文档逻辑标识、标题/表格等定位信息和内容指纹；不依赖页码或易漂移的行号。 |
+| ScopeDecision | 对 Feature 的 `IN_SCOPE / FULLY_COVERED / OUT_OF_SCOPE` 判断。 |
+| DesignItem | 目标设计中的组件、流程、数据、集成、基础设施或质量对象。 |
+| Integration | 一次有明确来源、目标、触发、方向、目的、数据类别和责任归属的系统交互。 |
+| NFR | 性能、容量、可用性、安全、隐私、审计、灾备、可观测性等非功能要求。 |
+| Fixed Boundary | 用假设、责任、排除项、Design Task、估算适用范围和变更触发条件形成的可信边界。 |
 
-`generate-design` 不追加或改写来源业务 requirements。它从已登记原始来源读取 Requirement review 中标记的 `DESIGN_INPUT`，再自行确认并形成 `SOURCE_INPUT` TECHNICAL 需求；来源处置摘要不能替代原文证据。发现业务需求变化时，退回 `analyze-requirement` 处理；经来源确认或由设计产生的技术需求，写入 `generate-design` 自己的 `requirements.json`。
+每个 Feature 必须追溯到来源锚点。`IN_SCOPE` 必须具有目标设计或明确的待设计处置；
+`FULLY_COVERED` 必须有 Effective Start 证据；`OUT_OF_SCOPE` 必须说明理由。适用 NFR 不能留空，只能有
+明确目标、待设计状态或不适用结论。
 
-## 4. As-Is 与设计
-
-| 术语 | 定义 |
-|---|---|
-| As-Is 调查 | 独立判断当前能力、系统交互、基础设施、承诺变化、证据和有效起点的调查工作。可以根据需要使用搜索、语言工具、CodeGraph、接口说明、配置、部署材料或访谈。 |
-| Topic Assessment | 每次 As-Is 对九个 Topic 各给出且只给出一条评估：系统边界与参与方、能力与流程、应用与组件、集成与外部依赖、数据与存储、平台/环境与部署、安全与合规、运维与质量、交付与约束。状态为 `RELEVANT_INVESTIGATED / RELEVANT_INSUFFICIENT_EVIDENCE / BOUNDARY_DECLARED / NOT_APPLICABLE`。 |
-| As-Is Item | 已存在或实际运行的 `CAPABILITY / COMPONENT / INTEGRATION / DATA_ASSET / INFRASTRUCTURE / CONTROL / PROCESS / CONSTRAINT` 当前事实。 |
-| Commitment | 从往期 SOW 等有效承诺提取的 `ADD / REPLACE / RETIRE` 变化；同时记录 `implementationStatus`（实现对账结果）与 `treatment`（范围处理方式）。 |
-| Effective Start | 设计与 Task 共用的项目起点基线，只能由当前 Item 与 `EXPECTED_BEFORE_START` Commitment 组成；ArchitectureDelta、ScopeDecision 和 Task 工作模式都引用同一条起点记录。 |
-| Carry-forward | `treatment = CARRY_FORWARD` 的未完成承诺；进入 Coverage、设计和 Story gap，属于本期仍需交付的范围，不是 Effective Start。 |
-| As-Is Coverage | 对每个来源 Feature 给出 `COMPLETE / PARTIAL / MISSING`、相关有效起点和理由。`MISSING` 是合法事实。 |
-| Evidence | 后续判断所需的依据。问卷中已经确认的答案整理为 `QUESTIONNAIRE` Evidence；正式数据不保存完整工具输出、源码、凭证、绝对路径或缓存。 |
-| Uncertainty | 调查和定向问卷后仍未回答、相互矛盾或证据不足的问题。每条记录显式保存 `affectsEstimate`；答案可能改变范围、责任、设计、交付对象、工作量或人天时必须为 `true`，并在关闭前阻止正式估算。只有确认不影响估算时才可为 `false`。`INSUFFICIENT_EVIDENCE` Topic 必须关联 Uncertainty。 |
-| DesignItem | 目标设计中的 `COMPONENT / FLOW / DATA / INTEGRATION / INFRASTRUCTURE / QUALITY` 对象。 |
-| ArchitectureDelta | 相对于有效起点的 `NEW / ADOPT / ADJUST / REPLACE / RETIRE` 设计变化；它不是 Task 工作模式，`REPLACE / RETIRE` 到 Task 阶段要拆成明确的基础单元。 |
-| ScopeDecision | 对每个来源 Feature 或设计产生的 Feature 给出 `IN_SCOPE / FULLY_COVERED / OUT_OF_SCOPE` 结论和理由。 |
-| HLD Coverage | 目标设计批准门禁。每个 Feature 恰有 ScopeDecision；`IN_SCOPE` 有 Design Item 覆盖，`FULLY_COVERED` 有 Evidence 支持的 Effective Start 和具体完整覆盖理由。 |
-| Go-live Assessment | 上线批准门禁。固定处置生产范围、环境配置、部署切换回滚、数据迁移、生产验证、可观测性、运维移交、上线后支持、用户赋能和遗留退役十项 Concern，并明确责任边界和依据。 |
-
-As-Is 不要求所有工具使用同一种中间数据格式，也不限定必须使用某种调查工具。调查顺序为：先看仓库和文档，再看接口约定、配置、部署和运行证据，最后通过定向问卷补充信息。完整调查过程保留在该 Skill 自己的 work 目录中；正式 `asis.json` 只保存后续步骤确实需要的结论。
-
-`As-Is Item` 只陈述调查截止日期已经存在或实际运行的事实；`Effective Start` 才是下游设计和估算使用的统一基线。它的名称必须唯一，摘要必须具体说明项目开工时可以依赖的对象、能力与边界。仓库快照只登记 `.` 或项目根下的相对子目录；项目外代码库先复制经授权的只读快照到项目子目录，稳定数据不保存绝对路径、父目录跳转或间接链接。As-Is 不预先保存 Task 工作模式：同一项 Effective Start 对不同基础单元可能分别支持“调整”“接入复用”或仍需“新建”，该判断只由 `generate-task` 结合当前 Task 完成。
-
-`.ai-sow/reviews/generate-design.md` 以精确 `PASSED` 声明和固定七列矩阵保存两个批准门禁。它不是第七份正式 JSON；门禁语义只由 `generate-design` validator 判断并绑定到 receipt。`generate-story`、`generate-task` 和 `generate-sow` 只匹配当前 Design handoff，不复制或重放 HLD/Go-live 业务判断。
-Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate 写入唯一
-`Structure Counts` 声明；review-source 自由文本不得重复手写这些计数，避免专业整体修正后出现
-旧计数与候选不一致。
-
-## 5. 交付 Story
+## 4. As-Is 与 Effective Start
 
 | 术语 | 定义 |
 |---|---|
-| Delivery 差值 | `IN_SCOPE` Feature 的目标结果减去 Effective Start；它是分解方法，不再保存为独立稳定实体。 |
-| SOW Story | 可独立交付、验收和结算的条目；直接归属一个 `featureId`。 |
-| AcceptanceCriterion | 一行一个可独立通过或不通过的可观察结果。用 `gapRationale` 说明相对 Effective Start 的差值，用 `carryForwardCommitmentIds` 逐条承接往期承诺；描述结果，不描述实现 Task。 |
-| Integration | 独立于 Story 类型和 Task，记录一次有明确方向的系统交互；保存来源、目标、触发、`INBOUND / OUTBOUND`、目的和 `INTERNAL / EXTERNAL` 责任归属，并关联 Story。登记 Integration 不等于已经生成集成 Task。 |
-| UAT 适用性 | Story 对业务 UAT 是否适用的明确判断；不从 Story 类型或 Task 任务族推导。 |
-| 假设/风险 | 保存类型、名称、触发条件、责任边界、`已明确 / 待确认` 状态和处理方式。Story 通过可选的单个 `assumptionId` 引用足以说明其不确定性的一条记录；同一条记录可以被多个 Story 引用。 |
+| Greenfield | 不继承既有合同能力；默认起点为本期新建，不强制往期 SOW。 |
+| Brownfield | 基于至少一份适用往期 SOW 建立合同起点，并补充其生效后的已知变化。 |
+| As-Is | 调查截止时已经存在或合同上预计开工前可依赖的能力、对象和边界。 |
+| Commitment | 往期 SOW 的历史承诺及其本期处置。 |
+| Effective Start | Design 与 Task 共用的项目起点，只包含当前存在或预计开工前具备的可信能力。 |
+| Carry-forward | 尚未完成且仍属于本期交付的历史承诺；它是差值，不是 Effective Start。 |
+| Evidence Boundary | 往期合同和补充材料能够证明什么、不能证明什么的明确界线。 |
 
-每个需要新增交付的 IN_SCOPE Feature 至少有一个 Story，每个 Story 至少有一条 AC；`FULLY_COVERED` Feature 不制造 Story。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，且每条 Task 必须沿同 Story AC 追溯到 Feature。Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 packet-bound `NO_CHANGE` 发布；只有用户明确批准交付结果变化后才重新评审 Story/AC。
+往期 SOW 不自动证明当前生产状态，也不能覆盖当前 PRD/HLD 对本期目标的定义。没有实时证据但仍能
+建立固定边界时记录为 `PASS_WITH_NOTES`；缺少 Brownfield 强制往期 SOW 时直接阻断。
 
-## 6. Task 与估算输入
+## 5. Story、AC 与 Task
 
 | 术语 | 定义 |
 |---|---|
-| Task | Story 下直接估算人天的最小明细；一行对应一个基础单元实例需要完成的全部工作。 |
-| 任务类型 | `任务族 → 基础单元` 两层目录；稳定 JSON 保存基础单元 ID，工作簿只显示唯一的基础单元名称，并自动确定任务族。 |
-| 任务族 | 用于组织、汇总和查漏补缺的上层分类，不由 Task 人工填写，也不直接参与基础人天查找。 |
-| 基础单元 | 有明确计数口径和具体工作内容的估算对象；一个基础单元实例对应一个 Task。 |
-| 发布切换 | 一个统一窗口、统一责任范围和回滚方案的生产发布实例；上线计划、Go/No-Go、演练、实际部署/切换、检查、回滚和确认合并估算，每个 Story 最多一个。数据迁移始终独立。 |
-| 问题处理 | “问题诊断与恢复”覆盖分诊、证据、诊断和恢复；“同一根因问题整改”只覆盖确认根因后的实现与验证，同一 Story 不重复计算诊断。 |
-| 用户培训与使用材料 | 面向一个明确用户群体及一项连贯能力的材料与培训交付；不包含运维交接、翻译或长期培训运营。 |
-| 工作模式 | 只允许 `新建 / 调整 / 接入复用`。新建是新增一个基础单元实例；调整是保留现有对象及其主要范围并进行修改；接入复用是不改动已有能力本身，只完成本项目一侧的接入和适配。 |
-| 替换/退役变化 | 不是 Task 工作模式。替换按替代功能、数据迁移、发布切换和系统功能下线拆分；单纯下线使用“系统功能下线”。 |
-| 工作模式理由 | 说明相对 Effective Start 为什么是新建、调整或接入复用，并引用与当前 Task 对象语义相关的现状依据；测试、迁移和切换的调整还要指出被修改的既有资产。 |
-| 工作模式证据 | `调整 / 接入复用` 的结构化 `workModeEvidence`。保存一项已匹配 Effective Start 的 ID 和精确名称；`接入复用` 还保存非空 `projectSideWorkTypes` 及由它确定性生成的 `projectSideWorkCommitment`，明确本项目负责并交付的注册、配置、封装、映射、适配、认证、租户设置、权限设置或专项验证工作。 |
-| 复杂度 | 按当前基础单元自己的标准判断为 `S / M / L`；`X` 表示需要继续拆分、澄清，或先做调研和架构设计，不能进入正式 JSON 数据。 |
-| 复杂度理由 | 仅 S/L Task 保存，说明哪些已知事实使当前实例低于或高于默认 M 档；不是对标准的复述。M Task 不保存。 |
-| 基础人天匹配 | 基础单元配置表每行直接提供“新建 / 调整 / 接入复用”三个 M 档人天列；正数表示组合可用，`❌` 表示不适用。数值缺失时校验不通过。复杂度系数必须为正数且状态为固定规则、已校准或已批准；工作模式不使用全局系数。 |
-| 集成 Task | 基础单元为“内部系统对接”或“外部系统对接”的 Task；通过 `integrationId` 实现且只实现一个 Integration。每个需要交付的 Integration 都有且只有一个集成 Task。 |
-| SIT 判断 | 集成 Task 触发 SIT；仅有 Integration 记录时不直接触发。 |
-| 最终人天 | XLSX 按“M档基础人天 × 复杂度系数”计算 Task 人天，并继续计算 SIT、UAT、风险、取整和总计。结构化 JSON 不保存插件计算结果。 |
+| Story | 可独立交付、验收和结算的结果，关联一个或多个 Feature。 |
+| AcceptanceCriterion | 一行一个可观察、可独立通过或失败的结果；描述结果，不描述实现步骤。 |
+| Task | Story 下直接估算的最小明细；一行对应一个基础单元实例的完整工作。 |
+| Design Task | 可独立估算的架构设计、专题调研、PoC 或关键方案决策，通常归属受影响的实施 Story。 |
+| 依赖 | 一个 Story/Task 使用另一个已计价交付对象的关系；不能据此重复估算共享工作。 |
+| UAT 适用性 | Story 是否需要业务 UAT 的明确判断，不从任务族推导。 |
 
-Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start：“调整 / 接入复用”必须引用一项足以证明工作模式的现状；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用一项相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。工作簿把该引用显示为“关联现状条目”，名称直接来自 `90-系统现状` 的可见明细表，不使用隐藏辅助名单。
+默认不创建独立 Design Story。常规设计包含在实施基础单元中；只有可独立估算的设计成果才生成 Design
+Task。跨多个 Story 的共享设计或能力由一个主 Story 承载，其余记录依赖。每个需要交付的 Integration
+恰好对应一个集成 Task。
 
-“接入复用”只有在本项目侧存在可独立估算的注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作时才成立。其 `workModeRationale` 使用固定格式 `<有效起点名称>保持不变；本项目负责并交付：<中文工作类型>。`，必须与结构化工作类型及承诺完全一致，不解析任意自由文本来判断责任。普通依赖引入、常规调用或直接按既有约定使用不单独生成 Task。任何 `affectsEstimate = true` 的未关闭 Uncertainty 都会阻止正式估算和 XLSX 生成；`impact` 只负责解释影响，不作为关键词门禁。
+### 5.1 Task 估算语义
 
-一个 Task 只能包含一个基础单元实例、一种工作模式和一个复杂度结论。重复实例拆成多个 Task；一个 Task 可以包含多少工作，以基础单元的计数口径和复杂度标准为准。必要的设计、实现或配置、开发自测、单元级验证、说明和基本联调，都计入该基础单元，不再固定拆成一条“设计”Task 和一条“实现”Task。
+| 术语 | 定义 |
+|---|---|
+| 任务族 | 组织、汇总和查漏补缺的上层分类，由基础单元确定。 |
+| 基础单元 | 有明确计数口径和工作内容的估算对象；模板包含 13 个任务族、37 个基础单元。 |
+| 工作模式 | 只允许 `新建 / 调整 / 接入复用`。 |
+| 复杂度 | 按基础单元自己的标准判断为 `S / M / L`；`X` 只能用于候选澄清，不能发布。 |
+| 工作模式证据 | `调整 / 接入复用` 对唯一 Effective Start 的结构化引用。 |
+| 最终人天 | 模板按基础单元、工作模式和复杂度公式计算；稳定 JSON 不保存计算结果。 |
 
-潜在重复先按交付对象判定。同一个基础单元实例只保留一个 producing Task；如果同一 API 表面下实际包含不同对象，例如客户可见业务操作与 PostgreSQL/ElasticSearch 的 schema、索引、访问层或读模型投影，则分别保留并选择 `BU-BUSINESS-SERVICE-API`、`BU-DATA-MODEL` 等真实基础单元。消费方只有存在可独立估算的项目侧接入工作时才使用“接入复用”，普通调用不生成 Task。Renderer 会列出“相同基础单元 + 相同 Effective Start”的潜在碰撞组，Reviewer 再归类为 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER`。
+“调整”修改既有对象本身；“接入复用”保持既有能力不变，只交付本项目侧注册、配置、封装、映射、
+适配、认证、租户、权限或专项验证。普通依赖引入和常规调用不单独生成 Task。
 
-去重后没有独立基础单元实例的 Story 不能靠 UAT、人工测试或空壳 Task 填充。Task Owner 返回 `STORY_OWNER_RETURN_REQUIRED` 并点名受影响 Story/AC，由 Story Owner 在自己的评审和批准边界内删除或合并；Task Owner 仍不反向修改 Delivery。轻量 diff-review 发现仅限 Task candidate 的碰撞或基础单元误选时，可使用一次受限纠错 patch 和最终轻量复审，不把可本地修复的问题直接升级为终局阻塞。
+替换与退役不是工作模式。完整替换按替代能力、数据迁移、发布切换和系统功能下线拆分。数据迁移、
+功能下线、根因整改，以及涉及既有运行能力的发布切换，即使工作模式为“新建”也应引用 Effective Start。
 
-识别 Integration 不依赖 Story 类型。先根据已有证据登记 Integration；是否需要生成“内部系统对接”或“外部系统对接”Task、使用哪种工作模式、复杂度如何，都在拆分 Task 时确定。集成 Task 必须引用已经登记的 Integration，不能为了生成 Task 而倒推一个没有依据的 Integration。
+一个 Task 只能有一个基础单元实例、一种工作模式和一个复杂度结论。多个对象拆成多行，不能用数量或
+复杂度合并。S/L 必须说明偏离 M 的具体事实；M 不需要理由。
 
-`generate-task` 的 `read_template.py` 只读取项目模板中合并后的基础单元/人天配置表和项目参数里的复杂度系数；`validate.py` 检查 Story/As-Is 引用、Story 是否拆出了必要 Task、工作模式依据、S/L 偏离理由以及模板组合。两者都不调用 setup 或 generate-sow 的代码。
+## 6. 增量切片与 ID
 
-## 7. 项目文件、Skill 隔离与交付
+输入 diff 的基准是最近成功 revision 与本次 pending 输入。变更从来源锚点定位 Feature，并扩展到相关
+DesignItem、Integration、NFR、Story、AC、Task，以及共享这些对象且交付或估算会变化的其他 Feature。
+无法可靠定位时扩大到业务域或全项目。
 
-setup 由当前 Stage Agent 只调用一次平台 bootstrap；它在插件安装副本内自动准备固定 uv、managed
-Python 3.12、锁定依赖和 `.venv`，再调用确定性 Module 创建项目目录、四个必填身份字段、可选 Owner 控制项和模板，并在
-返回前复读 Project Schema 与模板。普通用户无需预装 Python/uv，后续 Skill 直接使用插件 `.venv`
-的跨平台 Python 路径。完整项目只读验证，合法的项目级模板定制按当前项目模板合同复读，不与
-bundled template 强制比较字节；不完整、损坏或身份冲突项目 fail closed。setup 不 repair、不自动
-迁移，也不接入 Repo 或往期 SOW。`analyze-as-is` 在开展现状调查时按需登记 Repo、往期 SOW、配置、
-部署材料及其他现状证据，并负责自己输入目录中的文件和元数据。没有 Repo 或往期 SOW 也可以正常
-开展调查，但必须说明实际检查了哪些现状材料。
+受影响切片整体重编译和替换，不保存字段 patch：
 
-`.ai-sow/project.json` 必须保存 `projectId`、`name`、`pluginVersion` 和 `sowStandardVersion`，可选保存逐 Owner 的 `ownerControls`：`investigationMode`、`reviewDepth` 与 `tokenBudget`。每个 Skill 只写自己的 work、review、data、validation 或 output 目录。
+- 语义未变化的对象保留原 ID；
+- 仅措辞澄清且交付含义未变时保留 ID；
+- 新对象或实质含义变化的对象使用新 ID；
+- 新切片未再生成的旧对象自动删除；
+- 未受影响切片保持内容和 ID；
+- 工作簿与说明始终完整重渲染。
 
-Skill 之间：
+稳定 ID 使用合同规定的前缀和值；关系字段只保存目标 ID。最终 Excel 以唯一非空名称展示和引用业务
+对象，不把稳定 ID 作为业务 Sheet 的阅读字段。
 
-- 不跨 Skill 导入 Python 模块；
-- 不调用另一个 Skill 的脚本；
-- 不读取另一个 Skill 的 Schema、Fixture、测试或资源文件；
-- 只通过规定的正式数据路径、批准 review、validation report/receipt、ID 和必要字段进行协作；
-- 允许调用插件级 `runtime/` 的 Owner-agnostic 项目 I/O、handoff、claim、patch、诊断、控制项与机械评审门禁；HLD/Go-live 等稳定领域规则保持 Owner Skill-local。
+## 7. 工作簿与说明
 
-`reconcile` 是唯一 Agent-level 协调例外：当前 Stage 可读取受影响 Owner 的 `SKILL.md` 并在批准前
-执行其公开命令；完整 staged closure 只创建一个 fresh-context Reviewer。批准后 Skill-local
-publisher 只验证 packet/hash 并前向发布。Skill Python 仍不跨 Skill import、读取其他 Skill 的 Schema/fixture
-或专业 renderer；Owner 只写自己的 review/candidate/output/receipt，Task 不能修改 Delivery、Story
-或 AC。协调合同公开五个 Owner 的精确 Adapter 路径和 `--staging-root` 参数；legacy
-`publish/rebind` 只允许 reconciliation 调用，缺少合法 staging root 时必须在任何 Owner 写入前
-阻塞。普通 Owner 发布始终走 candidate-first packet 与 `publish-approved`。`NO_CHANGE` 从 base
-Owner receipt 与 staged upstream receipt 构造 before/current 绑定，只先 stage review 再执行
-`rebind`。任一失败 receipt 都终止当前 run 并用新 run ID 整体重跑，不在已污染的 staging 内试错；
-未覆盖路径由 flat ProjectView 回退读取 base，无需复制影响集之前的稳定产物。
+`.ai-sow/templates/sow-template.xlsx` 的项目副本来自插件权威模板。模板中的基础人天、复杂度系数、
+SIT、UAT、风险、公式和取整是唯一计算依据。Python 只投影数据并复读结构，不执行公式，也不把计算值
+写入 JSON。
 
-普通 Owner 调用的 `NO_CHANGE` 不属于 reconciliation rebind：它必须证明至少一项 receipt 绑定输入
-发生变化、candidate 与当前稳定输出原字节一致，并把 review、context、输入与精确 packet 一起重新
-批准；`publish-approved` 只更新正式 review 与 receipt，不改稳定输出字节。
-reconciliation 的第一条项目命令固定为只读 `inspect`，集中投影固定 Owner 后缀的 baseline hash、
-validation inputs、candidate/review 路径与 review ID 声明；它不写项目、不调用 Owner，也不解释业务。
-`reconcile.py --mode prepare-no-change` 从 base review/receipt 与 staged upstream receipt 自动投影
-完整 Stable ID 和 hash binding，`stage-owner` 只做 flat staging 写入；Owner validator 仍由 Stage
-直接调用。每一动作必须是独立 fail-fast tool call，reconcile Python 不执行/import Owner、不读取
-Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立的 `<plugin-root>/.venv` Python
-和绝对脚本路径，避免 PATH uv、shell 临时赋值展开和重复 cache path 拼写。所有 Adapter/Owner 命令
-接收绝对 `--project-root`，直接 Python 调用不改变项目 cwd。
-任何 staging 前先用只读 `inspect-work` 固定 CHANGED candidate hashes、写完整体 `review.md`，再用
-`prepare-changed` 绑定 CHANGED work review；整体 review 不存在时所有 projection 准备均 fail closed。
-批准后 publisher 的进度对外按全部 manifest operation 计数；`before == after` 的 `NO_CHANGE`
-原字节复用路径天然属于完成状态，完整发布后的复查必须返回
-`completedOperations == totalOperations`，不能把内部的 changed-prefix 计数暴露成未完成进度。
+`sow-notes.md` 至少记录输入 revision、适用来源、Evidence Boundary、关键解释、估算假设、Design
+Task、各方责任、排除项、冲突处置、未决 NFR、风险和变更触发条件。所有 `PASS_WITH_NOTES` 事项都
+必须出现在这里。
 
-`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。模板 prototype 提供数据行最小高度，生成器按最终可见换行文本和模板列宽确定性扩大行高；`03-SOW主表` 的公式汇总列使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式并为每条内容添加项目符号，不依赖 `_xlfn._xlws.` 动态工作表函数；五张受保护业务表只锁定公式与关系派生单元格及单元格格式，白色输入单元格保持可编辑，并允许调整列宽与行高、使用表头筛选与排序。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 通过“关联现状条目”单选一个可见 Effective Start 且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 只保留一张 Effective Start 明细表，展示“主题名称 / 现状条目名称 / 现状描述 / 起点可用性”，其中现状描述直接投影 Effective Start 自身的 `summary`，不以来源 Item/Commitment 摘要重建开工边界；主题和起点可用性使用下拉，整页可手工填写且不启用保护。任务下拉直接引用该可见名称列，不再使用隐藏辅助名单。Excel 内的系统现状修订不回写稳定 JSON、评审或 manifest。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+普通文本以 `= / + / - / @` 开头时仍按文本写入。公式只能来自模板原型。
 
-生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。生成指纹中的 `receipt-only-v3` 合同隔离当前工作簿投影语义；投影变化必须提升该合同，避免不同包树复用同一不可变 ID。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
+## 8. 语言、隐私与法律边界
 
-插件不提供统一 CLI，也不建设共享 Owner 业务编译器、项目锁、不可变 revision store、活动指针、
-自动回滚、自动 Git commit、用户项目级 Python/uv 环境、公式执行、OOXML 全量基准或 XLSX
-反向导入。`reconcile` 仅使用 work-only run ID、显式 tombstone 和 canonical redo manifest 做单写者
-前向恢复；这些不是稳定业务合同或通用事务系统。
+普通用户无需预装 Python/uv；平台 bootstrap 在插件安装副本内准备锁定运行时。用户不需要理解内部
+Module 或执行环境命令。
 
-Git 只用于普通的协作记录。需要调查本地 Repo 时，由 `analyze-as-is` 执行只读 Git 检查，确认工作树根目录并记录调查时的 `HEAD` revision 和 dirty 状态；它不 clone、不 fetch、不 pull，也不修改目标仓库。
+用户叙述、说明、问题、风险和自由文本默认使用简体中文；JSON 属性、Schema 枚举、ID、hash、路径、
+文件名、Sheet/Table 名和公式保持合同原值。
+
+`.ai-sow/` 包含客户输入和衍生数据，应默认被版本控制忽略。稳定数据和公共材料不保存凭据、客户无关
+原文、私有源码、完整工具输出或本机绝对路径。
+
+AI SOW 输出用于离线评审、估算和签署准备。自动生成本身不构成客户签署、接受、承诺生效或法律意见。

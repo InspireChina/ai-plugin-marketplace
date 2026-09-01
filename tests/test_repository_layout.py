@@ -36,6 +36,14 @@ SCHEMA_SHA256 = {
 
 TEMPLATE_SHA256 = "6c90f4782acf7b1beb372a7b5f8aa78079f677160c39349bf561883b5592bfa0"
 
+CURRENT_USER_DOCS = (
+    "README.md",
+    "docs/architecture/ai-plugin-marketplace-design.md",
+    "plugins/ai-sow/README.md",
+    "plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md",
+    "plugins/ai-sow/docs/CONTEXT.md",
+)
+
 
 def enum_arrays(value: object, path: str = "$") -> dict[str, list[object]]:
     if isinstance(value, dict):
@@ -52,6 +60,54 @@ def enum_arrays(value: object, path: str = "$") -> dict[str, list[object]]:
 
 
 class RepositoryLayoutTests(unittest.TestCase):
+    def test_user_docs_describe_one_automatic_generate_flow(self) -> None:
+        for relative in CURRENT_USER_DOCS:
+            text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+            with self.subTest(document=relative):
+                self.assertIn("ai-sow:generate", text)
+                self.assertNotIn("逐阶段批准", text)
+                self.assertNotIn("Owner receipt", text)
+
+    def test_manifest_prompts_only_advertise_generate(self) -> None:
+        manifest = json.loads(
+            (REPO_ROOT / "plugins/ai-sow/.codex-plugin/plugin.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertTrue(
+            manifest["interface"]["longDescription"].startswith(
+                "一次提供 PRD、HLD"
+            )
+        )
+        prompts = manifest["interface"]["defaultPrompt"]
+        self.assertEqual(len(prompts), 3)
+        self.assertTrue(all("ai-sow:generate" in prompt for prompt in prompts))
+        self.assertTrue(all("下一阶段" not in prompt for prompt in prompts))
+
+    def test_target_workflow_plan_is_marked_implemented(self) -> None:
+        text = (
+            REPO_ROOT
+            / "plugins/ai-sow/docs/PRD_HLD_AUTOMATED_SOW_WORKFLOW_PLAN.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("状态：已实现", text)
+        self.assertIn("执行日期：2026-09-02", text)
+        self.assertIn("d6738ee25cace4eb97db1cd204f769c6c63b7128", text)
+
+    def test_runtime_has_no_unsupported_document_parser_dependencies(self) -> None:
+        plugin_root = REPO_ROOT / "plugins/ai-sow"
+        dependency_text = "\n".join(
+            (plugin_root / relative).read_text(encoding="utf-8")
+            for relative in ("pyproject.toml", "uv.lock")
+        ).lower()
+        for dependency in (
+            "pypdf",
+            "pdfplumber",
+            "python-docx",
+            "python-pptx",
+            "pymupdf",
+        ):
+            self.assertNotIn(dependency, dependency_text)
+
     def test_xlsx_formulas_only_reference_existing_table_columns(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         workbooks = [
@@ -182,7 +238,7 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_user_install_docs_match_bootstrapped_runtime(self) -> None:
         expected = {
             "README.md": "无需预装 Git、Python",
-            "CONTRIBUTING.md": "普通插件用户由 `setup` 自动准备隔离运行时",
+            "CONTRIBUTING.md": "普通插件用户由 `ai-sow:generate` 的 bootstrap 自动准备隔离运行时",
             "docs/architecture/ai-plugin-marketplace-design.md": "普通插件用户无需预装 uv、Python",
             "plugins/ai-sow/README.md": "不要求 uv 位于 PATH",
             "plugins/ai-sow/docs/CONTEXT.md": "普通用户无需预装 Python/uv",
@@ -549,6 +605,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             ai_sow_entries[0],
             {
                 "name": "ai-sow",
+                "description": "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿。",
                 "source": {
                     "source": "local",
                     "path": "./plugins/ai-sow",

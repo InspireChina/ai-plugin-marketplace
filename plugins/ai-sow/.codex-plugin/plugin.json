@@ -1,7 +1,7 @@
 {
   "name": "ai-sow",
   "version": "0.1.0-beta.1",
-  "description": "根据需求和系统现状创建可评审、可追溯的 AI 辅助 SOW 工作簿。",
+  "description": "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿。",
   "author": {
     "name": "Inspire"
   },
@@ -15,8 +15,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "AI SOW",
-    "shortDescription": "分析范围并生成可评审的 SOW 工作簿。",
-    "longDescription": "七个主线阶段依次完成需求、现状、设计、交付、估算和 SOW 生成；一个维护 Skill 负责已发布链路的整体影响复核。",
+    "shortDescription": "一次输入材料，自动生成和增量更新 SOW。",
+    "longDescription": "一次提供 PRD、HLD 和适用的往期 SOW，自动完成范围编译、交付分解、终审和可追溯 SOW 发布。",
     "developerName": "Inspire",
     "category": "Productivity",
     "capabilities": [
@@ -24,9 +24,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "创建 AI SOW 项目，并指导我进入下一阶段。",
-      "分析当前系统，并核对往期 SOW 承诺。",
-      "根据已批准的交付数据生成可评审的 SOW 工作簿。"
+      "使用 ai-sow:generate，根据这份 PRD 和 HLD 创建 Greenfield SOW。",
+      "使用 ai-sow:generate，根据 PRD、HLD、往期 SOW 和现状变化说明创建 Brownfield SOW。",
+      "使用 ai-sow:generate，用我补充或修改的输入增量更新现有 SOW。"
     ]
   }
 }

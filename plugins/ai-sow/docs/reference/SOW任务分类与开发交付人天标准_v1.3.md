@@ -1,6 +1,6 @@
 # SOW 任务分类与开发交付人天标准
 
-状态：v1.3 评审稿（模板尚未发布）
+状态：v1.3 当前标准（插件 0.1.0-beta.1）
 
 日期：2026-08-21
 
@@ -8,7 +8,7 @@
 
 SOW 标准版本：v1.3
 
-维护说明：本文件负责解释任务分类、拆分、填写、验收与估算规则；数值、公式和可选组合的计算依据是同版本的 [SOW 模板](../../skills/setup/assets/sow-template.xlsx)。面向 PMO 与财务评审的仿真 Brownfield 参考结果见 [SOW 估算与生成示例](SOW估算与生成示例_v1.3.xlsx)。
+维护说明：本文件负责解释任务分类、拆分、填写、验收与估算规则；数值、公式和可选组合的计算依据是同版本的 [SOW 模板](../../skills/generate/assets/sow-template.xlsx)。面向 PMO 与财务评审的仿真 Brownfield 参考结果见 [SOW 估算与生成示例](SOW估算与生成示例_v1.3.xlsx)。
 
 ## 1. 背景与结论
 
@@ -361,9 +361,9 @@ Task 估算不使用数量、活动或 Story 类型。
 
 ## 11. Integration、SIT、UAT 与不确定性
 
-- **Integration**：独立记录一次有明确方向的系统交互，包括 source、target、trigger、direction、purpose 和 internal/external ownership，并关联受影响的 Story。`generate-story` 只根据来源需求、现状和目标设计中的证据记录 Integration，不判断是否需要生成集成 Task，也不根据 Story 类型推断 Integration。
-- **集成 Task**：由 `generate-task` 根据 Story、Integration 和 Effective Start 生成。每个需要交付的 Integration 恰好对应一个基础单元为“内部系统对接”或“外部系统对接”的 Task，并由该 Task 的 `integrationId` 建立引用；工作模式、复杂度和人天均在 Task 阶段确定。
-- **遗漏的系统交互**：如果拆分 Task 时发现 Story 还涉及未登记的系统交互，`generate-task` 必须退回 `generate-story` 或 `generate-design`，先补充或澄清 Integration。不能为了完成估算而临时编造集成关系，也不能生成没有 `integrationId` 的集成 Task。
+- **Integration**：独立记录一次有明确方向的系统交互，包括 source、target、trigger、direction、purpose 和 internal/external ownership，并关联受影响的 Feature/Story。`scope_compiler` 根据 PRD、HLD、往期 SOW 和补充证据登记 Integration，不根据 Story 类型推断。
+- **集成 Task**：由 `delivery_compiler` 根据 Story、Integration 和 Effective Start 生成。每个需要交付的 Integration 恰好对应一个基础单元为“内部系统对接”或“外部系统对接”的 Task，并由该 Task 的 `integrationId` 建立引用；工作模式、复杂度和人天均在同一个 Delivery 切片中确定。
+- **遗漏的系统交互**：如果 Delivery 编译发现 Story 还涉及未登记的系统交互，必须扩大受影响闭包并重新编译 Scope 和 Delivery，先补充或澄清 Integration。不能为了完成估算而临时编造集成关系，也不能生成没有 `integrationId` 的集成 Task。
 - **SIT**：由内部或外部系统对接 Task 触发，不再依赖 `SYSINT` Story 类型，也不能仅凭一条 Integration 记录触发。一次有明确方向的系统交互对应一个集成 Task。
 - **UAT**：Story 单独保存“适用/不适用”，不从任务族推导。技术型 Story 也可能需要业务验收。
 - **不确定性**：每条 Uncertainty 显式保存 `affectsEstimate`。答案可能改变范围、责任、设计、交付对象、工作量或人天时必须为 `true`，相关工作不开始，也不通过复杂度或风险倍率估算；只有确认不影响正式估算时才可为 `false`。`impact` 只解释影响，不通过关键词猜测门禁结论。
@@ -466,7 +466,7 @@ Task 表只让用户选择基础单元、工作模式和复杂度，并填写工
 9. 使用历史 SOW 和实际交付数据检验各工作模式的基础人天和复杂度系数；反算结果只能用于校准，不能改变本设计对各字段和基础单元的定义。
 10. 将数据迁移和发布切换拆为独立任务族，把问题诊断/根因整改合并到“问题处理”，把运维交接/用户培训归入“交付与移交”；仅新增“用户培训与使用材料”，保留其他基础单元 ID。
 
-## 14. 对 Schema、Skill 和校验规则的影响
+## 14. 对 Schema、Module 和校验规则的影响
 
 ### 14.1 正式数据格式
 
@@ -477,12 +477,12 @@ Task 表只让用户选择基础单元、工作模式和复杂度，并填写工
 - Uncertainty 新增必填布尔值 `affectsEstimate`，替代从 `impact` 文本推测是否阻止估算。
 - 正式 JSON 数据不保存任务族、基础人天、复杂度系数或最终人天。
 
-### 14.2 Skill
+### 14.2 Module
 
-- `generate-story` 不再选择 Story 类型，直接形成可验收交付结果并明确 UAT 适用性；同时记录有证据支持的独立 Integration 关系，但不判断或生成集成 Task。
-- `generate-task` 按一个基础单元实例拆分 Task，从项目模板的单张配置表读取基础单元、三种工作模式的 M 档基础人天和逐单元复杂度标准，并从项目参数读取 S/M/L 系数；根据 Story、Integration 和 Effective Start 生成内部或外部系统对接 Task，并填写 `integrationId`。
-- `generate-task` 评审必须检查任务范围是否清楚、是否重复或遗漏、每个 Integration 是否恰好对应一个集成 Task、工作模式是否有现状依据、S/L 是否说明偏离 M 档的原因，以及所有 X 项是否已经处理；发现未登记的集成关系时退回上一步补齐。
-- `generate-sow` 只把批准后的正式数据写入工作簿，自动带出和计算工作交给模板完成。
+- `scope_compiler` 形成 Feature、Design、Integration、NFR 和 Effective Start，并保持来源追溯。
+- `delivery_compiler` 在同一受影响切片内形成可验收 Story/AC，并按一个基础单元实例拆分 Task；它从项目模板目录读取基础单元、三种工作模式的 M 档人天和逐单元复杂度标准，并填写必要的 `integrationId`。
+- `final_review` 检查任务范围、重复或遗漏、每个 Integration 的唯一集成 Task、工作模式现状依据、S/L 偏离理由和所有 X 项；遗漏集成时阻止该候选切片发布。
+- `package_renderer` 只把终审通过的 ScopeBundle 与 DeliveryBundle 写入工作簿，自动带出和计算交给模板完成。
 
 ### 14.3 验证
 
@@ -522,7 +522,7 @@ Task 表只让用户选择基础单元、工作模式和复杂度，并填写工
 8. `基础单元 + 工作模式` 通过基础单元配置表中的对应人天列唯一选择 M 档基础人天；工作模式不使用全局系数。
 9. 复杂度按各基础单元自己的标准判断，再使用 `91-项目参数` 中配置的 S/M/L 系数；不存在独立复杂度规则工作表。
 10. 多个基础单元实例必须拆成多个 Task，不能通过数量或复杂度合并。
-11. Integration 的识别和记录不依赖 Story 类型；`generate-story` 不负责判断集成 Task。
+11. Integration 的识别和记录不依赖 Story 类型；`scope_compiler` 不负责判断集成 Task。
 12. 每个需要交付的 Integration 都有且只有一个带正确 `integrationId` 的“内部系统对接”或“外部系统对接”Task。
 13. SIT 由集成 Task 触发；UAT 由 Story 适用性明确表达。
 14. 不确定性未关闭时不开始相关工作，也不进入正式估算。

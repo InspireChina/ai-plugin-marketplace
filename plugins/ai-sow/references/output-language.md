@@ -9,8 +9,8 @@
 
 - JSON 属性名和顶层集合名；
 - schema 的 `enum`、`const`、格式、正则和条件约束；
-- `projectId`、Epic、Feature、Item、Commitment、Evidence、Story、Task 等稳定 ID；
-- `GREENFIELD`、`BROWNFIELD`、`ASSESSED`、`CARRY_FORWARD`、`IN_SCOPE`、`INTERNAL`、`EXTERNAL` 等 machine token；
+- `projectId`、Source、Anchor、Epic、Feature、Effective Start、DesignItem、Integration、NFR、Story、AcceptanceCriterion、Task 等稳定 ID；
+- `GREENFIELD`、`BROWNFIELD`、`IN_SCOPE`、`FULLY_COVERED`、`INTERNAL`、`EXTERNAL`、`PASS`、`PASS_WITH_NOTES`、`BLOCKED` 等 machine token；
 - 结构化 JSON 中模板定义的任务族、基础单元 ID、工作模式和复杂度；
 - sheet 名、表名、列名、公式、数据验证、命名范围和 OOXML 结构；
 - Git revision、SHA-256、路径、文件名、代码符号、API、协议、产品名和必要的英文专有名词；
@@ -18,7 +18,7 @@
 
 中文叙述引用英文标识符时，保留标识符并在相邻文本中用中文解释，确保可追溯性。若用户提供的正式名称、专有名词、源材料原文或引用不是中文，保留原文，并在相邻的 **中文自由文本** 中给出中文说明。
 
-最终 Excel 遵循展示层规则：业务 Sheet 不显示稳定 ID，使用稳定数据中唯一、非空的名称进行
+最终 Excel 遵循展示层规则：业务 Sheet 不显示稳定 ID，使用 ScopeBundle 与 DeliveryBundle 中唯一、非空的名称进行
 展示、下拉和跨表引用；可翻译的 machine token 投影为中文标签。项目参数代码、任务族 ID 和
 基础单元 ID 只有模板读取或计算确有需要时保留，并默认隐藏。结构化 JSON 的属性、ID、枚举和
 引用关系仍保持合同原值，Excel 中文投影不会改变对象身份。

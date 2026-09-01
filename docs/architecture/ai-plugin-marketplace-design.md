@@ -1,219 +1,157 @@
 # AI Plugin Marketplace 设计规格
 
-日期：2026-08-20
+- 日期：2026-09-02
+- 当前 Beta：`0.1.0-beta.1`
+- 目标稳定版本：`0.1.0`
+- SOW 标准：`1.3`
 
-## 目标
+## 目标与发布身份
 
-发布 AI SOW `0.1.0` / SOW `1.3` 首个稳定合同，形成一个可公开发布、可继续添加插件、可由 Codex 本地安装并从已安装插件目录独立运行的 marketplace 仓库。
+本仓库发布可审查、可独立安装的 Codex 与 Claude Code 插件。Marketplace ID 为
+`ai-plugin-marketplace`，展示名为 `AI Plugin Marketplace`，Publisher 为 `Inspire`。首个插件 ID、
+目录名和 manifest 名称均为 `ai-sow`；其唯一公开 Skill 是 `ai-sow:generate`。
 
-## 标识
+两份 marketplace 目录都把 `ai-sow` 指向 `./plugins/ai-sow`，安装策略为 `AVAILABLE`，鉴权策略为
+`ON_INSTALL`，分类为 `Productivity`。插件 manifest 的名称、版本和描述必须一致。
 
-- 仓库目录与未来建议仓库名：`ai-plugin-marketplace`
-- Marketplace ID：`ai-plugin-marketplace`
-- Marketplace 展示名：`AI Plugin Marketplace`
-- 首个插件 ID 与目录名：`ai-sow`
-- 插件展示名：`AI SOW`
-- Publisher：`Inspire`
-- 当前 Beta 版本：`0.1.0-beta.1`；目标稳定版本：`0.1.0`；SOW 标准版本：`1.3`
-- Marketplace 条目分类：`Productivity`
-- 安装策略：`AVAILABLE`
-- 鉴权策略：`ON_INSTALL`
-
-插件名称、插件目录和 manifest 的 `name` 必须始终一致。Marketplace 的 `source.path` 固定为 `./plugins/ai-sow`。
-
-## 选择的架构
-
-采用单仓库、多插件、自包含插件包：
+## 仓库边界
 
 ```text
 ai-plugin-marketplace/
 ├── .agents/plugins/marketplace.json
 ├── .claude-plugin/marketplace.json
 ├── .github/
-│   ├── ISSUE_TEMPLATE/
-│   ├── pull_request_template.md
-│   └── workflows/ci.yml
-├── docs/
-│   └── architecture/
-│       ├── ai-plugin-marketplace-design.md
-│       └── ai-sow-chinese-output-design.md
+├── docs/architecture/
 ├── plugins/
 │   └── ai-sow/
 │       ├── .codex-plugin/plugin.json
 │       ├── .claude-plugin/plugin.json
-│       ├── skills/
+│       ├── skills/generate/
+│       ├── runtime/
 │       ├── docs/
+│       ├── references/
+│       ├── tests/
 │       ├── pyproject.toml
-│       ├── uv.lock
-│       ├── README.md
-│       ├── LICENSE
-│       └── NOTICE
+│       └── uv.lock
 ├── scripts/
-├── CHANGELOG.md
-├── CODE_OF_CONDUCT.md
-├── CONTRIBUTING.md
-├── LICENSE
-├── NOTICE
-├── README.md
-└── SECURITY.md
+├── tests/
+└── README.md
 ```
 
-Marketplace 根目录只承担目录发现、开源治理、CI 和多插件编排。每个 `plugins/<name>/` 都必须是可单独复制、验证和运行的完整发布单元，不得依赖仓库根目录的 Python 配置、锁文件、脚本、模板或业务文档。
+Marketplace 根目录只负责目录发现、治理、CI 和多插件发布。每个 `plugins/<name>/` 都是可单独复制、
+安装、验证和运行的完整单元；运行时不得读取 marketplace 根目录或其他插件。AI SOW 的依赖、合同、
+模板、脚本、测试和参考资料全部位于 `plugins/ai-sow/`。
 
-暂不拆分 marketplace 与 plugin 到不同仓库。只有当插件出现独立维护者、独立发布节奏或不同许可证时，才将该插件拆分为 Git-backed source。
+插件级 `runtime/` 只保存不拥有业务稳定数据的通用诊断与安全项目 I/O。所有 AI SOW 业务合同、编译器、
+渲染器和模板由 `skills/generate/` 自己拥有。
 
-## AI SOW 插件边界
+## AI SOW 单入口架构
 
-AI SOW 的领域实现与参考资料全部位于 `plugins/ai-sow/`：
+`ai-sow:generate` 是一个深 Skill，内部 Module 是可测试 seam，不是用户命令：
 
-- 领域上下文：`plugins/ai-sow/docs/CONTEXT.md`
-- 插件设计：`plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md`
-- Word 规则文档和 Excel 示例：`plugins/ai-sow/docs/reference/`
-- Python 项目与锁文件：`plugins/ai-sow/pyproject.toml`、`plugins/ai-sow/uv.lock`
+```text
+orchestrator
+  -> intake
+  -> scope_compiler
+  -> delivery_compiler
+  -> final_review
+  -> package_renderer
+```
 
-内部实施计划、本机绝对路径、运行时生成文件和 `.DS_Store` 不进入仓库的正式源代码提交。
+- `intake` 固化请求、验证来源格式、生成语义锚点并比较最近成功输入；
+- `scope_compiler` 生成 `ScopeBundle`，拥有 Feature、Effective Start、Design、Integration 和 NFR；
+- `delivery_compiler` 生成 `DeliveryBundle`，拥有 Story、AC、Task、依赖和估算输入；
+- `final_review` 只产生 `PASS / PASS_WITH_NOTES / BLOCKED`，检查跨层追踪、完整性和固定估算边界；
+- `package_renderer` 只读取终审通过的 Bundle 与模板，确定性生成 `sow.xlsx` 和 `sow-notes.md`。
 
-插件 manifest 名为 `ai-sow`，当前 Beta 为 `0.1.0-beta.1`、首个稳定版本为 `0.1.0`，配套 SOW 标准为 `1.3`，并提供 Apache-2.0、关键词和规范化的 install-surface 文案。未知的 GitHub URL、主页、隐私条款和服务条款不使用占位值；远程仓库建立后再增加真实 HTTPS 地址。`defaultPrompt` 使用最多三个短字符串组成的数组。
+内部模块不能演化为新的公开 Skill，也不能把用户重新暴露给内部模式、批次或中间批准步骤。
+
+## 输入与原型分析
+
+PRD 和 HLD 只接受 UTF-8 Markdown（`.md`）；往期 SOW 只接受 `.xlsx`；补充材料接受 UTF-8 纯文本
+（默认 Markdown）、HTML、TypeScript、TSX 或 `.xlsx`。PDF、Word、PowerPoint 和其他需要专用解析器
+的格式不受支持，运行时依赖中不得引入对应解析器。
+
+Greenfield 不要求往期 SOW。Brownfield 至少提供一份适用往期 SOW 和现状增量声明；缺失时返回
+`BLOCKED`。HTML/TypeScript/TSX 原型既是源码输入，也是功能与交互证据：编译器提取入口、页面、
+用户动作、触发、状态变化、校验、权限、异常和可观察结果。源码不足且 Demo 可运行时，宿主可按需
+使用 Playwright 或 Computer Use 验证交互，结论必须追溯到原型来源且不能静默覆盖 PRD/HLD。
+
+## 输入、稳定数据与发布事务
+
+插件维护三类稳定数据：`InputManifest`、`ScopeBundle`、`DeliveryBundle`。它们和模板共同决定 Package；
+Package 不拥有新的范围事实。
+
+```text
+.ai-sow/
+├── current.json
+├── inputs/
+│   ├── pending/
+│   └── revisions/<revision>/
+├── generations/<generation>/
+│   ├── manifest.json
+│   ├── data/{scope.json,delivery.json}
+│   └── output/{sow.xlsx,sow-notes.md}
+└── work/
+```
+
+输入 revision 和 generation 都不可变。候选与终审先在 `work/` 完成，输入与输出目录发布并复读成功后，
+最后原子替换 `current.json`。失败或阻断不会修改当前指针，因此上一份有效 SOW 始终可用。
+
+语义未变化的对象保留 ID；含义变化时创建新 ID。输入变化从来源锚点定位受影响 Feature，扩展共享
+Design、Integration、NFR、Assumption 或 Task 的引用闭包，完整替换受影响切片。未受影响切片原字节
+保留；工作簿和说明始终完整重渲染，不对 OOXML 做局部 patch。
+
+## 工作簿计算权威
+
+`skills/generate/assets/sow-template.xlsx` 是任务目录、基础人天、复杂度、SIT、UAT、风险、公式和取整
+的唯一计算权威。Python 和 JSON 不复制这些计算口径，也不执行 Excel 公式。生成器保留命名 Table、
+公式原型、样式、行高、自动筛选、数据验证和跨 Sheet 引用，并在发布前复读结构与公式。
+
+普通文本以 `= / + / - / @` 开头时按文本安全写入。任何改变工作簿确定性投影的实现都必须更新
+renderer contract 与由 `package_renderer.py`、`workbook.py` 组成的 fingerprint baseline。
 
 ## 安装后运行模型
 
-Codex 安装本地 marketplace 插件时会创建独立的插件目录。AI SOW 运行时不得假设用户当前目录中存在 `plugin/skills/...`，也不得读取 marketplace 根目录。
+Codex 或 Claude Code 安装插件后，Skill 从已加载 `skills/generate/SKILL.md` 解析绝对
+`<plugin-root>`。平台 bootstrap 位于：
 
-setup 与后续 Skill 按以下规则运行脚本：
+- macOS/Linux：`skills/generate/scripts/bootstrap.sh`
+- Windows：`skills/generate/scripts/bootstrap.ps1`
 
-1. 从当前已加载 `SKILL.md` 的绝对路径确定 `<plugin-root>`：`skills/<skill-name>/SKILL.md` 的上两级目录。
-2. `setup` 先运行平台对应的 Skill-local bootstrap，在插件安装副本内准备 uv 0.11.7、managed Python
-   3.12、锁定依赖和 `.venv`，再初始化或只读复核项目。
-3. 后续 Skill 从用户项目根目录执行命令，不改变当前工作目录，并直接使用 setup 建立的插件
-   `.venv`：
+普通插件用户无需预装 uv、Python 或 Python 依赖。bootstrap 在插件安装副本内固定准备 uv 0.11.7、
+managed Python 3.12、锁定依赖和 `.venv`，再调用唯一 orchestrator。后续执行复用
+`<plugin-root>/.venv/bin/python` 或 `<plugin-root>/.venv/Scripts/python.exe`，不依赖 shell profile、
+PATH 中的 uv、手工激活环境或仓库相对路径。
 
-   ```text
-   "<plugin-root>/.venv/bin/python" "<plugin-root>/skills/<skill-name>/scripts/<script>.py" --project-root .
-   ```
+Windows bootstrap 在任何项目写入前检查路径预算。启用机器级长路径策略需要用户明确同意；插件不得
+静默修改系统策略或绕过 UAC。
 
-   Windows 使用等价的 `<plugin-root>/.venv/Scripts/python.exe`。
-4. 不依赖 `PLUGIN_ROOT`、shell profile、PATH 中的 uv、手工激活虚拟环境或仓库根目录相对路径。
+## 隐私与安全
 
-普通插件用户无需预装 uv、Python 或 Python 依赖。插件自带 `pyproject.toml` 与 `uv.lock`；首次
-`setup` 在插件安装副本内按固定官方来源准备工具链，后续阶段只复用插件 `.venv`，不会修改用户项目
-的依赖文件。Git、Python 和 uv 仍是仓库贡献者执行开发与 CI 命令的工具链，不属于插件安装条件。
+`.ai-sow/` 可能保存客户原文和衍生数据，默认应被用户项目版本控制忽略。稳定数据、公共仓库、日志和
+测试 fixture 不保存凭据、客户 SOW 原文、私有源码、完整工具输出或本机绝对路径。项目输入、输出和
+来源引用使用受管项目相对路径；路径越界和符号链接穿越必须 fail closed。
 
-这套调用方式的设计目标是在 macOS、Linux 和 Windows 路径上可表达。文档示例使用引号包围所有绝对路径，不提供仅适用于 POSIX shell 的启动器。
+Git 只用于普通协作。插件不 clone、fetch、pull、reset、commit、push 或发布版本。
 
-## Marketplace 元数据
+## 验证与发布边界
 
-仓库同时发布两份 marketplace 目录，指向同一组插件目录。任一宿主只读取自己的那一份，
-但两份必须发布相同的插件名和相同的来源路径，由 `scripts/validate_repository.py` 强制校验。
+验证分四层：
 
-`.agents/plugins/marketplace.json`（Codex）包含：
+1. 根测试检查 marketplace、manifest、文档链接、Schema/template hash 和单 Skill 发布面；
+2. generate 测试覆盖输入格式、范围/交付编译、增量闭包、终审、发布和工作簿；
+3. 仓库验证器检查自包含边界、版本身份、renderer fingerprint 和公开文本；
+4. copy smoke 只复制 `plugins/ai-sow/`，在独立项目中运行 Greenfield、Brownfield、阻断恢复和无变化复用。
 
-- 顶层 `name: "ai-plugin-marketplace"`
-- `interface.displayName: "AI Plugin Marketplace"`
-- 一个 `ai-sow` 条目
-- 本地 source：`./plugins/ai-sow`
-- 完整的 installation、authentication 和 category 字段
+copy smoke 还验证生成目录精确文件集合、manifest hash 闭包、工作簿 Table/公式和说明文档，并用读取
+守卫阻止运行时访问复制插件与测试项目之外的路径。
 
-`.claude-plugin/marketplace.json`（Claude Code）包含：
+CI 使用 Python 3.12 和 uv 0.11.7，覆盖 Ubuntu、macOS 和 Windows。该矩阵证明自动化测试运行于三种
+GitHub-hosted runner，不等同于物理 Windows 11、Codex Desktop 或 Excel Desktop 的实机认证。
 
-- 顶层 `name: "ai-plugin-marketplace"`
-- `owner.name`
-- 一个 `ai-sow` 条目，`source` 为相对路径字符串 `./plugins/ai-sow`
+## 开源治理
 
-插件侧同样是两份 manifest：`.codex-plugin/plugin.json` 与 `.claude-plugin/plugin.json`。
-两者的 `name`、`version` 和 `description` 必须一致；Codex 特有的 `interface` 块和 Claude Code
-特有的 `homepage`/`repository`/`license` 字段各自保留。Skill 目录 `skills/<name>/SKILL.md`
-两个宿主共用，不做复制。
-
-条目顺序就是展示顺序。后续插件默认追加，不自动重排。`policy.products` 在没有明确产品限制时省略。
-
-## 开源治理与许可证
-
-仓库和 AI SOW 插件使用 Apache License 2.0。插件包内保留独立 `LICENSE` 与 `NOTICE`，保证插件目录单独分发时仍携带授权信息。版权声明使用 `Copyright 2026 Inspire`。
-
-本发布将项目代码、项目原创说明、SOW 模板和示例视为同一项目的可发布资产。Python 依赖只在运行时解析，不 vendoring 到仓库；`NOTICE` 说明主要依赖及其许可证，不复制依赖源码。
-
-根目录增加：
-
-- `CONTRIBUTING.md`：开发环境、目录约束、测试和 PR 要求
-- `CODE_OF_CONDUCT.md`：行为标准和报告渠道
-- `SECURITY.md`：支持版本、私密报告方式和响应边界
-- `CHANGELOG.md`：Keep a Changelog 风格的版本记录
-- Issue 表单和 PR 模板
-
-用户项目生成的 `.ai-sow/` 可能包含客户资料。文档必须给出显式、可选择的忽略策略，不能在 marketplace 仓库中假设所有用户都应提交或忽略这些文件。
-
-## CI 与验证
-
-GitHub Actions 使用 Python 3.12 和 uv 0.11.7。测试矩阵覆盖 Ubuntu、macOS 和 Windows。CI 不依赖开发者机器上的 Codex skill 目录。该矩阵证明自动化测试在 GitHub-hosted runner 上执行，不证明物理 Windows 11、Codex Desktop、NTFS reparse point 或 Excel Desktop 的端到端兼容性。
-
-仓库内验证分四层：
-
-### 1. 静态目录和元数据
-
-- Marketplace JSON 可解析且字段完整。
-- `source.path` 位于仓库根目录内并指向真实插件。
-- Marketplace entry、插件目录和 manifest 名称一致。
-- Manifest 使用严格 semver，引用的所有相对路径都存在且位于插件内。
-- 正式跟踪文件不存在本机绝对路径、旧 `plugin/skills` 命令、占位词或内部实施计划。
-
-### 2. 插件单元与合同测试
-
-- 使用 `uv sync --project plugins/ai-sow --locked` 验证锁文件。
-- 运行 AI SOW 全量 pytest。
-- 运行 plugin validator、仓库 validator、Marketplace 根测试与插件全量 pytest。
-- 三份 SOW 模板副本保持字节一致。
-- `0.1.0-beta.1` manifest、schema、fixture 和 setup 常量与 SOW `1.3` 一致。
-
-### 3. 发布边界测试
-
-只复制 `plugins/ai-sow/` 到临时目录，不复制 marketplace 根目录。随后从另一个空目录：
-
-- 使用复制后的 `pyproject.toml` 与 `uv.lock` 建立运行环境。
-- 直接使用复制插件 `.venv` 的 Python 执行 Greenfield setup，证明后续命令不依赖 PATH uv。
-- 复核审核 fixture 中五位 Owner 的 0.3 receipts 和六份稳定数据；不在 smoke 中重放 Owner 业务门禁。
-- 使用同一插件 `.venv` Python 从审核 fixture 生成 SOW 包。
-
-这一层证明独立插件副本不依赖源码仓库布局。
-
-### 4. 本地 Codex 安装与端到端冒烟测试
-
-使用 CLI 注册新 marketplace 根目录并安装插件：
-
-```text
-codex plugin marketplace add <absolute-path-to-ai-plugin-marketplace>
-codex plugin add ai-sow@ai-plugin-marketplace
-```
-
-验收包括：
-
-- `codex plugin marketplace list` 能解析新 marketplace。
-- `codex plugin list` 显示 `ai-sow` 已安装并启用。
-- 已安装目录中的 plugin manifest、skills、锁文件和模板完整。
-- 从已安装插件目录而非源码目录，在全新临时项目中完成 Greenfield setup。
-- 独立 Owner E2E 运行五位 Owner validator；copy smoke 则复核已审核 fixture 的五份 0.3 receipt，
-  并使用安装副本 `.venv` Python 生成确定性 SOW 包，避免下游重放 Owner 业务门禁。
-- 用 Microsoft Excel 打开临时输出、完整重算并保存；缓存值中公式错误数为零。
-- 检查 13 个工作表、动态 As-Is 表、Task → Effective Start 追溯和三份模板哈希。
-- 用全新的 Codex 进程确认安装后的 skill 可以被发现；当前任务不假设热重载。
-
-安装和测试只写入 marketplace、Codex 的 marketplace/plugin 配置与独立临时测试目录。
-
-## 错误处理
-
-- Marketplace 注册失败时，不手改 `~/.codex/config.toml`；使用 `codex plugin marketplace` 命令检查和修复。
-- 插件安装失败时，先验证 marketplace source 和 manifest，再重试安装。
-- 端到端测试只使用唯一临时目录，不覆盖用户项目。
-- 若新安装影响现有 Codex 插件状态，可用 CLI 删除 `ai-sow` 或 `ai-plugin-marketplace`，但不得删除其他 marketplace。
-
-## 完成标准
-
-任务仅在以下条件全部满足时完成：
-
-1. 公开仓库只包含预期发布文件。
-2. schema、contract、枚举和 XLSX 模板由仓库测试锁定；公开验证不依赖私有工作区或本机路径。
-3. Marketplace 与插件均通过静态和官方本地校验。
-4. 全量 pytest 在已声明的本地验收平台通过，CI 配置覆盖三种操作系统；CI 覆盖不等同于 Windows 11 实机通过。
-5. 只复制插件目录的发布边界测试通过。
-6. 本地 Codex 安装成功，已安装插件从空项目完成端到端冒烟测试。
-7. Excel 实际重算没有公式错误，SOW 结构与 SOW `1.3` 合同一致。
-8. 新仓库工作区干净，并提供安装、更新、卸载和贡献说明。
+仓库与插件使用 Apache License 2.0。插件目录保留独立 `LICENSE` 和 `NOTICE`，保证单独分发仍携带
+授权信息。发布版本必须同步两个 manifest、Python PEP 440 版本、`uv.lock`、fixture、README、验证器
+和 `CHANGELOG.md`；未经明确要求不创建 tag、不推送、不发布。

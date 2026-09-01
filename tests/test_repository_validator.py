@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.validate_repository import (
+    RENDERER_FINGERPRINT_FILES,
     validate_ai_sow_release,
     validate_claude_marketplace,
     validate_renderer_contract_consistency,
@@ -23,8 +24,13 @@ from scripts.validate_repository import (
 )
 
 
+AI_SOW_DESCRIPTION = (
+    "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿。"
+)
+
 AI_SOW_ENTRY = {
     "name": "ai-sow",
+    "description": AI_SOW_DESCRIPTION,
     "source": {"source": "local", "path": "./plugins/ai-sow"},
     "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
     "category": "Productivity",
@@ -38,7 +44,7 @@ def claude_entry(entry: dict[str, object]) -> dict[str, object]:
     return {
         "name": entry["name"],
         "source": path,
-        "description": f"{entry['name']} 插件",
+        "description": str(entry.get("description") or f"{entry['name']} 插件"),
     }
 
 
@@ -67,6 +73,26 @@ def write_plugin(root: Path, name: str, version: str) -> Path:
 
 def write_valid_ai_sow_release(root: Path) -> Path:
     plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.1")
+    codex_manifest = json.loads(
+        (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    codex_manifest["description"] = AI_SOW_DESCRIPTION
+    codex_manifest["interface"] = {
+        "developerName": "Inspire",
+        "shortDescription": "一次输入材料，自动生成和增量更新 SOW。",
+        "longDescription": "一次提供 PRD、HLD 和适用的往期 SOW，自动完成范围编译、交付分解、终审和可追溯 SOW 发布。",
+        "defaultPrompt": [
+            "使用 ai-sow:generate，根据 PRD 和 HLD 创建 Greenfield SOW。",
+            "使用 ai-sow:generate，根据 PRD、HLD 和往期 SOW 创建 Brownfield SOW。",
+            "使用 ai-sow:generate，用补充输入增量更新现有 SOW。",
+        ],
+    }
+    write_json(plugin_root / ".codex-plugin/plugin.json", codex_manifest)
+    claude_manifest = json.loads(
+        (plugin_root / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    claude_manifest["description"] = AI_SOW_DESCRIPTION
+    write_json(plugin_root / ".claude-plugin/plugin.json", claude_manifest)
     for relative in (
         "skills/generate/SKILL.md",
         "skills/generate/scripts/bootstrap.sh",
@@ -160,6 +186,34 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
+    def test_repository_validator_uses_generate_renderer_baseline(self) -> None:
+        self.assertEqual(
+            RENDERER_FINGERPRINT_FILES,
+            ("scripts/package_renderer.py", "scripts/workbook.py"),
+        )
+
+    def test_ai_sow_release_rejects_staged_manifest_prompts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            initialize_repository(root, [AI_SOW_ENTRY])
+            manifest_path = plugin_root / ".codex-plugin/plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["interface"]["longDescription"] = "七阶段生成 SOW。"
+            manifest["interface"]["defaultPrompt"][0] = "请指导我进入下一阶段。"
+            write_json(manifest_path, manifest)
+
+            errors = validate_ai_sow_release(root, plugin_root)
+
+            self.assertIn(
+                "AI SOW longDescription must advertise one automatic generate flow",
+                errors,
+            )
+            self.assertIn(
+                "AI SOW defaultPrompt must only advertise ai-sow:generate",
+                errors,
+            )
+
     def test_renderer_fingerprint_matches_the_current_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

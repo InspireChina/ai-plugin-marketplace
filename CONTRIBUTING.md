@@ -6,7 +6,7 @@
 
 ## 开发环境
 
-本节只适用于仓库贡献者。普通插件用户由 `setup` 自动准备隔离运行时，不需要执行这些命令。
+本节只适用于仓库贡献者。普通插件用户由 `ai-sow:generate` 的 bootstrap 自动准备隔离运行时，不需要执行这些命令。
 贡献者安装 Git、Python 3.12 和 uv 0.11.7 后运行：
 
 ```text
@@ -29,7 +29,8 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 行为、测试结果，以及任何隐私或兼容性影响。提交应保持小而聚焦。
 
 冒烟命令只把插件包复制到独立临时目录，在该目录之外创建用户项目：先建立复制插件的 `.venv`，
-再通过该 Python 运行 setup、复核 fixture 中五份 Owner 0.3 receipt，并生成确定性交付包。它不重放
-Owner 专业 validator；这些规则由前一条全量 pytest 覆盖。最终 JSON 报告会包含临时工作目录，便于检查。
+再通过该 Python 运行 Greenfield、Brownfield、缺失往期 SOW 的阻断恢复与无变化复用。它会检查不可变
+revision/generation、manifest hash 闭包、SOW 工作簿 Table/公式、配套说明和 last-known-good，并用读取
+守卫证明运行时不访问复制插件或测试项目之外的文件。最终 JSON 报告包含临时工作目录，便于检查。
 
 提交贡献即表示你同意该贡献采用 Apache License 2.0。

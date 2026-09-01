@@ -16,6 +16,9 @@ PYTHON_RUNTIME_VERSION = "0.1.0b1"
 SOW_STANDARD_VERSION = "1.3"
 MARKETPLACE_NAME = "ai-plugin-marketplace"
 PUBLISHER_NAME = "Inspire"
+AI_SOW_DESCRIPTION = (
+    "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿。"
+)
 CODEX_MARKETPLACE = ".agents/plugins/marketplace.json"
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
 CODEX_PLUGIN_MANIFEST = ".codex-plugin/plugin.json"
@@ -391,6 +394,65 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
             )
         elif manifest.get("version") != RELEASE_VERSION:
             errors.append(f"AI SOW plugin version in {relative} must be {RELEASE_VERSION}")
+        if isinstance(manifest, dict) and manifest.get("description") != AI_SOW_DESCRIPTION:
+            errors.append(
+                f"AI SOW plugin description in {relative} must advertise the "
+                "automatic generate flow"
+            )
+        if relative == CODEX_PLUGIN_MANIFEST and isinstance(manifest, dict):
+            interface = manifest.get("interface")
+            long_description = (
+                interface.get("longDescription")
+                if isinstance(interface, dict)
+                else None
+            )
+            prompts = (
+                interface.get("defaultPrompt")
+                if isinstance(interface, dict)
+                else None
+            )
+            if not isinstance(long_description, str) or not long_description.startswith(
+                "一次提供 PRD、HLD"
+            ):
+                errors.append(
+                    "AI SOW longDescription must advertise one automatic generate flow"
+                )
+            if (
+                not isinstance(prompts, list)
+                or len(prompts) != 3
+                or any(
+                    not isinstance(prompt, str)
+                    or "ai-sow:generate" not in prompt
+                    or "下一阶段" in prompt
+                    for prompt in prompts
+                )
+            ):
+                errors.append(
+                    "AI SOW defaultPrompt must only advertise ai-sow:generate"
+                )
+
+    for relative in (CODEX_MARKETPLACE, CLAUDE_MARKETPLACE):
+        path = repo_root / relative
+        if not path.is_file():
+            continue
+        try:
+            marketplace = load_json(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        plugins = marketplace.get("plugins") if isinstance(marketplace, dict) else None
+        ai_sow = next(
+            (
+                entry
+                for entry in plugins
+                if isinstance(entry, dict) and entry.get("name") == "ai-sow"
+            ),
+            None,
+        ) if isinstance(plugins, list) else None
+        if not isinstance(ai_sow, dict) or ai_sow.get("description") != AI_SOW_DESCRIPTION:
+            errors.append(
+                f"AI SOW marketplace description in {relative} must match the "
+                "automatic generate flow"
+            )
 
     for mode in ("greenfield", "brownfield"):
         request_path = plugin_root / f"skills/generate/fixtures/{mode}/request.json"
@@ -402,7 +464,12 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
         project = request.get("project") if isinstance(request, dict) else None
         project_id = project.get("projectId") if isinstance(project, dict) else None
         project_name = project.get("name") if isinstance(project, dict) else None
-        if not isinstance(project_id, str) or not project_id.strip() or not isinstance(project_name, str) or not project_name.strip():
+        if (
+            not isinstance(project_id, str)
+            or not project_id.strip()
+            or not isinstance(project_name, str)
+            or not project_name.strip()
+        ):
             errors.append(f"{mode} fixture projectId and name must be non-empty")
         if not isinstance(request, dict) or request.get("mode") != mode.upper():
             errors.append(f"{mode} fixture mode must be {mode.upper()}")

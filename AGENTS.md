@@ -2,75 +2,92 @@
 
 ## 适用范围
 
-本文件适用于整个仓库。仓库用于发布可审查、可独立安装的 Codex 与 Claude Code 插件；当前插件是 `plugins/ai-sow/`。
+本文件适用于整个仓库。仓库发布可审查、可独立安装的 Codex 与 Claude Code 插件；当前插件是
+`plugins/ai-sow/`。
 
-- 开始修改前先阅读根目录 `README.md` 和 `CONTRIBUTING.md`，并检查工作区状态和最近提交。
-- 修改 marketplace 布局、安装方式或发布边界时，读取 `docs/architecture/ai-plugin-marketplace-design.md`。
-- 修改 AI SOW 领域合同、阶段边界或数据语义时，读取 `plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md` 和 `plugins/ai-sow/docs/CONTEXT.md`。
-- 修改某个 Skill 时，完整读取该 Skill 的 `SKILL.md`；其合同、脚本、夹具和测试由该 Skill 自己维护。
-- 修改用户可见语言或机器 token 时，读取 `plugins/ai-sow/references/output-language.md`。
+- 开始修改前阅读根 `README.md`、`CONTRIBUTING.md`，检查工作区状态和最近提交。
+- 修改 marketplace 布局、安装或发布边界时，读取 `docs/architecture/ai-plugin-marketplace-design.md`。
+- 修改 AI SOW 领域合同、模块边界或数据语义时，读取
+  `plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md` 和 `plugins/ai-sow/docs/CONTEXT.md`。
+- 修改 `ai-sow:generate` 时，完整读取 `plugins/ai-sow/skills/generate/SKILL.md`；合同、脚本、fixture、
+  reference、asset 和测试由该 Skill 自己维护。
+- 修改用户语言或 machine token 时，读取 `plugins/ai-sow/references/output-language.md`。
 
 ## 修改原则
 
 1. 先确定变更归属、权威来源和兼容边界，再修改最小必要范围。
 2. 行为变更由测试证明；文档、合同、实现和发布元数据保持同步。
-3. 保留用户已有的未提交修改，避免覆盖无关文件。
+3. 保留用户已有的未提交修改，不覆盖无关文件。
 4. 临时文件只用于当前验证，完成后清理；可复用能力进入现有 Python 脚本或测试支持代码。
 5. 未经用户明确要求，不创建提交、不推送、不发布版本。
 
 ## 插件与运行边界
 
-- 每个插件必须自包含于 `plugins/<plugin-name>/`，运行时不得读取 marketplace 根目录或其他插件的文件。
-- 插件的依赖、资产、运行时代码、文档和测试都放在插件目录内；独立复制后的插件必须仍可运行。
-- marketplace 条目、插件目录名和 `.codex-plugin/plugin.json` 中的名称保持一致。
-- AI SOW 脚本不跨 Skill import，也不读取其他 Skill 的 schema、fixture、test、asset、reference 或 script。插件作为一个安装单元，可由五个 Owner 共同复用 `runtime/` 中不拥有稳定业务数据的机械校验、claims、patch、诊断、控制项、handoff 与项目 I/O；公共实现必须 Owner-agnostic，不得演化为共享业务编译器、通用 Owner runner 或配置驱动业务引擎。各 Owner 的稳定业务 Schema、专业 renderer 与数据所有权仍保持 Skill-local；跨 Owner 共用的 review/premise Schema 放在插件级 `contracts/`。
-- HLD/Go-live 只由 `generate-design` 的 Skill-local `scripts/review_gates.py` 拥有并校验；下游只匹配 Design handoff receipt，不复制或重放该业务门禁。
-- Skill 命令从已加载 `SKILL.md` 的位置解析插件路径，不依赖源码 checkout 的绝对路径。
+- 每个插件自包含于 `plugins/<plugin-name>/`，运行时不得读取 marketplace 根目录或其他插件。
+- marketplace 条目、插件目录和两份 plugin manifest 的名称、版本与描述保持一致。
+- AI SOW 只公开 `ai-sow:generate`；内部 Module 不形成额外 Skill、别名或兼容入口。
+- `skills/generate/` 拥有全部稳定业务 Schema、编译器、renderer、fixture、reference、asset 和测试。
+- 插件级 `runtime/` 只复用不拥有业务稳定数据的诊断和安全项目 I/O，不得演化为共享业务编译器。
+- Skill 从已加载 `SKILL.md` 解析插件根路径，不依赖源码 checkout 的绝对路径或 marketplace 布局。
+- `smoke_plugin.py --copy-plugin` 必须证明复制插件不访问原仓库或测试项目之外的文件。
 
 ## AI SOW 工作流与数据所有权
 
-权威阶段顺序为：
+唯一公开入口内部按以下顺序推进：
 
 ```text
-setup
-  -> analyze-requirement
-  -> analyze-as-is
-  -> generate-design
-  -> generate-story
-  -> generate-task
-  -> generate-sow
+ai-sow:generate
+  -> intake
+  -> scope_compiler
+  -> delivery_compiler
+  -> final_review
+  -> package_renderer
 ```
 
-- 五个专业 Owner Skill 都由当前 Stage 先完成专业工作，在 work 目录形成并机械校验 candidate、可读评审材料、风险摘要和 hash-bound review packet；一个 fresh-context Reviewer 通过后，用户必须批准精确 packet。稳定 JSON 只能在该批准后按 candidate 原字节发布。结构化草稿不能代替专业分析或独立人类评审。
-- 六份稳定交接数据各有唯一 Owner。下游只读 `.ai-sow/data/...`，发现上游事实需要变化时退回 Owner 修改。
-- 已有完整下游产物后的修正可由 `reconcile` 在单次整体评审中处理固定影响后缀；它复用各
-  Owner 的规则、Validator 和写集合，不拥有稳定业务 JSON，也不允许 Task 反向修改 Story/AC。
-- BUSINESS requirements 只由 `analyze-requirement` 维护；TECHNICAL requirements 只由 `generate-design` 维护。联合视图只存在于内存，不创建第三份 merged requirements。
-- `.ai-sow/reviews/generate-design.md` 是 HLD/Go-live 批准合同，不是第七份稳定 JSON；Story、Task 和最终生成必须使用相同门禁语义复核。
-- `setup` 只维护项目身份、目录和模板，`generate-sow` 只投影已批准数据；两者不承担业务分析。
-- ID 在语义不变时保持稳定；实质含义变化时创建新 ID，不复用旧 ID 指代新对象。
+- `orchestrator` 只协调全量生成、无变化复用、受影响切片更新、仅渲染和阻断恢复，不拥有业务规则。
+- `intake` 独占 `InputManifest`；`scope_compiler` 独占 `ScopeBundle`；`delivery_compiler` 独占
+  `DeliveryBundle`；`package_renderer` 不拥有新的范围事实。
+- PRD/HLD 只接受 UTF-8 Markdown，往期 SOW 只接受 `.xlsx`；补充材料接受 UTF-8 纯文本、HTML、
+  TypeScript、TSX 或 `.xlsx`。不得引入 PDF、Word、PowerPoint 等专用解析路径。
+- 原型必须提取页面、功能、动作、触发、状态、校验、权限、异常和可观察结果；源码不足且 Demo 可运行
+  时可用 Playwright 或 Computer Use 核验，结论必须追溯到原型来源。
+- Greenfield 不要求往期 SOW；Brownfield 缺少适用往期 SOW 时稳定 `BLOCKED`。
+- 自动终审只输出 `PASS / PASS_WITH_NOTES / BLOCKED`。只要假设、责任、排除项或 Design Task 能建立
+  固定范围和估算边界，就继续并在 `sow-notes.md` 披露。
+- 输入变化按 Feature 引用闭包整片重算，不做字段 patch。语义不变时保留 ID，含义变化时创建新 ID。
+- input revision 与 generation 发布后不可变；候选和输出全部验证后最后切换 `current.json`。失败或阻断
+  不得覆盖 last-known-good。
 
 ## 工作簿与估算
 
-对于 `plugins/ai-sow` 下的工作簿任务，仓库的 Python 生成器是实现权威。
+对于 `plugins/ai-sow` 下的工作簿任务，仓库 Python renderer 是实现权威，Excel 模板是计算权威。
 
-- 当结构化输入和项目模板可以复现目标 XLSX 时，修改并测试 `plugins/ai-sow/skills/generate-sow/scripts/generate_sow.py` 或 `plugins/ai-sow/skills/generate-sow/scripts/workbook.py`，再重新生成工作簿。
-- 直接修改已提交的 XLSX 前，先判断它是否来自模板、fixture 或稳定 AI SOW JSON；可复现的问题优先修复上游并再生文件。
-- `.ai-sow/templates/sow-template.xlsx` 是任务规则、基础人天、复杂度、SIT、UAT、风险、公式和取整的唯一计算权威。Python 和 JSON 不复制计算口径，也不执行 Excel 公式。
-- 公式只来自模板。填表逻辑必须保留命名 Table、公式原型、样式、行高、自动筛选和跨 Sheet 引用，并通过复读验证。
-- `@oai/artifact-tool` 和 `.mjs` 只用于视觉检查、渲染或无法由结构化输入复现的一次性修复。一次任务只保留一个临时 `.mjs`，验证完成后删除；可复用生成能力使用 Python 实现。
-- 普通 XLSX 文本按文本安全写入；不得把以 `=`、`+`、`-` 或 `@` 开头的普通内容解释为公式。
+- 可复现的输出问题优先修改并测试
+  `plugins/ai-sow/skills/generate/scripts/package_renderer.py` 或
+  `plugins/ai-sow/skills/generate/scripts/workbook.py`，再重新生成工作簿。
+- 权威模板是 `plugins/ai-sow/skills/generate/assets/sow-template.xlsx`；项目副本位于
+  `.ai-sow/templates/sow-template.xlsx`。
+- 模板独占任务目录、基础人天、复杂度、SIT、UAT、风险、公式和取整。Python/JSON 不复制计算口径，
+  也不执行 Excel 公式。
+- renderer 保留命名 Table、公式原型、样式、行高、自动筛选、数据验证、保护和跨 Sheet 引用，并
+  在发布前复读。
+- 修改确定性输出语义时更新 `generation-renderer-v1` 及
+  `contracts/renderer-fingerprint-baseline.json`，不得只刷新 hash 掩盖合同变化。
+- `@oai/artifact-tool` 和 `.mjs` 只用于视觉检查或一次性修复；一次任务只保留一个临时 `.mjs`，完成后
+  删除。可复用生成能力使用 Python。
+- 普通 XLSX 文本按文本安全写入，不得把 `= / + / - / @` 开头的内容解释为公式。
 
 ## 语言与隐私
 
-- 面向用户的说明、评审材料和业务自由文本默认使用简体中文。
-- 命令、路径、文件名、JSON 属性、Schema 字段、枚举、ID、哈希、Sheet 名、Table 名和公式保持合同原值，不做翻译或规范化改写。
-- 稳定数据和公共仓库不保存凭据、客户 SOW 原文、私有源码、完整工具输出、本机绝对路径或其他敏感信息。
-- `.ai-sow/` 可能包含客户衍生数据；生成工作簿和项目输入默认不视为可公开内容，提交前检查项目的忽略与共享策略。
+- 用户说明、评审、问题、风险和业务自由文本默认使用简体中文。
+- 命令、路径、文件名、JSON 属性、Schema 字段、枚举、ID、hash、Sheet/Table 名和公式保持合同原值。
+- 稳定数据和公共仓库不保存凭据、客户无关原文、私有源码、完整工具输出或本机绝对路径。
+- `.ai-sow/` 包含客户输入和衍生数据；默认不视为可公开内容，提交或分享前检查忽略与授权策略。
 
 ## 测试与验证
 
-先运行与修改范围最接近的测试。涉及插件行为、合同、模板、生成器或发布面时，在交付、提交、推送或发布前运行完整检查：
+先运行与修改范围最接近的测试。涉及插件行为、合同、模板、renderer 或发布面时，在交付、提交、推送
+或发布前运行完整检查：
 
 ```text
 uv sync --project plugins/ai-sow --locked
@@ -80,25 +97,29 @@ uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml
 uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
 ```
 
-- 纯文档修改至少运行根测试、仓库验证器和 `git diff --check`；若文档中的命令、路径、版本、合同或安装流程变化，运行完整检查。
-- 工作簿变更同时验证结构、公式、引用和关键样式；涉及可见布局时增加渲染或 Excel 视觉检查。
+- 纯文档修改至少运行根测试、仓库验证器和 `git diff --check`；命令、路径、版本、合同或安装流程变化时
+  运行完整检查。
+- 工作簿变更同时验证结构、公式、引用和关键样式；可见布局变化增加全 Sheet 渲染或 Excel 视觉检查。
 
 ## 文档与发布同步
 
-- 用户可见行为变化时更新相关 README、设计/合同文档和 `CHANGELOG.md`。
-- 发布版本必须同步插件 manifest、`pyproject.toml` 的 PEP 440 版本、`uv.lock`、验证器常量、项目 fixture、README 和变更日志。
-- 修改 SOW 标准或模板时，保持说明文档、原始资产、fixture、副本哈希和生成测试一致。
-- 公共文档使用项目相对链接；新增或修改链接后运行仓库根测试验证目标存在。
+- 用户行为变化时同步 README、设计/合同、manifest、marketplace 描述和 `CHANGELOG.md`。
+- 发布版本同步 plugin manifest、`pyproject.toml` PEP 440 版本、`uv.lock`、验证器、fixture 和 README。
+- 修改 SOW 标准或模板时同步说明文档、原始 asset、参考工作簿、fixture hash 和生成测试。
+- 公共文档使用项目相对链接；新增或修改链接后运行根测试。
+- 旧设计、验收报告或发布记录若必须保留，必须显式标记为“已取代”，不能表现为当前命令或状态。
 
 ## 代码审查规则
 
-- **独立安装：** 标记任何读取插件目录之外运行时文件的实现。安全路径是把依赖移入插件目录，并用 `smoke_plugin.py --copy-plugin` 验证独立副本。
-- **数据所有权：** 标记下游 Skill 修改上游稳定数据或复制上游 Schema/业务逻辑的实现。安全路径是由 Owner 修改并让下游只读稳定路径。
-- **评审门禁：** 标记在用户批准前发布稳定 JSON，或绕过 HLD/Go-live、Uncertainty、引用完整性检查的流程。
-- **计算权威：** 标记在 Python/JSON 中硬编码基础人天、倍率、公式或取整规则的实现。安全路径是复读模板并投影数据。
-- **合同兼容：** 标记未同步测试、fixture、文档和版本面的 Schema 或枚举变更；兼容性影响必须明确记录。
-- **隐私：** 标记公共文件中的客户内容、凭据、私有仓库信息、本机路径或可反推出这些信息的完整工具输出。
+- **独立安装：** 标记任何运行时读取插件目录之外实现文件的代码。
+- **数据所有权：** 标记跨 Module 修改其他 Bundle、复制 Schema 或让 orchestrator 拥有业务规则的实现。
+- **终审门禁：** 标记未经有效自动终审发布稳定 Bundle/Package，或绕过固定边界与引用完整性检查的流程。
+- **不可变发布：** 标记回写 revision/generation、先切 current 指针或失败时破坏 last-known-good 的实现。
+- **计算权威：** 标记在 Python/JSON 中硬编码基础人天、倍率、公式或取整规则的实现。
+- **合同兼容：** 当前预发布重构不提供旧流程兼容；标记任何未同步测试、fixture、文档和版本面的变更。
+- **隐私：** 标记公共文件中的客户内容、凭据、私有仓库、本机路径或完整敏感工具输出。
 
 ## 完成条件
 
-变更只有在范围内行为已验证、文档与合同已同步、临时产物已清理、工作区中无意外文件，并且交付说明准确列出修改与验证结果后才算完成。
+变更只有在范围行为已验证、文档与合同同步、临时产物清理、工作区没有意外文件，并且交付说明准确
+列出修改和验证结果后才算完成。
