@@ -169,6 +169,7 @@ def test_runtime_is_plugin_shared_owner_agnostic_infrastructure() -> None:
         "controls.py",
         "diagnostics.py",
         "fact_source.py",
+        "findings.py",
         "handoff.py",
         "patch.py",
         "project_io.py",
