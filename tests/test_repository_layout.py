@@ -20,65 +20,18 @@ STRUCTURED_REFERENCE = re.compile(
 )
 
 SCHEMA_SHA256 = {
-    "skills/analyze-as-is/contracts/asis.schema.json": "d728e3ed26f6361b990a153c912c8e6d2eed475e753f54348f4ae87a7739f8c5",
-    "skills/analyze-requirement/contracts/source-requirements.schema.json": "8ca6d9738ba0eeebe253d5d7e3bd164c019a54bc318b536012e6a6b5f3bf4e98",
-    "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
-    "skills/generate-design/contracts/design.schema.json": "a28fe5d9107f411ff582c4145e2b2e89403f4bdad09cf72f4a0d03501c2f089d",
-    "skills/generate-sow/contracts/manifest.schema.json": "c881cf3bd7bd0d3961a14d77e077709b874818eb4259f986bc9cb2d944ef1eac",
-    "skills/generate-story/contracts/delivery.schema.json": "fcd0e1549aa7a222649b8fb02c741619378afe632f34c66edc470caf05cfb3f0",
-    "skills/generate-task/contracts/estimate.schema.json": "a1b5bbd829fc9bc5b2f3de29a0c07bd1f5daee81950cfc00fe47781701f35116",
-    "skills/setup/contracts/project.schema.json": "66c62f87bf37346f72cbd9ef6cc26715e4a995639e7dd19454ffc0dad9aa9247",
-}
-
-SCHEMA_ENUMS = {
-    "skills/analyze-as-is/contracts/asis.schema.json": {
-        "$.$defs.analysisScope.properties.mode": ["GREENFIELD", "BROWNFIELD"],
-        "$.$defs.topic": ["SYSTEM_CONTEXT", "CAPABILITY", "APPLICATION", "INTEGRATION", "DATA", "PLATFORM", "SECURITY_COMPLIANCE", "OPERATIONS_QUALITY", "DELIVERY_CONSTRAINTS"],
-        "$.$defs.itemType": ["CAPABILITY", "COMPONENT", "INTEGRATION", "DATA_ASSET", "INFRASTRUCTURE", "CONTROL", "PROCESS", "CONSTRAINT"],
-        "$.$defs.topicAssessment.properties.status": ["RELEVANT_INVESTIGATED", "RELEVANT_INSUFFICIENT_EVIDENCE", "BOUNDARY_DECLARED", "NOT_APPLICABLE"],
-        "$.$defs.item.properties.direction": ["INBOUND", "OUTBOUND"],
-        "$.$defs.commitment.properties.changeType": ["ADD", "REPLACE", "RETIRE"],
-        "$.$defs.commitment.properties.implementationStatus": ["IMPLEMENTED", "PARTIAL", "NOT_IMPLEMENTED", "UNVERIFIED", "SUPERSEDED"],
-        "$.$defs.commitment.properties.treatment": ["CURRENT_BASELINE", "EXPECTED_BEFORE_START", "CARRY_FORWARD", "EXCLUDE", "NEEDS_DECISION"],
-        "$.$defs.coverage.properties.status": ["COMPLETE", "PARTIAL", "MISSING"],
-        "$.$defs.coverage.allOf[0].if.properties.status": ["COMPLETE", "PARTIAL"],
-        "$.$defs.evidence.properties.kind": ["RUNTIME", "CONTRACT", "CONFIGURATION", "CODE", "DEPLOYMENT", "PRIOR_SOW", "QUESTIONNAIRE", "DOCUMENT"],
-        "$.$defs.evidence.properties.runtimeOutcome": ["PASSED", "FAILED", "BLOCKED"],
-    },
-    "skills/analyze-requirement/contracts/source-requirements.schema.json": {},
-    "skills/generate-design/contracts/technical-requirements.schema.json": {},
-    "skills/generate-design/contracts/design.schema.json": {
-        "$.$defs.designItem.properties.type": ["COMPONENT", "FLOW", "DATA", "INTEGRATION", "INFRASTRUCTURE", "QUALITY"],
-        "$.$defs.architectureDelta.properties.changeType": ["NEW", "ADOPT", "ADJUST", "REPLACE", "RETIRE"],
-        "$.$defs.decision.properties.decisionKind": ["INTEGRATION_BOUNDARY", "PROVIDER_TARGET", "OPERATIONAL_THRESHOLD", "ENVIRONMENT_AUTHORITY", "CUTOVER_ROLLBACK", "OTHER"],
-        "$.$defs.scopeDecision.properties.decision": ["IN_SCOPE", "FULLY_COVERED", "OUT_OF_SCOPE"],
-        "$.$defs.scopeDecision.properties.requiredIntegrationBoundary": ["NONE", "PORT_ONLY", "END_TO_END"],
-        "$.$defs.scopeDecision.properties.requiredDecisionKinds.items": ["INTEGRATION_BOUNDARY", "PROVIDER_TARGET", "OPERATIONAL_THRESHOLD", "ENVIRONMENT_AUTHORITY", "CUTOVER_ROLLBACK"],
-    },
-    "skills/generate-sow/contracts/manifest.schema.json": {
-        "$.properties.projectMode": ["GREENFIELD", "BROWNFIELD"],
-    },
-    "skills/generate-story/contracts/delivery.schema.json": {
-        "$.$defs.integration.properties.direction": ["INBOUND", "OUTBOUND"],
-        "$.$defs.integration.properties.owner": ["INTERNAL", "EXTERNAL"],
-        "$.$defs.integration.properties.deliveryBoundary": ["PORT_ONLY", "END_TO_END"],
-        "$.$defs.integration.properties.targetKind": ["PORT", "ADAPTER", "SYSTEM", "PROVIDER"],
-        "$.$defs.story.properties.requiredIntegrationBoundary": ["NONE", "PORT_ONLY", "END_TO_END"],
-        "$.$defs.acceptanceCriterion.properties.decisionGate": ["NOT_REQUIRED", "REQUIRED"],
-        "$.$defs.assumption.properties.type": ["假设", "风险"],
-        "$.$defs.assumption.properties.status": ["已明确", "待确认"],
-    },
-    "skills/generate-task/contracts/estimate.schema.json": {
-        "$.$defs.complexity": ["S", "M", "L"],
-        "$.$defs.workModeEvidence.properties.projectSideWorkTypes.items": ["REGISTER", "CONFIGURE", "WRAP", "MAP", "ADAPT", "AUTHENTICATE", "TENANT_SETUP", "PERMISSION_SETUP", "SPECIALIZED_VERIFY"],
-        "$.$defs.task.properties.workMode": ["新建", "调整", "接入复用"],
-        "$.$defs.task.allOf[0].if.properties.complexity": ["S", "L"],
-        "$.$defs.task.allOf[1].if.properties.workMode": ["调整", "接入复用"],
-    },
-    "skills/setup/contracts/project.schema.json": {
-        "$.$defs.ownerControl.properties.investigationMode": ["hypothesis", "exhaustive"],
-        "$.$defs.ownerControl.properties.reviewDepth": ["mechanical", "factual", "full"],
-    },
+    "skills/generate/contracts/common.schema.json": "c76aaebc6b683a98a30ba09c7ee5f8d18bf328648d9ca0fd3c59b4faf4750a57",
+    "skills/generate/contracts/current.schema.json": "1c5fd52b9c1e3094ffaa95c01fa2ab2867c4306be551a1ff1f89172bb714c51a",
+    "skills/generate/contracts/delivery-bundle.schema.json": "ad0b647e00dfba389089ae8d66f8cfc56f680cbc5c6e833e4707f3bd7432c646",
+    "skills/generate/contracts/delivery-slice.schema.json": "6c6e8fff703428b736b2c722db7ca491e6c78ec3204f44cffc0c0fb8cf6ee71e",
+    "skills/generate/contracts/final-review.schema.json": "9ed3a852544326f6ee6dcd21134a9f36a810062e806b98d8020ac53ffcfacc6b",
+    "skills/generate/contracts/generation-manifest.schema.json": "521c4790b89d56296f98b53b3b45e86af3da8fe3b795eb086b68d6b58bce53c6",
+    "skills/generate/contracts/id-decisions.schema.json": "dd8a0cffae6dc3017ba7c8b0845d496a598866717a43607fef536c5b5f5347a6",
+    "skills/generate/contracts/input-manifest.schema.json": "ef10756bdd8a98622e1ae81aa0fb47228d6c9c2892a6ba1749332578c76cdbf4",
+    "skills/generate/contracts/request.schema.json": "38ecb4f0013315e5145fe81e28242db6f84c891d992d49109aa17c2342f8290f",
+    "skills/generate/contracts/run-plan.schema.json": "952819b5eaae66e770c0ce60b3ea76f98e1d7255e1ae277b0b9302cfef4bb445",
+    "skills/generate/contracts/scope-bundle.schema.json": "931863b173a820a8efef2625b63e779eed12fa7833c5314da91b4c4d188a5654",
+    "skills/generate/contracts/scope-slice.schema.json": "f81d960b0fb841e05b67d983851c001594d25bd0c75bb965b3ae41adb0486f14",
 }
 
 TEMPLATE_SHA256 = "6c90f4782acf7b1beb372a7b5f8aa78079f677160c39349bf561883b5592bfa0"
@@ -102,7 +55,7 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_xlsx_formulas_only_reference_existing_table_columns(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         workbooks = [
-            plugin_root / "skills/setup/assets/sow-template.xlsx",
+            plugin_root / "skills/generate/assets/sow-template.xlsx",
             plugin_root / "docs/reference/SOW估算与生成示例_v1.3.xlsx",
         ]
 
@@ -150,11 +103,11 @@ class RepositoryLayoutTests(unittest.TestCase):
             "pyproject.toml",
             "uv.lock",
             "README.md",
-            "runtime/handoff.py",
+            "runtime/diagnostics.py",
             "runtime/project_io.py",
-            "skills/setup/SKILL.md",
-            "skills/generate-sow/SKILL.md",
-            "skills/setup/assets/sow-template.xlsx",
+            "skills/generate/SKILL.md",
+            "skills/generate/scripts/orchestrator.py",
+            "skills/generate/assets/sow-template.xlsx",
             "tests/support/smoke_plugin.py",
             "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
             "docs/reference/SOW估算与生成示例_v1.3.xlsx",
@@ -191,27 +144,18 @@ class RepositoryLayoutTests(unittest.TestCase):
         manifest = json.loads(
             (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
         )
-        schema = json.loads(
-            (plugin_root / "skills/setup/contracts/project.schema.json").read_text(encoding="utf-8")
-        )
-        project = json.loads(
-            (
-                plugin_root
-                / "skills/generate-sow/fixtures/project/.ai-sow/project.json"
-            ).read_text(encoding="utf-8")
-        )
         package_schema = json.loads(
-            (plugin_root / "skills/generate-sow/contracts/manifest.schema.json").read_text(encoding="utf-8")
+            (plugin_root / "skills/generate/contracts/generation-manifest.schema.json").read_text(encoding="utf-8")
+        )
+        request = json.loads(
+            (plugin_root / "skills/generate/fixtures/greenfield/request.json").read_text(encoding="utf-8")
         )
         pyproject_text = (plugin_root / "pyproject.toml").read_text(encoding="utf-8")
         lock_text = (plugin_root / "uv.lock").read_text(encoding="utf-8")
         self.assertEqual(manifest["name"], "ai-sow")
         self.assertEqual(manifest["version"], release_version)
-        self.assertEqual(schema["properties"]["pluginVersion"]["const"], release_version)
-        self.assertEqual(project["pluginVersion"], release_version)
-        self.assertEqual(
-            package_schema["properties"]["pluginVersion"]["const"], release_version
-        )
+        self.assertEqual(package_schema["$id"], "urn:ai-sow:generate:generation-manifest:1")
+        self.assertEqual(request["contract"], "ai-sow-generate-request-v1")
         self.assertRegex(
             pyproject_text,
             rf'(?ms)^\[project\].*?^version = "{re.escape(runtime_version)}"$',
@@ -220,7 +164,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             lock_text,
             rf'(?ms)^\[\[package\]\]\nname = "ai-sow-plugin-runtime"\nversion = "{re.escape(runtime_version)}"$',
         )
-        self.assertEqual(project["sowStandardVersion"], "1.3")
+        self.assertIn("SOW 标准 1.3", (plugin_root / "README.md").read_text(encoding="utf-8"))
         for relative in (
             "README.md",
             "CHANGELOG.md",
@@ -235,16 +179,6 @@ class RepositoryLayoutTests(unittest.TestCase):
                 (REPO_ROOT / relative).read_text(encoding="utf-8"),
                 relative,
             )
-        for relative in (
-            "plugins/ai-sow/skills/setup/scripts/setup.py",
-            "plugins/ai-sow/skills/generate-sow/scripts/generate_sow.py",
-        ):
-            self.assertIn(
-                f'PLUGIN_VERSION = "{release_version}"',
-                (REPO_ROOT / relative).read_text(encoding="utf-8"),
-                relative,
-            )
-
     def test_user_install_docs_match_bootstrapped_runtime(self) -> None:
         expected = {
             "README.md": "无需预装 Git、Python",
@@ -270,13 +204,9 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_task_estimation_contract_has_no_removed_shape_or_modes(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         delivery = json.loads(
-            (plugin_root / "skills/generate-story/contracts/delivery.schema.json").read_text(encoding="utf-8")
+            (plugin_root / "skills/generate/contracts/delivery-bundle.schema.json").read_text(encoding="utf-8")
         )
-        estimate = json.loads(
-            (plugin_root / "skills/generate-task/contracts/estimate.schema.json").read_text(encoding="utf-8")
-        )
-        self.assertNotIn("type", delivery["$defs"]["story"]["properties"])
-        task_properties = estimate["$defs"]["task"]["properties"]
+        task_properties = delivery["$defs"]["task"]["properties"]
         for field in (
             "professionalDomain",
             "activity",
@@ -287,7 +217,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "personDays",
         ):
             self.assertNotIn(field, task_properties)
-        self.assertNotIn("sitEstimates", estimate["properties"])
+        self.assertNotIn("sitEstimates", delivery["properties"])
         self.assertEqual(
             task_properties["workMode"]["enum"],
             ["新建", "调整", "接入复用"],
@@ -333,16 +263,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         skill_paths = sorted((plugin_root / "skills").glob("*/SKILL.md"))
         self.assertEqual(
             {path.parent.name for path in skill_paths},
-            {
-                "setup",
-                "analyze-requirement",
-                "analyze-as-is",
-                "generate-design",
-                "generate-story",
-                "generate-task",
-                "generate-sow",
-                "reconcile",
-            },
+            {"generate"},
         )
         for skill_path in skill_paths:
             declared_references = [
@@ -424,9 +345,9 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("* text=auto eol=lf", attributes.read_text(encoding="utf-8"))
 
         probes = (
-            "plugins/ai-sow/skills/setup/scripts/bootstrap.sh",
-            "plugins/ai-sow/skills/setup/contracts/project.schema.json",
-            "plugins/ai-sow/skills/setup/assets/sow-template.xlsx",
+            "plugins/ai-sow/skills/generate/scripts/bootstrap.sh",
+            "plugins/ai-sow/skills/generate/contracts/request.schema.json",
+            "plugins/ai-sow/skills/generate/assets/sow-template.xlsx",
         )
         completed = subprocess.run(
             ["git", "check-attr", "eol", "binary", "--", *probes],
@@ -554,16 +475,17 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertNotIn(home_prefix, text, path)
             self.assertNotIn(forbidden_plan, text, path)
 
-    def test_template_copies_are_identical(self) -> None:
+    def test_generate_owns_the_only_bundled_template(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         paths = [
-            plugin_root / "skills/setup/assets/sow-template.xlsx",
-            plugin_root / "skills/generate-task/fixtures/sow-template.xlsx",
-            plugin_root
-            / "skills/generate-sow/fixtures/project/.ai-sow/templates/sow-template.xlsx",
+            path
+            for path in plugin_root.rglob("sow-template.xlsx")
+            if ".venv" not in path.parts
         ]
-        hashes = [hashlib.sha256(path.read_bytes()).hexdigest() for path in paths]
-        self.assertEqual(hashes, [TEMPLATE_SHA256] * 3)
+        self.assertEqual(paths, [plugin_root / "skills/generate/assets/sow-template.xlsx"])
+        self.assertEqual(
+            hashlib.sha256(paths[0].read_bytes()).hexdigest(), TEMPLATE_SHA256
+        )
 
     def test_markdown_reference_describes_the_v13_estimation_model(self) -> None:
         path = (
@@ -602,16 +524,12 @@ class RepositoryLayoutTests(unittest.TestCase):
         ]
         self.assertEqual(len(rows), 37)
 
-    def test_schema_hashes_and_enum_values_are_unchanged(self) -> None:
+    def test_generate_schema_hashes_are_fixed(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         for relative, expected_hash in SCHEMA_SHA256.items():
             with self.subTest(schema=relative):
                 path = plugin_root / relative
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), expected_hash)
-                self.assertEqual(
-                    enum_arrays(json.loads(path.read_text(encoding="utf-8"))),
-                    SCHEMA_ENUMS[relative],
-                )
 
     def test_marketplace_points_to_ai_sow(self) -> None:
         marketplace = json.loads(

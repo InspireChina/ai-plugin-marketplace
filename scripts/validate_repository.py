@@ -43,8 +43,8 @@ FORBIDDEN_PUBLIC_TEXT = (
     "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
     "-----BEGIN " + "PRIVATE KEY-----",
 )
-GENERATOR_FINGERPRINT_FILES = (
-    "scripts/generate_sow.py",
+RENDERER_FINGERPRINT_FILES = (
+    "scripts/package_renderer.py",
     "scripts/workbook.py",
 )
 
@@ -351,7 +351,16 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     """Validate the release identity and plugin-scoped support surface."""
     errors: list[str] = []
     required = (
+        plugin_root / "skills/generate/SKILL.md",
+        plugin_root / "skills/generate/scripts/bootstrap.sh",
+        plugin_root / "skills/generate/scripts/bootstrap.ps1",
+        plugin_root / "skills/generate/scripts/orchestrator.py",
+        plugin_root / "skills/generate/assets/sow-template.xlsx",
+        plugin_root / "skills/generate/contracts/generation-manifest.schema.json",
+        plugin_root / "skills/generate/contracts/renderer-fingerprint-baseline.json",
         plugin_root / "tests/support/smoke_plugin.py",
+        plugin_root / "tests/contracts/case-manifest.schema.json",
+        plugin_root / "tests/fixtures/explicit-architecture/case-manifest.json",
         plugin_root / "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
         plugin_root / "docs/reference/SOW估算与生成示例_v1.3.xlsx",
     )
@@ -360,6 +369,15 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
             errors.append(f"missing release file: {path.relative_to(repo_root).as_posix()}")
     if (repo_root / "scripts" / "smoke_plugin.py").exists():
         errors.append("AI SOW smoke implementation must be plugin-scoped")
+
+    public_skills = sorted(
+        path.parent.name for path in (plugin_root / "skills").glob("*/SKILL.md")
+    )
+    if public_skills != ["generate"]:
+        errors.append(
+            "AI SOW public skills must be exactly ['generate'], "
+            f"found {public_skills}"
+        )
 
     for relative in (CODEX_PLUGIN_MANIFEST, CLAUDE_PLUGIN_MANIFEST):
         try:
@@ -374,23 +392,20 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
         elif manifest.get("version") != RELEASE_VERSION:
             errors.append(f"AI SOW plugin version in {relative} must be {RELEASE_VERSION}")
 
-    project_path = (
-        plugin_root / "skills/generate-sow/fixtures/project/.ai-sow/project.json"
-    )
-    try:
-        project = load_json(project_path)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        errors.append(f"invalid AI SOW fixture project: {exc}")
-    else:
-        if not isinstance(project, dict):
-            errors.append("invalid AI SOW fixture project: expected a JSON object")
-        else:
-            if project.get("pluginVersion") != RELEASE_VERSION:
-                errors.append(f"fixture pluginVersion must be {RELEASE_VERSION}")
-            if project.get("sowStandardVersion") != SOW_STANDARD_VERSION:
-                errors.append(
-                    f"fixture sowStandardVersion must be {SOW_STANDARD_VERSION}"
-                )
+    for mode in ("greenfield", "brownfield"):
+        request_path = plugin_root / f"skills/generate/fixtures/{mode}/request.json"
+        try:
+            request = load_json(request_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            errors.append(f"invalid AI SOW {mode} fixture request: {exc}")
+            continue
+        project = request.get("project") if isinstance(request, dict) else None
+        project_id = project.get("projectId") if isinstance(project, dict) else None
+        project_name = project.get("name") if isinstance(project, dict) else None
+        if not isinstance(project_id, str) or not project_id.strip() or not isinstance(project_name, str) or not project_name.strip():
+            errors.append(f"{mode} fixture projectId and name must be non-empty")
+        if not isinstance(request, dict) or request.get("mode") != mode.upper():
+            errors.append(f"{mode} fixture mode must be {mode.upper()}")
 
     pyproject_path = plugin_root / "pyproject.toml"
     try:
@@ -425,78 +440,78 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     return errors
 
 
-def validate_generator_contract_consistency(
+def validate_renderer_contract_consistency(
     repo_root: Path,
     plugin_root: Path,
 ) -> list[str]:
-    """Bind deterministic SOW generator bytes to the package contract token."""
+    """Bind deterministic renderer bytes to the generation contract token."""
     errors: list[str] = []
-    skill_root = plugin_root / "skills/generate-sow"
-    manifest_path = skill_root / "contracts/manifest.schema.json"
-    baseline_path = skill_root / "contracts/generator-fingerprint-baseline.json"
+    skill_root = plugin_root / "skills/generate"
+    manifest_path = skill_root / "contracts/generation-manifest.schema.json"
+    baseline_path = skill_root / "contracts/renderer-fingerprint-baseline.json"
     try:
         manifest = load_json(manifest_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return [f"invalid generate-sow manifest schema: {exc}"]
+        return [f"invalid generation manifest schema: {exc}"]
     try:
         baseline = load_json(baseline_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return [f"invalid generator fingerprint baseline: {exc}"]
+        return [f"invalid renderer fingerprint baseline: {exc}"]
 
     properties = manifest.get("properties") if isinstance(manifest, dict) else None
-    generator_contract = (
-        properties.get("generatorContract")
+    renderer_contract = (
+        properties.get("rendererContract")
         if isinstance(properties, dict)
         else None
     )
     contract = (
-        generator_contract.get("const")
-        if isinstance(generator_contract, dict)
+        renderer_contract.get("const")
+        if isinstance(renderer_contract, dict)
         else None
     )
     if not isinstance(contract, str) or not contract:
-        errors.append("generate-sow manifest schema must declare generatorContract const")
+        errors.append("generation manifest schema must declare rendererContract const")
 
     baseline_contract = (
-        baseline.get("generatorContract") if isinstance(baseline, dict) else None
+        baseline.get("rendererContract") if isinstance(baseline, dict) else None
     )
     baseline_files = baseline.get("files") if isinstance(baseline, dict) else None
     if baseline_contract != contract:
         errors.append(
-            "generator fingerprint baseline generatorContract must match the "
+            "renderer fingerprint baseline rendererContract must match the "
             f"manifest schema: expected {contract!r}, found {baseline_contract!r}"
         )
     if not isinstance(baseline_files, dict):
-        return [*errors, "generator fingerprint baseline files must be an object"]
+        return [*errors, "renderer fingerprint baseline files must be an object"]
 
-    expected_files = set(GENERATOR_FINGERPRINT_FILES)
+    expected_files = set(RENDERER_FINGERPRINT_FILES)
     actual_files = set(baseline_files)
     if actual_files != expected_files:
         missing = ", ".join(sorted(expected_files - actual_files)) or "none"
         extra = ", ".join(sorted(actual_files - expected_files)) or "none"
         errors.append(
-            "generator fingerprint baseline file set is invalid: "
+            "renderer fingerprint baseline file set is invalid: "
             f"missing [{missing}], extra [{extra}]"
         )
 
-    for relative in GENERATOR_FINGERPRINT_FILES:
+    for relative in RENDERER_FINGERPRINT_FILES:
         path = skill_root / relative
         expected = baseline_files.get(relative)
         try:
             payload = path.read_bytes()
         except OSError as exc:
             errors.append(
-                f"cannot read generator fingerprint file "
+                f"cannot read renderer fingerprint file "
                 f"{path.relative_to(repo_root).as_posix()}: {exc}"
             )
             continue
         actual = hashlib.sha256(payload).hexdigest()
         if expected != actual:
             errors.append(
-                "generator fingerprint mismatch for "
+                "renderer fingerprint mismatch for "
                 f"{path.relative_to(repo_root).as_posix()}: expected {expected!r}, "
                 f"found {actual}; deterministic generator changes require a "
-                "generatorContract bump and baseline refresh"
+                "rendererContract bump and baseline refresh"
             )
     return errors
 
@@ -583,7 +598,7 @@ def validate_repository(repo_root: Path) -> list[str]:
             f"{name}: {error}" for error in validate_plugin_manifest_parity(path)
         )
     errors.extend(validate_ai_sow_release(repo_root, plugin_root))
-    errors.extend(validate_generator_contract_consistency(repo_root, plugin_root))
+    errors.extend(validate_renderer_contract_consistency(repo_root, plugin_root))
     errors.extend(validate_publisher_identity(repo_root, plugin_root))
     errors.extend(validate_public_tree(repo_root))
     return errors

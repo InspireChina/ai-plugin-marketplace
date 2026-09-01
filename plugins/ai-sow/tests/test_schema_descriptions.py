@@ -6,56 +6,14 @@ from pathlib import Path
 
 
 PLUGIN_ROOT = Path(__file__).parents[1]
+CONTRACTS = PLUGIN_ROOT / "skills/generate/contracts"
 SCHEMAS = {
-    "Project": PLUGIN_ROOT / "skills/setup/contracts/project.schema.json",
-    "Source Requirements": PLUGIN_ROOT
-    / "skills/analyze-requirement/contracts/source-requirements.schema.json",
-    "As-Is": PLUGIN_ROOT / "skills/analyze-as-is/contracts/asis.schema.json",
-    "Design": PLUGIN_ROOT / "skills/generate-design/contracts/design.schema.json",
-    "Technical Requirements": PLUGIN_ROOT
-    / "skills/generate-design/contracts/technical-requirements.schema.json",
-    "Delivery": PLUGIN_ROOT / "skills/generate-story/contracts/delivery.schema.json",
-    "Estimate": PLUGIN_ROOT / "skills/generate-task/contracts/estimate.schema.json",
-    "Manifest": PLUGIN_ROOT / "skills/generate-sow/contracts/manifest.schema.json",
-    "Generate Request": PLUGIN_ROOT / "skills/generate/contracts/request.schema.json",
-    "Generate Input Manifest": PLUGIN_ROOT
-    / "skills/generate/contracts/input-manifest.schema.json",
-    "Generate Scope Bundle": PLUGIN_ROOT
-    / "skills/generate/contracts/scope-bundle.schema.json",
-    "Generate Delivery Bundle": PLUGIN_ROOT
-    / "skills/generate/contracts/delivery-bundle.schema.json",
+    "Generate Request": CONTRACTS / "request.schema.json",
+    "Input Manifest": CONTRACTS / "input-manifest.schema.json",
+    "Scope Bundle": CONTRACTS / "scope-bundle.schema.json",
+    "Delivery Bundle": CONTRACTS / "delivery-bundle.schema.json",
 }
 STABLE_OBJECT_DEFS = {
-    "Project": (),
-    "Source Requirements": (
-        "sourceDocument",
-        "normalizedItem",
-        "source",
-        "epic",
-        "feature",
-    ),
-    "As-Is": (
-        "repositorySnapshot",
-        "priorSowSnapshot",
-        "analysisScope",
-        "topicAssessment",
-        "item",
-        "commitment",
-        "effectiveStartItem",
-        "coverage",
-        "uncertainty",
-        "evidence",
-    ),
-    "Design": ("designItem", "architectureDelta", "decision", "scopeDecision"),
-    "Technical Requirements": ("sourceInput", "designDerived", "epic", "feature"),
-    "Delivery": (
-        "story",
-        "acceptanceCriterion",
-        "integration",
-        "assumption",
-    ),
-    "Estimate": ("workModeEvidence", "task"),
-    "Manifest": ("digest", "repository", "priorSow"),
     "Generate Request": (
         "project",
         "source",
@@ -63,13 +21,13 @@ STABLE_OBJECT_DEFS = {
         "currentStateDelta",
         "responsibilityBoundary",
     ),
-    "Generate Input Manifest": (
+    "Input Manifest": (
         "project",
         "source",
         "questionnaireAnswer",
         "responsibilityBoundary",
     ),
-    "Generate Scope Bundle": (
+    "Scope Bundle": (
         "epic",
         "feature",
         "scopeDecision",
@@ -82,7 +40,7 @@ STABLE_OBJECT_DEFS = {
         "assumption",
         "responsibilityBoundary",
     ),
-    "Generate Delivery Bundle": (
+    "Delivery Bundle": (
         "story",
         "acceptanceCriterion",
         "task",

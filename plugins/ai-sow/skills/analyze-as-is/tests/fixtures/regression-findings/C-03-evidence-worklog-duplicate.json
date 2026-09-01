@@ -1,1 +1,0 @@
-{"findingId":"C-03","category":"C","expectedLayer":"script","expectedCode":"DUPLICATE_FACT_STATEMENT","path":"/evidence/7/summary","text":"CodeGraph 包含十三个 Gradle 符号节点。","duplicatePath":"/worklog/summary"}

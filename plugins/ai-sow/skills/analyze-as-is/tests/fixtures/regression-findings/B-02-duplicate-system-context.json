@@ -1,1 +1,0 @@
-{"findingId":"B-02","category":"B","expectedLayer":"script","expectedCode":"PATCH_FREEFORM_EDIT_DETECTED","path":"/topicAssessments/0/summary","text":"SYSTEM_CONTEXT 摘要同一句被 += 重复写入两次。","before":{"topicAssessments":[{"topic":"SYSTEM_CONTEXT","summary":"订单与通知服务通过事件协作。","uncertaintyIds":[]}]},"operations":[],"acknowledgedClosureIds":[],"freeformValue":"订单与通知服务通过事件协作。订单与通知服务通过事件协作。"}

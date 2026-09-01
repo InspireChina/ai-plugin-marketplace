@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.validate_repository import (
     validate_ai_sow_release,
     validate_claude_marketplace,
-    validate_generator_contract_consistency,
+    validate_renderer_contract_consistency,
     validate_marketplace,
     validate_marketplace_parity,
     validate_plugin_manifest,
@@ -68,22 +68,36 @@ def write_plugin(root: Path, name: str, version: str) -> Path:
 def write_valid_ai_sow_release(root: Path) -> Path:
     plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.1")
     for relative in (
+        "skills/generate/SKILL.md",
+        "skills/generate/scripts/bootstrap.sh",
+        "skills/generate/scripts/bootstrap.ps1",
+        "skills/generate/scripts/orchestrator.py",
+        "skills/generate/assets/sow-template.xlsx",
         "tests/support/smoke_plugin.py",
+        "tests/contracts/case-manifest.schema.json",
+        "tests/fixtures/explicit-architecture/case-manifest.json",
         "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
         "docs/reference/SOW估算与生成示例_v1.3.xlsx",
     ):
         path = plugin_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
-    write_json(
-        plugin_root / "skills/generate-sow/fixtures/project/.ai-sow/project.json",
-        {
-            "projectId": "validator-fixture",
-            "name": "Validator Fixture",
-            "pluginVersion": "0.1.0-beta.1",
-            "sowStandardVersion": "1.3",
-        },
-    )
+    for mode, project_id in (
+        ("greenfield", "validator-greenfield"),
+        ("brownfield", "validator-brownfield"),
+    ):
+        write_json(
+            plugin_root / f"skills/generate/fixtures/{mode}/request.json",
+            {
+                "contract": "ai-sow-generate-request-v1",
+                "project": {
+                    "projectId": project_id,
+                    "name": f"Validator {mode.title()}",
+                    "plannedEffectiveDate": "2026-10-01",
+                },
+                "mode": mode.upper(),
+            },
+        )
     (plugin_root / "pyproject.toml").write_text(
         '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
         encoding="utf-8",
@@ -93,31 +107,31 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
         encoding="utf-8",
     )
-    generator_root = plugin_root / "skills/generate-sow"
-    generator_payloads = {
-        "scripts/generate_sow.py": b"generate sow\n",
+    generator_root = plugin_root / "skills/generate"
+    renderer_payloads = {
+        "scripts/package_renderer.py": b"render package\n",
         "scripts/workbook.py": b"render workbook\n",
     }
-    for relative, payload in generator_payloads.items():
+    for relative, payload in renderer_payloads.items():
         path = generator_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
     write_json(
-        generator_root / "contracts/manifest.schema.json",
+        generator_root / "contracts/generation-manifest.schema.json",
         {
             "type": "object",
             "properties": {
-                "generatorContract": {"const": "receipt-only-v2"},
+                "rendererContract": {"const": "generation-renderer-v1"},
             },
         },
     )
     write_json(
-        generator_root / "contracts/generator-fingerprint-baseline.json",
+        generator_root / "contracts/renderer-fingerprint-baseline.json",
         {
-            "generatorContract": "receipt-only-v2",
+            "rendererContract": "generation-renderer-v1",
             "files": {
                 relative: hashlib.sha256(payload).hexdigest()
-                for relative, payload in generator_payloads.items()
+                for relative, payload in renderer_payloads.items()
             },
         },
     )
@@ -146,31 +160,31 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
-    def test_generator_fingerprint_matches_the_current_contract(self) -> None:
+    def test_renderer_fingerprint_matches_the_current_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plugin_root = write_valid_ai_sow_release(root)
 
             self.assertEqual(
-                validate_generator_contract_consistency(root, plugin_root),
+                validate_renderer_contract_consistency(root, plugin_root),
                 [],
             )
 
-    def test_generator_fingerprint_rejects_changed_projection_bytes(self) -> None:
+    def test_renderer_fingerprint_rejects_changed_projection_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plugin_root = write_valid_ai_sow_release(root)
             workbook = (
-                plugin_root / "skills/generate-sow/scripts/workbook.py"
+                plugin_root / "skills/generate/scripts/workbook.py"
             )
             workbook.write_bytes(workbook.read_bytes() + b"changed projection\n")
 
-            errors = validate_generator_contract_consistency(root, plugin_root)
+            errors = validate_renderer_contract_consistency(root, plugin_root)
 
             self.assertTrue(
                 any(
-                    "generator fingerprint mismatch for "
-                    "plugins/ai-sow/skills/generate-sow/scripts/workbook.py"
+                    "renderer fingerprint mismatch for "
+                    "plugins/ai-sow/skills/generate/scripts/workbook.py"
                     in error
                     for error in errors
                 ),
@@ -346,21 +360,21 @@ class RepositoryValidatorTests(unittest.TestCase):
             ),
             (
                 "fixture missing",
-                "skills/generate-sow/fixtures/project/.ai-sow/project.json",
+                "skills/generate/fixtures/greenfield/request.json",
                 None,
-                "invalid AI SOW fixture project:",
+                "invalid AI SOW greenfield fixture request:",
             ),
             (
                 "fixture malformed",
-                "skills/generate-sow/fixtures/project/.ai-sow/project.json",
+                "skills/generate/fixtures/greenfield/request.json",
                 "{",
-                "invalid AI SOW fixture project:",
+                "invalid AI SOW greenfield fixture request:",
             ),
             (
                 "fixture non-UTF-8",
-                "skills/generate-sow/fixtures/project/.ai-sow/project.json",
+                "skills/generate/fixtures/greenfield/request.json",
                 b"\xff",
-                "invalid AI SOW fixture project:",
+                "invalid AI SOW greenfield fixture request:",
             ),
             (
                 "pyproject missing",
@@ -427,6 +441,31 @@ class RepositoryValidatorTests(unittest.TestCase):
             self.assertIn(
                 "missing release file: plugins/ai-sow/tests/support/smoke_plugin.py",
                 validate_ai_sow_release(root, plugin_root),
+            )
+
+    def test_ai_sow_release_requires_exact_generate_skill_and_fixture_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            legacy = plugin_root / "skills/setup/SKILL.md"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("legacy", encoding="utf-8")
+            request_path = (
+                plugin_root / "skills/generate/fixtures/greenfield/request.json"
+            )
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+            request["project"]["projectId"] = ""
+            write_json(request_path, request)
+
+            errors = validate_ai_sow_release(root, plugin_root)
+
+            self.assertIn(
+                "AI SOW public skills must be exactly ['generate'], found ['generate', 'setup']",
+                errors,
+            )
+            self.assertIn(
+                "greenfield fixture projectId and name must be non-empty",
+                errors,
             )
 
 

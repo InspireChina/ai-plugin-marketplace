@@ -1,1 +1,0 @@
-{"findingId":"B-05","category":"B","expectedLayer":"script","expectedCode":"PATCH_FREEFORM_EDIT_DETECTED","path":"/evidence/0/summary","text":"整段重写声称四类材料，正文实际枚举六类。","before":{"evidence":[{"evidenceId":"evidence-material-scope","summary":"索引覆盖源码、配置、部署和测试四类材料。"}]},"operations":[],"acknowledgedClosureIds":[],"freeformValue":"索引覆盖源码、配置、部署、测试、迁移和流水线四类材料。"}
