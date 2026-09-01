@@ -124,7 +124,7 @@
         "mediaType": {
           "type": "string",
           "minLength": 1,
-          "description": "用于选择确定性读取器的媒体类型。"
+          "description": "已验证来源的媒体类型；仅区分 UTF-8 文本、Markdown、HTML/TypeScript 原型文本和 XLSX，不表示启用其他专用解析器。"
         },
         "path": {
           "$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath",

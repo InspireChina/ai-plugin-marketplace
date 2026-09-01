@@ -37,7 +37,7 @@
       "type": "array",
       "minItems": 2,
       "items": {"$ref": "#/$defs/source"},
-      "description": "本次请求明确提供的 PRD、HLD、往期 SOW 和补充材料。"
+      "description": "本次请求明确提供的 PRD、HLD、往期 SOW 和补充材料；PRD/HLD 使用 .md，往期 SOW 使用 .xlsx，补充材料使用 UTF-8 纯文本或 .xlsx。"
     },
     "questionnaireAnswers": {
       "type": "array",
@@ -153,7 +153,7 @@
         "path": {
           "type": "string",
           "minLength": 1,
-          "description": "工作请求中的输入文件路径；intake 后不会写入稳定数据。"
+          "description": "工作请求中的输入文件路径；HTML/TypeScript 原型以 SUPPLEMENT 纯文本输入，PDF、Word 等需要专用解析器的格式不受支持；intake 后不会写入稳定数据。"
         }
       }
     },

@@ -37,7 +37,7 @@
       "sourceId": "prior-sow-refund",
       "role": "PRIOR_SOW",
       "version": "1.0",
-      "path": "inputs/refund-prior-sow.md"
+      "path": "inputs/refund-prior-sow.xlsx"
     }
   ],
   "questionnaireAnswers": [],

@@ -3,22 +3,45 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
-from xml.etree import ElementTree
 
 import openpyxl
-from pypdf import PdfReader
 
 from contracts import canonical_json_bytes
 from models import SourceAnchor
 
 
-SUPPORTED_SUFFIXES = frozenset({".md", ".txt", ".docx", ".pdf", ".xlsx"})
 SOURCE_ROLES = frozenset({"PRD", "HLD", "PRIOR_SOW", "SUPPLEMENT"})
-WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-W = f"{{{WORD_NAMESPACE}}}"
+ROLE_SUFFIXES = {
+    "PRD": frozenset({".md"}),
+    "HLD": frozenset({".md"}),
+    "PRIOR_SOW": frozenset({".xlsx"}),
+}
+UNSUPPORTED_PARSED_SUFFIXES = frozenset(
+    {
+        ".doc",
+        ".docm",
+        ".docx",
+        ".odt",
+        ".pdf",
+        ".ppt",
+        ".pptm",
+        ".pptx",
+        ".rtf",
+        ".xls",
+        ".xlsb",
+        ".xlsm",
+    }
+)
+TEXT_MEDIA_TYPES = {
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".md": "text/markdown",
+    ".ts": "text/typescript",
+    ".tsx": "text/typescript",
+}
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PLACEHOLDER_TERMS = frozenset(
     {
         "todo",
@@ -109,81 +132,6 @@ def _text_anchors(text: str) -> list[tuple[str, str, str]]:
     ]
 
 
-def _docx_anchors(path: Path) -> list[tuple[str, str, str]]:
-    try:
-        with zipfile.ZipFile(path) as archive:
-            document = ElementTree.fromstring(archive.read("word/document.xml"))
-    except (OSError, KeyError, zipfile.BadZipFile, ElementTree.ParseError) as error:
-        raise SourceReadError("SOURCE_UNREADABLE", "DOCX 无法读取。") from error
-
-    anchors: list[tuple[str, str, str]] = []
-    headings: list[str] = []
-    paragraph_index = 0
-    table_index = 0
-    body = document.find(f"{W}body")
-    if body is None:
-        return anchors
-
-    def text_of(element: ElementTree.Element) -> str:
-        return _normalize("".join(node.text or "" for node in element.iter(f"{W}t")))
-
-    def section() -> str:
-        return "/".join(headings) if headings else "document"
-
-    for element in body:
-        if element.tag == f"{W}p":
-            text = text_of(element)
-            if not text:
-                continue
-            style = element.find(f"{W}pPr/{W}pStyle")
-            style_name = style.get(f"{W}val", "") if style is not None else ""
-            heading = re.match(r"(?:Heading|标题)\s*([1-6])$", style_name, re.IGNORECASE)
-            if heading:
-                level = int(heading.group(1))
-                headings[level - 1 :] = [text]
-                anchors.append(("HEADING", f"heading:{section()}", text))
-            else:
-                paragraph_index += 1
-                anchors.append(
-                    ("PARAGRAPH", f"section:{section()}/paragraph:{paragraph_index:04d}", text)
-                )
-        elif element.tag == f"{W}tbl":
-            for row in element.findall(f"{W}tr"):
-                cells = [text_of(cell) for cell in row.findall(f"{W}tc")]
-                normalized = " | ".join(cell for cell in cells if cell)
-                if normalized:
-                    table_index += 1
-                    anchors.append(
-                        ("TABLE_ROW", f"table:{table_index:04d}", normalized)
-                    )
-    return anchors
-
-
-def _pdf_anchors(path: Path) -> list[tuple[str, str, str]]:
-    try:
-        reader = PdfReader(path)
-        if reader.is_encrypted:
-            raise SourceReadError("SOURCE_ENCRYPTED_PDF", "加密 PDF 不受支持。")
-        paragraphs: list[str] = []
-        for page in reader.pages:
-            extracted = page.extract_text() or ""
-            paragraphs.extend(
-                normalized
-                for block in re.split(r"\n\s*\n|\n", extracted)
-                if (normalized := _normalize(block))
-            )
-    except SourceReadError:
-        raise
-    except Exception as error:
-        raise SourceReadError("SOURCE_UNREADABLE", "PDF 无法读取。") from error
-    if not paragraphs:
-        raise SourceReadError("SOURCE_NO_TEXT", "PDF 未包含可提取文本。")
-    return [
-        ("PARAGRAPH", f"paragraph:{index:04d}", paragraph)
-        for index, paragraph in enumerate(paragraphs, 1)
-    ]
-
-
 def _xlsx_anchors(path: Path) -> list[tuple[str, str, str]]:
     try:
         workbook = openpyxl.load_workbook(path, read_only=True, data_only=False)
@@ -209,6 +157,38 @@ def _xlsx_anchors(path: Path) -> list[tuple[str, str, str]]:
         raise SourceReadError("SOURCE_UNREADABLE", "XLSX 无法读取。") from error
 
 
+def _source_kind(path: Path, role: str) -> str:
+    if role not in SOURCE_ROLES:
+        raise SourceReadError("SOURCE_ROLE_INVALID", "来源角色不受支持。")
+    suffix = path.suffix.casefold()
+    if role in ROLE_SUFFIXES:
+        if suffix not in ROLE_SUFFIXES[role]:
+            raise SourceReadError("SOURCE_FORMAT_UNSUPPORTED", "来源文件格式不受支持。")
+        return "MARKDOWN" if suffix == ".md" else "XLSX"
+    if suffix == ".xlsx":
+        return "XLSX"
+    if suffix in UNSUPPORTED_PARSED_SUFFIXES:
+        raise SourceReadError("SOURCE_FORMAT_UNSUPPORTED", "来源文件格式不受支持。")
+    return "MARKDOWN" if suffix == ".md" else "TEXT"
+
+
+def source_media_type(path: Path, role: str) -> str:
+    kind = _source_kind(path, role)
+    if kind == "XLSX":
+        return XLSX_MEDIA_TYPE
+    return TEXT_MEDIA_TYPES.get(path.suffix.casefold(), "text/plain")
+
+
+def _read_utf8_text(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    if any(
+        unicodedata.category(character) == "Cc" and character not in "\n\r\t"
+        for character in text
+    ):
+        raise SourceReadError("SOURCE_UNREADABLE", "文本来源包含二进制控制字符。")
+    return text
+
+
 def _is_placeholder_only(texts: list[str]) -> bool:
     tokens: list[str] = []
     for text in texts:
@@ -230,24 +210,18 @@ def extract_document(
     source_id: str,
     role: str,
 ) -> tuple[SourceAnchor, ...]:
-    if role not in SOURCE_ROLES:
-        raise SourceReadError("SOURCE_ROLE_INVALID", "来源角色不受支持。")
-    suffix = path.suffix.casefold()
-    if suffix not in SUPPORTED_SUFFIXES:
-        raise SourceReadError("SOURCE_FORMAT_UNSUPPORTED", "来源文件格式不受支持。")
+    kind = _source_kind(path, role)
     if not path.is_file():
         raise SourceReadError("SOURCE_UNREADABLE", "来源文件无法读取。")
 
     try:
-        if suffix in {".md", ".txt"}:
-            text = path.read_text(encoding="utf-8")
-            raw = _markdown_anchors(text) if suffix == ".md" else _text_anchors(text)
-        elif suffix == ".docx":
-            raw = _docx_anchors(path)
-        elif suffix == ".pdf":
-            raw = _pdf_anchors(path)
+        if kind in {"MARKDOWN", "TEXT"}:
+            text = _read_utf8_text(path)
+            raw = _markdown_anchors(text) if kind == "MARKDOWN" else _text_anchors(text)
         else:
             raw = _xlsx_anchors(path)
+    except SourceReadError:
+        raise
     except UnicodeDecodeError as error:
         raise SourceReadError("SOURCE_UNREADABLE", "文本来源不是有效 UTF-8。") from error
     except OSError as error:

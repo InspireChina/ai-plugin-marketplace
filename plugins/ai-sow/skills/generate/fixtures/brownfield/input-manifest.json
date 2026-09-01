@@ -48,9 +48,9 @@
       "sourceId": "prior-sow-refund",
       "role": "PRIOR_SOW",
       "version": "1.0",
-      "originalName": "refund-prior-sow.md",
-      "mediaType": "text/markdown",
-      "path": "sources/prior-sow/prior-sow-refund/refund-prior-sow.md",
+      "originalName": "refund-prior-sow.xlsx",
+      "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "path": "sources/prior-sow/prior-sow-refund/refund-prior-sow.xlsx",
       "sha256": "5222222222222222222222222222222222222222222222222222222222222222",
       "semanticSha256": "6222222222222222222222222222222222222222222222222222222222222222",
       "anchorCount": 4
