@@ -1,0 +1,19 @@
+{
+  "contract": "ai-sow-final-review-v1",
+  "runId": "run-000001-000001",
+  "inputRevisionId": "000001",
+  "scopeSha256": "7d125349439fe1439e226ec1ad7187585171f5d82bdf9d947112342fe425d506",
+  "deliverySha256": "0349220808ff3bb520b25dc0a0acf1a5171637847613a38a7e0dc4f36b1e7c58",
+  "packetSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "decision": "PASS_WITH_NOTES",
+  "notes": [
+    {
+      "noteId": "note-recovery-design-boundary",
+      "category": "DESIGN_TASK",
+      "subjectIds": ["task-refund-recovery-design"],
+      "summary": "恢复目标通过设计任务固定。",
+      "sowNotesText": "恢复目标先完成方案设计；跨地域灾备或商业产品采购不在当前估算内。"
+    }
+  ],
+  "questions": []
+}

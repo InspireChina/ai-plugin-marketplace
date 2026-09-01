@@ -286,6 +286,56 @@ def test_prepare_identical_request_reuses_verified_current_outputs(
     assert not (tmp_path / ".ai-sow/inputs/pending").exists()
 
 
+def test_review_modes_bind_packet_and_enable_render_only_after_pass(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    prepare_scope_files(tmp_path, prepared)
+    assert run_mode(
+        tmp_path,
+        "accept-scope",
+        candidate="scope.json",
+        ids="scope-ids.json",
+        now=NOW,
+    )["outcome"] == "READY_FOR_DELIVERY"
+    prepare_delivery_files(tmp_path, prepared)
+    assert run_mode(
+        tmp_path,
+        "accept-delivery",
+        candidate="delivery.json",
+        ids="delivery-ids.json",
+        now=NOW,
+    )["outcome"] == "REVIEW_REQUIRED"
+
+    packet_result = run_mode(tmp_path, "prepare-review", now=NOW)
+    assert packet_result["outcome"] == "REVIEW_REQUIRED", packet_result
+    plan = json.loads(
+        (tmp_path / ".ai-sow/work/run-plan.json").read_text(encoding="utf-8")
+    )
+    review = {
+        "contract": "ai-sow-final-review-v1",
+        "runId": plan["runId"],
+        "inputRevisionId": plan["targetRevisionId"],
+        "scopeSha256": sha256_bytes(
+            (tmp_path / ".ai-sow/work/scope.candidate.json").read_bytes()
+        ),
+        "deliverySha256": sha256_bytes(
+            (tmp_path / ".ai-sow/work/delivery.candidate.json").read_bytes()
+        ),
+        "packetSha256": packet_result["packetSha256"],
+        "decision": "PASS",
+        "notes": [],
+        "questions": [],
+    }
+    write_json(tmp_path / "review.json", review)
+    result = run_mode(
+        tmp_path, "accept-review", review="review.json", now=NOW
+    )
+    assert result["outcome"] == "READY_TO_RENDER", result
+    assert run_mode(tmp_path, "status", now=NOW)["outcome"] == "READY_TO_RENDER"
+
+
 def test_stale_scope_candidate_is_rejected(tmp_path: Path) -> None:
     request_path = write_request(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)

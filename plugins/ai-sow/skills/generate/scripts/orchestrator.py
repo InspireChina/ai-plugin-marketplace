@@ -17,8 +17,10 @@ from contracts import (  # noqa: E402
     load_schema_registry,
     sha256_bytes,
     validate_contract,
+    validate_final_review,
 )
 from delivery_compiler import compile_delivery, read_template_catalog  # noqa: E402
+from final_review import build_review_packet, record_review  # noqa: E402
 from generation_store import (  # noqa: E402
     allocate_next_ids,
     cleanup_interrupted_publication,
@@ -59,6 +61,10 @@ def _diagnostic_value(value: Diagnostic) -> dict[str, object]:
         "path": value.path,
         "details": dict(value.details),
     }
+
+
+def _mappings(value: object) -> list[Mapping[str, object]]:
+    return [item for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
 
 
 def _result(
@@ -495,6 +501,70 @@ def accept_delivery(
     )
 
 
+def prepare_review(project_root: Path) -> dict[str, object]:
+    files = ProjectFiles.open(project_root)
+    plan = _plan_from_value(files.read_json(RUN_PLAN_PATH))
+    if not _scope_is_current(files, plan) or not _delivery_is_current(files, plan):
+        return _blocked(
+            "DELIVERY_NOT_ACCEPTED",
+            "必须先接受与当前计划一致的 Scope 和 Delivery。",
+        )
+    result = build_review_packet(files)
+    if result.outcome == "BLOCKED":
+        return _result(
+            "BLOCKED",
+            "跨层终审的机械预检未通过。",
+            diagnostics=result.diagnostics,
+            questions=list(result.questions),
+        )
+    return _result(
+        "REVIEW_REQUIRED",
+        "终审 packet 已准备，需要一次全新上下文评审。",
+        nextMode="accept-review",
+        packetPath=result.packet_path,
+        packetSha256=result.packet_sha256,
+        reviewerInstructionPath="references/final-review.md",
+    )
+
+
+def accept_review(project_root: Path, review_result_path: str) -> dict[str, object]:
+    files = ProjectFiles.open(project_root)
+    plan = _plan_from_value(files.read_json(RUN_PLAN_PATH))
+    if not _delivery_is_current(files, plan):
+        return _blocked("DELIVERY_NOT_ACCEPTED", "当前 Delivery 尚未接受。")
+    try:
+        files.resolve(REVIEW_PACKET_PATH)
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            return _blocked("REVIEW_PACKET_MISSING", "必须先准备终审 packet。")
+        raise
+    result = record_review(files, review_result_path)
+    if result.diagnostics:
+        return _result(
+            "BLOCKED",
+            "终审结果未通过合同校验。",
+            diagnostics=result.diagnostics,
+            questions=list(result.questions),
+        )
+    if result.decision == "BLOCKED":
+        return _result(
+            "BLOCKED",
+            "终审发现会改变范围、验收或估算的缺失事实。",
+            questions=list(result.questions),
+            reviewPath=result.review_path,
+            reviewSha256=result.review_sha256,
+        )
+    return _result(
+        "READY_TO_RENDER",
+        "终审已通过，可渲染确定性交付包。",
+        nextMode="publish",
+        decision=result.decision,
+        notes=list(result.notes),
+        reviewPath=result.review_path,
+        reviewSha256=result.review_sha256,
+    )
+
+
 def status(project_root: Path) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     plan_value = _optional_json(files, RUN_PLAN_PATH)
@@ -535,12 +605,42 @@ def status(project_root: Path) -> dict[str, object]:
             nextMode="accept-delivery",
             missingArtifacts=[DELIVERY_SLICE_PATH, DELIVERY_IDS_PATH, DELIVERY_PATH],
         )
-    if _optional_json(files, FINAL_REVIEW_PATH) is None:
+    final_review = _optional_json(files, FINAL_REVIEW_PATH)
+    if final_review is None:
+        packet_exists = _optional_json(files, REVIEW_PACKET_PATH) is not None
         return _result(
             "REVIEW_REQUIRED",
             "Delivery 已就绪，等待跨层终审。",
-            nextMode="prepare-review",
-            missingArtifacts=[REVIEW_PACKET_PATH, FINAL_REVIEW_PATH],
+            nextMode="accept-review" if packet_exists else "prepare-review",
+            missingArtifacts=[FINAL_REVIEW_PATH]
+            if packet_exists
+            else [REVIEW_PACKET_PATH, FINAL_REVIEW_PATH],
+        )
+    packet = _optional_json(files, REVIEW_PACKET_PATH)
+    if not isinstance(packet, Mapping):
+        return _blocked("REVIEW_PACKET_MISSING", "终审结果缺少对应 review packet。")
+    review_diagnostics = validate_final_review(
+        final_review,
+        SCHEMA_REGISTRY,
+        expected_packet_sha256=sha256_bytes(files.read_bytes(REVIEW_PACKET_PATH)),
+    )
+    if review_diagnostics:
+        return _result(
+            "BLOCKED",
+            "终审结果与当前 review packet 不一致。",
+            diagnostics=review_diagnostics,
+        )
+    if not isinstance(final_review, Mapping) or final_review.get("decision") == "BLOCKED":
+        questions = [
+            str(item["question"])
+            for item in _mappings(final_review.get("questions"))
+            if isinstance(item.get("question"), str)
+        ] if isinstance(final_review, Mapping) else []
+        return _result(
+            "BLOCKED",
+            "终审仍有阻塞问题。",
+            questions=questions,
+            nextMode="prepare",
         )
     return _result(
         "READY_TO_RENDER",
@@ -557,29 +657,42 @@ def run_mode(
     request: str | None = None,
     candidate: str | None = None,
     ids: str | None = None,
+    review: str | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> dict[str, object]:
     clock = now or (lambda: datetime.now(UTC))
     try:
         if mode == "prepare":
-            if request is None or candidate is not None or ids is not None:
+            if request is None or candidate is not None or ids is not None or review is not None:
                 return _blocked("CLI_ARGUMENTS_INVALID", "prepare 只接受 --request。")
             return prepare_run(project_root, request, now=clock)
         if mode == "accept-scope":
-            if candidate is None or ids is None or request is not None:
+            if candidate is None or ids is None or request is not None or review is not None:
                 return _blocked(
                     "CLI_ARGUMENTS_INVALID", "accept-scope 必须提供 --candidate 和 --ids。"
                 )
             return accept_scope(project_root, candidate, ids)
         if mode == "accept-delivery":
-            if candidate is None or ids is None or request is not None:
+            if candidate is None or ids is None or request is not None or review is not None:
                 return _blocked(
                     "CLI_ARGUMENTS_INVALID",
                     "accept-delivery 必须提供 --candidate 和 --ids。",
-                )
+            )
             return accept_delivery(project_root, candidate, ids)
+        if mode == "prepare-review":
+            if any(value is not None for value in (request, candidate, ids, review)):
+                return _blocked("CLI_ARGUMENTS_INVALID", "prepare-review 不接受工件参数。")
+            return prepare_review(project_root)
+        if mode == "accept-review":
+            if review is None or any(
+                value is not None for value in (request, candidate, ids)
+            ):
+                return _blocked(
+                    "CLI_ARGUMENTS_INVALID", "accept-review 必须且只提供 --review。"
+                )
+            return accept_review(project_root, review)
         if mode == "status":
-            if any(value is not None for value in (request, candidate, ids)):
+            if any(value is not None for value in (request, candidate, ids, review)):
                 return _blocked("CLI_ARGUMENTS_INVALID", "status 不接受工件参数。")
             return status(project_root)
         return _blocked("CLI_MODE_INVALID", "不支持的运行模式。")
@@ -600,11 +713,19 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("prepare", "accept-scope", "accept-delivery", "status"),
+        choices=(
+            "prepare",
+            "accept-scope",
+            "accept-delivery",
+            "prepare-review",
+            "accept-review",
+            "status",
+        ),
     )
     parser.add_argument("--request")
     parser.add_argument("--candidate")
     parser.add_argument("--ids")
+    parser.add_argument("--review")
     return parser
 
 
@@ -628,6 +749,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             request=arguments.request,
             candidate=arguments.candidate,
             ids=arguments.ids,
+            review=arguments.review,
         )
         exit_code = 0 if result["outcome"] != "BLOCKED" else 2
     sys.stdout.buffer.write(canonical_json_bytes(result))
