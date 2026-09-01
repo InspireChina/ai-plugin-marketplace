@@ -1,18 +1,18 @@
 # 插件运行时环境合同
 
-普通插件用户无需预装 Python、`uv` 或 Python 依赖。权威流程从 `setup` 开始：setup bootstrap 在
-插件安装副本内准备 `uv 0.11.7`、managed Python 3.12、锁定依赖和 `.venv`，再初始化或只读复核项目。
+普通插件用户无需预装 Python、`uv` 或 Python 依赖。权威流程从 `generate` 开始：generate bootstrap 在
+插件安装副本内准备 `uv 0.11.7`、managed Python 3.12、锁定依赖和 `.venv`，再调用唯一生成编排器。
 
-setup 确实使用平台脚本，而不是要求用户预先执行环境命令：
+generate 使用平台脚本，而不是要求用户预先执行环境命令：
 
-- macOS/Linux：`skills/setup/scripts/bootstrap.sh`
-- Windows：`skills/setup/scripts/bootstrap.ps1`
+- macOS/Linux：`skills/generate/scripts/bootstrap.sh`
+- Windows：`skills/generate/scripts/bootstrap.ps1`
 
 macOS、Linux 和 Windows 11 x64 都受支持。Windows 上未启用长路径支持时，项目根目录必须
-短于 97 个字符；`setup` 在写入任何文件前检查该预算，不足时返回
+短于 97 个字符；generate bootstrap 在写入任何项目文件前检查该预算，不足时返回
 `WINDOWS_LONG_PATH_REQUIRED` 且不创建 `.ai-sow`。
 
-后续 Skill 不依赖 shell profile 或 PATH 中的 `uv`，而是直接使用 setup 已建立的 `<python-bin>`：
+后续调用不依赖 shell profile 或 PATH 中的 `uv`，而是复用 generate bootstrap 已建立的 `<python-bin>`：
 
 - macOS/Linux：`<plugin-root>/.venv/bin/python`
 - Windows：`<plugin-root>/.venv/Scripts/python.exe`
@@ -42,19 +42,19 @@ macOS、Linux 和 Windows 11 x64 都受支持。Windows 上未启用长路径支
 `.ai-sow/.stage-<12 hex>/outputs/sow-sha256-<64 hex>/sources/data/<owner>/<file>`，长度 162
 个字符，因此项目根目录必须短于 97 个字符。
 
-`setup` 在写入任何文件前计算该预算，不足时返回 `WINDOWS_LONG_PATH_REQUIRED` 并且不创建
+generate bootstrap 在写入任何项目文件前计算该预算，不足时返回 `WINDOWS_LONG_PATH_REQUIRED` 并且不创建
 `.ai-sow`；`runtime/project_io.py` 另把写入期的 `ERROR_FILENAME_EXCED_RANGE` 转换成
 `PROJECT_PATH_TOO_LONG`，避免以原始 `WinError 206` 冒泡。
 
 补救方案有两个，由用户选择：缩短项目路径，或启用 Windows 长路径支持。后者修改机器级
 系统策略并需要管理员权限，只能在向用户说明影响并取得明确同意后，由
-`skills/setup/scripts/enable_long_paths.ps1 -Apply` 执行；不带 `-Apply` 时该脚本只报告
+`skills/generate/scripts/enable_long_paths.ps1 -Apply` 执行；不带 `-Apply` 时该脚本只报告
 当前状态。任何情况下都不得静默修改系统策略或绕过 UAC 提示。
 
-每个 Skill 从已加载的 `SKILL.md` 解析 `<plugin-root>`，按当前平台替换 `<python-bin>` 后执行自己的
-确定性脚本。`uv --version` 可以带平台/安装来源后缀，但首个版本 token 必须精确为 `0.11.7`。插件
-升级后若 `.venv` 不存在、损坏或版本不符，先重新调用 `setup`；完整项目会被只读
-复核，bootstrap 只刷新插件安装副本的运行时，不要求用户打开终端或手工安装工具。
+generate 从已加载的 `SKILL.md` 解析 `<plugin-root>`，由平台 bootstrap 调用唯一 `orchestrator.py`。
+`uv --version` 可以带平台/安装来源后缀，但首个版本 token 必须精确为 `0.11.7`。以后调用复用同一
+插件 `.venv`；插件升级后若环境不存在、损坏或版本不符，bootstrap 只刷新插件安装副本的运行时，
+不要求用户打开终端或手工安装工具。
 
 仓库贡献者和 CI 可以继续使用根 README/CONTRIBUTING 中的 `uv` 开发命令；该开发工具链不属于
 普通插件用户的安装前置条件。

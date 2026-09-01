@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,6 +37,28 @@ EXPECTED_GENERATION_FILES = {
     "output/sow-notes.md",
     "output/sow.xlsx",
 }
+
+
+def test_installed_orchestrator_entrypoint_resolves_plugin_runtime(
+    tmp_path: Path,
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS / "orchestrator.py"),
+            "--project-root",
+            str(tmp_path),
+            "--mode",
+            "status",
+        ],
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2, result.stderr.decode("utf-8")
+    payload = json.loads(result.stdout.decode("utf-8"))
+    assert payload["outcome"] == "BLOCKED"
+    assert payload["diagnostics"][0]["code"] == "RUN_NOT_PREPARED"
 
 
 def stage_reviewed_run(project: Path, decision: str = "PASS") -> str:

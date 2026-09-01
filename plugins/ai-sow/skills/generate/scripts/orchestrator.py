@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
