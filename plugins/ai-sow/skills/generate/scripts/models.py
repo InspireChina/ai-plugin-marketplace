@@ -132,7 +132,7 @@ class ScopeCompilation:
     bundle: Mapping[str, object]
     bundle_sha256: str
     impact: ImpactPlan
-    metrics: Mapping[str, int]
+    metrics: Mapping[str, object]
     diagnostics: tuple[Diagnostic, ...]
 
 
@@ -153,7 +153,7 @@ class TemplateCatalog:
 class DeliveryCompilation:
     bundle: Mapping[str, object]
     bundle_sha256: str
-    metrics: Mapping[str, int]
+    metrics: Mapping[str, object]
     diagnostics: tuple[Diagnostic, ...]
 
 
