@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -11,6 +12,7 @@ PRD_TEMPLATE = ASSETS / "prd-template.md"
 HLD_TEMPLATE = ASSETS / "hld-template.md"
 QUESTIONNAIRE = ASSETS / "greenfield-questionnaire.md"
 SOW_TEMPLATE = ASSETS / "sow-template.xlsx"
+RENDERER_BASELINE = SKILL_ROOT / "contracts/renderer-fingerprint-baseline.json"
 REQUIRED_PRD_SECTIONS = {
     "项目背景与问题",
     "目标与成功指标",
@@ -70,3 +72,12 @@ def test_bundled_sow_template_keeps_authoritative_bytes() -> None:
     assert hashlib.sha256(SOW_TEMPLATE.read_bytes()).hexdigest() == (
         "6c90f4782acf7b1beb372a7b5f8aa78079f677160c39349bf561883b5592bfa0"
     )
+
+
+def test_renderer_fingerprint_binds_both_implementation_files() -> None:
+    baseline = json.loads(RENDERER_BASELINE.read_text(encoding="utf-8"))
+    assert baseline["rendererContract"] == "generation-renderer-v1"
+    assert baseline["files"] == {
+        name: hashlib.sha256((SKILL_ROOT / name).read_bytes()).hexdigest()
+        for name in ("scripts/package_renderer.py", "scripts/workbook.py")
+    }
