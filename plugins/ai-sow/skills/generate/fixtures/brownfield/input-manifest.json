@@ -1,0 +1,68 @@
+{
+  "contract": "ai-sow-input-manifest-v1",
+  "revisionId": "000001",
+  "project": {
+    "projectId": "project-orbit-refund-upgrade",
+    "name": "示例退款服务升级项目",
+    "plannedEffectiveDate": "2026-11-01"
+  },
+  "mode": "BROWNFIELD",
+  "responsibilityBoundaries": [
+    {
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "party": "VENDOR",
+      "name": "供应商交付责任",
+      "responsibilities": ["完成范围内设计、实现和验证"]
+    },
+    {
+      "responsibilityBoundaryId": "responsibility-third-party-payment",
+      "party": "THIRD_PARTY",
+      "name": "支付平台责任",
+      "responsibilities": ["提供稳定退款接口和联调环境"]
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "prd-refund-upgrade",
+      "role": "PRD",
+      "version": "2.0",
+      "originalName": "refund-upgrade-prd.md",
+      "mediaType": "text/markdown",
+      "path": "sources/prd/prd-refund-upgrade/refund-upgrade-prd.md",
+      "sha256": "1222222222222222222222222222222222222222222222222222222222222222",
+      "semanticSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "anchorCount": 5
+    },
+    {
+      "sourceId": "hld-refund-upgrade",
+      "role": "HLD",
+      "version": "2.0",
+      "originalName": "refund-upgrade-hld.md",
+      "mediaType": "text/markdown",
+      "path": "sources/hld/hld-refund-upgrade/refund-upgrade-hld.md",
+      "sha256": "3222222222222222222222222222222222222222222222222222222222222222",
+      "semanticSha256": "4222222222222222222222222222222222222222222222222222222222222222",
+      "anchorCount": 6
+    },
+    {
+      "sourceId": "prior-sow-refund",
+      "role": "PRIOR_SOW",
+      "version": "1.0",
+      "originalName": "refund-prior-sow.md",
+      "mediaType": "text/markdown",
+      "path": "sources/prior-sow/prior-sow-refund/refund-prior-sow.md",
+      "sha256": "5222222222222222222222222222222222222222222222222222222222222222",
+      "semanticSha256": "6222222222222222222222222222222222222222222222222222222222222222",
+      "anchorCount": 4
+    }
+  ],
+  "questionnaireAnswers": [
+    {
+      "questionId": "question-current-state-delta",
+      "answer": "NO_KNOWN_CHANGES：自往期 SOW 生效以来无已知范围、架构、集成或部署变化。"
+    }
+  ],
+  "anchorsPath": "anchors.json",
+  "anchorsSha256": "7222222222222222222222222222222222222222222222222222222222222222",
+  "recordedAt": "2026-09-02T00:00:00Z"
+}

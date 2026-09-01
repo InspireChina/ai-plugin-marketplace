@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:request:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "project",
+    "mode",
+    "responsibilityBoundaries",
+    "sources",
+    "questionnaireAnswers",
+    "currentStateDelta"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-generate-request-v1",
+      "description": "本次生成请求使用的固定合同 token。"
+    },
+    "project": {
+      "$ref": "#/$defs/project",
+      "description": "本次 SOW 的最小项目身份与计划生效信息。"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["GREENFIELD", "BROWNFIELD"],
+      "description": "项目是无历史合同基线的新建项目还是继承往期 SOW 的存量项目。"
+    },
+    "responsibilityBoundaries": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/responsibilityBoundary"},
+      "description": "客户、供应商和第三方的高层责任边界。"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/source"},
+      "description": "本次请求明确提供的 PRD、HLD、往期 SOW 和补充材料。"
+    },
+    "questionnaireAnswers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/questionnaireAnswer"},
+      "description": "只记录影响范围、责任或估算的结构化问卷答案。"
+    },
+    "currentStateDelta": {
+      "anyOf": [{"type": "null"}, {"$ref": "#/$defs/currentStateDelta"}],
+      "description": "Brownfield 自往期 SOW 生效后的已知现状变化；Greenfield 可为 null。"
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "sources": {
+          "contains": {
+            "type": "object",
+            "properties": {"role": {"const": "PRD"}},
+            "required": ["role"]
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "sources": {
+          "contains": {
+            "type": "object",
+            "properties": {"role": {"const": "HLD"}},
+            "required": ["role"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"mode": {"const": "BROWNFIELD"}},
+        "required": ["mode"]
+      },
+      "then": {
+        "properties": {
+          "sources": {
+            "contains": {
+              "type": "object",
+              "properties": {"role": {"const": "PRIOR_SOW"}},
+              "required": ["role"]
+            }
+          },
+          "currentStateDelta": {"$ref": "#/$defs/currentStateDelta"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"mode": {"const": "GREENFIELD"}},
+        "required": ["mode"]
+      },
+      "then": {
+        "properties": {
+          "sources": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": {"role": {"const": "PRIOR_SOW"}},
+                "required": ["role"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "name", "plannedEffectiveDate"],
+      "properties": {
+        "projectId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "项目在所有输入 revision 中保持稳定的逻辑 ID。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "面向 SOW 展示的项目名称。"
+        },
+        "plannedEffectiveDate": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/effectiveDate",
+          "description": "计划合同生效日期，格式为 YYYY-MM-DD。"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "role", "version", "path"],
+      "properties": {
+        "sourceId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "来源文档跨版本使用的稳定逻辑 ID。"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["PRD", "HLD", "PRIOR_SOW", "SUPPLEMENT"],
+          "description": "来源在本次编译中的唯一语义角色。"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "用户提供的来源版本或日期标识。"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "工作请求中的输入文件路径；intake 后不会写入稳定数据。"
+        }
+      }
+    },
+    "questionnaireAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "answer"],
+      "properties": {
+        "questionId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "最小问卷问题的稳定 ID。"
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "用户确认且会影响范围、责任或估算的答案。"
+        }
+      }
+    },
+    "currentStateDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "summary", "supplementalSourceIds"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["NO_KNOWN_CHANGES", "CHANGES_DECLARED"],
+          "description": "往期 SOW 生效后是否存在已知范围、架构、集成或部署变化。"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "无已知变化声明或已知变化清单的简要说明。"
+        },
+        "supplementalSourceIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "直接证明现状增量的补充来源 ID；没有材料时为空。"
+        }
+      }
+    },
+    "responsibilityBoundary": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/responsibilityBoundary"
+    }
+  }
+}

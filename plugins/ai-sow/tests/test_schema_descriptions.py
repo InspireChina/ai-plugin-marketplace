@@ -17,6 +17,13 @@ SCHEMAS = {
     "Delivery": PLUGIN_ROOT / "skills/generate-story/contracts/delivery.schema.json",
     "Estimate": PLUGIN_ROOT / "skills/generate-task/contracts/estimate.schema.json",
     "Manifest": PLUGIN_ROOT / "skills/generate-sow/contracts/manifest.schema.json",
+    "Generate Request": PLUGIN_ROOT / "skills/generate/contracts/request.schema.json",
+    "Generate Input Manifest": PLUGIN_ROOT
+    / "skills/generate/contracts/input-manifest.schema.json",
+    "Generate Scope Bundle": PLUGIN_ROOT
+    / "skills/generate/contracts/scope-bundle.schema.json",
+    "Generate Delivery Bundle": PLUGIN_ROOT
+    / "skills/generate/contracts/delivery-bundle.schema.json",
 }
 STABLE_OBJECT_DEFS = {
     "Project": (),
@@ -49,21 +56,45 @@ STABLE_OBJECT_DEFS = {
     ),
     "Estimate": ("workModeEvidence", "task"),
     "Manifest": ("digest", "repository", "priorSow"),
+    "Generate Request": (
+        "project",
+        "source",
+        "questionnaireAnswer",
+        "currentStateDelta",
+        "responsibilityBoundary",
+    ),
+    "Generate Input Manifest": (
+        "project",
+        "source",
+        "questionnaireAnswer",
+        "responsibilityBoundary",
+    ),
+    "Generate Scope Bundle": (
+        "epic",
+        "feature",
+        "scopeDecision",
+        "commitment",
+        "effectiveStartItem",
+        "designItem",
+        "designDecision",
+        "integration",
+        "nfr",
+        "assumption",
+        "responsibilityBoundary",
+    ),
+    "Generate Delivery Bundle": (
+        "story",
+        "acceptanceCriterion",
+        "task",
+        "workModeEvidence",
+        "dependency",
+    ),
 }
 CHINESE = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_stable_fields_have_chinese_descriptions() -> None:
-    assert set(SCHEMAS) == {
-        "Project",
-        "Source Requirements",
-        "As-Is",
-        "Design",
-        "Technical Requirements",
-        "Delivery",
-        "Estimate",
-        "Manifest",
-    }
+    assert set(SCHEMAS) == set(STABLE_OBJECT_DEFS)
     for name, path in SCHEMAS.items():
         schema = json.loads(path.read_text(encoding="utf-8"))
         objects = [("$", schema)] + [

@@ -1,0 +1,604 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:scope-bundle:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "inputRevisionId",
+    "epics",
+    "features",
+    "commitments",
+    "effectiveStartItems",
+    "designItems",
+    "designDecisions",
+    "integrations",
+    "nfrs",
+    "assumptions",
+    "responsibilityBoundaries"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-scope-bundle-v1",
+      "description": "ScopeBundle 使用的固定合同 token。"
+    },
+    "inputRevisionId": {
+      "type": "string",
+      "pattern": "^[0-9]{6}$",
+      "description": "本 ScopeBundle 绑定的不可变输入 revision ID。"
+    },
+    "epics": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/epic"},
+      "description": "按 BUSINESS 或 TECHNICAL 分组的高层范围主题。"
+    },
+    "features": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/feature"},
+      "description": "带来源、影响域和范围结论的业务或技术 Feature。"
+    },
+    "commitments": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/commitment"},
+      "description": "从 Brownfield 往期 SOW 提取并处置的合同承诺。"
+    },
+    "effectiveStartItems": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/effectiveStartItem"},
+      "description": "本期项目启动时可作为范围和工作模式依据的有效起点。"
+    },
+    "designItems": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/designItem"},
+      "description": "构成目标方案并连接 Feature 的设计实体。"
+    },
+    "designDecisions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/designDecision"},
+      "description": "目标设计中已明确或需由设计 Task 落实的技术选择。"
+    },
+    "integrations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/integration"},
+      "description": "由 Scope 单一拥有并可影响多个 Feature 的跨系统交互。"
+    },
+    "nfrs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/nfr"},
+      "description": "目标明确、待设计或不适用的非功能要求。"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/assumption"},
+      "description": "具有固定估算边界和变化触发条件的假设或风险。"
+    },
+    "responsibilityBoundaries": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/responsibilityBoundary"},
+      "description": "Scope 编译和终审共同使用的高层责任边界。"
+    }
+  },
+  "$defs": {
+    "epic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["epicId", "kind", "name", "summary", "sourceRefs"],
+      "properties": {
+        "epicId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "Epic 在语义不变时保持稳定的 ID。"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["BUSINESS", "TECHNICAL"],
+          "description": "Epic 属于业务结果还是技术交付范围。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "面向范围评审展示的 Epic 名称。"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Epic 的目标、边界和结果摘要。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接支持该 Epic 的输入语义锚点。"
+        }
+      }
+    },
+    "scopeDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "rationale",
+        "designItemIds",
+        "effectiveStartItemIds",
+        "requiredIntegrationIds",
+        "requiredNfrIds"
+      ],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["IN_SCOPE", "FULLY_COVERED", "OUT_OF_SCOPE"],
+          "description": "Feature 需要交付、已被有效起点覆盖或明确排除的范围结论。"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "结合来源、现状和责任边界说明该范围结论。"
+        },
+        "designItemIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "实现该 Feature 的目标 Design Item ID。"
+        },
+        "effectiveStartItemIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "形成差值或证明完整覆盖的 Effective Start ID。"
+        },
+        "requiredIntegrationIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该 Feature 必须交付或遵守的 Integration 义务。"
+        },
+        "requiredNfrIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该 Feature 必须满足或通过设计 Task 明确的 NFR 义务。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"decision": {"const": "IN_SCOPE"}},
+            "required": ["decision"]
+          },
+          "then": {"properties": {"designItemIds": {"minItems": 1}}}
+        },
+        {
+          "if": {
+            "properties": {"decision": {"const": "FULLY_COVERED"}},
+            "required": ["decision"]
+          },
+          "then": {
+            "properties": {"effectiveStartItemIds": {"minItems": 1}}
+          }
+        }
+      ]
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "featureId",
+        "epicId",
+        "domainId",
+        "kind",
+        "name",
+        "summary",
+        "sourceRefs",
+        "responsibilityBoundaryIds",
+        "scopeDecision"
+      ],
+      "properties": {
+        "featureId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "Feature 在交付含义不变时保持稳定的 ID。"
+        },
+        "epicId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "该 Feature 唯一归属的 Epic ID。"
+        },
+        "domainId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "仅用于无法唯一定位时保守扩大重算范围的业务或系统域 ID。"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["BUSINESS", "TECHNICAL"],
+          "description": "Feature 是业务结果还是技术交付。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "以可评审结果命名的 Feature 名称。"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Feature 的参与者、触发、结果和关键规则摘要。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接定义或约束该 Feature 的输入锚点。"
+        },
+        "responsibilityBoundaryIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "该 Feature 必须遵守的参与方责任边界。"
+        },
+        "scopeDecision": {
+          "$ref": "#/$defs/scopeDecision",
+          "description": "该 Feature 的范围差值、设计覆盖和 Integration/NFR 义务。"
+        }
+      }
+    },
+    "commitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commitmentId",
+        "name",
+        "summary",
+        "treatment",
+        "featureIds",
+        "sourceRefs"
+      ],
+      "properties": {
+        "commitmentId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "往期 SOW 承诺的稳定 ID。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "面向范围评审展示的承诺名称。"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "往期承诺的合同结果和边界。"
+        },
+        "treatment": {
+          "type": "string",
+          "enum": [
+            "CURRENT_BASELINE",
+            "EXPECTED_BEFORE_START",
+            "CARRY_FORWARD",
+            "EXCLUDE",
+            "NEEDS_DECISION"
+          ],
+          "description": "该承诺在本期起点和范围中的处置。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该承诺会影响的本期 Feature ID。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "往期 SOW 中直接支持该承诺的输入锚点。"
+        }
+      }
+    },
+    "effectiveStartItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effectiveStartItemId",
+        "name",
+        "summary",
+        "commitmentIds",
+        "featureIds",
+        "sourceRefs"
+      ],
+      "properties": {
+        "effectiveStartItemId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "本期项目有效起点的稳定 ID。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "供范围和 Task 工作模式引用的有效起点名称。"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说明启动时已存在且可依赖的能力、资产或边界。"
+        },
+        "commitmentIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "共同构成该起点的 EXPECTED_BEFORE_START 承诺 ID。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该有效起点覆盖或影响的 Feature ID。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接证明该有效起点的往期 SOW 或补充输入锚点。"
+        }
+      }
+    },
+    "designItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["designItemId", "type", "name", "summary", "featureIds", "sourceRefs"],
+      "properties": {
+        "designItemId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "目标设计实体的稳定 ID。"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["COMPONENT", "FLOW", "DATA", "INTEGRATION", "INFRASTRUCTURE", "QUALITY"],
+          "description": "目标设计实体的主要技术性质。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "便于业务与技术共同识别的目标设计名称。"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "该设计实体的目标职责、边界和预期行为。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "该设计实体实现或约束的 Feature ID。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接定义或约束该设计实体的输入锚点。"
+        }
+      }
+    },
+    "designDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "designDecisionId",
+        "name",
+        "decision",
+        "rationale",
+        "designItemIds",
+        "featureIds",
+        "sourceRefs"
+      ],
+      "properties": {
+        "designDecisionId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "技术选择在含义不变时保持稳定的 ID。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "技术选择或待设计事项的名称。"
+        },
+        "decision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "已确定的技术边界，或待由 Design Task 产出的决定。"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "基于来源和取舍说明为何需要或采用该决定。"
+        },
+        "designItemIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "落实该决定的 Design Item ID。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "该决定服务或约束的 Feature ID。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接支持该决定或待设计义务的输入锚点。"
+        }
+      }
+    },
+    "integration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "integrationId",
+        "name",
+        "source",
+        "target",
+        "purpose",
+        "trigger",
+        "status",
+        "featureIds",
+        "responsibilityBoundaryId",
+        "sourceRefs"
+      ],
+      "properties": {
+        "integrationId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "跨系统交互的稳定 ID。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "面向范围评审展示的 Integration 名称。"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "交换数据或请求的来源系统。"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "交换数据或请求的目标系统。"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "description": "该跨系统交互必须实现的业务或技术结果。"
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "触发交换的业务事件、调用或计划。"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["DEFINED", "DESIGN_REQUIRED"],
+          "description": "高层方案已明确或需要 Design Task 补齐。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "受该 Integration 影响的一个或多个 Feature ID。"
+        },
+        "responsibilityBoundaryId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "对目标边界和接入条件负责的责任边界 ID。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接定义该 Integration 的 HLD 或补充输入锚点。"
+        }
+      }
+    },
+    "nfr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nfrId",
+        "name",
+        "category",
+        "status",
+        "targetOrRationale",
+        "featureIds",
+        "responsibilityBoundaryId",
+        "sourceRefs"
+      ],
+      "properties": {
+        "nfrId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "非功能要求的稳定 ID。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "面向评审展示的 NFR 名称。"
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "description": "性能、容量、可用性、安全、隐私、审计、灾备或可观测性类别。"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["TARGET_DEFINED", "DESIGN_REQUIRED", "NOT_APPLICABLE"],
+          "description": "NFR 已定义目标、需要设计或经说明不适用。"
+        },
+        "targetOrRationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "明确目标值，或待设计和不适用状态的原因。"
+        },
+        "estimateBoundary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "待设计 NFR 在当前估算中固定包含和排除的边界。"
+        },
+        "changeTrigger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "未来目标变化会触发重估或变更控制的条件。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "该 NFR 约束的 Feature ID。"
+        },
+        "responsibilityBoundaryId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "对 NFR 目标或设计输入负责的责任边界 ID。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接提出或约束该 NFR 的 HLD 或补充输入锚点。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"const": "DESIGN_REQUIRED"}},
+            "required": ["status"]
+          },
+          "then": {"required": ["estimateBoundary", "changeTrigger"]}
+        }
+      ]
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assumptionId",
+        "type",
+        "name",
+        "trigger",
+        "responsibilityBoundaryId",
+        "status",
+        "handling",
+        "estimateBoundary",
+        "changeTrigger",
+        "featureIds",
+        "sourceRefs"
+      ],
+      "properties": {
+        "assumptionId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "假设或风险在含义不变时保持稳定的 ID。"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["假设", "风险"],
+          "description": "依据当前证据把该项识别为计划假设或潜在风险。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "清楚概括未知条件或风险事件的名称。"
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "使该项需要处置的可观察条件、日期或事件。"
+        },
+        "responsibilityBoundaryId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "必须提供决定、证据或范围变更的一方责任边界 ID。"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["已明确", "待确认"],
+          "description": "该项责任和处置是否已获得明确输入。"
+        },
+        "handling": {
+          "type": "string",
+          "minLength": 1,
+          "description": "接受、缓解、升级或通过交付成果解决的方式。"
+        },
+        "estimateBoundary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "当前估算在该不确定条件下固定包含和排除的范围。"
+        },
+        "changeTrigger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "假设不成立或风险发生时触发重估的条件。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "该假设或风险会影响的 Feature ID。"
+        },
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "直接支持该假设或风险边界的输入锚点。"
+        }
+      }
+    },
+    "responsibilityBoundary": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/responsibilityBoundary"
+    }
+  }
+}

@@ -1,0 +1,314 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:delivery-bundle:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "inputRevisionId",
+    "scopeSha256",
+    "stories",
+    "acceptanceCriteria",
+    "tasks",
+    "dependencies"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-delivery-bundle-v1",
+      "description": "DeliveryBundle 使用的固定合同 token。"
+    },
+    "inputRevisionId": {
+      "type": "string",
+      "pattern": "^[0-9]{6}$",
+      "description": "本 DeliveryBundle 绑定的不可变输入 revision ID。"
+    },
+    "scopeSha256": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/sha256",
+      "description": "本次 Delivery 编译使用的完整 ScopeBundle 字节哈希。"
+    },
+    "stories": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/story"},
+      "description": "按 Feature 结果拆分且可独立交付和验收的 Story。"
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/acceptanceCriterion"},
+      "description": "按 Story 有序列出的独立、可观察和可判定验收结果。"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/task"},
+      "description": "按模板基础单元实例拆分的 Design 或 Implementation Task。"
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/dependency"},
+      "description": "Task 之间显式且可验证的前置依赖。"
+    }
+  },
+  "$defs": {
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storyId", "featureIds", "storyType", "name", "description", "uatRelevant"],
+      "properties": {
+        "storyId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "Story 在可验收结果不变时保持稳定的 ID。"
+        },
+        "featureIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "该 Story 实现的一个或多个紧密相关 Feature ID。"
+        },
+        "storyType": {
+          "const": "IMPLEMENTATION",
+          "description": "Story 始终表达交付结果；待设计工作通过 DESIGN Task 表达。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "以可交付业务或技术结果命名的 Story 标题。"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说明完成后可观察的结果和责任边界。"
+        },
+        "uatRelevant": {
+          "type": "boolean",
+          "description": "该 Story 是否属于获批业务 UAT 分母。"
+        }
+      }
+    },
+    "acceptanceCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["acceptanceCriterionId", "storyId", "sequence", "name", "rationale"],
+      "properties": {
+        "acceptanceCriterionId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "验收结果在含义不变时保持稳定的 ID。"
+        },
+        "storyId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "该验收结果唯一归属的 Story ID。"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "同一 Story 内评审和验收该结果的连续顺序。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "可观察且明确判定通过或不通过的验收条件。"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说明该 AC 如何实现 Feature 的业务或技术完成边界。"
+        }
+      }
+    },
+    "workModeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effectiveStartItemId", "effectiveStartItemName"],
+      "properties": {
+        "effectiveStartItemId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "支撑调整或接入复用判断的 Effective Start ID。"
+        },
+        "effectiveStartItemName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "与 ScopeBundle 中 Effective Start 完全一致的名称。"
+        },
+        "projectSideWorkTypes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "REGISTER",
+              "CONFIGURE",
+              "WRAP",
+              "MAP",
+              "ADAPT",
+              "AUTHENTICATE",
+              "TENANT_SETUP",
+              "PERMISSION_SETUP",
+              "SPECIALIZED_VERIFY"
+            ]
+          },
+          "description": "接入复用时本项目侧可独立估算和承诺的工作类型。"
+        },
+        "projectSideWorkCommitment": {
+          "type": "string",
+          "minLength": 1,
+          "description": "按工作类型顺序形成的本项目侧交付承诺。"
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "storyId",
+        "taskKind",
+        "name",
+        "baseUnit",
+        "workMode",
+        "workModeRationale",
+        "complexity",
+        "acceptanceCriterionIds",
+        "designItemIds",
+        "integrationIds",
+        "nfrIds",
+        "dependsOnTaskIds",
+        "rationale"
+      ],
+      "properties": {
+        "taskId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "Task 在单基础单元实例含义不变时保持稳定的 ID。"
+        },
+        "storyId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "该 Task 所实现的上游 Story ID。"
+        },
+        "taskKind": {
+          "type": "string",
+          "enum": ["DESIGN", "IMPLEMENTATION"],
+          "description": "Task 是补齐待设计事项还是实现已明确交付。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "明确交付对象和单个基础单元实例边界的 Task 名称。"
+        },
+        "baseUnit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "当前 SOW 模板基础单元目录中的基础单元 ID。"
+        },
+        "workMode": {
+          "type": "string",
+          "enum": ["新建", "调整", "接入复用"],
+          "description": "当前实例相对 Effective Start 的工作模式。"
+        },
+        "workModeRationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "结合实例和现状说明工作模式选择的具体理由。"
+        },
+        "workModeEvidence": {
+          "$ref": "#/$defs/workModeEvidence",
+          "description": "调整或接入复用所依赖的结构化现状证据。"
+        },
+        "complexity": {
+          "type": "string",
+          "enum": ["S", "M", "L"],
+          "description": "依据当前基础单元标准选择的复杂度。"
+        },
+        "complexityRationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "S 或 L 实例偏离 M 档标准的具体事实。"
+        },
+        "acceptanceCriterionIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
+          "description": "该 Task 支持的同 Story AC ID；允许多对多追溯。"
+        },
+        "designItemIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该 Task 实现或补齐的 Design Item ID。"
+        },
+        "integrationIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该 Task 实现或约束的 Integration ID。"
+        },
+        "nfrIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该 Task 满足或设计的 NFR ID。"
+        },
+        "dependsOnTaskIds": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+          "description": "该 Task 开始前必须完成的前置 Task ID。"
+        },
+        "matchedEffectiveStartItemId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "可选：最能证明工作模式的一条 Effective Start ID。"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说明单实例计数边界、包含和排除范围。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"complexity": {"enum": ["S", "L"]}},
+            "required": ["complexity"]
+          },
+          "then": {"required": ["complexityRationale"]},
+          "else": {"not": {"required": ["complexityRationale"]}}
+        },
+        {
+          "if": {
+            "properties": {"workMode": {"enum": ["调整", "接入复用"]}},
+            "required": ["workMode"]
+          },
+          "then": {
+            "required": ["workModeEvidence", "matchedEffectiveStartItemId"]
+          },
+          "else": {"not": {"required": ["workModeEvidence"]}}
+        },
+        {
+          "if": {
+            "properties": {"workMode": {"const": "接入复用"}},
+            "required": ["workMode"]
+          },
+          "then": {
+            "properties": {
+              "workModeEvidence": {
+                "allOf": [
+                  {"$ref": "#/$defs/workModeEvidence"},
+                  {"required": ["projectSideWorkTypes", "projectSideWorkCommitment"]}
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dependencyId", "predecessorTaskId", "successorTaskId", "rationale"],
+      "properties": {
+        "dependencyId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "Task 依赖关系的稳定 ID。"
+        },
+        "predecessorTaskId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "必须先完成的 Task ID。"
+        },
+        "successorTaskId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "依赖前置 Task 结果的后续 Task ID。"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说明为何该顺序是交付或技术上的必要约束。"
+        }
+      }
+    }
+  }
+}

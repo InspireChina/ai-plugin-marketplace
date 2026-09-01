@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:input-manifest:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "revisionId",
+    "project",
+    "mode",
+    "responsibilityBoundaries",
+    "sources",
+    "questionnaireAnswers",
+    "anchorsPath",
+    "anchorsSha256",
+    "recordedAt"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-input-manifest-v1",
+      "description": "不可变输入清单使用的固定合同 token。"
+    },
+    "revisionId": {
+      "type": "string",
+      "pattern": "^[0-9]{6}$",
+      "description": "本次有效输入 revision 的六位递增 ID。"
+    },
+    "project": {
+      "$ref": "#/$defs/project",
+      "description": "仅包含稳定身份、名称和计划生效日期的项目信息。"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["GREENFIELD", "BROWNFIELD"],
+      "description": "本次输入采用 Greenfield 或 Brownfield 规则。"
+    },
+    "responsibilityBoundaries": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/responsibilityBoundary"},
+      "description": "输入 revision 固化的客户、供应商和第三方责任边界。"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/source"},
+      "description": "已经复制到 revision 内并完成摘要和锚点提取的来源。"
+    },
+    "questionnaireAnswers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/questionnaireAnswer"},
+      "description": "本 revision 固化的最小问卷答案、现状增量和明确决定。"
+    },
+    "anchorsPath": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath",
+      "description": "相对于 revision 根目录的语义锚点文件路径。"
+    },
+    "anchorsSha256": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/sha256",
+      "description": "规范化语义锚点文件字节的 SHA-256。"
+    },
+    "recordedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "输入 revision 固化时的 UTC RFC 3339 时间。"
+    }
+  },
+  "$defs": {
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "name", "plannedEffectiveDate"],
+      "properties": {
+        "projectId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "跨 revision 保持稳定的项目逻辑 ID。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "面向 SOW 展示的项目名称。"
+        },
+        "plannedEffectiveDate": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/effectiveDate",
+          "description": "计划合同生效日期，格式为 YYYY-MM-DD。"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceId",
+        "role",
+        "version",
+        "originalName",
+        "mediaType",
+        "path",
+        "sha256",
+        "semanticSha256",
+        "anchorCount"
+      ],
+      "properties": {
+        "sourceId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "来源文档跨 revision 使用的稳定逻辑 ID。"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["PRD", "HLD", "PRIOR_SOW", "SUPPLEMENT"],
+          "description": "来源的 PRD、HLD、往期 SOW 或补充材料角色。"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "用户提供的来源版本或日期标识。"
+        },
+        "originalName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "复制前的文件基本名称，不包含本机目录。"
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1,
+          "description": "用于选择确定性读取器的媒体类型。"
+        },
+        "path": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath",
+          "description": "相对于 revision 根目录的来源快照路径。"
+        },
+        "sha256": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sha256",
+          "description": "来源快照原始字节的 SHA-256。"
+        },
+        "semanticSha256": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sha256",
+          "description": "按文档顺序组合规范化语义锚点后的 SHA-256。"
+        },
+        "anchorCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "该来源成功提取并固化的语义锚点数量。"
+        }
+      }
+    },
+    "questionnaireAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "answer"],
+      "properties": {
+        "questionId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "最小问卷问题、现状声明或明确决定的稳定 ID。"
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "当前 revision 中有效的结构化答案。"
+        }
+      }
+    },
+    "responsibilityBoundary": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/responsibilityBoundary"
+    }
+  }
+}

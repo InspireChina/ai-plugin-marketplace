@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:common:1",
+  "$defs": {
+    "lowerKebabId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "projectRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "effectiveDate": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "idArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/lowerKebabId"}
+    },
+    "nonEmptyIdArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/lowerKebabId"}
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "anchorId", "locator", "sha256"],
+      "properties": {
+        "sourceId": {
+          "$ref": "#/$defs/lowerKebabId",
+          "description": "来源文档在输入 revision 内的稳定逻辑 ID。"
+        },
+        "anchorId": {
+          "$ref": "#/$defs/lowerKebabId",
+          "description": "来源中语义锚点的稳定 ID。"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1,
+          "description": "标题、表格项或工作表行等不依赖页码和行号的逻辑定位。"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "规范化锚点文本的 SHA-256。"
+        }
+      }
+    },
+    "sourceRefs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/sourceRef"}
+    },
+    "responsibilityBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["responsibilityBoundaryId", "party", "name", "responsibilities"],
+      "properties": {
+        "responsibilityBoundaryId": {
+          "$ref": "#/$defs/lowerKebabId",
+          "description": "高层责任边界的稳定 ID。"
+        },
+        "party": {
+          "type": "string",
+          "enum": ["CUSTOMER", "VENDOR", "THIRD_PARTY"],
+          "description": "承担该责任边界的客户、供应商或第三方。"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "面向评审展示的责任边界名称。"
+        },
+        "responsibilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1},
+          "description": "该参与方必须提供、决定或完成的高层责任。"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "contract": "ai-sow-scope-bundle-v1",
+  "inputRevisionId": "000001",
+  "epics": [
+    {
+      "epicId": "epic-refund-upgrade",
+      "kind": "BUSINESS",
+      "name": "退款能力升级",
+      "summary": "升级退款处理并保持状态通知一致。",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund-upgrade",
+          "anchorId": "anchor-refund-upgrade",
+          "locator": "heading:Feature/退款升级",
+          "sha256": "8222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "featureId": "feature-refund-processing",
+      "epicId": "epic-refund-upgrade",
+      "domainId": "domain-refund",
+      "kind": "BUSINESS",
+      "name": "退款处理升级",
+      "summary": "在既有退款能力上增加自动审核并保持可追踪结果。",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund-upgrade",
+          "anchorId": "anchor-refund-processing",
+          "locator": "heading:Feature/退款处理",
+          "sha256": "9222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "responsibilityBoundaryIds": ["responsibility-vendor-delivery"],
+      "scopeDecision": {
+        "decision": "IN_SCOPE",
+        "rationale": "本期需要在既有退款服务上交付自动审核。",
+        "designItemIds": ["design-item-refund-orchestration"],
+        "effectiveStartItemIds": ["effective-start-refund-api"],
+        "requiredIntegrationIds": ["integration-payment-refund"],
+        "requiredNfrIds": ["nfr-recovery-objective"]
+      }
+    },
+    {
+      "featureId": "feature-refund-notification",
+      "epicId": "epic-refund-upgrade",
+      "domainId": "domain-refund",
+      "kind": "BUSINESS",
+      "name": "退款状态通知",
+      "summary": "退款状态变化后向用户提供一致的通知结果。",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund-upgrade",
+          "anchorId": "anchor-refund-notification",
+          "locator": "heading:Feature/状态通知",
+          "sha256": "a222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "responsibilityBoundaryIds": ["responsibility-vendor-delivery"],
+      "scopeDecision": {
+        "decision": "IN_SCOPE",
+        "rationale": "退款状态通知是本期用户可见结果。",
+        "designItemIds": ["design-item-refund-orchestration"],
+        "effectiveStartItemIds": ["effective-start-refund-api"],
+        "requiredIntegrationIds": ["integration-payment-refund"],
+        "requiredNfrIds": ["nfr-recovery-objective"]
+      }
+    }
+  ],
+  "commitments": [
+    {
+      "commitmentId": "commitment-refund-audit",
+      "name": "退款审核规则延续",
+      "summary": "往期未完成的审核规则需在本期继续交付。",
+      "treatment": "CARRY_FORWARD",
+      "featureIds": ["feature-refund-processing"],
+      "sourceRefs": [
+        {
+          "sourceId": "prior-sow-refund",
+          "anchorId": "anchor-prior-audit",
+          "locator": "table:范围清单/退款审核",
+          "sha256": "b222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "effectiveStartItems": [
+    {
+      "effectiveStartItemId": "effective-start-refund-api",
+      "name": "既有退款接口",
+      "summary": "项目启动时已有可调用的退款申请和状态查询接口。",
+      "commitmentIds": [],
+      "featureIds": ["feature-refund-processing", "feature-refund-notification"],
+      "sourceRefs": [
+        {
+          "sourceId": "prior-sow-refund",
+          "anchorId": "anchor-prior-refund-api",
+          "locator": "table:系统能力/退款接口",
+          "sha256": "c222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "designItems": [
+    {
+      "designItemId": "design-item-refund-orchestration",
+      "type": "FLOW",
+      "name": "退款编排流程",
+      "summary": "在既有接口之上编排自动审核、支付退款和状态通知。",
+      "featureIds": ["feature-refund-processing", "feature-refund-notification"],
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund-upgrade",
+          "anchorId": "anchor-refund-flow",
+          "locator": "heading:关键业务流/退款编排",
+          "sha256": "d222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "designDecisions": [
+    {
+      "designDecisionId": "decision-refund-orchestration",
+      "name": "退款编排边界",
+      "decision": "由退款域统一编排支付退款和通知结果。",
+      "rationale": "统一编排避免两个 Feature 重复实现支付状态处理。",
+      "designItemIds": ["design-item-refund-orchestration"],
+      "featureIds": ["feature-refund-processing", "feature-refund-notification"],
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund-upgrade",
+          "anchorId": "anchor-refund-flow",
+          "locator": "heading:关键业务流/退款编排",
+          "sha256": "d222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "integrations": [
+    {
+      "integrationId": "integration-payment-refund",
+      "name": "支付平台退款",
+      "source": "退款编排服务",
+      "target": "支付平台",
+      "purpose": "发起退款并取得最终支付状态。",
+      "trigger": "退款申请通过审核",
+      "status": "DEFINED",
+      "featureIds": ["feature-refund-processing", "feature-refund-notification"],
+      "responsibilityBoundaryId": "responsibility-third-party-payment",
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund-upgrade",
+          "anchorId": "anchor-payment-integration",
+          "locator": "table:Integration/支付退款",
+          "sha256": "e222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "nfrs": [
+    {
+      "nfrId": "nfr-recovery-objective",
+      "name": "退款流程恢复目标",
+      "category": "灾备",
+      "status": "DESIGN_REQUIRED",
+      "targetOrRationale": "需要满足恢复要求，但目标值和实现方案待设计。",
+      "estimateBoundary": "估算包含恢复目标调研和方案设计，不包含新增灾备基础设施采购。",
+      "changeTrigger": "设计确认需要跨地域灾备或新增商业产品。",
+      "featureIds": ["feature-refund-processing", "feature-refund-notification"],
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund-upgrade",
+          "anchorId": "anchor-recovery-nfr",
+          "locator": "table:NFR/恢复目标",
+          "sha256": "f222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "assumptions": [
+    {
+      "assumptionId": "assumption-payment-sandbox",
+      "type": "假设",
+      "name": "支付沙箱按时可用",
+      "trigger": "支付平台未在联调开始前提供沙箱",
+      "responsibilityBoundaryId": "responsibility-third-party-payment",
+      "status": "已明确",
+      "handling": "沙箱延迟按项目变更控制调整联调计划。",
+      "estimateBoundary": "估算包含一次标准沙箱联调，不包含第三方环境建设。",
+      "changeTrigger": "需供应商代建模拟平台或支持额外联调轮次。",
+      "featureIds": ["feature-refund-processing", "feature-refund-notification"],
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund-upgrade",
+          "anchorId": "anchor-payment-integration",
+          "locator": "table:Integration/支付退款",
+          "sha256": "e222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    }
+  ],
+  "responsibilityBoundaries": [
+    {
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "party": "VENDOR",
+      "name": "供应商交付责任",
+      "responsibilities": ["完成范围内设计、实现和验证"]
+    },
+    {
+      "responsibilityBoundaryId": "responsibility-third-party-payment",
+      "party": "THIRD_PARTY",
+      "name": "支付平台责任",
+      "responsibilities": ["提供稳定退款接口和联调环境"]
+    }
+  ]
+}

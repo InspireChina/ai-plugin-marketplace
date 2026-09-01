@@ -1,0 +1,44 @@
+{
+  "contract": "ai-sow-generate-request-v1",
+  "project": {
+    "projectId": "project-orbit-refund",
+    "name": "示例退款服务新建项目",
+    "plannedEffectiveDate": "2026-10-01"
+  },
+  "mode": "GREENFIELD",
+  "responsibilityBoundaries": [
+    {
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "party": "VENDOR",
+      "name": "供应商交付责任",
+      "responsibilities": ["完成设计、实现、自测与交付移交"]
+    },
+    {
+      "responsibilityBoundaryId": "responsibility-customer-environment",
+      "party": "CUSTOMER",
+      "name": "客户环境责任",
+      "responsibilities": ["按计划提供测试环境与验收人员"]
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "prd-refund",
+      "role": "PRD",
+      "version": "1.0",
+      "path": "inputs/refund-prd.md"
+    },
+    {
+      "sourceId": "hld-refund",
+      "role": "HLD",
+      "version": "1.0",
+      "path": "inputs/refund-hld.md"
+    }
+  ],
+  "questionnaireAnswers": [
+    {
+      "questionId": "question-environment-readiness",
+      "answer": "测试环境由客户在开发完成前五个工作日提供。"
+    }
+  ],
+  "currentStateDelta": null
+}

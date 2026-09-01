@@ -1,0 +1,122 @@
+{
+  "contract": "ai-sow-scope-bundle-v1",
+  "inputRevisionId": "000001",
+  "epics": [
+    {
+      "epicId": "epic-refund-service",
+      "kind": "BUSINESS",
+      "name": "退款服务",
+      "summary": "让用户提交退款申请并查看处理结果。",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund",
+          "anchorId": "anchor-refund-feature",
+          "locator": "heading:Feature/退款处理",
+          "sha256": "6111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "featureId": "feature-refund-processing",
+      "epicId": "epic-refund-service",
+      "domainId": "domain-refund",
+      "kind": "BUSINESS",
+      "name": "退款申请处理",
+      "summary": "用户提交有效退款申请后获得可追踪的处理结果。",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund",
+          "anchorId": "anchor-refund-feature",
+          "locator": "heading:Feature/退款处理",
+          "sha256": "6111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "responsibilityBoundaryIds": ["responsibility-vendor-delivery"],
+      "scopeDecision": {
+        "decision": "IN_SCOPE",
+        "rationale": "PRD 明确要求本期新建退款申请处理能力。",
+        "designItemIds": ["design-item-refund-service"],
+        "effectiveStartItemIds": [],
+        "requiredIntegrationIds": [],
+        "requiredNfrIds": []
+      }
+    }
+  ],
+  "commitments": [],
+  "effectiveStartItems": [],
+  "designItems": [
+    {
+      "designItemId": "design-item-refund-service",
+      "type": "COMPONENT",
+      "name": "退款申请服务",
+      "summary": "接收、校验并持久化退款申请。",
+      "featureIds": ["feature-refund-processing"],
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund",
+          "anchorId": "anchor-refund-component",
+          "locator": "heading:目标架构/退款申请服务",
+          "sha256": "7111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    }
+  ],
+  "designDecisions": [
+    {
+      "designDecisionId": "decision-refund-storage",
+      "name": "退款申请持久化边界",
+      "decision": "退款申请由退款申请服务统一持久化。",
+      "rationale": "集中持久化便于保持状态追踪一致。",
+      "designItemIds": ["design-item-refund-service"],
+      "featureIds": ["feature-refund-processing"],
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund",
+          "anchorId": "anchor-refund-component",
+          "locator": "heading:目标架构/退款申请服务",
+          "sha256": "7111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    }
+  ],
+  "integrations": [],
+  "nfrs": [],
+  "assumptions": [
+    {
+      "assumptionId": "assumption-test-environment",
+      "type": "假设",
+      "name": "测试环境按时可用",
+      "trigger": "客户未在开发完成前五个工作日提供测试环境",
+      "responsibilityBoundaryId": "responsibility-customer-environment",
+      "status": "已明确",
+      "handling": "环境延迟通过项目变更控制调整联调计划。",
+      "estimateBoundary": "估算包含一次标准环境联调，不包含客户环境建设。",
+      "changeTrigger": "环境准备晚于约定日期或需供应商代建。",
+      "featureIds": ["feature-refund-processing"],
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund",
+          "anchorId": "anchor-environment-answer",
+          "locator": "question:environment-readiness",
+          "sha256": "8111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    }
+  ],
+  "responsibilityBoundaries": [
+    {
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "party": "VENDOR",
+      "name": "供应商交付责任",
+      "responsibilities": ["完成设计、实现、自测与交付移交"]
+    },
+    {
+      "responsibilityBoundaryId": "responsibility-customer-environment",
+      "party": "CUSTOMER",
+      "name": "客户环境责任",
+      "responsibilities": ["按计划提供测试环境与验收人员"]
+    }
+  ]
+}

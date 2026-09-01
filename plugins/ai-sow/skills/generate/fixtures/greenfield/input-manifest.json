@@ -1,0 +1,57 @@
+{
+  "contract": "ai-sow-input-manifest-v1",
+  "revisionId": "000001",
+  "project": {
+    "projectId": "project-orbit-refund",
+    "name": "示例退款服务新建项目",
+    "plannedEffectiveDate": "2026-10-01"
+  },
+  "mode": "GREENFIELD",
+  "responsibilityBoundaries": [
+    {
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "party": "VENDOR",
+      "name": "供应商交付责任",
+      "responsibilities": ["完成设计、实现、自测与交付移交"]
+    },
+    {
+      "responsibilityBoundaryId": "responsibility-customer-environment",
+      "party": "CUSTOMER",
+      "name": "客户环境责任",
+      "responsibilities": ["按计划提供测试环境与验收人员"]
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "prd-refund",
+      "role": "PRD",
+      "version": "1.0",
+      "originalName": "refund-prd.md",
+      "mediaType": "text/markdown",
+      "path": "sources/prd/prd-refund/refund-prd.md",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "semanticSha256": "2111111111111111111111111111111111111111111111111111111111111111",
+      "anchorCount": 3
+    },
+    {
+      "sourceId": "hld-refund",
+      "role": "HLD",
+      "version": "1.0",
+      "originalName": "refund-hld.md",
+      "mediaType": "text/markdown",
+      "path": "sources/hld/hld-refund/refund-hld.md",
+      "sha256": "3111111111111111111111111111111111111111111111111111111111111111",
+      "semanticSha256": "4111111111111111111111111111111111111111111111111111111111111111",
+      "anchorCount": 4
+    }
+  ],
+  "questionnaireAnswers": [
+    {
+      "questionId": "question-environment-readiness",
+      "answer": "测试环境由客户在开发完成前五个工作日提供。"
+    }
+  ],
+  "anchorsPath": "anchors.json",
+  "anchorsSha256": "5111111111111111111111111111111111111111111111111111111111111111",
+  "recordedAt": "2026-09-02T00:00:00Z"
+}
