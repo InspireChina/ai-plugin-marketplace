@@ -289,7 +289,7 @@ staged-only receipt input、批准漂移或并发写迹象都不得覆盖。
 `completedOperations == totalOperations`，不能只报告发生字节变化的 operation。
 
 删除只允许 Requirement Owner 以显式 tombstone 删除已存在的可选 questionnaire review，不允许用
-staging 新增 Owner input。Publisher 按 `ai-sow-package-v1` 与 `receipt-only-v3` 机械复算最终
+staging 新增 Owner input。Publisher 按 `ai-sow-package-v1` 与 `receipt-only-v4` 机械复算最终
 `generationFingerprint`，绑定 project、六份 output、五份 review、五份 receipt 和正式模板原字节；
 manifest 的 `generatorContract` 必须与 publisher 常量精确一致，否则返回
 `PACKAGE_GENERATOR_CONTRACT_MISMATCH`。任何确定性投影变更必须同时提升 generate-sow 与 reconcile

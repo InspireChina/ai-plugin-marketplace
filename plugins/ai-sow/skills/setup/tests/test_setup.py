@@ -18,7 +18,7 @@ SKILL_ROOT = Path(__file__).parents[1]
 SCRIPT = SKILL_ROOT / "scripts/setup.py"
 BOOTSTRAP_SH = SKILL_ROOT / "scripts/bootstrap.sh"
 BOOTSTRAP_PS1 = SKILL_ROOT / "scripts/bootstrap.ps1"
-TEMPLATE = SKILL_ROOT / "assets/sow-template.xlsx"
+TEMPLATE = SKILL_ROOT.parents[1] / "assets/sow-template.xlsx"
 POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
 POSIX_SHELL = "/bin/sh" if Path("/bin/sh").is_file() else None
 
@@ -507,10 +507,23 @@ def test_bundled_template_round_trips_and_contains_authoritative_catalog() -> No
     payload = TEMPLATE.read_bytes()
     workbook = openpyxl.load_workbook(BytesIO(payload), data_only=False)
     try:
+        assert workbook.sheetnames == [
+            "01-需求故事",
+            "02-任务清单",
+            "03-工作量汇总",
+            "90-估算标准",
+        ]
         tables = {
             name: worksheet.tables[name]
             for worksheet in workbook.worksheets
             for name in worksheet.tables
+        }
+        assert set(tables) == {
+            "SOWStoryTable",
+            "TaskTable",
+            "ProjectSummaryTable",
+            "ProjectParameterTable",
+            "BaseUnitCatalogTable",
         }
         catalog = tables["BaseUnitCatalogTable"]
         min_col, min_row, _, max_row = openpyxl.utils.range_boundaries(catalog.ref)
@@ -533,6 +546,8 @@ def test_bundled_template_round_trips_and_contains_authoritative_catalog() -> No
 
 
 def test_setup_creates_exact_minimal_project_shell(tmp_path: Path) -> None:
+    assert TEMPLATE.is_file()
+    assert not (SKILL_ROOT / "assets/sow-template.xlsx").exists()
     result = run_setup(tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout)

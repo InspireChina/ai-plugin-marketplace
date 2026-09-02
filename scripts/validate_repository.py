@@ -351,6 +351,7 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     """Validate the release identity and plugin-scoped support surface."""
     errors: list[str] = []
     required = (
+        plugin_root / "assets/sow-template.xlsx",
         plugin_root / "tests/support/smoke_plugin.py",
         plugin_root / "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
         plugin_root / "docs/reference/SOW估算与生成示例_v1.3.xlsx",

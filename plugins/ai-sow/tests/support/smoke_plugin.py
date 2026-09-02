@@ -176,6 +176,89 @@ def run_smoke(
     )
     _require_ok(generate_result, "generate-sow")
 
+    supplier_project = projects_root / "supplier-completion"
+    supplier_project.mkdir(parents=True, exist_ok=True)
+    supplier_asset = (
+        active_plugin
+        / "skills/complete-supplier-estimate/assets/supplier-estimate-input.xlsx"
+    )
+    formal_asset = active_plugin / "assets/sow-template.xlsx"
+    if not supplier_asset.is_file() or not formal_asset.is_file():
+        raise RuntimeError("supplier or formal workbook asset is missing")
+    supplier_input = supplier_project / "supplier.xlsx"
+    completed_workbook = supplier_project / "formal.xlsx"
+    shutil.copyfile(supplier_asset, supplier_input)
+    import openpyxl
+
+    supplier_book = openpyxl.load_workbook(supplier_input, data_only=False)
+    try:
+        story_sheet = supplier_book["01-需求故事"]
+        for column, value in enumerate(
+            (
+                "Smoke 需求",
+                "Smoke 子需求",
+                "Smoke Story",
+                "是",
+                "可验收",
+                "Smoke 备注",
+            ),
+            start=1,
+        ):
+            story_sheet.cell(5, column).value = value
+            story_sheet.cell(5, column).data_type = "s"
+        task_sheet = supplier_book["02-任务清单"]
+        for column, value in enumerate(
+            (
+                "Smoke 需求 > Smoke 子需求 > Smoke Story",
+                "Smoke Task",
+                "界面与交互",
+                "新建",
+                "M",
+                "Smoke 任务备注",
+            ),
+            start=1,
+        ):
+            task_sheet.cell(5, column).value = value
+            task_sheet.cell(5, column).data_type = "s"
+        supplier_book.save(supplier_input)
+    finally:
+        supplier_book.close()
+
+    completion_script = (
+        active_plugin
+        / "skills/complete-supplier-estimate/scripts/complete_supplier_estimate.py"
+    )
+    completion_result = run_command(
+        plugin_python_command(
+            active_plugin,
+            completion_script,
+            "--input",
+            str(supplier_input),
+            "--output",
+            str(completed_workbook),
+        ),
+        cwd=supplier_project,
+    )
+    _require_ok(completion_result, "complete-supplier-estimate")
+    completed_book = openpyxl.load_workbook(completed_workbook, data_only=False)
+    try:
+        completed_sheets = len(completed_book.sheetnames)
+        completed_formula_cells = sum(
+            cell.data_type == "f"
+            for worksheet in completed_book.worksheets
+            for row in worksheet.iter_rows()
+            for cell in row
+        )
+        if completed_book.sheetnames != [
+            "01-需求故事",
+            "02-任务清单",
+            "03-工作量汇总",
+            "90-估算标准",
+        ] or completed_formula_cells == 0:
+            raise RuntimeError("completed workbook contract is invalid")
+    finally:
+        completed_book.close()
+
     setup_project = json.loads(
         (greenfield / ".ai-sow/project.json").read_text(encoding="utf-8")
     )
@@ -218,6 +301,11 @@ def run_smoke(
         "setupOutcome": setup_result["outcome"],
         "ownerReceiptCount": len(owner_receipts),
         "generateOutcome": generate_result["outcome"],
+        "completionOutcome": completion_result["outcome"],
+        "supplierWorkbookPath": str(supplier_input.resolve()),
+        "completedWorkbookPath": str(completed_workbook.resolve()),
+        "completedWorkbookSheets": completed_sheets,
+        "completedFormulaCells": completed_formula_cells,
         "workbookPath": str(workbook_path),
         "manifestPath": str(output_manifest.resolve()),
         "asisOwnsTechnicalIntake": asis_owns_technical_intake,

@@ -68,6 +68,7 @@ def write_plugin(root: Path, name: str, version: str) -> Path:
 def write_valid_ai_sow_release(root: Path) -> Path:
     plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.1")
     for relative in (
+        "assets/sow-template.xlsx",
         "tests/support/smoke_plugin.py",
         "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
         "docs/reference/SOW估算与生成示例_v1.3.xlsx",
@@ -146,6 +147,25 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
+    def test_current_generator_projection_declares_v4_everywhere(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        generator_root = repo_root / "plugins/ai-sow/skills/generate-sow"
+        manifest = json.loads(
+            (generator_root / "contracts/manifest.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        baseline = json.loads(
+            (generator_root / "contracts/generator-fingerprint-baseline.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            manifest["properties"]["generatorContract"]["const"],
+            "receipt-only-v4",
+        )
+        self.assertEqual(baseline["generatorContract"], "receipt-only-v4")
+
     def test_generator_fingerprint_matches_the_current_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -426,6 +446,13 @@ class RepositoryValidatorTests(unittest.TestCase):
 
             self.assertIn(
                 "missing release file: plugins/ai-sow/tests/support/smoke_plugin.py",
+                validate_ai_sow_release(root, plugin_root),
+            )
+
+            formal_template = plugin_root / "assets/sow-template.xlsx"
+            formal_template.unlink()
+            self.assertIn(
+                "missing release file: plugins/ai-sow/assets/sow-template.xlsx",
                 validate_ai_sow_release(root, plugin_root),
             )
 

@@ -135,9 +135,9 @@ Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate �
 | 基础人天匹配 | 基础单元配置表每行直接提供“新建 / 调整 / 接入复用”三个 M 档人天列；正数表示组合可用，`❌` 表示不适用。数值缺失时校验不通过。复杂度系数必须为正数且状态为固定规则、已校准或已批准；工作模式不使用全局系数。 |
 | 集成 Task | 基础单元为“内部系统对接”或“外部系统对接”的 Task；通过 `integrationId` 实现且只实现一个 Integration。每个需要交付的 Integration 都有且只有一个集成 Task。 |
 | SIT 判断 | 集成 Task 触发 SIT；仅有 Integration 记录时不直接触发。 |
-| 最终人天 | XLSX 按“M档基础人天 × 复杂度系数”计算 Task 人天，并继续计算 SIT、UAT、风险、取整和总计。结构化 JSON 不保存插件计算结果。 |
+| 最终人天 | XLSX 按“M档基础人天 × 复杂度系数”计算 Task 人天，并继续计算 SIT、UAT、取整和总计。结构化 JSON 不保存插件计算结果；Assumption/Risk 不参与工作簿人天计算。 |
 
-Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start：“调整 / 接入复用”必须引用一项足以证明工作模式的现状；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用一项相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。工作簿把该引用显示为“关联现状条目”，名称直接来自 `90-系统现状` 的可见明细表，不使用隐藏辅助名单。
+Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start：“调整 / 接入复用”必须引用一项足以证明工作模式的现状；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用一项相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。这些证据保留在 Estimate、评审和 package 来源中；精简工作簿只在 Task `备注` 合并可读理由，不单列现状引用。
 
 “接入复用”只有在本项目侧存在可独立估算的注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作时才成立。其 `workModeRationale` 使用固定格式 `<有效起点名称>保持不变；本项目负责并交付：<中文工作类型>。`，必须与结构化工作类型及承诺完全一致，不解析任意自由文本来判断责任。普通依赖引入、常规调用或直接按既有约定使用不单独生成 Task。任何 `affectsEstimate = true` 的未关闭 Uncertainty 都会阻止正式估算和 XLSX 生成；`impact` 只负责解释影响，不作为关键词门禁。
 
@@ -200,9 +200,11 @@ Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立
 原字节复用路径天然属于完成状态，完整发布后的复查必须返回
 `completedOperations == totalOperations`，不能把内部的 changed-prefix 计数暴露成未完成进度。
 
-`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。模板 prototype 提供数据行最小高度，生成器按最终可见换行文本和模板列宽确定性扩大行高；`03-SOW主表` 的公式汇总列使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式并为每条内容添加项目符号，不依赖 `_xlfn._xlws.` 动态工作表函数；五张受保护业务表只锁定公式与关系派生单元格及单元格格式，白色输入单元格保持可编辑，并允许调整列宽与行高、使用表头筛选与排序。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 通过“关联现状条目”单选一个可见 Effective Start 且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 只保留一张 Effective Start 明细表，展示“主题名称 / 现状条目名称 / 现状描述 / 起点可用性”，其中现状描述直接投影 Effective Start 自身的 `summary`，不以来源 Item/Commitment 摘要重建开工边界；主题和起点可用性使用下拉，整页可手工填写且不启用保护。任务下拉直接引用该可见名称列，不再使用隐藏辅助名单。Excel 内的系统现状修订不回写稳定 JSON、评审或 manifest。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板。正式工作簿固定为 `01-需求故事 / 02-任务清单 / 03-工作量汇总 / 90-估算标准`；只填充 Story 与 Task 输入 Table，AC 合并到 Story 单元格，SIT 由内部/外部系统对接 Task 触发。Integration、Assumption/Risk、As-Is 及其他丰富字段仍随 package 交付，但不进入 XLSX。模板 prototype 提供样式、公式和数据行最小高度，生成器按实际行数与可见换行文本扩展；`任务列表` 使用 `TEXTJOIN + IF` CSE 数组公式，不依赖 `_xlfn._xlws.`。所有人天、SIT、UAT、取整和四项汇总只来自模板公式，Python 不计算。普通文本以 `= / + / - / @` 开头时按文本处理。
 
-生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。生成指纹中的 `receipt-only-v3` 合同隔离当前工作簿投影语义；投影变化必须提升该合同，避免不同包树复用同一不可变 ID。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
+生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。生成指纹中的 `receipt-only-v4` 合同隔离当前工作簿投影语义；投影变化必须提升该合同，避免不同包树复用同一不可变 ID。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
+
+`complete-supplier-estimate` 是七阶段外的非 Owner Skill。它只接受本 Skill 资产中的三 Sheet 简易模板，严格校验安全内容、合同、关系和枚举，把两个输入 Table 复制到插件级正式模板的新副本；不计算人天、不写稳定 JSON、不猜测或部分转换。供应商模板只包含合同版本、基础单元 ID/名称/任务族、允许工作方式、S/M/L 与是/否，不暴露基础人天、参数或正式计算公式。
 
 插件不提供统一 CLI，也不建设共享 Owner 业务编译器、项目锁、不可变 revision store、活动指针、
 自动回滚、自动 Git commit、用户项目级 Python/uv 环境、公式执行、OOXML 全量基准或 XLSX

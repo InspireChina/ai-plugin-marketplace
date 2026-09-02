@@ -36,6 +36,11 @@ class PluginSmokeTests(unittest.TestCase):
             self.assertEqual(report["ownerReceiptCount"], 5)
             self.assertEqual(report["generateOutcome"], "OK")
             self.assertTrue(Path(report["workbookPath"]).is_file())
+            self.assertEqual(report["completionOutcome"], "OK")
+            self.assertTrue(Path(report["supplierWorkbookPath"]).is_file())
+            self.assertTrue(Path(report["completedWorkbookPath"]).is_file())
+            self.assertEqual(report["completedWorkbookSheets"], 4)
+            self.assertGreater(report["completedFormulaCells"], 0)
 
             setup_project = json.loads(
                 (Path(report["greenfieldProject"]) / ".ai-sow/project.json").read_text(encoding="utf-8")

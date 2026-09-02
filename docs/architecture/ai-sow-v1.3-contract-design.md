@@ -14,7 +14,7 @@
 
 ## 2. 目标
 
-1. 统一 EPIC、FEATURE、STORY、AC、TASK、ASIS、INTEGRATION、ASSUMPTION 的业务含义、Sheet 和 ID。
+1. 统一 EPIC、FEATURE、STORY、AC、TASK、ASIS、INTEGRATION、ASSUMPTION 的业务含义、稳定 ID 和精简工作簿投影。
 2. 让 `analyze-requirement` 只拥有业务需求，让 `generate-design` 统一拥有技术需求。
 3. 让 setup 适合尚不知道代码库上下文的 BA 首次使用。
 4. 只有分析结果确有内容时才填写选填字段，不用空泛内容填表。
@@ -39,7 +39,7 @@
 | CodeGraph 不可用即回退 | 正式流程缺少安装策略 | MCP、CLI、项目局部安装 CLI、`rg` 四级降级 |
 | 测试启动 Testcontainers | 目标仓库测试带入，不是插件固有需要 | 默认静态分析，运行验证按需且说明原因 |
 | Sheet 与领域类型错位 | 领域模型和数据格式问题 | 全链路改为 EPIC → FEATURE → STORY → AC → TASK |
-| `02-故事` 命名错误 | 真实模板问题 | 改为 `02-子需求` |
+| 稳定数据逐对象展开到 XLSX | 审计数据与交付视图混同 | 稳定 JSON 保留全量对象，XLSX 精简为 Story、Task、汇总和估算标准 |
 | 需求描述内容与列名不符 | 真实生成规则问题 | 描述只介绍需求，不混入目标、技术方案或 Task |
 | 需求选填列全空 | 来源信息存在，但 Schema 和写入规则没有保留 | 增加选填字段，并按分析结果写入 |
 | 子需求列全空、推断理由重复 | 生成规则和质量校验问题 | 选填字段按需生成；产生该需求的理由必须具体 |
@@ -49,18 +49,22 @@
 | setup 与按需安装职责不清 | Skill 职责问题 | setup 只准备基本目录、元数据和模板，专用工具由实际使用它的 Skill 管理 |
 | Task 使用数量 | 估算模型掩盖具体工作 | 删除数量，一行一个基础单元实例 |
 
-## 5. 统一领域模型
+## 5. 统一领域模型与交付投影
 
-| Sheet | 对应对象 | ID 前缀 | 负责 Skill |
-|---|---|---|---|
-| `01-需求` | EPIC | `epic-` | `analyze-requirement` 或 `generate-design` |
-| `02-子需求` | FEATURE | `feature-` | 与所属 Epic 相同 |
-| `03-SOW主表` | STORY | `story-` | `generate-story` |
-| `04-验收条件` | AC | `ac-` | `generate-story` |
-| `05-任务明细` | TASK | `task-` | `generate-task` |
-| `06-集成点` | INTEGRATION | `integration-` | `generate-story` |
-| `07-假设清单` | ASSUMPTION | `assumption-` | `generate-story` |
-| `90-系统现状` | ASIS | `asis-` | `analyze-as-is` |
+稳定 JSON 保留全量领域对象及其 ID，并由唯一 Owner 维护：
+
+| 领域对象 | ID 前缀 | 负责 Skill |
+|---|---|---|
+| EPIC | `epic-` | `analyze-requirement` 或 `generate-design` |
+| FEATURE | `feature-` | 与所属 Epic 相同 |
+| STORY | `story-` | `generate-story` |
+| AC | `ac-` | `generate-story` |
+| TASK | `task-` | `generate-task` |
+| INTEGRATION | `integration-` | `generate-story` |
+| ASSUMPTION | `assumption-` | `generate-story` |
+| AS-IS ITEM | `asis-` | `analyze-as-is` |
+
+正式 XLSX 不再按上述对象逐表展开，而是固定为 `01-需求故事`、`02-任务清单`、`03-工作量汇总`、`90-估算标准` 四张 Sheet。AC 合并到 Story 行，SIT 由内部/外部系统对接 Task 触发；Integration、Assumption/Risk、As-Is 及其他丰富字段继续在稳定数据、批准评审和交付包中审计。
 
 As-Is 中的 Commitment、Effective Start、Uncertainty 和 Evidence 继续使用 `commitment-`、`effective-start-`、`uncertainty-` 和 `evidence-` 前缀，以免不同对象混淆。
 
@@ -157,7 +161,7 @@ setup 不接收 mode、Repo 或往期 SOW，不安装 CodeGraph，不安装 Test
 
 ### 8.5 下游 Skill
 
-`generate-story` 形成 Delivery Gap、Story、AC、Integration、Assumption 和 Risk。它根据来源需求、现状和目标设计中的证据记录 Integration，但不判断或生成集成 Task。`generate-task` 拆分基础单元 Task，并根据 Story、Integration 和 Effective Start，为每个需要交付的 Integration 生成且只生成一个“内部系统对接”或“外部系统对接”Task。`generate-sow` 只负责把正式数据写入模板并生成交付文件。
+`generate-story` 形成 Story、AC、Integration、Assumption 和 Risk。它根据来源需求、现状和目标设计中的证据记录 Integration，但不判断或生成集成 Task。`generate-task` 拆分基础单元 Task，并根据 Story、Integration 和 Effective Start，为每个需要交付的 Integration 生成且只生成一个“内部系统对接”或“外部系统对接”Task。`generate-sow` 只负责把正式数据写入模板并生成交付文件。
 
 ## 9. CodeGraph 和运行验证
 
@@ -191,9 +195,9 @@ Task 删除 `quantity`、`activity` 和人工填写的 `professionalDomain`。�
 - M 是默认复杂度，不要求理由；S/L 必须说明哪些事实导致当前实例偏离 M，而不是复述标准；
 - 无需工作时不生成 Task。
 
-`基础单元 + 工作模式` 决定 M 档基础人天；复杂度按该基础单元自己的标准判断，再使用统一系数。工作模式不使用全局倍率。设计阶段仍可用 `REPLACE / RETIRE` 描述 ArchitectureDelta，但 Task 不保存“替换 / 退役”工作模式：替换要按替代功能、数据迁移、发布切换和系统功能下线分别拆分；如果只是下线，则使用“系统功能下线”。完整的基础单元目录、具体工作内容、复杂度标准、公式和调整规则见 [SOW 任务分类与开发交付人天标准](../../plugins/ai-sow/docs/reference/SOW任务分类与开发交付人天标准_v1.3.md)。每个需要交付的 Integration 必须有且只有一个带 `integrationId` 的集成 Task；如果拆分任务时发现尚未登记的系统交互，要先退回 `generate-story` 或 `generate-design` 补齐。SIT 由集成 Task 触发，UAT 由 Story 明确是否适用；风险和取整仍由正式模板计算。
+`基础单元 + 工作模式` 决定 M 档基础人天；复杂度按该基础单元自己的标准判断，再使用统一系数。工作模式不使用全局倍率。设计阶段仍可用 `REPLACE / RETIRE` 描述 ArchitectureDelta，但 Task 不保存“替换 / 退役”工作模式：替换要按替代功能、数据迁移、发布切换和系统功能下线分别拆分；如果只是下线，则使用“系统功能下线”。完整的基础单元目录、具体工作内容、复杂度标准、公式和调整规则见 [SOW 任务分类与开发交付人天标准](../../plugins/ai-sow/docs/reference/SOW任务分类与开发交付人天标准_v1.3.md)。每个需要交付的 Integration 必须有且只有一个带 `integrationId` 的集成 Task；如果拆分任务时发现尚未登记的系统交互，要先退回 `generate-story` 或 `generate-design` 补齐。SIT 由集成 Task 触发，UAT 由 Story 明确是否适用；取整由正式模板计算，上游风险不参与工作簿人天计算。
 
-`03-SOW主表` 的任务明细汇总该 Story 的全部 Task，因此可以是一行或多行，但不能为了套用固定模板而让大量 Story 长期只有完全相同的 Task。
+`01-需求故事` 的任务列表汇总该 Story 的全部 Task 名称；`02-任务清单` 仍保持每个基础单元实例一行。不能为了套用固定模板而让大量 Story 长期只有完全相同的 Task。
 
 ## 11. Skill 文案和工具使用范围
 
@@ -203,13 +207,15 @@ Task 删除 `quantity`、`activity` 和人工填写的 `professionalDomain`。�
 PATH 中的 uv。只服务单一 Skill 的专用工具在该 Skill 使用时检查和安装：CodeGraph 属于
 `analyze-as-is`；模板读取属于 `generate-task`；交付打包属于 `generate-sow`。
 
-根目录 `scripts/validate_repository.py` 继续负责整个 marketplace。跨越七个 AI SOW Skill 的 `scripts/smoke_plugin.py` 移到 `plugins/ai-sow/tests/support/`，而不是放入任一单独 Skill，以保持 Skill 隔离。
+根目录 `scripts/validate_repository.py` 继续负责整个 marketplace。覆盖七阶段主线、`reconcile` 和供应商补全路径的 `smoke_plugin.py` 位于 `plugins/ai-sow/tests/support/`，而不是放入任一单独 Skill，以保持 Skill 隔离。
 
 ## 12. 工作簿与配套文档更新
 
-所有模板和参考工作簿同步更新 Sheet 名、表名、列头、公式、数据验证和跨表引用。配套 Markdown 标准同步更新领域术语、任务拆分和无数量估算规则，并升级到 v1.3。
+插件级正式计算模板位于 `plugins/ai-sow/assets/sow-template.xlsx`，`setup` 保持原字节复制到项目模板路径。它固定为四张 Sheet 和五个命名 Table：生成器只扩展并填充 `SOWStoryTable` 与 `TaskTable`，`ProjectSummaryTable`、`ProjectParameterTable` 和 `BaseUnitCatalogTable` 继续由模板拥有。汇总只显示“直接开发人天 / SIT支持人天 / UAT支持人天 / 总开发人天”四行。
 
-生成器不得依赖固定行号或旧 Sheet 名。工作簿只写入两份需求数据合并后的内容，不把合并结果反写到 JSON。
+基础人天、复杂度、SIT、UAT、取整和汇总的规则与公式只存在正式模板，Python 和 JSON 不复制计算。风险不再参与工作簿人天计算。生成投影使用 `receipt-only-v4`，旧项目模板不自动迁移。
+
+供应商简易模板位于 `skills/complete-supplier-estimate/assets/supplier-estimate-input.xlsx`，只暴露两张业务输入表和非敏感填写选项。`complete-supplier-estimate` 按实际 Table 边界严格校验，把原文复制到当前正式模板；它不计算人天、不写稳定 JSON、不修改源文件。
 
 ## 13. 验证策略
 
@@ -219,8 +225,8 @@ PATH 中的 uv。只服务单一 Skill 的专用工具在该 Skill 使用时检�
 2. Schema 测试验证 Epic/Feature 前缀、业务/技术需求归属、选填字段和无 `quantity`。
 3. Skill 文案测试验证职责、问卷、CodeGraph 降级、静态优先以及正式措辞。
 4. 生成质量测试应能识别空泛的需求理由和机械重复的 Task。
-5. 工作簿测试验证 `02-子需求`、列头、公式、Table 和引用。
-6. 使用工作簿工具渲染并逐页检查每个 Sheet；检查配套 Markdown 的结构、链接和基础人天矩阵与模板一致。
+5. 工作簿测试验证正式四 Sheet、供应商三 Sheet、列头、命名 Table、公式 prototype、动态行数和安全投影。
+6. 使用真实 Excel 兼容引擎重算公式，并使用工作簿工具渲染和逐 Sheet 检查正式与供应商模板。
 7. 运行插件全部单元测试、插件 smoke 和 marketplace 仓库验证。
 
 插件测试不启动服务或容器。针对目标仓库的运行验证与插件数据格式测试分开执行。
@@ -239,10 +245,10 @@ PATH 中的 uv。只服务单一 Skill 的专用工具在该 Skill 使用时检�
 ## 15. 验收标准
 
 1. 所有正式数据对象的 ID 前缀与统一领域模型一致。
-2. 工作簿使用八个确定的领域 Sheet，其中第二个 Sheet 名为 `02-子需求`。
+2. 正式工作簿使用四个确定 Sheet：`01-需求故事`、`02-任务清单`、`03-工作量汇总`、`90-估算标准`。
 3. `analyze-requirement` 的正式数据只含 BUSINESS Epic/Feature；`generate-design` 的正式需求只含 TECHNICAL Epic/Feature。
 4. 后续 Skill 合并使用两份需求，但不创建第三份 merged requirements。
-5. 选填字段缺失时工作簿合法留空，存在时内容具体。
+5. 选填字段缺失时稳定数据合法留空，存在时内容具体；工作簿只投影当前交付视图所需字段。
 6. `DESIGN_DERIVED` 理由能够关联具体设计决策、原因和影响。
 7. Story 的正式数据中不存在 Story 类型；Task 的正式数据、模板和公式中不存在专业域输入、活动、数量字段或数量乘数。
 8. Task 一行对应一个基础单元实例，能够表达 Story 的实际交付工作，不再固定为通用的一两行。
@@ -250,3 +256,5 @@ PATH 中的 uv。只服务单一 Skill 的专用工具在该 Skill 使用时检�
 10. CodeGraph 安装成功时优先使用；失败后才允许静态回退并记录原因。
 11. 插件测试不依赖 Testcontainers、服务启动或 cachebuster。
 12. Skill 不包含缓存加载、旧版本迁移或开发期临时处理说明。
+13. AC 在 Story 行内投影，SIT 由集成 Task 公式触发，四项汇总只由模板计算，Python 不计算人天。
+14. 供应商模板不暴露人天、参数代码、复杂度标准、风险概念或计算公式；补全后的正式工作簿可在 Excel 兼容软件中重算。

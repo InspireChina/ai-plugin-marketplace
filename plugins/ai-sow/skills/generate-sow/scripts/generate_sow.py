@@ -40,7 +40,7 @@ from workbook import write_workbook
 
 PLUGIN_VERSION = "0.1.0-beta.1"
 PACKAGE_ALGORITHM = "ai-sow-package-v1"
-GENERATOR_CONTRACT = "receipt-only-v3"
+GENERATOR_CONTRACT = "receipt-only-v4"
 PROJECT_PATH = ".ai-sow/project.json"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 OUTPUTS_PATH = ".ai-sow/outputs"
@@ -553,14 +553,10 @@ def build_package(
             "delivery": data["delivery"],
             "estimate": data["estimate"],
         }
-        input_hashes = {
-            key: sha256_bytes(files.read_bytes(path)) for key, path in DATA_PATHS.items()
-        }
         write_workbook(
             files.resolve(TEMPLATE_PATH),
             workbook_data,
             workbook_path,
-            input_hashes,
         )
         workbook_payload = workbook_path.read_bytes()
         for key, path in DATA_PATHS.items():

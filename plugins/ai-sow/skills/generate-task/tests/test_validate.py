@@ -134,6 +134,13 @@ def fixture() -> dict[str, object]:
     return json.loads((SKILL_ROOT / "fixtures/estimate.valid.json").read_text(encoding="utf-8"))
 
 
+def test_template_reader_accepts_the_four_sheet_standard_authority() -> None:
+    contract = read_contract(SKILL_ROOT / "fixtures/sow-template.xlsx")
+    assert len(contract["baseUnits"]) == 37
+    assert len({unit["taskFamily"] for unit in contract["baseUnits"].values()}) == 13
+    assert set(contract["complexities"]) == {"S", "M", "L"}
+
+
 def absent_questionnaire() -> Artifact:
     return Artifact(
         "questionnaire",

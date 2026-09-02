@@ -163,7 +163,7 @@ def main() -> int:
         return 2
 
     skill_root = Path(__file__).resolve().parents[1]
-    asset_path = skill_root / "assets" / "sow-template.xlsx"
+    asset_path = PLUGIN_ROOT / "assets" / "sow-template.xlsx"
     schema_path = skill_root / "contracts" / "project.schema.json"
 
     budget = managed_path_budget(args.project_root)

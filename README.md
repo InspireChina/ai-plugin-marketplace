@@ -55,7 +55,9 @@ git clone https://github.com/InspireChina/ai-plugin-marketplace.git
 /plugin install ai-sow@ai-plugin-marketplace
 ```
 
-安装后八个 Skill 以 `ai-sow:<skill>` 命名空间出现，可直接用自然语言调用，无需记忆命令名。
+安装后九个 Skill 以 `ai-sow:<skill>` 命名空间出现，可直接用自然语言调用，无需记忆命令名。
+七阶段主线之外，`reconcile` 用于完整链修正，`complete-supplier-estimate` 用于把受支持的供应商
+简易输入模板严格校验并补全为正式四 Sheet 估算工作簿。
 
 ## 更新
 

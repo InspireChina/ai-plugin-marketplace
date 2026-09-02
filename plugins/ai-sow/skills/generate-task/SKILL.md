@@ -58,7 +58,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    "<python-bin>" "<skill-root>/scripts/prepare_context.py" --project-root .
    ```
 2. 当前 Stage Agent 先读取 `.ai-sow/work/generate-task/context/manifest.json`，再严格按五个输入 fragment 的 `pages[].order` 各读取一次；被截断 page 视为 `NOT_READ`，从同一 manifest 的首个未读页恢复。首次运行时 `reviewClaims.status` 为 `PENDING_CANDIDATE`，不得把空 claims 当评审输入。不得预先加载完整上游 artifact，也不得在随后回合重新筛选、摘要或复读已完成 page。closure 成功后从固定路径 `<skill-root>/contracts/estimate.schema.json` 读取 Schema 一次，并读取[评审模板](references/review-template.md)。路径映射是确定的：若 `SKILL.md` 位于 `<plugin-root>/skills/generate-task/SKILL.md`，Schema 就位于 `<plugin-root>/skills/generate-task/contracts/estimate.schema.json`，绝不位于 `<plugin-root>/contracts/`。不得用 `ls`、glob、`rg` 或目录枚举寻找 Schema，也不得使用 `find` 或读取 test 代替合同。
-3. context compiler 已用权威项目模板和同一模板读取器生成 `template-catalog.json`；它是普通运行中唯一需要读取的模板目录投影，包含 37 项基础单元、13 个任务族、计数口径、包含/排除边界、可用工作模式和 S/M/L/X 规则。普通 candidate 流程不得运行 `read_template.py`，不得再次读取项目 XLSX，也不得读取 Skill-local `fixtures/sow-template.xlsx`；fixture 只属于构建和测试。基础人天、倍率、公式、SIT、UAT、风险和取整值不进入 context、Python 或稳定 JSON。
+3. context compiler 已用权威项目模板和同一模板读取器生成 `template-catalog.json`；它是普通运行中唯一需要读取的模板目录投影，包含 37 项基础单元、13 个任务族、计数口径、包含/排除边界、可用工作模式和 S/M/L/X 规则。普通 candidate 流程不得运行 `read_template.py`，不得再次读取项目 XLSX，也不得读取 Skill-local `fixtures/sow-template.xlsx`；fixture 只属于构建和测试。基础人天、倍率、公式、SIT、UAT 和取整值不进入 context、Python 或稳定 JSON。
 4. 按计数口径识别实例，一实例一行。每个 Story 至少一条 Task；AC 与 Task 在同一 Story 内是多对多关系：每条 AC 至少由一个 Task 覆盖，多个不同基础单元 Task 可以共同满足同一 AC，一条 Task 也可以支持多条 AC。重复实例分行，不保存 `quantity`，也不保存 `professionalDomain`、`activity`、基础人天、倍率、Task 人天或 `sitEstimates`。不得为了适配 Task 计数口径反向拆分或改写已批准 Story/AC。
 
    形成 candidate 前对共享 API、组件、数据对象或 Effective Start 的潜在碰撞逐组归一化：
@@ -68,7 +68,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
    - `REUSE_CONSUMER`：消费方只有存在 Schema 允许且可独立估算的注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作时才生成 `接入复用` Task；普通调用或无项目侧交付时不生成 Task。
 
    去重后若某 Story 没有任何独立基础单元实例或同 Story AC 无法覆盖，说明该 Story 本身不再可独立估算。Task Owner 不生成填充用人工测试或空壳 Task，也不直接改写 Delivery；输出 `findingId: STORY_OWNER_RETURN_REQUIRED`、`category: DECISION`、`correctionOwner: null`、相关 Story/AC/候选 Task `subjectIds` 与 `requiresUserDecision: true` 的结构化 finding。删除或合并已批准 Story/AC 会改变验收结果，必须由用户决定；获批后才由 `generate-story` Owner 在自己的 candidate、Reviewer 与批准边界内处理。该结果不冻结一个明知不可发布的 Task packet。
-5. 工作模式只允许 `新建 / 调整 / 接入复用`。每个 Task 最多用一个 `matchedEffectiveStartItemId` 引用足以证明工作模式的 Effective Start；它与 Design 使用同一组项目起点，不另建 Task 专用现状。调整和接入复用必须以 `workModeEvidence` 点名同一个 Effective Start，名称与上游记录完全一致，并在 Task 名称或理由中出现。只有该 Effective Start 的名称或摘要明确点名当前基础单元可调整的既有资产时才选择 `调整`；一般治理、平台、交付或运行边界本身不等于既有迁移方案、切换方案或测试资产，此时为新实例选择 `新建`，但按第 6 步继续引用受作用的 Effective Start。例如，复用既有 CI/CD 执行本项目的新切换仍是 `新建` 的发布切换；只有修改已存在的本项目切换方案或切换清单才是 `调整`。接入复用必须按 Schema 枚举顺序形成可独立估算的 `projectSideWorkTypes` 和 `projectSideWorkCommitment`，并令 `workModeRationale = "<effectiveStartItemName>保持不变；<projectSideWorkCommitment>。"` 精确成立；普通依赖引入或常规调用不单独生成 Task。最终工作簿将该 ID 显示为“关联现状条目”，名称直接来自 `90-系统现状` 的可见明细表。
+5. 工作模式只允许 `新建 / 调整 / 接入复用`。每个 Task 最多用一个 `matchedEffectiveStartItemId` 引用足以证明工作模式的 Effective Start；它与 Design 使用同一组项目起点，不另建 Task 专用现状。调整和接入复用必须以 `workModeEvidence` 点名同一个 Effective Start，名称与上游记录完全一致，并在 Task 名称或理由中出现。只有该 Effective Start 的名称或摘要明确点名当前基础单元可调整的既有资产时才选择 `调整`；一般治理、平台、交付或运行边界本身不等于既有迁移方案、切换方案或测试资产，此时为新实例选择 `新建`，但按第 6 步继续引用受作用的 Effective Start。例如，复用既有 CI/CD 执行本项目的新切换仍是 `新建` 的发布切换；只有修改已存在的本项目切换方案或切换清单才是 `调整`。接入复用必须按 Schema 枚举顺序形成可独立估算的 `projectSideWorkTypes` 和 `projectSideWorkCommitment`，并令 `workModeRationale = "<effectiveStartItemName>保持不变；<projectSideWorkCommitment>。"` 精确成立；普通依赖引入或常规调用不单独生成 Task。Effective Start 证据继续留在 Estimate、评审与交付包来源中；精简正式工作簿只把任务理由、工作方式理由和非空复杂度理由合并到 Task `备注`，不再单独投影现状引用。
 6. “替换”和“退役”不是工作模式。替换按替代能力、独立数据迁移、一个发布切换实例及系统功能下线拆分；新建的数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，也必须引用所作用的 Effective Start。
 7. 按当前基础单元自己的标准选择 `S / M / L`。S/L 的 `complexityRationale` 写出实例偏离 M 的具体事实；M 不保存该字段。命中 X 时继续拆分、澄清，或先生成专题调研/架构方案设计 Task，不能进入正式 Estimate。
 8. 每个顶级 Integration 恰好由一个内部或外部系统对接 Task 实现。Task 的 Story、Integration owner 和基础单元必须一致；非集成 Task 不得填写 `integrationId`。缺少已批准 Integration 时输出 `category: UPSTREAM`、`correctionOwner: generate-story` 的结构化 finding；缺少其设计边界或类型化义务时输出 `category: UPSTREAM`、`correctionOwner: generate-design` 的结构化 finding。两者都点名实际 Story/Feature/AC `subjectIds`、使用 `requiresUserDecision: false`，并根据证据唯一选择一个 Owner，不临时编造 Integration 或使用含糊的二选一 handoff。
@@ -123,7 +123,7 @@ fresh-context Reviewer 只返回 `PASS` 或 findings，不写项目文件。Revi
 
 ## 完成条件
 
-每个保留的 Story 至少有一条独立 Task，每条 AC 至少由一个同 Story Task 覆盖；AC 与 Task 允许多对多追溯，Task 拆分不得反向修改 Story/AC。潜在实例碰撞已按 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER` 归一化；无法保留独立 Task 的 Story 已形成用户决策 finding，而不是用测试或空壳 Task 填充。每条 Task 只对应一个模板允许的基础单元实例与工作模式。调整/接入复用、需要作用于现状的新建工作、复杂度偏离、Integration 一对一、发布切换、迁移及诊断/整改边界均有可追溯证据。稳定 Estimate 不保存任何计算结果；项目模板仍是基础人天、倍率、公式、SIT、UAT、风险和取整的唯一权威。Estimate 原字节发布并签发 receipt 后只推荐 `generate-sow` 与 PM 补充项并停止。
+每个保留的 Story 至少有一条独立 Task，每条 AC 至少由一个同 Story Task 覆盖；AC 与 Task 允许多对多追溯，Task 拆分不得反向修改 Story/AC。潜在实例碰撞已按 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER` 归一化；无法保留独立 Task 的 Story 已形成用户决策 finding，而不是用测试或空壳 Task 填充。每条 Task 只对应一个模板允许的基础单元实例与工作模式。调整/接入复用、需要作用于现状的新建工作、复杂度偏离、Integration 一对一、发布切换、迁移及诊断/整改边界均有可追溯证据。稳定 Estimate 不保存任何计算结果；项目模板仍是基础人天、倍率、公式、SIT、UAT 和取整的唯一权威。Estimate 原字节发布并签发 receipt 后只推荐 `generate-sow` 与 PM 补充项并停止。
 
 ## Reconciliation Adapter
 

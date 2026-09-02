@@ -4,6 +4,12 @@
 
 ## 0.1.0-beta.1 - 未发布
 
+- 正式 SOW 计算模板收口为插件级 `assets/sow-template.xlsx`，并精简为需求故事、任务清单、工作量汇总、估算标准四张 Sheet。AC 合并到 Story，SIT 由集成 Task 触发，汇总固定为直接开发、SIT 支持、UAT 支持和总开发四项。
+- 新增不属于业务阶段的 `complete-supplier-estimate` Skill 及三 Sheet 供应商简易模板。简易模板只公开业务输入和非敏感选项；补全命令严格校验 Table 与字段，只把原文复制到当前正式模板，不计算人天、不写稳定 JSON，也不修改源文件。
+- 工作簿计算只由正式模板的基础单元目录、参数和公式拥有；Python 与稳定 JSON 不复制人天规则。Integration、Assumption/Risk、As-Is 及丰富审计字段仍保留在交付包，但不进入 XLSX 或参与人天计算。
+- `generate-sow` 与 `reconcile` 的投影指纹合同升级为 `receipt-only-v4`；当前未发布版本不自动迁移旧项目模板。
+- 移除正式模板和确定性参考工作簿中与 Excel Table 重叠的工作表级筛选定义，避免 Microsoft Excel 打开 `sow-template.xlsx` 或生成结果时触发内容修复提示；筛选继续由各 Table 自身拥有。
+
 - `reconcile` 支持在修正影响后缀的连续未发布末端使用 `PENDING`：首次发布可在一次整体评审中完成，
   而中间 Owner 缺失但更下游已发布时仍以非法后缀阻塞；稳定数据继续由各 Owner 的正常发布路径写入。
 - 明确确定性脚本成功且无 diagnostics 即为最终可信结果，Stage 不再重复 hash、复读、枚举或调用等价

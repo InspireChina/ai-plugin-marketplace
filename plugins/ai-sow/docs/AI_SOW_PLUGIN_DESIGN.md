@@ -5,7 +5,7 @@
 - 插件合同版本：0.1.0-beta.1
 - 适用宿主：Codex 与 Claude Code；支持 macOS、Linux 和 Windows 11 x64
 - 领域语义：[CONTEXT.md](CONTEXT.md)
-- 计算权威：[sow-template.xlsx](../skills/setup/assets/sow-template.xlsx)
+- 计算权威：[sow-template.xlsx](../assets/sow-template.xlsx)
 - 运行时合同：[插件运行时环境合同](../references/runtime-environment.md)
 
 本插件通过七个阶段 Skill，把来源材料和现状证据转换为可评审的专业成果、六份稳定交接数据和
@@ -28,7 +28,7 @@ setup
 2. `analyze-requirement` 独占 BUSINESS，`generate-design` 独占 TECHNICAL。
 3. 每项稳定事实只有一个 Owner；下游只匹配内容寻址 handoff receipt，并验证自己创建的引用，不重放上游业务 validator。
 4. BUSINESS 与 TECHNICAL requirements 仅在内存中联合。
-5. XLSX 是任务规则、基础人天、复杂度、SIT、UAT、风险、公式和取整的唯一计算权威。
+5. XLSX 是任务规则、基础人天、复杂度、SIT、UAT、公式和取整的唯一计算权威；上游 Assumption/Risk 仍是稳定 Delivery 数据，但不参与工作簿计算。
 6. 每个 Skill 独立拥有稳定领域合同、专业 renderer、测试和工作目录；插件级 runtime 复用 Owner-agnostic 的项目 I/O、handoff、claim、patch、诊断、控制项和机械评审门禁。HLD/Go-live 语义仍由 `generate-design` 独占并在本 Skill 校验，下游只验证其 receipt。
 7. Owner 表示专业规则、稳定路径和写权限，不等于独立 session。普通主线逐阶段运行；已有完整
    产物后的修正由 `reconcile` 的当前 Stage 在批准前完成固定后缀的 Owner staged pass、package 和
@@ -185,7 +185,7 @@ Reviewer。需要改 Story/AC 时改走 `STORY_OWNER_RETURN_REQUIRED`；最终�
 
 ### generate-sow
 
-当前 Stage Agent 直接调用一次确定性生成器。生成器验证五个 Owner receipt、六份稳定数据、五份批准 review 与项目模板的当前 hash，并把稳定 ID 关系投影为唯一、非空的名称关系，把可翻译的枚举投影为中文，再确定性复读和发布工作簿及自包含交付包；普通生成不创建模型 Reviewer。package 指纹使用 `ai-sow-package-v1` 并绑定 `receipt-only-v3` 生成器合同；任何会改变工作簿或 manifest 确定性字节的投影变更必须提升该合同，并同步 reconciliation publisher 与跨路径测试。成功 stdout 直接返回 workbook、manifest、package tree SHA-256 和文件数，Stage 信任该内建复读摘要，不再自行全量哈希。As-Is 的仓库 `DOCUMENT` Evidence 通过 `repositorySnapshots` 把逻辑 `<repoId>:<anchor>` 解析为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。生成器不读取上游 schema、不重诊断上游业务语义，也不执行 Excel 公式。SIT 由集成 Task 触发，UAT 由 Story 的 `uatRelevant` 决定。
+当前 Stage Agent 直接调用一次确定性生成器。生成器验证五个 Owner receipt、六份稳定数据、五份批准 review 与项目模板的当前 hash，只向 `SOWStoryTable` 和 `TaskTable` 投影正式估算所需的名称、AC、UAT、基础单元、工作方式、复杂度和说明，再确定性复读和发布工作簿及自包含交付包；普通生成不创建模型 Reviewer。package 指纹使用 `ai-sow-package-v1` 并绑定 `receipt-only-v4` 生成器合同；任何会改变工作簿或 manifest 确定性字节的投影变更必须提升该合同，并同步 reconciliation publisher 与跨路径测试。成功 stdout 直接返回 workbook、manifest、package tree SHA-256 和文件数，Stage 信任该内建复读摘要，不再自行全量哈希。As-Is 的仓库 `DOCUMENT` Evidence 通过 `repositorySnapshots` 把逻辑 `<repoId>:<anchor>` 解析为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。生成器不读取上游 schema、不重诊断上游业务语义，也不执行 Excel 公式。SIT 由集成 Task 触发，UAT 由 Story 的 `uatRelevant` 决定；Integration、Assumption/Risk、As-Is 和丰富需求/设计字段继续保留在 package 来源中，不进入 XLSX。
 
 ### reconcile
 
@@ -223,22 +223,18 @@ operation 已完成；内部前向恢复前缀仍只按实际发生字节变化�
 
 ## 5. 稳定合同与工作簿
 
-| Sheet | 实体 | 关键语义 |
+六份稳定 JSON 的领域模型和唯一 Owner 不变。XLSX 是精简展示与计算投影，不再逐表复制全部稳定对象：
+
+| Sheet | 命名 Table | 关键语义 |
 |---|---|---|
-| `01-需求` | EPIC | BUSINESS 与 TECHNICAL 联合视图 |
-| `02-子需求` | FEATURE | 最小需求范围与来源追溯 |
-| `03-SOW主表` | STORY | 可交付、可验收、可结算 |
-| `04-验收条件` | AC | 独立可观察结果；不展示结构化 `sequence` |
-| `05-任务明细` | TASK | 一行一个基础单元实例 |
-| `06-集成点` | INTEGRATION | 顶级集成权威 |
-| `07-假设清单` | ASSUMPTION | 一项一行，供 Story 按名称单选引用 |
-| `90-系统现状` | ASIS | 供增量设计与工作模式判断共同引用的 Effective Start 明细 |
-| `91-项目参数` | PARAMETER | S/M/L 复杂度系数及 SIT、UAT、风险和取整参数 |
-| `92-基础人天` | BASE UNIT | 37 项基础单元、13 个任务族、逐单元标准与三个工作模式的人天列 |
+| `01-需求故事` | `SOWStoryTable` | 重复需求/子需求，Story、UAT、AC 多行文本、任务列表与故事人天 |
+| `02-任务清单` | `TaskTable` | 完整故事路径、基础单元名称、工作方式、复杂度、备注与 Task/SIT 人天 |
+| `03-工作量汇总` | `ProjectSummaryTable` | 直接开发、SIT 支持、UAT 支持、总开发四行 |
+| `90-估算标准` | `ProjectParameterTable`、`BaseUnitCatalogTable` | 八项非风险参数、37 项基础单元、13 个任务族与公式依赖 |
 
-模板 prototype 提供业务表数据行的最小高度；生成器按最终可见换行文本与模板列宽确定性扩大行高，且对 `03-SOW主表` 的公式汇总列只使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。该投影语义由生成指纹中的 `receipt-only-v3` 生成器合同隔离，后续任何改变工作簿确定性字节的投影合同变化都必须提升该值，避免与旧包发生不可变 `packageId` 碰撞。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式汇总，并为每条内容添加项目符号；不得依赖 `_xlfn._xlws.` 动态工作表函数。五张受保护业务表只锁定公式与关系派生单元格及单元格格式；白色输入单元格保持可编辑，同时允许用户调整列宽与行高、使用表头筛选与排序。
+模板 prototype 提供业务表数据行的样式、公式和最小高度；生成器按实际行数扩展 Table，并按最终可见换行文本扩大行高。`任务列表` 使用 Excel 2019 兼容的 `TEXTJOIN + IF` CSE 数组公式，不依赖 `_xlfn._xlws.` 动态工作表函数。故事人天、Task 人天、SIT、UAT、四项汇总和取整只由正式模板公式与标准 Table 计算；Python 和 JSON 不重复这些公式或数值。该投影由 `receipt-only-v4` 隔离，当前版本不自动迁移旧项目模板。
 
-选填需求字段只有在内容具体时生成；省略时工作簿留空。`DESIGN_DERIVED` 理由必须关联具体决策、产生原因和缺失影响。Story 不保存类型；Task 不保存任务族、活动、数量或计算人天。每个可独立引用的结构化实体同时保存必填 ID 与非空名称，关系只保存 ID；业务 Sheet 不显示稳定 ID，并按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列实际存在的层级列。稳定 JSON 的 `baseUnit` 保留基础单元 ID，任务页投影基础单元名称；每个 Task 最多保存一个 `matchedEffectiveStartItemId`，每个 Story 最多保存一个 `assumptionId`。任务页将该 ID 显示为“关联现状条目”，下拉直接引用 `90-系统现状` 可见表中的唯一名称；任务页不展示集成点，集成页只在故事名称后展示唯一关联的集成任务名称。`90-系统现状` 不展开 Item、Commitment、Coverage、Uncertainty 或 Evidence，只显示 Effective Start 的主题、名称、现状描述和起点可用性；现状描述直接使用 Effective Start `summary`，不拼接来源 Item/Commitment 摘要；主题与起点可用性为浅黄色下拉，名称与描述为白色自由文本，整页不启用保护。工作簿内修改不回写稳定 JSON、评审或 manifest。模板按基础单元名称和工作模式对应的人天列取得 M 档基础人天，再按项目参数中的复杂度倍率计算；生成器只接受当前模板合同，不迁移旧模板。
+Story 的 AC 按稳定顺序进入同一单元格；Task `备注` 按固定顺序合并任务理由、工作方式理由和非空复杂度理由。Delivery 的 Integration、Assumption/Risk，以及 As-Is、Design 和 Requirement 的丰富字段继续随 package 交付，但工作簿不再出现风险字段、风险人天或上述明细 Sheet。稳定 JSON 的 ID 和关系仍是审计权威，业务 Sheet 只展示名称。正式计算模板位于插件级 `assets/sow-template.xlsx`；setup 把其副本初始化为项目模板。供应商简易模板由该正式资产机械派生，仅暴露输入与非敏感选项，`complete-supplier-estimate` 只校验并复制输入，不计算人天或写稳定 JSON。
 
 ## 6. 发布、隔离与安全
 
@@ -255,14 +251,14 @@ operation 已完成；内部前向恢复前缀仍只按实际发生字节变化�
 
 ## 7. 验证
 
-每个 Owner 的 validator 检查自己的合同、自己创建的引用和必要上游 handoff；下游 handoff 失败只报告 missing、invalid、stale、unsupported 四类稳定错误。HLD/Go-live 只在 `generate-design` 本地判定。插件测试保持静态，不启动应用或容器。工作簿测试验证八个领域 Sheet、唯一名称、中文下拉、名称引用、列顺序、锁定与保护、37 项基础单元、13 个任务族、命名 Table、公式原型、可选字段留空、顶级 Integration、单行 Assumption 投影和一实例一行的 Task。
+每个 Owner 的 validator 检查自己的合同、自己创建的引用和必要上游 handoff；下游 handoff 失败只报告 missing、invalid、stale、unsupported 四类稳定错误。HLD/Go-live 只在 `generate-design` 本地判定。插件测试保持静态，不启动应用或容器。工作簿测试验证四 Sheet 正式合同、三 Sheet 供应商合同、37 项基础单元、13 个任务族、命名 Table、公式 prototype、无固定业务行上限、无风险计算投影和一实例一行的 Task；真实公式 E2E 使用可用的 Excel 兼容引擎重算。
 
 As-Is 的 Commitment 与 `PRIOR_SOW` Evidence 使用
 `prior-sow:<priorSowId>#<anchor>`；validator 同时匹配登记 ID、逻辑 anchor 和原文件 SHA-256，
 不能只校验其中一个字段。Validator 独有的状态/处置规则必须在 Skill 中公开为编制矩阵，
 否则 Stage 在禁止复读脚本的边界下无法一次生成可校验 candidate。
 
-仓库级验证负责插件布局、manifest、资产身份和发布面；七阶段主线与 `reconcile` smoke 位于
+仓库级验证负责插件布局、manifest、资产身份和发布面；七阶段主线、`reconcile` 与供应商补全 smoke 位于
 `plugins/ai-sow/tests/support/`。
 
 ## 8. 非目标

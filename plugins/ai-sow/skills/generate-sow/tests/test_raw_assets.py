@@ -1,287 +1,289 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
+from zipfile import ZipFile
 
 import openpyxl
 from openpyxl.utils import range_boundaries
 from openpyxl.worksheet.formula import ArrayFormula
 
 
-GENERATE_SOW_TEMPLATE = Path(__file__).resolve().parents[1] / "fixtures/project/.ai-sow/templates/sow-template.xlsx"
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-REFERENCE_WORKBOOK = SKILL_ROOT.parent.parent / "docs/reference/SOW估算与生成示例_v1.3.xlsx"
-EXPECTED_SHA256 = "6c90f4782acf7b1beb372a7b5f8aa78079f677160c39349bf561883b5592bfa0"
+PLUGIN_TEMPLATE = SKILL_ROOT.parent.parent / "assets/sow-template.xlsx"
+GENERATE_TASK_FIXTURE = SKILL_ROOT.parent / "generate-task/fixtures/sow-template.xlsx"
+GENERATE_SOW_FIXTURE = (
+    SKILL_ROOT / "fixtures/project/.ai-sow/templates/sow-template.xlsx"
+)
+
 EXPECTED_SHEETS = [
-    "00-使用说明",
-    "01-需求",
-    "02-子需求",
-    "03-SOW主表",
-    "04-验收条件",
-    "05-任务明细",
-    "06-集成点",
-    "07-假设清单",
-    "20-项目汇总",
-    "90-系统现状",
-    "91-项目参数",
-    "92-基础人天",
+    "01-需求故事",
+    "02-任务清单",
+    "03-工作量汇总",
+    "90-估算标准",
 ]
 EXPECTED_HEADERS = {
-    "EpicTable": ["需求名称", "需求类型", "需求描述", "涉及系统/数据", "目标结果", "公共约束/范围外"],
-    "FeatureTable": ["需求名称", "子需求名称", "场景/范围描述", "涉及系统/数据", "约束/NFR", "来源类型", "推断理由"],
-    "SOWStoryTable": ["需求名称", "子需求名称", "故事名称", "UAT适用", "验收条件", "任务明细", "人天", "关联假设/风险名称", "假设/风险状态"],
-    "AcceptanceCriterionTable": ["需求名称", "子需求名称", "故事名称", "验收条件名称"],
-    "TaskTable": ["需求名称", "子需求名称", "故事名称", "任务名称", "基础单元名称", "任务族", "工作模式", "工作模式理由", "复杂度", "复杂度理由", "关联现状条目", "判断依据与备注", "基础人天", "复杂度倍率", "人天小计"],
-    "IntegrationTable": ["需求名称", "子需求名称", "故事名称", "集成任务名称", "来源", "目标", "触发条件", "方向", "业务目的", "责任边界", "工作模式", "复杂度", "支持单价", "SIT人天"],
-    "AssumptionRiskTable": ["假设/风险名称", "类型", "触发条件", "责任边界", "状态", "处理方式"],
-    "AsIsDetailTable": ["主题名称", "现状条目名称", "现状描述", "起点可用性"],
+    "SOWStoryTable": [
+        "需求",
+        "子需求",
+        "故事",
+        "UAT适用",
+        "验收条件",
+        "备注",
+        "任务列表",
+        "故事人天",
+        "校验结果",
+        "故事路径",
+    ],
+    "TaskTable": [
+        "所属故事",
+        "任务名称",
+        "任务类型",
+        "工作方式",
+        "复杂度",
+        "备注",
+        "M档标准人天",
+        "复杂度系数",
+        "任务人天",
+        "SIT支持人天",
+        "校验结果",
+    ],
+    "ProjectSummaryTable": ["工作量项", "人天"],
+    "ProjectParameterTable": [
+        "参数代码",
+        "名称",
+        "值",
+        "单位",
+        "适用范围",
+        "验证状态/说明",
+    ],
+    "BaseUnitCatalogTable": [
+        "任务族ID",
+        "任务族名称",
+        "基础单元ID",
+        "基础单元名称",
+        "计数口径",
+        "包含内容",
+        "不包含内容",
+        "新建M档人天",
+        "调整M档人天",
+        "接入复用M档人天",
+        "S标准",
+        "M标准",
+        "L标准",
+        "X/拆分条件",
+    ],
 }
 FORMULA_COLUMNS = {
-    "SOWStoryTable": {"需求名称", "验收条件", "任务明细", "人天", "假设/风险状态"},
-    "AcceptanceCriterionTable": {"需求名称", "子需求名称"},
-    "TaskTable": {"需求名称", "子需求名称", "任务族", "基础人天", "复杂度倍率", "人天小计"},
-    "IntegrationTable": {"需求名称", "子需求名称", "工作模式", "复杂度", "支持单价", "SIT人天"},
+    "SOWStoryTable": {"任务列表", "故事人天", "校验结果", "故事路径"},
+    "TaskTable": {
+        "M档标准人天",
+        "复杂度系数",
+        "任务人天",
+        "SIT支持人天",
+        "校验结果",
+    },
 }
-RELATION_COLUMNS = {"IntegrationTable": {"故事名称", "集成任务名称"}}
-PROTECTED_SHEETS = {"03-SOW主表", "04-验收条件", "05-任务明细", "06-集成点", "20-项目汇总"}
+EXPECTED_PARAMETER_ROWS = [
+    ["K_COMPLEXITY_S", "S档复杂度系数", 0.6, "倍", "任务人天", "固定规则"],
+    ["K_COMPLEXITY_M", "M档复杂度系数", 1, "倍", "任务人天", "固定规则"],
+    ["K_COMPLEXITY_L", "L档复杂度系数", 1.5, "倍", "任务人天", "固定规则"],
+    ["K_UAT", "UAT支持系数", 0.05, "%", "显式标记 UAT 适用的故事直接人天", "待样本校准"],
+    ["SIT_INT_SUPPORT", "内部集成点SIT支持", 0.5, "人天/点", "开发交付估算", "待样本校准"],
+    ["SIT_EXT_SUPPORT", "外部集成点SIT支持", 1, "人天/点", "开发交付估算", "待样本校准"],
+    ["ROUND_STORY", "故事取整粒度", 0.5, "人天", "任务合计后向上取整", "固定规则"],
+    ["ROUND_PROJECT", "项目级取整粒度", 0.5, "人天", "SIT、UAT分别向上取整；总计不再次取整", "固定规则"],
+]
+EXPECTED_CATALOG_SHA256 = "060ebfe4dc8e5643520b6e25c0e616fbb47d6aa91fc03e6d2c1bc23d92ccf6a7"
 
 
-def workbook_signature(path: Path) -> tuple[list[str], dict[str, str], int]:
-    workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
+def table_location(
+    workbook: openpyxl.Workbook,
+    table_name: str,
+) -> tuple[openpyxl.worksheet.worksheet.Worksheet, object]:
+    for worksheet in workbook.worksheets:
+        if table_name in worksheet.tables:
+            return worksheet, worksheet.tables[table_name]
+    raise AssertionError(f"missing table: {table_name}")
+
+
+def table_rows(workbook: openpyxl.Workbook, table_name: str) -> list[list[object]]:
+    worksheet, table = table_location(workbook, table_name)
+    min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+    return [
+        [worksheet.cell(row, column).value for column in range(min_col, max_col + 1)]
+        for row in range(min_row, max_row + 1)
+    ]
+
+
+def formula_text(value: object) -> str:
+    if isinstance(value, ArrayFormula):
+        return value.text or ""
+    return str(value or "")
+
+
+def test_plugin_template_is_the_only_runtime_authority_and_fixtures_match() -> None:
+    assert PLUGIN_TEMPLATE.is_file()
+    assert not (SKILL_ROOT.parent / "setup/assets/sow-template.xlsx").exists()
+    authoritative = PLUGIN_TEMPLATE.read_bytes()
+    assert GENERATE_TASK_FIXTURE.read_bytes() == authoritative
+    assert GENERATE_SOW_FIXTURE.read_bytes() == authoritative
+
+
+def test_formal_template_has_exact_sheets_tables_headers_and_prototypes() -> None:
+    workbook = openpyxl.load_workbook(PLUGIN_TEMPLATE, data_only=False)
     try:
-        tables = {
-            name: worksheet.tables[name].ref
+        assert workbook.sheetnames == EXPECTED_SHEETS
+        actual_tables = {
+            name
             for worksheet in workbook.worksheets
             for name in worksheet.tables
         }
-        formulas = sum(
-            cell.data_type == "f"
-            for worksheet in workbook.worksheets
-            for row in worksheet.iter_rows()
-            for cell in row
-        )
-        return workbook.sheetnames, tables, formulas
+        assert actual_tables == set(EXPECTED_HEADERS)
+        for table_name, headers in EXPECTED_HEADERS.items():
+            rows = table_rows(workbook, table_name)
+            assert rows[0] == headers
+            if table_name in {"SOWStoryTable", "TaskTable"}:
+                assert len(rows) == 2
+                assert any(cell is not None for cell in rows[1])
     finally:
         workbook.close()
 
 
-def table_headers(workbook: openpyxl.Workbook, table_name: str) -> list[str]:
-    for worksheet in workbook.worksheets:
-        if table_name in worksheet.tables:
-            table = worksheet.tables[table_name]
-            min_col, min_row, max_col, _ = range_boundaries(table.ref)
-            return [
-                str(worksheet.cell(min_row, column).value)
-                for column in range(min_col, max_col + 1)
-            ]
-    raise AssertionError(f"missing table: {table_name}")
-
-
-def table_body_cells(
-    workbook: openpyxl.Workbook,
-    table_name: str,
-) -> tuple[openpyxl.worksheet.worksheet.Worksheet, dict[str, openpyxl.cell.cell.Cell]]:
-    for worksheet in workbook.worksheets:
-        if table_name in worksheet.tables:
-            table = worksheet.tables[table_name]
-            min_col, min_row, max_col, _ = range_boundaries(table.ref)
-            return worksheet, {
-                str(worksheet.cell(min_row, column).value): worksheet.cell(min_row + 1, column)
-                for column in range(min_col, max_col + 1)
-            }
-    raise AssertionError(f"missing table: {table_name}")
-
-
-def test_skill_local_template_copies_match_the_authoritative_fingerprint() -> None:
-    assert hashlib.sha256(GENERATE_SOW_TEMPLATE.read_bytes()).hexdigest() == EXPECTED_SHA256
-    sheets, tables, formulas = workbook_signature(GENERATE_SOW_TEMPLATE)
-    assert len(sheets) == 12
-    assert len(tables) == 11
-    assert formulas == 142
-
-
-def test_example_matches_generate_sow_template_contract() -> None:
-    for path in (GENERATE_SOW_TEMPLATE, REFERENCE_WORKBOOK):
-        workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
-        try:
-            assert workbook.sheetnames == EXPECTED_SHEETS
-            for table_name, headers in EXPECTED_HEADERS.items():
-                assert table_headers(workbook, table_name) == headers
-        finally:
-            workbook.close()
-
-
-def test_dropdowns_are_name_based_and_chinese() -> None:
-    expected = {
-        ("01-需求", "B5:B104", '"业务,技术"'),
-        ("02-子需求", "A5:A104", 'INDIRECT("\'01-需求\'!$A$5:$A$104")'),
-        ("02-子需求", "F5:F104", '"来源输入,设计派生"'),
-        ("03-SOW主表", "B5:B104", 'INDIRECT("\'02-子需求\'!$B$5:$B$104")'),
-        ("03-SOW主表", "D5:D104", '"是,否"'),
-        ("03-SOW主表", "H5:H104", 'INDIRECT("\'07-假设清单\'!$A$5:$A$104")'),
-        ("04-验收条件", "C5:C104", 'INDIRECT("\'03-SOW主表\'!$C$5:$C$104")'),
-        ("05-任务明细", "C5:C504", 'INDIRECT("\'03-SOW主表\'!$C$5:$C$104")'),
-        ("05-任务明细", "E5:E504", 'INDIRECT("\'92-基础人天\'!$D$5:$D$41")'),
-        ("05-任务明细", "G5:G504", '"新建,调整,接入复用"'),
-        ("05-任务明细", "I5:I504", '"S,M,L"'),
-        ("05-任务明细", "K5:K504", 'INDIRECT("AsIsDetailTable[现状条目名称]")'),
-        ("06-集成点", "H5:H104", '"入站,出站"'),
-        ("06-集成点", "J5:J104", '"内部,外部"'),
-        ("07-假设清单", "B5:B104", '"假设,风险"'),
-        ("07-假设清单", "E5:E104", '"已明确,待确认"'),
-        ("90-系统现状", "A5:A1004", '"系统边界与参与方,能力与流程,应用与组件,集成与外部依赖,数据与存储,平台、环境与部署,安全与合规,运维与质量,交付与约束"'),
-        ("90-系统现状", "D5:D1004", '"当前已存在,预计开工前具备"'),
-    }
-    for path in (GENERATE_SOW_TEMPLATE, REFERENCE_WORKBOOK):
-        workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
-        try:
-            actual = {
-                (worksheet.title, str(validation.sqref), str(validation.formula1))
-                for worksheet in workbook.worksheets
-                for validation in worksheet.data_validations.dataValidation
-                if validation.type == "list"
-            }
-            assert actual == expected
-        finally:
-            workbook.close()
-
-
-def test_formula_and_relation_columns_are_gray_locked_and_sheets_protected() -> None:
-    for path in (GENERATE_SOW_TEMPLATE, REFERENCE_WORKBOOK):
-        workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
-        try:
-            for sheet_name in PROTECTED_SHEETS:
-                protection = workbook[sheet_name].protection
-                assert protection.sheet is True
-                assert protection.formatColumns is False
-                assert protection.formatRows is False
-                assert protection.autoFilter is False
-                assert protection.sort is False
-                assert protection.formatCells is True
-            assert workbook["07-假设清单"].protection.sheet is False
-            assert workbook["90-系统现状"].protection.sheet is False
-            for table_name in (
-                "EpicTable",
-                "FeatureTable",
-                "SOWStoryTable",
-                "AcceptanceCriterionTable",
-                "TaskTable",
-                "IntegrationTable",
-                "AssumptionRiskTable",
-            ):
-                worksheet, cells = table_body_cells(workbook, table_name)
-                locked = FORMULA_COLUMNS.get(table_name, set()) | RELATION_COLUMNS.get(table_name, set())
-                for header, cell in cells.items():
-                    assert cell.alignment.vertical == "center"
-                    if header in locked:
-                        assert cell.protection.locked is True
-                        assert cell.fill.fgColor.rgb[-6:] == "F1F4F6"
-                    else:
-                        assert cell.protection.locked is False
-                        assert cell.fill.fgColor.rgb[-6:] == "FFFFFF"
-                if locked:
-                    assert worksheet.protection.sheet is True
-            asis_sheet = workbook["90-系统现状"]
-            assert asis_sheet["A2"].protection.locked is False
-            assert asis_sheet["A2"].fill.fgColor.rgb[-6:] == "FFFFFF"
-            table = asis_sheet.tables["AsIsDetailTable"]
-            min_col, min_row, max_col, max_row = range_boundaries(table.ref)
-            headers = [
-                asis_sheet.cell(min_row, column).value
-                for column in range(min_col, max_col + 1)
-            ]
-            for row in range(min_row + 1, max_row + 1):
-                for offset, header in enumerate(headers):
-                    cell = asis_sheet.cell(row, min_col + offset)
-                    assert cell.protection.locked is False
-                    assert cell.fill.fill_type == "solid"
-                    expected_fill = "FFF2CC" if header in {"主题名称", "起点可用性"} else "FFFFFF"
-                    assert cell.fill.fgColor.rgb[-6:] == expected_fill
-        finally:
-            workbook.close()
-
-
-def test_sow_story_aggregations_use_excel_2019_compatible_array_formulas() -> None:
-    for path in (GENERATE_SOW_TEMPLATE, REFERENCE_WORKBOOK):
-        workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
-        try:
-            worksheet, cells = table_body_cells(workbook, "SOWStoryTable")
-            expected_sources = {
-                "验收条件": "AcceptanceCriterionTable[验收条件名称]",
-                "任务明细": "TaskTable[任务名称]",
-            }
-            for header, source in expected_sources.items():
-                formula = cells[header].value
-                assert isinstance(formula, ArrayFormula)
-                assert formula.ref == cells[header].coordinate
-                assert isinstance(formula.text, str)
-                assert "_xlfn.TEXTJOIN" in formula.text
-                assert "_xlfn._xlws." not in formula.text
-                assert f'"• "&{source}' in formula.text
-
-            table = worksheet.tables["SOWStoryTable"]
-            columns = {column.name: column for column in table.tableColumns}
-            for header in expected_sources:
-                calculated = columns[header].calculatedColumnFormula
-                assert calculated is not None
-                assert calculated.array is True
-                assert "_xlfn._xlws." not in calculated.text
-        finally:
-            workbook.close()
-
-
-def test_all_visible_text_is_vertically_centered_and_summary_status_is_readable() -> None:
-    for path in (GENERATE_SOW_TEMPLATE, REFERENCE_WORKBOOK):
-        workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
-        try:
-            for worksheet in workbook.worksheets:
-                expected_freeze = None if worksheet.title == "00-使用说明" else (
-                    "A5" if worksheet.title == "90-系统现状" else "A4"
-                )
-                assert worksheet.freeze_panes == expected_freeze
-                for row in worksheet.iter_rows():
-                    for cell in row:
-                        if cell.value is not None:
-                            assert cell.alignment.vertical == "center", (
-                                f"{path.name}:{worksheet.title}:{cell.coordinate}"
-                            )
-            rules = [
-                rule
-                for conditional_format, entries in workbook["20-项目汇总"].conditional_formatting._cf_rules.items()
-                if str(conditional_format.sqref) == "F5:F12"
-                for rule in entries
-            ]
-            by_formula = {tuple(rule.formula): rule for rule in rules}
-            assert by_formula[('"正常"',)].dxf.font.color.rgb[-6:] == "315F61"
-            assert by_formula[('"检查"',)].dxf.font.color.rgb[-6:] == "9C0006"
-        finally:
-            workbook.close()
-
-
-def test_technical_keys_are_hidden_and_business_tables_do_not_expose_ids() -> None:
-    workbook = openpyxl.load_workbook(REFERENCE_WORKBOOK, data_only=False, read_only=False)
+def test_formal_template_scopes_filters_to_tables_only() -> None:
+    workbook = openpyxl.load_workbook(PLUGIN_TEMPLATE, data_only=False)
     try:
-        assert workbook["90-系统现状"].column_dimensions["H"].hidden is not True
-        assert workbook["91-项目参数"].column_dimensions["A"].hidden is True
-        assert workbook["92-基础人天"].column_dimensions["A"].hidden is True
-        assert workbook["92-基础人天"].column_dimensions["C"].hidden is True
-        for headers in EXPECTED_HEADERS.values():
-            assert all(not header.endswith("ID") for header in headers)
+        for worksheet in workbook.worksheets:
+            if not worksheet.tables:
+                continue
+            assert worksheet.auto_filter.ref is None
+            for table_name in worksheet.tables:
+                table = worksheet.tables[table_name]
+                assert table.autoFilter is not None
+                assert table.autoFilter.ref == table.ref
+    finally:
+        workbook.close()
+
+
+def test_business_input_and_formula_columns_have_distinct_editability() -> None:
+    workbook = openpyxl.load_workbook(PLUGIN_TEMPLATE, data_only=False)
+    try:
+        for table_name in ("SOWStoryTable", "TaskTable"):
+            worksheet, table = table_location(workbook, table_name)
+            min_col, min_row, _, _ = range_boundaries(table.ref)
+            headers = table_rows(workbook, table_name)[0]
+            for offset, header in enumerate(headers):
+                cell = worksheet.cell(min_row + 1, min_col + offset)
+                if header in FORMULA_COLUMNS[table_name]:
+                    assert cell.protection.locked is True
+                    assert cell.fill.fgColor.rgb[-6:] == "F1F4F6"
+                    assert formula_text(cell.value).startswith("=")
+                else:
+                    assert cell.protection.locked is False
+                    assert cell.fill.fgColor.rgb[-6:] == "FFFFFF"
+            assert worksheet.protection.sheet is True
+            assert worksheet.protection.insertRows is False
+            assert worksheet.protection.autoFilter is False
+            assert worksheet.protection.sort is False
+            for merged in worksheet.merged_cells.ranges:
+                assert merged.max_row < min_row + 1 or merged.min_row > min_row + 1
+        assert workbook["01-需求故事"].column_dimensions["J"].hidden is True
+    finally:
+        workbook.close()
+
+
+def test_business_validations_have_no_legacy_row_cap() -> None:
+    workbook = openpyxl.load_workbook(PLUGIN_TEMPLATE, data_only=False)
+    try:
+        expected_columns = {
+            "01-需求故事": {4},
+            "02-任务清单": {1, 3, 4, 5},
+        }
+        for sheet_name, columns in expected_columns.items():
+            worksheet = workbook[sheet_name]
+            covered: set[int] = set()
+            for validation in worksheet.data_validations.dataValidation:
+                for cell_range in validation.sqref.ranges:
+                    if cell_range.max_row == 1_048_576:
+                        covered.add(cell_range.min_col)
+            assert covered == columns
+    finally:
+        workbook.close()
+
+
+def test_formulas_are_template_owned_safe_and_risk_free() -> None:
+    workbook = openpyxl.load_workbook(PLUGIN_TEMPLATE, data_only=False)
+    try:
+        formulas: list[str] = []
         for worksheet in workbook.worksheets:
             for row in worksheet.iter_rows():
                 for cell in row:
-                    if cell.data_type == "f":
-                        formula = cell.value.text if isinstance(cell.value, ArrayFormula) else cell.value
-                        assert isinstance(formula, str)
-                        assert "#REF!" not in formula
-                        assert "_xlfn._xlws." not in formula
+                    text = formula_text(cell.value)
+                    if text.startswith("="):
+                        formulas.append(text)
+        assert formulas
+        for formula in formulas:
+            assert "#REF!" not in formula
+            assert "_xlfn._xlws." not in formula
+            assert "风险" not in formula
+            assert "0.6" not in formula
+            assert "1.5" not in formula
+            assert "2.5" not in formula
+        with ZipFile(PLUGIN_TEMPLATE) as archive:
+            xml = b"\n".join(archive.read(name) for name in archive.namelist())
+        assert "风险".encode() not in xml
+    finally:
+        workbook.close()
+
+
+def test_summary_has_exactly_four_rows_and_no_risk_dimension() -> None:
+    workbook = openpyxl.load_workbook(PLUGIN_TEMPLATE, data_only=False)
+    try:
+        rows = table_rows(workbook, "ProjectSummaryTable")
+        assert [row[0] for row in rows[1:]] == [
+            "直接开发人天",
+            "SIT支持人天",
+            "UAT支持人天",
+            "总开发人天",
+        ]
+        assert all(formula_text(row[1]).startswith("=") for row in rows[1:])
+    finally:
+        workbook.close()
+
+
+def test_estimation_standard_tables_preserve_v13_values_and_modes() -> None:
+    workbook = openpyxl.load_workbook(PLUGIN_TEMPLATE, data_only=False)
+    try:
+        parameters = table_rows(workbook, "ProjectParameterTable")
+        assert parameters[0] == EXPECTED_HEADERS["ProjectParameterTable"]
+        assert parameters[1:] == EXPECTED_PARAMETER_ROWS
+
+        catalog = table_rows(workbook, "BaseUnitCatalogTable")
+        assert catalog[0] == EXPECTED_HEADERS["BaseUnitCatalogTable"]
+        assert len(catalog[1:]) == 37
+        assert len({row[1] for row in catalog[1:]}) == 13
+        assert len({row[2] for row in catalog[1:]}) == 37
+        payload = json.dumps(
+            catalog,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        ).encode()
+        assert hashlib.sha256(payload).hexdigest() == EXPECTED_CATALOG_SHA256
+        for row in catalog[1:]:
+            allowed = {
+                mode
+                for mode, value in zip(("新建", "调整", "接入复用"), row[7:10])
+                if isinstance(value, (int, float)) and value > 0
+            }
+            assert allowed
     finally:
         workbook.close()
 
 
 def test_generate_sow_runtime_does_not_read_another_skill_asset() -> None:
-    skill_root = Path(__file__).resolve().parents[1]
     forbidden = ("skills/setup/", "skills/generate-task/")
-    for path in skill_root.joinpath("scripts").glob("*.py"):
+    for path in SKILL_ROOT.joinpath("scripts").glob("*.py"):
         text = path.read_text(encoding="utf-8")
         assert all(fragment not in text for fragment in forbidden)

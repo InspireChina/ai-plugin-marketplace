@@ -16,6 +16,7 @@ SKILL_NAMES = (
     "generate-task",
     "generate-sow",
     "reconcile",
+    "complete-supplier-estimate",
 )
 PROFESSIONAL_OWNER_NAMES = (
     "analyze-requirement",
@@ -111,6 +112,8 @@ def dependency_edges_from_tree(
 def dependency_edges() -> set[tuple[str, str, str]]:
     edges: set[tuple[str, str, str]] = set()
     for source in python_sources(PLUGIN_ROOT / "skills"):
+        if "tests" in source.relative_to(PLUGIN_ROOT / "skills").parts:
+            continue
         relative = source.relative_to(PLUGIN_ROOT).as_posix()
         caller_skill = source.relative_to(PLUGIN_ROOT / "skills").parts[0]
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
@@ -169,6 +172,7 @@ def test_runtime_is_plugin_shared_owner_agnostic_infrastructure() -> None:
         "controls.py",
         "diagnostics.py",
         "fact_source.py",
+        "findings.py",
         "handoff.py",
         "patch.py",
         "project_io.py",
@@ -186,8 +190,8 @@ def test_generator_contract_is_versioned_and_reconcile_uses_the_same_contract() 
     generator = PLUGIN_ROOT / "skills/generate-sow/scripts/generate_sow.py"
     reconcile = PLUGIN_ROOT / "skills/reconcile/scripts/reconcile.py"
 
-    assert assigned_string(generator, "GENERATOR_CONTRACT") == "receipt-only-v3"
-    assert assigned_string(reconcile, "GENERATOR_CONTRACT") == "receipt-only-v3"
+    assert assigned_string(generator, "GENERATOR_CONTRACT") == "receipt-only-v4"
+    assert assigned_string(reconcile, "GENERATOR_CONTRACT") == "receipt-only-v4"
 
 
 def test_shared_review_gates_have_one_implementation_and_all_owners_call_them() -> None:
@@ -220,6 +224,21 @@ def test_transition_dependency_edges_are_complete_and_exact() -> None:
     assert dependency_edges() == TRANSITION_DEPENDENCY_EDGES
     for _, target, _ in TRANSITION_DEPENDENCY_EDGES:
         assert (PLUGIN_ROOT / target).exists(), target
+
+
+def test_supplier_completion_is_self_contained_and_reads_only_shared_formal_asset() -> None:
+    skill_root = PLUGIN_ROOT / "skills/complete-supplier-estimate"
+    assert (skill_root / "SKILL.md").is_file()
+    assert (skill_root / "assets/supplier-estimate-input.xlsx").is_file()
+    script = skill_root / "scripts/complete_supplier_estimate.py"
+    source = script.read_text(encoding="utf-8")
+    assert 'SKILL_ROOT / "assets/supplier-estimate-input.xlsx"' in source
+    assert 'PLUGIN_ROOT / "assets/sow-template.xlsx"' in source
+    assert not [
+        edge
+        for edge in dependency_edges()
+        if edge[0] == script.relative_to(PLUGIN_ROOT).as_posix()
+    ]
 
 
 def test_dependency_scanner_detects_new_import_and_split_path_edges() -> None:
@@ -341,7 +360,7 @@ def test_all_professional_owners_freeze_owner_local_candidate_first_interface() 
         "`<plugin-root>/skills/generate-task/contracts/estimate.schema.json`"
         in task_skill
     )
-    assert "五个 fragment 各读取且只读取一次" in task_skill
+    assert "严格按五个输入 fragment 的 `pages[].order` 各读取一次" in task_skill
     assert "普通 candidate 流程不得运行 `read_template.py`" in task_skill
     assert "`<plugin-root>/references/output-language.md`" in task_skill
     assert "`<plugin-root>/skills/references/`" in task_skill

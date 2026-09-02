@@ -24,7 +24,7 @@ SCHEMA_SHA256 = {
     "skills/analyze-requirement/contracts/source-requirements.schema.json": "8ca6d9738ba0eeebe253d5d7e3bd164c019a54bc318b536012e6a6b5f3bf4e98",
     "skills/generate-design/contracts/technical-requirements.schema.json": "b1988feebe12d86c9af3da02200aa40311376dd604143245891256267ab12583",
     "skills/generate-design/contracts/design.schema.json": "a28fe5d9107f411ff582c4145e2b2e89403f4bdad09cf72f4a0d03501c2f089d",
-    "skills/generate-sow/contracts/manifest.schema.json": "c881cf3bd7bd0d3961a14d77e077709b874818eb4259f986bc9cb2d944ef1eac",
+    "skills/generate-sow/contracts/manifest.schema.json": "77df34baa957e7782fb051d6687edb6849da959e12de931f835b5f5e581a9a16",
     "skills/generate-story/contracts/delivery.schema.json": "fcd0e1549aa7a222649b8fb02c741619378afe632f34c66edc470caf05cfb3f0",
     "skills/generate-task/contracts/estimate.schema.json": "a1b5bbd829fc9bc5b2f3de29a0c07bd1f5daee81950cfc00fe47781701f35116",
     "skills/setup/contracts/project.schema.json": "66c62f87bf37346f72cbd9ef6cc26715e4a995639e7dd19454ffc0dad9aa9247",
@@ -81,7 +81,7 @@ SCHEMA_ENUMS = {
     },
 }
 
-TEMPLATE_SHA256 = "6c90f4782acf7b1beb372a7b5f8aa78079f677160c39349bf561883b5592bfa0"
+TEMPLATE_SHA256 = "0f1dd3be4a124d93b5442ca2415b0cf724acd57a5061086db7614e04183b6fc7"
 
 
 def enum_arrays(value: object, path: str = "$") -> dict[str, list[object]]:
@@ -102,7 +102,7 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_xlsx_formulas_only_reference_existing_table_columns(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         workbooks = [
-            plugin_root / "skills/setup/assets/sow-template.xlsx",
+            plugin_root / "assets/sow-template.xlsx",
             plugin_root / "docs/reference/SOW估算与生成示例_v1.3.xlsx",
         ]
 
@@ -142,6 +142,29 @@ class RepositoryLayoutTests(unittest.TestCase):
 
                 self.assertEqual(set(), invalid_references, workbook)
 
+    def test_ai_sow_workbook_filters_are_table_scoped(self) -> None:
+        plugin_root = REPO_ROOT / "plugins/ai-sow"
+        workbooks = [
+            plugin_root / "assets/sow-template.xlsx",
+            plugin_root / "docs/reference/SOW估算与生成示例_v1.3.xlsx",
+            plugin_root
+            / "skills/complete-supplier-estimate/assets/supplier-estimate-input.xlsx",
+        ]
+
+        for workbook in workbooks:
+            with self.subTest(workbook=workbook.name), ZipFile(workbook) as archive:
+                for member in archive.namelist():
+                    if not member.startswith("xl/worksheets/sheet") or not member.endswith(
+                        ".xml"
+                    ):
+                        continue
+                    worksheet = ET.fromstring(archive.read(member))
+                    if worksheet.find("x:tableParts", SPREADSHEET_NS) is not None:
+                        self.assertIsNone(
+                            worksheet.find("x:autoFilter", SPREADSHEET_NS),
+                            f"{workbook}:{member}",
+                        )
+
     def test_ai_sow_package_is_self_contained(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         required = [
@@ -154,7 +177,9 @@ class RepositoryLayoutTests(unittest.TestCase):
             "runtime/project_io.py",
             "skills/setup/SKILL.md",
             "skills/generate-sow/SKILL.md",
-            "skills/setup/assets/sow-template.xlsx",
+            "skills/complete-supplier-estimate/SKILL.md",
+            "skills/complete-supplier-estimate/assets/supplier-estimate-input.xlsx",
+            "assets/sow-template.xlsx",
             "tests/support/smoke_plugin.py",
             "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
             "docs/reference/SOW估算与生成示例_v1.3.xlsx",
@@ -342,6 +367,7 @@ class RepositoryLayoutTests(unittest.TestCase):
                 "generate-task",
                 "generate-sow",
                 "reconcile",
+                "complete-supplier-estimate",
             },
         )
         for skill_path in skill_paths:
@@ -426,7 +452,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         probes = (
             "plugins/ai-sow/skills/setup/scripts/bootstrap.sh",
             "plugins/ai-sow/skills/setup/contracts/project.schema.json",
-            "plugins/ai-sow/skills/setup/assets/sow-template.xlsx",
+            "plugins/ai-sow/assets/sow-template.xlsx",
         )
         completed = subprocess.run(
             ["git", "check-attr", "eol", "binary", "--", *probes],
@@ -557,13 +583,14 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_template_copies_are_identical(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         paths = [
-            plugin_root / "skills/setup/assets/sow-template.xlsx",
+            plugin_root / "assets/sow-template.xlsx",
             plugin_root / "skills/generate-task/fixtures/sow-template.xlsx",
             plugin_root
             / "skills/generate-sow/fixtures/project/.ai-sow/templates/sow-template.xlsx",
         ]
         hashes = [hashlib.sha256(path.read_bytes()).hexdigest() for path in paths]
         self.assertEqual(hashes, [TEMPLATE_SHA256] * 3)
+        self.assertFalse((plugin_root / "skills/setup/assets/sow-template.xlsx").exists())
 
     def test_markdown_reference_describes_the_v13_estimation_model(self) -> None:
         path = (

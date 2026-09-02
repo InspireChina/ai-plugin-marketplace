@@ -38,7 +38,7 @@
   "properties": {
     "packageId": {"description": "由生成指纹形成的确定性交付包标识。", "type": "string", "pattern": "^sow-sha256-[0-9a-f]{64}$"},
     "fingerprintAlgorithm": {"description": "计算交付包标识所采用的固定算法。", "const": "ai-sow-package-v1"},
-    "generatorContract": {"description": "确定性工作簿与 manifest 投影所采用的生成器合同。", "const": "receipt-only-v3"},
+    "generatorContract": {"description": "确定性工作簿与 manifest 投影所采用的生成器合同。", "const": "receipt-only-v4"},
     "generationFingerprint": {"description": "绑定项目、稳定数据、评审、收据与模板的生成指纹。", "type": "string", "pattern": "^[0-9a-f]{64}$"},
     "generatedWorkbookSha256": {"description": "生成工作簿确定性字节的 SHA-256 摘要。", "type": "string", "pattern": "^[0-9a-f]{64}$"},
     "projectId": {"description": "生成该交付包的项目稳定机器标识。", "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"},
