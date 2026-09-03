@@ -10,6 +10,11 @@ from typing import AbstractSet, Any
 import openpyxl
 from openpyxl.utils.cell import range_boundaries
 
+from candidate_builder import (
+    DELIVERY_CLARIFICATION_FIELDS as CLARIFICATION_FIELDS,
+    DELIVERY_COLLECTION_TYPES as COLLECTION_TYPES,
+    impact_plan_sha256,
+)
 from contracts import (
     canonical_json_bytes,
     load_schema_registry,
@@ -24,17 +29,10 @@ from models import (
     ImpactPlan,
     TemplateCatalog,
 )
-from scope_compiler import impact_plan_sha256
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_REGISTRY = load_schema_registry(SKILL_ROOT)
-COLLECTION_TYPES = {
-    "stories": ("STORY", "storyId"),
-    "acceptanceCriteria": ("ACCEPTANCE_CRITERION", "acceptanceCriterionId"),
-    "tasks": ("TASK", "taskId"),
-    "dependencies": ("DEPENDENCY", "dependencyId"),
-}
 CATALOG_HEADERS = {
     "任务族ID",
     "任务族名称",
@@ -59,7 +57,6 @@ MODE_EFFORT_HEADERS = {
 }
 COMPLEXITIES = ("S", "M", "L")
 CALIBRATED_PARAMETER_STATUSES = {"固定规则", "已校准", "已批准"}
-CLARIFICATION_FIELDS = frozenset({"name", "description", "rationale"})
 MAX_TASKS_PER_STORY = 4
 
 
@@ -329,11 +326,10 @@ def _has_cycle(task_ids: set[str], edges: set[tuple[str, str]]) -> bool:
     return visited != len(task_ids)
 
 
-def _validate_delivery(
+def _validate_delivery_foundation(
     bundle: Mapping[str, object],
     scope: Mapping[str, object],
     source_ref_inventory: AbstractSet[tuple[str, str, str]],
-    catalog: TemplateCatalog,
 ) -> list[Diagnostic]:
     diagnostics = list(
         validate_contract(bundle, "delivery-bundle.schema.json", SCHEMA_REGISTRY)
@@ -347,7 +343,6 @@ def _validate_delivery(
         str(item.get("acceptanceCriterionId")): item
         for item in _mappings(bundle.get("acceptanceCriteria"))
     }
-    tasks = {str(item.get("taskId")): item for item in _mappings(bundle.get("tasks"))}
     story_names: dict[str, str] = {}
 
     for criterion_index, criterion in enumerate(
@@ -414,6 +409,26 @@ def _validate_delivery(
                     f"/stories/{story_id}",
                 )
             )
+    return diagnostics
+
+
+def _validate_delivery_tasks(
+    bundle: Mapping[str, object],
+    scope: Mapping[str, object],
+    catalog: TemplateCatalog,
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    indices = _scope_indices(scope)
+    stories = {
+        str(item.get("storyId")): item for item in _mappings(bundle.get("stories"))
+    }
+    criteria = {
+        str(item.get("acceptanceCriterionId")): item
+        for item in _mappings(bundle.get("acceptanceCriteria"))
+    }
+    tasks = {str(item.get("taskId")): item for item in _mappings(bundle.get("tasks"))}
+
+    for story_id in stories:
         story_tasks = [item for item in tasks.values() if item.get("storyId") == story_id]
         if len(story_tasks) > MAX_TASKS_PER_STORY:
             diagnostics.append(
@@ -699,14 +714,26 @@ def _metrics(previous: Mapping[str, object] | None, current: Mapping[str, object
     }
 
 
-def compile_delivery(
+def delivery_foundation_sha256(bundle: Mapping[str, object]) -> str:
+    return sha256_bytes(
+        canonical_json_bytes(
+            {
+                "inputRevisionId": bundle.get("inputRevisionId"),
+                "scopeSha256": bundle.get("scopeSha256"),
+                "stories": bundle.get("stories"),
+                "acceptanceCriteria": bundle.get("acceptanceCriteria"),
+            }
+        )
+    )
+
+
+def compile_delivery_foundation(
     scope: Mapping[str, object],
     previous_delivery: Mapping[str, object] | None,
     delivery_slice: Mapping[str, object],
     id_decisions: object,
     impact: ImpactPlan,
     source_ref_inventory: AbstractSet[tuple[str, str, str]],
-    catalog: TemplateCatalog,
 ) -> DeliveryCompilation:
     diagnostics = list(
         validate_contract(delivery_slice, "delivery-slice.schema.json", SCHEMA_REGISTRY)
@@ -735,10 +762,37 @@ def compile_delivery(
         _validate_id_ledger(delivery_slice, previous_delivery, id_decisions)
     )
     bundle = _merge_delivery(previous_delivery, delivery_slice, impact, diagnostics)
-    diagnostics.extend(_validate_delivery(bundle, scope, source_ref_inventory, catalog))
+    diagnostics.extend(_validate_delivery_foundation(bundle, scope, source_ref_inventory))
     return DeliveryCompilation(
         bundle=bundle,
         bundle_sha256=sha256_bytes(canonical_json_bytes(bundle)),
         metrics=_metrics(previous_delivery, bundle),
+        diagnostics=_sort_diagnostics(diagnostics),
+    )
+
+
+def compile_delivery(
+    scope: Mapping[str, object],
+    previous_delivery: Mapping[str, object] | None,
+    delivery_slice: Mapping[str, object],
+    id_decisions: object,
+    impact: ImpactPlan,
+    source_ref_inventory: AbstractSet[tuple[str, str, str]],
+    catalog: TemplateCatalog,
+) -> DeliveryCompilation:
+    foundation = compile_delivery_foundation(
+        scope,
+        previous_delivery,
+        delivery_slice,
+        id_decisions,
+        impact,
+        source_ref_inventory,
+    )
+    diagnostics = list(foundation.diagnostics)
+    diagnostics.extend(_validate_delivery_tasks(foundation.bundle, scope, catalog))
+    return DeliveryCompilation(
+        bundle=foundation.bundle,
+        bundle_sha256=foundation.bundle_sha256,
+        metrics=foundation.metrics,
         diagnostics=_sort_diagnostics(diagnostics),
     )

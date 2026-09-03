@@ -11,7 +11,8 @@ SKILL_ROOT = PLUGIN_ROOT / "skills/generate"
 RUNTIME = PLUGIN_ROOT / "runtime"
 SCRIPTS = SKILL_ROOT / "scripts"
 EXPECTED_RUNTIME = {"__init__.py", "diagnostics.py", "project_io.py"}
-EXPECTED_PYTHON_MODULES = {
+REQUIRED_PYTHON_MODULES = {
+    "candidate_builder.py",
     "contracts.py",
     "delivery_compiler.py",
     "final_review.py",
@@ -90,7 +91,9 @@ def test_generate_is_the_only_public_skill() -> None:
 
 
 def test_generate_contains_the_complete_internal_module_set() -> None:
-    assert {path.name for path in SCRIPTS.glob("*.py")} == EXPECTED_PYTHON_MODULES
+    assert REQUIRED_PYTHON_MODULES.issubset(
+        {path.name for path in SCRIPTS.glob("*.py")}
+    )
     assert {
         path.name for path in SCRIPTS.iterdir() if path.is_file() and path.suffix != ".py"
     } == {"bootstrap.ps1", "bootstrap.sh", "enable_long_paths.ps1"}

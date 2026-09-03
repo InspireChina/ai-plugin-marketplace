@@ -128,14 +128,17 @@ source/anchor ID 只从 `questionId` 推导，内容 hash 绑定 canonical 完�
 目标、待设计状态或不适用结论。由于这是供应商 SOW，`IN_SCOPE` Feature 必须至少连接一条 `VENDOR`
 责任边界；只有客户或第三方责任的事项不能进入供应商计价范围。
 
-`delivery_compiler` 在一个 Bundle 中共同形成 Story、AC 和 Task：
+`delivery_compiler` 先形成并验收 Story/AC foundation，再在后续独立阶段形成完整 Bundle：
 
-- 编写顺序固定为两遍：先完成并复核全部受影响 Story/AC 的层级、来源闭包和可观察结果，再从已成立的 Story/AC 读取当前模板进入 Task 拆分；两遍共享同一 candidate 和 ID decisions，不新增中间稳定数据或批准点；
-- Story 是可独立交付、验收和结算的结果，通过唯一 `featureId` 归属一个 Feature，最多包含四个 Task；
+- 编写顺序固定为两个可停止阶段：先完成并复核全部受影响 Story/AC 的层级、来源闭包和可观察结果，以 `accept-story-ac` 生成工作区收据并停在 `READY_FOR_TASK`；此阶段不读取模板、不生成或校验 Task，也不发布稳定 Delivery。后续明确进入 Task 阶段时才从已验收的 Story/AC 读取当前模板；两个阶段共享同一插件管理 candidate，固定 builder 负责静态信封与 ID decisions，不新增稳定数据或批准点；
+- Epic 与 Feature 使用稳定领域能力的名词或名词短语，并以共同投入理由维持同质边界；Story 是可独立移交、验收和关闭的单一具体结果，通过唯一 `featureId` 归属一个 Feature，最多包含四个 Task。准入共同核验具体交付物或能力、责任方或消费者、独立验收、独立关闭或发布边界；
 - AC 是可观察、可独立判定的结果，不描述实现步骤；
 - Task 一行对应一个基础单元实例，并追溯到 Story 与相关 Design/Integration/NFR；名称点明一个与任务类型匹配的计数对象，接口 Task 一行只包含一个可独立开发、测试和估算的接口，接口内部校验进入该接口 AC；
 - 待设计事项默认成为实施 Story 下可独立估算的 Design Task；
-- 跨业务 Feature 的可靠性、验证、发布或移交工作先形成技术 Feature，再由对应 Story 计价并通过依赖连接；
+- 每个原子目标或控制先向全部适用具体 Story 添加来源可追溯 AC；项目级且没有 Story 特定行为时保留在 NFR、DoD 或质量门禁。测量、报告阈值或符合陈述本身不产生 Story；
+- 跨业务 Feature 的可靠性、验证、发布或移交工作只有一个由来源或已批准设计明确支持、可独立运行或消费的具体机制、配置、证据包或运营能力同时拥有独立交付、责任或消费者、验收、关闭或发布边界时才形成技术 Story；控制归组、验收活动或指定验收人不创造该结果。可分别测试的 NFR、质量属性、政策类别、异质控制集合或原子来源义务本身不产生 Story；
+- 只在提交、审批、查询等已有业务触发执行的授权、状态或政策控制先进入每个受影响业务 Story 的 AC，跨切面不形成共享控制 Story；来源规定的阈值保留在每个适用 AC 或项目级质量/NFR 门禁，报表/仪表盘只能交付显示或测量，不能关闭阈值满足义务。自动化、性能、安全或合规测试只能在已成立 Story/AC 下成为 Task；
+- `accept-story-ac` 前在内存中执行零未解决行的语义收敛审计：检查来源原子义务及其阈值/上限/禁止项/变化触发的完整落点、目标未被测量替代、Technical Story 与已有触发控制的准入、双向 NFR 适用性、Brownfield 承诺以及 Story/AC 的来源支持；Scope 缺陷必须回到 `prepare`/`accept-scope`，Story/AC 缺陷必须先改受管 candidate。Task、Design Task、依赖和估算检查不属于该阶段；
 - 一个 Integration 对应一个需要交付的内部或外部系统对接 Task；
 - 正式复杂度只允许 `S / M / L`，无法限定的 `X` 不进入发布数据。
 
@@ -173,6 +176,7 @@ Delivery 并重新终审。
 
 - SourceRef 与 Feature/Design/Integration/NFR 的覆盖；
 - Epic → Feature → Story → AC 的层级、来源完整性和可追溯性，以及 Story/AC 闭包完成后才进入 Task 拆分的流程；
+- Story 不得仅以目标、指标、质量属性、政策类别、合规陈述、复核、测量、取证或测试性为结果；Technical Story 必须有来源或已批准设计支持的可独立运行/消费能力。不相关控制不得因宽泛主题聚合，横切义务必须落到全部适用具体 Story 的 AC，阈值不得只由报表/仪表盘 Story 记录；
 - HLD、上线、数据、环境、安全与运维边界；
 - 重复、遗漏、共享对象和依赖闭包；
 - 任务目录、工作模式、复杂度理由与模板组合；
@@ -208,6 +212,10 @@ review packet 的 `acceptanceCriterionSources` 逐条投影 AC 所属 Story、�
 
 pending 保存尚未成功的输入；revision 保存每次实际使用的不可变输入快照；generation 保存稳定 Bundle、
 manifest 和输出；work 只保存本次候选与临时审计数据。
+
+Scope/Delivery candidate 由 orchestrator 在固定路径生成 Schema 有效的空业务骨架。模型只编辑动态
+集合；contract、revision、hash、替换集合、责任边界与 ID decisions 由插件固定实现生成或推导。
+项目运行不得创建一次性 Python、JavaScript、TypeScript 或 Shell 拼装脚本。
 
 发布顺序固定为：完成候选与终审、生成工作簿候选、用 LibreOffice 隔离回算并完整复读、固化 input revision、固化 generation、最后
 原子替换 `current.json`。指针切换前的新目录不视为有效。任何失败都不得覆盖上一份 generation；恢复
@@ -249,7 +257,7 @@ Delivery 编译、终审、渲染和复读共用这份本轮副本。运行期�
 `generation-renderer-v7` 与 renderer fingerprint 绑定九列 Story 表、AC 符号点、带任务类型/工作方式/复杂度前缀的任务列表、对象特异备注投影、直接 Story 名称引用、Task 原子计价、真实回算引擎和验证代码。改变输出字节语义时必须提升
 合同并同步 baseline、测试与文档。
 
-`scope-compiler-v2` 和 `delivery-compiler-v5` 对应当前最小稳定模型：Story 只保存唯一 `featureId`、名称和 UAT 适用性，不保存类型常量或 `description`；每个 Story 至少两条 AC 且最多四个 Task，接口 Task 保持一个可独立估算接口，AC 不复制
+`scope-compiler-v2` 和 `delivery-compiler-v5` 对应当前最小稳定模型：Story 只保存唯一 `featureId`、名称和 UAT 适用性，不保存类型常量或 `description`；每个 Story 至少两条 AC 且最多四个 Task，Story 准入由具体交付物或能力、责任或消费者、独立验收、独立关闭或发布边界共同判断，目标/指标/质量属性/政策/控制或测试性本身不构成 Story，接口 Task 保持一个可独立估算接口，AC 不复制
 顺序/理由，Task 不复制依赖或 Effective Start 名称。新增锚点必须用候选对象 `sourceRefs` 的
 `(sourceId, anchorId, sha256)` 精确身份定位基线 Feature；替换集合只保存旧 ID，初次完整编译为空；
 发布统计对四类对象统一使用 `affected / recomputed / reused / deleted / final`。

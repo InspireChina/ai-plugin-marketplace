@@ -73,49 +73,12 @@ def stage_reviewed_run(
     prepared = prepared or run_mode(project, "prepare", request=request_path, now=NOW)
     assert prepared["outcome"] == "READY_FOR_SCOPE", prepared
     prepare_scope_files(project, prepared)
-    if prepared["runPlan"]["impact"]["baselineGenerationId"] is not None:
-        for path in ("scope-ids.json",):
-            decisions = json.loads((project / path).read_text(encoding="utf-8"))
-            for item in decisions["decisions"]:
-                item.update(
-                    {
-                        "disposition": "UNCHANGED",
-                        "meaningPreserved": True,
-                        "previousId": item["objectId"],
-                        "rationale": "模板变化不改变对象语义，保留稳定 ID。",
-                    }
-                )
-            write_json(project / path, decisions)
-    scope_result = run_mode(
-        project,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    scope_result = run_mode(project, "accept-scope", now=NOW)
     assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
     prepare_delivery_files(project, prepared)
-    if prepared["runPlan"]["impact"]["baselineGenerationId"] is not None:
-        decisions = json.loads(
-            (project / "delivery-ids.json").read_text(encoding="utf-8")
-        )
-        for item in decisions["decisions"]:
-            item.update(
-                {
-                    "disposition": "UNCHANGED",
-                    "meaningPreserved": True,
-                    "previousId": item["objectId"],
-                    "rationale": "模板变化不改变对象语义，保留稳定 ID。",
-                }
-            )
-        write_json(project / "delivery-ids.json", decisions)
-    delivery_result = run_mode(
-        project,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    story_ac_result = run_mode(project, "accept-story-ac", now=NOW)
+    assert story_ac_result["outcome"] == "READY_FOR_TASK", story_ac_result
+    delivery_result = run_mode(project, "accept-delivery", now=NOW)
     assert delivery_result["outcome"] == "REVIEW_REQUIRED", delivery_result
     packet = run_mode(project, "prepare-review", now=NOW)
     assert packet["outcome"] == "REVIEW_REQUIRED", packet

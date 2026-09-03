@@ -48,29 +48,12 @@ SCOPE_COLLECTIONS = (
     "nfrs",
     "assumptions",
 )
-SCOPE_ID_FIELDS = {
-    "epics": ("EPIC", "epicId"),
-    "features": ("FEATURE", "featureId"),
-    "commitments": ("COMMITMENT", "commitmentId"),
-    "effectiveStartItems": ("EFFECTIVE_START_ITEM", "effectiveStartItemId"),
-    "designItems": ("DESIGN_ITEM", "designItemId"),
-    "designDecisions": ("DESIGN_DECISION", "designDecisionId"),
-    "integrations": ("INTEGRATION", "integrationId"),
-    "nfrs": ("NFR", "nfrId"),
-    "assumptions": ("ASSUMPTION", "assumptionId"),
-}
 DELIVERY_COLLECTIONS = (
     "stories",
     "acceptanceCriteria",
     "tasks",
     "dependencies",
 )
-DELIVERY_ID_FIELDS = {
-    "stories": ("STORY", "storyId"),
-    "acceptanceCriteria": ("ACCEPTANCE_CRITERION", "acceptanceCriterionId"),
-    "tasks": ("TASK", "taskId"),
-    "dependencies": ("DEPENDENCY", "dependencyId"),
-}
 QUESTION_FIELDS = {
     "questionId",
     "subjectIds",
@@ -134,52 +117,6 @@ def _write_json(path: Path, value: object) -> None:
     path.write_bytes(_canonical_json_bytes(value))
 
 
-def _complete_id_decisions(
-    decisions: dict[str, object],
-    candidate: Mapping[str, object],
-    id_fields: Mapping[str, tuple[str, str]],
-    *,
-    has_baseline: bool,
-) -> None:
-    entries = decisions.get("decisions")
-    if not isinstance(entries, list):
-        raise RuntimeError("ID decisions fixture must contain a decisions list")
-    known = {
-        (entry.get("objectType"), entry.get("objectId"))
-        for entry in entries
-        if isinstance(entry, Mapping)
-    }
-    for collection, (object_type, id_field) in id_fields.items():
-        values = candidate.get(collection)
-        if not isinstance(values, list):
-            raise RuntimeError(f"candidate collection must be a list: {collection}")
-        for item in values:
-            if not isinstance(item, Mapping) or not isinstance(item.get(id_field), str):
-                continue
-            object_id = str(item[id_field])
-            if (object_type, object_id) not in known:
-                entries.append(
-                    {
-                        "objectType": object_type,
-                        "objectId": object_id,
-                        "disposition": "NEW",
-                        "meaningPreserved": False,
-                        "rationale": "首个 revision 中的新对象。",
-                    }
-                )
-    if has_baseline:
-        for decision in entries:
-            if isinstance(decision, dict):
-                decision.update(
-                    {
-                        "disposition": "UNCHANGED",
-                        "previousId": decision["objectId"],
-                        "meaningPreserved": True,
-                        "rationale": "模板变化未改变对象语义，保留稳定 ID。",
-                    }
-                )
-
-
 def run_command(command: list[str], cwd: Path) -> dict[str, object]:
     """Run a support command and return its final JSON object when present."""
     completed = subprocess.run(
@@ -223,45 +160,6 @@ def plugin_python_command(plugin_root: Path) -> str:
         / ".venv"
         / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     )
-
-
-def _install_read_guard(audit_root: Path) -> Path:
-    audit_root.mkdir(parents=True, exist_ok=True)
-    guard = audit_root / "sitecustomize.py"
-    guard.write_text(
-        """from __future__ import annotations
-import os
-from pathlib import Path
-
-_ORIGINAL_OPEN = Path.open
-_ALLOWED = tuple(
-    Path(item).resolve()
-    for item in os.environ["AI_SOW_ALLOWED_READ_ROOTS"].split(os.pathsep)
-    if item
-)
-_LOG = Path(os.environ["AI_SOW_FORBIDDEN_READ_LOG"])
-
-def _within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-def _guarded_open(self, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
-    if str(mode).startswith("r"):
-        resolved = self.resolve()
-        if not any(_within(resolved, root) for root in _ALLOWED):
-            with open(_LOG, "a", encoding="utf-8") as stream:
-                stream.write(str(resolved) + "\\n")
-            raise RuntimeError(f"runtime read escaped installed plugin/project roots: {resolved}")
-    return _ORIGINAL_OPEN(self, mode, buffering, encoding, errors, newline)
-
-Path.open = _guarded_open
-""",
-        encoding="utf-8",
-    )
-    return guard
 
 
 def _orchestrator_environment(
@@ -391,9 +289,8 @@ def _scope_candidate(
     project: Path,
     case: Mapping[str, object],
     prepared: Mapping[str, object],
-) -> tuple[str, str]:
-    plan = prepared["runPlan"]
-    if not isinstance(plan, Mapping):
+) -> None:
+    if not isinstance(prepared.get("runPlan"), Mapping):
         raise RuntimeError("prepare result lacks runPlan")
     bundle = _load_json(active_plugin / str(case["scopeSlicePath"]))
     anchors_value = json.loads(
@@ -423,65 +320,24 @@ def _scope_candidate(
                 for ref in refs
                 if isinstance(ref, Mapping)
             ]
-    candidate = {
-        "contract": "ai-sow-scope-slice-v1",
-        "inputRevisionId": plan["targetRevisionId"],
-        "impactPlanSha256": _sha256(_canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": (
-            []
-            if plan["impact"]["baselineGenerationId"] is None
-            else list(plan["impact"]["affectedFeatureIds"])
-        ),
-        "newAnchorMappings": [],
-        **{name: copy.deepcopy(bundle[name]) for name in SCOPE_COLLECTIONS},
-        "responsibilityBoundaries": copy.deepcopy(bundle["responsibilityBoundaries"]),
-    }
-    candidate_name = "scope-slice.json"
-    ids_name = "scope-id-decisions.json"
-    _write_json(project / candidate_name, candidate)
-    decisions = _load_json(active_plugin / str(case["scopeIdDecisionsPath"]))
-    _complete_id_decisions(
-        decisions,
-        candidate,
-        SCOPE_ID_FIELDS,
-        has_baseline=plan["impact"]["baselineGenerationId"] is not None,
-    )
-    _write_json(project / ids_name, decisions)
-    return candidate_name, ids_name
+    candidate_path = project / ".ai-sow/work/scope-slice.candidate.json"
+    candidate = _load_json(candidate_path)
+    for name in SCOPE_COLLECTIONS:
+        candidate[name] = copy.deepcopy(bundle[name])
+    _write_json(candidate_path, candidate)
 
 
 def _delivery_candidate(
     active_plugin: Path,
     project: Path,
     case: Mapping[str, object],
-) -> tuple[str, str]:
-    plan = _load_json(project / ".ai-sow/work/run-plan.json")
-    scope = _load_json(project / ".ai-sow/work/scope.candidate.json")
+) -> None:
     bundle = _load_json(active_plugin / str(case["deliverySlicePath"]))
-    candidate = {
-        "contract": "ai-sow-delivery-slice-v3",
-        "inputRevisionId": plan["targetRevisionId"],
-        "scopeSha256": _sha256(_canonical_json_bytes(scope)),
-        "impactPlanSha256": _sha256(_canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": (
-            []
-            if plan["impact"]["baselineGenerationId"] is None
-            else list(plan["impact"]["affectedFeatureIds"])
-        ),
-        **{name: copy.deepcopy(bundle[name]) for name in DELIVERY_COLLECTIONS},
-    }
-    candidate_name = "delivery-slice.json"
-    ids_name = "delivery-id-decisions.json"
-    _write_json(project / candidate_name, candidate)
-    decisions = _load_json(active_plugin / str(case["deliveryIdDecisionsPath"]))
-    _complete_id_decisions(
-        decisions,
-        candidate,
-        DELIVERY_ID_FIELDS,
-        has_baseline=plan["impact"]["baselineGenerationId"] is not None,
-    )
-    _write_json(project / ids_name, decisions)
-    return candidate_name, ids_name
+    candidate_path = project / ".ai-sow/work/delivery-slice.candidate.json"
+    candidate = _load_json(candidate_path)
+    for name in DELIVERY_COLLECTIONS:
+        candidate[name] = copy.deepcopy(bundle[name])
+    _write_json(candidate_path, candidate)
 
 
 def _review_candidate(
@@ -706,30 +562,30 @@ def _complete_prepared_case(
     if _sha256(snapshot.read_bytes()) != plan["templateSha256"]:
         raise RuntimeError("run template snapshot hash does not close")
 
-    scope_name, scope_ids = _scope_candidate(active_plugin, project, case, prepared)
+    _scope_candidate(active_plugin, project, case, prepared)
     _run_orchestrator(
         active_plugin,
         project,
         audit_root,
         audit_log,
         "accept-scope",
-        "--candidate",
-        scope_name,
-        "--ids",
-        scope_ids,
         expected="READY_FOR_DELIVERY",
     )
-    delivery_name, delivery_ids = _delivery_candidate(active_plugin, project, case)
+    _delivery_candidate(active_plugin, project, case)
+    _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "accept-story-ac",
+        expected="READY_FOR_TASK",
+    )
     _run_orchestrator(
         active_plugin,
         project,
         audit_root,
         audit_log,
         "accept-delivery",
-        "--candidate",
-        delivery_name,
-        "--ids",
-        delivery_ids,
         expected="REVIEW_REQUIRED",
     )
     packet = _run_orchestrator(
@@ -827,30 +683,30 @@ def _run_blocked_review_case(
         request_name,
         expected="READY_FOR_SCOPE",
     )
-    scope_name, scope_ids = _scope_candidate(active_plugin, project, case, prepared)
+    _scope_candidate(active_plugin, project, case, prepared)
     _run_orchestrator(
         active_plugin,
         project,
         audit_root,
         audit_log,
         "accept-scope",
-        "--candidate",
-        scope_name,
-        "--ids",
-        scope_ids,
         expected="READY_FOR_DELIVERY",
     )
-    delivery_name, delivery_ids = _delivery_candidate(active_plugin, project, case)
+    _delivery_candidate(active_plugin, project, case)
+    _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "accept-story-ac",
+        expected="READY_FOR_TASK",
+    )
     _run_orchestrator(
         active_plugin,
         project,
         audit_root,
         audit_log,
         "accept-delivery",
-        "--candidate",
-        delivery_name,
-        "--ids",
-        delivery_ids,
         expected="REVIEW_REQUIRED",
     )
     packet = _run_orchestrator(
@@ -922,9 +778,8 @@ def run_smoke(
     brownfield = projects_root / "brownfield"
     blocked_resume = projects_root / "blocked-resume"
     blocked_review = projects_root / "blocked-review"
-    audit_root = work_dir / "read-guard"
+    audit_root = active_plugin / "tests/support/read_guard"
     audit_log = work_dir / "forbidden-reads.log"
-    _install_read_guard(audit_root)
 
     greenfield_result, greenfield_verification = _run_case(
         active_plugin, greenfield, greenfield_case, audit_root, audit_log

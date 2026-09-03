@@ -32,8 +32,9 @@
 - 将 Epic、Feature、Story、AC、Task、技术/交付工作、Effective Start 和问题编写规则拆分为安装包内
   可按阶段加载的 reference；Task 具体目录、人天、S/M/L 复杂度与 X/拆分条件只从 `90-估算标准` 读取。
 - 收紧 Task 编写与评审指引：接口 Task 一行只表达一个可独立交付对象，内部校验归入接口 AC；语义质量由当前来源、模板和 Reviewer 判断，机械编译器不再用中文标题关键词猜测业务含义。
-- Delivery 编写固定为同一候选内的两遍流程：先完成并复核 Epic/Feature/Story/AC 的层级与来源闭包，再从已成立的 Story/AC 进入 Task 拆分；终审 packet 逐条提供 AC 所属 Story、精确来源和可解析状态，机械层不再用中文业务关键词猜测语义。
-- Delivery 第一遍增加一次性原子来源义务闭包清单：逐项保留并列指标、阈值、责任、禁止项、变化触发和实际触发，覆盖跨 Feature 规则及适用 Integration/NFR；`sourceRefs` 只保留各自贡献必要判断的最小集合，Technical Story 按可独立验证的目标族拆分，并禁止把常规 SIT/UAT 与独立移交成果拼成 Story。
+- Delivery 编写固定为同一候选内的两个可停止阶段：先完成并复核 Epic/Feature/Story/AC 的层级与来源闭包，通过 `accept-story-ac` 后再允许从已成立的 Story/AC 进入 Task 拆分；终审 packet 逐条提供 AC 所属 Story、精确来源和可解析状态，机械层不再用中文业务关键词猜测语义。
+- Scope/Delivery candidate 改为由 orchestrator 生成固定静态信封，模型只填写 Schema 约束的动态业务集合；ID decisions 根据当前候选与基线自动推导，同 ID 实质变化会阻断。E2E 与 copy smoke 不再拼装信封、维护 ID fixture 或创建单次运行辅助代码。
+- Delivery 第一阶段增加一次性原子来源义务闭包清单：逐项保留并列指标、阈值、责任、禁止项、变化触发和实际触发，覆盖跨 Feature 规则及适用 Integration/NFR；`sourceRefs` 只保留各自贡献必要判断的最小集合。每个原子目标或控制先向全部适用具体 Story 添加来源可追溯 AC，项目级且没有 Story 特定行为时保留在 NFR、DoD 或质量门禁。Story 必须是可独立移交并关闭的具体结果，具体交付物或能力、责任或消费者、验收、关闭或发布边界共同成立；测量、阈值报告、合规陈述、可分别测试的 NFR、质量属性、政策类别或异质控制集合不自动增加 Story。Technical Story 还须由来源或已批准设计明确支持一个可独立运行或消费的具体机制、配置、证据包或运营能力；控制归组、验收活动、证据收集或指定验收人不创造该结果。已有提交、审批、查询触发中的业务控制先写入全部受影响业务 Story 的 AC，来源规定的阈值保留在适用 AC 或项目级质量/NFR 门禁，报表/仪表盘不关闭阈值满足义务。新增 `accept-story-ac` 与 `READY_FOR_TASK` 工作区检查点：当前 E2E 可在 Story/AC 收敛后停止，不读取估算模板、不生成或校验 Task，也不发布稳定 Delivery；后续完整 Delivery 接受必须持有与精确 Story/AC foundation 一致的收据。
 - SOW 模板简化为需求故事、任务清单、工作量汇总、估算标准四个 Sheet，继续作为当前任务目录、基础人天、
   复杂度、SIT、UAT、公式和取整的唯一计算权威。
 - 生成器先产生候选件，再用 LibreOffice 隔离回算并完整复读模板公式、Table 计算列、数据验证、保护
@@ -41,8 +42,8 @@
   独立复审暂存件，只有精确匹配 manifest 的 `VERIFIED` 证据才允许发布，失败时保留 last-known-good。
 - Delivery 移除可推导的 Story 类型与 `description`、AC 序号/理由、Task 重复依赖及 Effective Start 名称副本；保留所有
   判断、计算、评审和追踪所需字段。
-- Epic、Feature、Story 增加层级、自然标题和技术工作分类规范；Story 改为通过唯一 `featureId` 归属一个 Feature，并增加至少两条 AC、拒绝“完成/实现”式标题和最多四个 Task 的编译门禁；跨业务
-  Feature 的可靠性、质量验证、发布和移交先形成技术 Feature，避免拼接式“子需求”和超大 Story。
+- Epic、Feature、Story 增加层级、自然标题和技术工作分类规范；Epic/Feature 使用稳定能力名词并拒绝抽象主题桶，Story 改为通过唯一 `featureId` 归属一个 Feature，并增加至少两条 AC、拒绝“完成/实现”式标题和最多四个 Task 的编译门禁；跨业务
+  Feature 的可靠性、质量验证、发布和移交按独立交付边界决定是否形成技术 Story，避免拼接式“子需求”和 NFR Story 膨胀。
 - `01-需求故事` 简化为九列并移除内部“故事路径”，Task 直接引用唯一 Story 名称；AC 与任务列表使用逐行可扫视格式，对象特异备注只出现一次，跨 Feature 通用事项集中进入配套说明。
 - 新增锚点按候选 Scope 对象引用的 `(sourceId, anchorId, sha256)` 精确身份定位基线 Feature，替换集合
   只使用旧 ID且初次完整编译为空；发布统计统一为

@@ -46,8 +46,8 @@ TypeScript、TSX 或 `.xlsx`。原型需要提取页面、动作、触发、状�
 
 | 术语 | 定义 |
 |---|---|
-| Epic | 一条独立业务线、完整业务域或长期技术能力域，形成业务或技术价值闭环并容纳多个 Feature。 |
-| Feature | Epic 下用户可感知、可归责，并可独立纳入、排除、延期、交付和评审的功能模块。 |
+| Epic | 一条独立业务线、稳定业务域或长期技术能力域，以名词或名词短语命名，容纳共享同一投入理由和价值边界的多个 Feature。 |
+| Feature | Epic 下用户、业务责任方或平台消费者可感知、可归责，并可独立纳入、排除、延期、交付和评审的稳定领域能力。 |
 | SourceRef | 文档或问答的逻辑标识、语义定位和内容指纹；不依赖页码、易漂移行号、聊天轮次或模型摘要。 |
 | ScopeDecision | 对 Feature 的 `IN_SCOPE / FULLY_COVERED / OUT_OF_SCOPE` 判断。 |
 | DesignItem | 目标设计中的组件、流程、数据、集成、基础设施或质量对象。 |
@@ -86,26 +86,34 @@ AC 对答案的依赖都使用该锚点的精确 `(sourceId, anchorId, sha256)`�
 
 | 术语 | 定义 |
 |---|---|
-| Story | 一个 Feature 下单一、可独立交付、验收和结算的最小结果，通过唯一 `featureId` 归属。 |
+| Story | 一个 Feature 下单一、可独立移交、验收和关闭的具体结果，通过唯一 `featureId` 归属；具体交付物或能力、责任方或消费者、独立验收、独立关闭或发布边界共同成立。 |
 | AcceptanceCriterion | 一行一个可观察、可独立通过或失败的结果；描述结果，不描述实现步骤。 |
 | Task | Story 下直接估算的最小明细；一行对应一个基础单元实例的完整工作。 |
 | Design Task | 可独立估算的架构设计、专题调研、PoC 或关键方案决策，通常归属受影响的实施 Story。 |
 | 依赖 | 一个 Story/Task 使用另一个已计价交付对象的关系；不能据此重复估算共享工作。 |
 | UAT 适用性 | Story 是否需要业务 UAT 的明确判断，不从任务族推导。 |
 
-Epic、Feature、Story 按业务或技术结果拆分，不按前端、后端、测试、架构或运维岗位拆分。Story 标题采用
+Epic、Feature 使用稳定领域中的名词或名词短语；名称不能靠“平台”“闭环”“保障”等抽象词把迁移、业务集成、安全、可靠性、发布或移交等异质能力装进同一主题桶。Epic、Feature、Story 按业务或技术结果拆分，不按前端、后端、测试、架构或运维岗位拆分。Story 标题采用
 自然的 `[模块/接口] 角色或对象＋动作` 风格，不以“完成”或“实现”开头；每个 Story 至少两条可观察、
 可判定且被 Task 覆盖的 AC。Story 稳定数据不保存 `description` 或用户故事三段式字段。
 
 默认不创建独立 Design Story。常规设计包含在实施基础单元中；只有可独立估算的设计成果才生成 Design
-Task。每个 Story 最多四个 Task；试拆分超过上限时按独立验收结果拆分。跨业务 Feature 的可靠性、
-质量验证、发布或移交工作先形成有来源的技术 Feature，再由对应 Story 承载并通过依赖连接；不得用一个
-横跨多个 Feature 的主 Story 汇总。每个需要交付的 Integration 恰好对应一个集成 Task。
+Task。每个 Story 最多四个 Task；试拆分超过上限时按独立结果与全部准入证据拆分。每个原子目标或控制先
+作为来源可追溯 AC 落到全部适用的具体 Story；同一语义义务可在不同 Story 使用不同 AC ID。项目级且没有
+Story 特定行为的义务留在 NFR、DoD 或质量门禁。测量、报告阈值或符合陈述本身，以及可分别测试的指标、
+质量属性、政策类别或异质控制集合都不构成 Story。跨业务 Feature 的剩余工作只有是一个具体机制、配置、
+证据包或运营能力，且由来源或已批准设计明确支持为可独立运行或消费的能力时才建立 Technical Story；控制归组、
+验收活动、证据收集或指定验收人不能制造该结果，标题必须描述被交付的行为或能力。拆开不相关剩余结果，不能
+保留数据治理或服务水平的兜底 Story。只在提交、审批、查询等已有业务触发执行的授权、状态或政策控制先作为
+每个受影响业务 Story 的 AC；跨切面不构成共享控制 Story。来源规定的阈值必须保留在每个适用 AC 或项目级
+质量/NFR 门禁，报表或仪表盘只能显示/测量，不能关闭阈值满足义务。自动化、性能、安全或合规测试只能在已成立
+Story/AC 下成为 Task，不能反向证明 Story 准入。每个需要交付的 Integration 恰好对应一个集成 Task。
 
-Delivery 编写固定先完成 Story/AC，再进入 Task：第一遍从已验证 Scope 和来源建立 Epic → Feature →
-Story → AC 闭包并反查来源遗漏；第二遍只以已成立的 Story/AC、Design/Integration/NFR、Effective Start
-和本轮模板为输入拆分 Task。两遍仍形成一份 DeliveryBundle，不引入中间稳定数据或额外批准，也不允许
-Task 反向扩大或改写 Story/AC。
+Delivery 编写固定先完成 Story/AC，再进入 Task：第一阶段从已验证 Scope 和来源建立 Epic → Feature →
+Story → AC 闭包并反查来源遗漏，以 `accept-story-ac` 生成工作区收据后停在 `READY_FOR_TASK`；此时不读取
+模板、不生成或校验 Task，也不形成稳定 DeliveryBundle。后续明确进入 Task 阶段时，才以已验收的
+Story/AC、Design/Integration/NFR、Effective Start 和本轮模板为输入拆分 Task；Task 不得反向扩大或改写
+Story/AC。工作区收据不是稳定数据或额外批准点。
 
 Delivery 只保留影响判断、评审、追踪或模板投影的字段：Story 不保存常量类型或描述；AC 顺序由列表表达且不
 复制理由；Task 依赖只在顶层 `dependencies` 表达；`调整 / 接入复用` 只保存
@@ -189,6 +197,9 @@ generation 的 `changeCounts` 对 Feature、Story、AC、Task 统一报告 `affe
 deleted / final`；`affected` 只指基线旧对象，候选新 ID 不混入替换集合。
 初次完整编译没有基线，`replacesFeatureIds` 必须为空；新增来源只能按
 `(sourceId, anchorId, sha256)` 精确身份映射到候选 Scope 引用。
+Scope 和 Delivery 的静态 candidate 信封由 orchestrator 生成，模型只写动态业务集合；ID decisions
+由固定 builder 对比基线后生成。同 ID 只允许规范字节不变或说明性澄清，实质变化必须换新 ID。
+单次运行不生成临时 Python/JavaScript/TypeScript/Shell 拼装代码。
 
 ## 8. 语言、隐私与法律边界
 

@@ -22,4 +22,4 @@ Greenfield 的最低起点是“本期新建、不继承既有合同能力”，
 
 ## ID 与切片替换
 
-语义不变使用 `UNCHANGED`，仅说明性文字或来源定位变化且交付含义不变使用 `CLARIFIED`，实质变化必须用新 ID 和 `CHANGED`，新对象使用 `NEW`。新增锚点先根据候选 Scope 对象 `sourceRefs` 中与权威输入完全相同的 `(sourceId, anchorId, sha256)` 和 Feature 关联定位基线 Feature，只有无法证明映射时才使用显式映射并保守扩大。`replacesFeatureIds` 始终只列基线旧 ID；初次完整编译没有基线，必须使用空数组。切片替换删除受影响闭包中的旧对象，再插入完整新切片；未受影响对象保持规范字节不变。跨越闭包的共享 Design、Integration、NFR 或假设必须先扩大 ImpactPlan，不能留下半更新引用。
+模型只填写 orchestrator 提供的 Scope candidate 骨架中的动态业务集合，不手工拼装信封或 ID ledger。接受时，固定 builder 将规范字节完全一致的同 ID 对象记为 `UNCHANGED`，只改变说明性文字或来源定位且交付含义不变的同 ID 对象记为 `CLARIFIED`，新 ID 记为 `NEW`；同 ID 的实质语义变化直接阻断并要求分配新 ID。新增锚点先根据候选 Scope 对象 `sourceRefs` 中与权威输入完全相同的 `(sourceId, anchorId, sha256)` 和 Feature 关联定位基线 Feature，只有无法证明映射时才使用显式映射并保守扩大。`replacesFeatureIds` 始终只列基线旧 ID；初次完整编译没有基线，必须使用空数组。切片替换删除受影响闭包中的旧对象，再插入完整新切片；未受影响对象保持规范字节不变。跨越闭包的共享 Design、Integration、NFR 或假设必须先扩大 ImpactPlan，不能留下半更新引用。

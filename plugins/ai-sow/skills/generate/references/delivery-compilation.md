@@ -1,6 +1,6 @@
 # Delivery 编译合同
 
-Delivery 编译只读取已验证的完整 Scope、当前受影响切片和权威 SOW 模板目录，生成完整 `DeliveryBundle`。它不得反向修改 Scope，也不得在 Task 估算阶段改写 Story 或 AC。
+Delivery 编译分成两个内部阶段。`accept-story-ac` 只读取已验证的完整 Scope 和当前受影响切片，校验 Story/AC foundation，不读取权威 SOW 模板目录，也不生成稳定 `DeliveryBundle`；通过后以工作区收据绑定精确 foundation 并返回 `READY_FOR_TASK`。后续 `accept-delivery` 才读取模板、校验 Task 与依赖并生成完整 `DeliveryBundle`，且不得反向修改 Scope、Story 或 AC。
 
 编写前按阶段读取[Delivery 编写导航](delivery-authoring.md)中的对应参考。层级、拆解、技术分类、交付工作与 Effective Start 的细则分别由专门页面维护；它们不替代当前项目来源或模板目录。任何示例只用于判断层级与标题风格，不能作为当前项目范围、技术选型或估算证据。
 
@@ -34,6 +34,6 @@ Epic、Feature、Story 按交付结果而非工种拆分。全局 DoD、常规 S
 
 ## ID 与切片替换
 
-ID ledger 与 Scope 使用相同语义：`UNCHANGED` 完全一致，`CLARIFIED` 只改变说明性文字，实质变化必须使用新 ID，新增对象使用 `NEW`。`replacesFeatureIds` 只列基线中被替换的旧 Feature ID，不能混入候选新 ID；初次完整编译必须为空。替换切片时按 Story 的唯一 `featureId` 删除受影响 Feature 的全部旧 Story、AC、Task 及相连依赖；未受影响对象保持规范字节不变。
+模型只填写 orchestrator 提供的 Delivery candidate 骨架中的 Story、AC、Task 和 dependencies，不手工拼装信封或 ID ledger。固定 builder 根据当前候选与基线自动生成 ID decisions：`UNCHANGED` 表示同 ID 规范字节完全一致，`CLARIFIED` 只改变说明性文字，`NEW` 表示新 ID；同 ID 的实质变化会阻断并要求分配新 ID。`replacesFeatureIds` 只列基线中被替换的旧 Feature ID，不能混入候选新 ID；初次完整编译必须为空。替换切片时按 Story 的唯一 `featureId` 删除受影响 Feature 的全部旧 Story、AC、Task 及相连依赖；未受影响对象保持规范字节不变。
 
 稳定 Delivery 不保存 Story `storyType/description`、AC `sequence/rationale`、Task `dependsOnTaskIds/matchedEffectiveStartItemId` 或 Effective Start 名称副本；这些值均可由固定合同、列表顺序、顶层依赖或 Scope ID 引用唯一得出。

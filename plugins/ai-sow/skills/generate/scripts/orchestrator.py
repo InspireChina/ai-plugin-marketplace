@@ -20,7 +20,20 @@ from contracts import (  # noqa: E402
     validate_final_review,
     validate_generation_hash_closure,
 )
-from delivery_compiler import compile_delivery, read_template_catalog  # noqa: E402
+from candidate_builder import (  # noqa: E402
+    build_id_decisions,
+    delivery_candidate_skeleton,
+    impact_plan_sha256,
+    refresh_delivery_candidate,
+    refresh_scope_candidate,
+    scope_candidate_skeleton,
+)
+from delivery_compiler import (  # noqa: E402
+    compile_delivery,
+    compile_delivery_foundation,
+    delivery_foundation_sha256,
+    read_template_catalog,
+)
 from final_review import (  # noqa: E402
     build_review_packet,
     record_review,
@@ -43,7 +56,7 @@ from models import (  # noqa: E402
 )
 from package_renderer import PackageRenderError, render_package  # noqa: E402
 from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
-from scope_compiler import compile_scope, impact_plan_sha256  # noqa: E402
+from scope_compiler import compile_scope  # noqa: E402
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +80,7 @@ SCOPE_PATH = f"{WORK_ROOT}/scope.candidate.json"
 DELIVERY_SLICE_PATH = f"{WORK_ROOT}/delivery-slice.candidate.json"
 DELIVERY_IDS_PATH = f"{WORK_ROOT}/delivery-id-decisions.json"
 DELIVERY_PATH = f"{WORK_ROOT}/delivery.candidate.json"
+STORY_AC_RECEIPT_PATH = f"{WORK_ROOT}/story-ac-receipt.json"
 REVIEW_PACKET_PATH = f"{WORK_ROOT}/review-packet.json"
 FINAL_REVIEW_PATH = f"{WORK_ROOT}/final-review.json"
 REVIEW_MATERIAL_PATH = f"{WORK_ROOT}/review-material.md"
@@ -397,6 +411,7 @@ def _clear_downstream(files: ProjectFiles, *, keep_scope: bool = False) -> None:
         DELIVERY_SLICE_PATH,
         DELIVERY_IDS_PATH,
         DELIVERY_PATH,
+        STORY_AC_RECEIPT_PATH,
         REVIEW_PACKET_PATH,
         FINAL_REVIEW_PATH,
     ]
@@ -451,6 +466,68 @@ def _delivery_is_current(files: ProjectFiles, plan: RunPlan) -> bool:
         and delivery_slice.get("impactPlanSha256") == impact_plan_sha256(plan.impact)
         and delivery_slice.get("scopeSha256") == scope_hash
         and not validate_contract(delivery, "delivery-bundle.schema.json", SCHEMA_REGISTRY)
+    )
+
+
+def _story_ac_receipt_value(
+    plan: RunPlan,
+    scope: Mapping[str, object],
+    bundle: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "contract": "ai-sow-story-ac-receipt-v1",
+        "runId": plan.run_id,
+        "inputRevisionId": plan.target_revision_id,
+        "scopeSha256": sha256_bytes(canonical_json_bytes(scope)),
+        "foundationSha256": delivery_foundation_sha256(bundle),
+        "storyCount": len(_mappings(bundle.get("stories"))),
+        "acceptanceCriterionCount": len(
+            _mappings(bundle.get("acceptanceCriteria"))
+        ),
+    }
+
+
+def _story_ac_receipt_matches(
+    receipt: object,
+    plan: RunPlan,
+    scope: Mapping[str, object],
+    bundle: Mapping[str, object],
+) -> bool:
+    return isinstance(receipt, Mapping) and dict(receipt) == _story_ac_receipt_value(
+        plan, scope, bundle
+    )
+
+
+def _story_ac_receipt_is_current(files: ProjectFiles, plan: RunPlan) -> bool:
+    try:
+        receipt = _mapping(files, STORY_AC_RECEIPT_PATH)
+        scope = _mapping(files, SCOPE_PATH)
+        authored_candidate = _mapping(files, DELIVERY_SLICE_PATH)
+        candidate = refresh_delivery_candidate(plan, scope, authored_candidate)
+        pending_manifest = _mapping(files, plan.pending_manifest_path)
+        manifest_root = str(Path(plan.pending_manifest_path).parent)
+        anchors = files.read_json(f"{manifest_root}/{pending_manifest['anchorsPath']}")
+        current = load_current(files)
+        _previous_scope, previous_delivery = _previous_bundles(files, current)
+        id_decisions, id_diagnostics = build_id_decisions(
+            candidate,
+            previous_delivery,
+            stage="delivery",
+        )
+        if id_diagnostics:
+            return False
+        compilation = compile_delivery_foundation(
+            scope,
+            previous_delivery,
+            candidate,
+            id_decisions,
+            plan.impact,
+            _anchor_source_ref_inventory(anchors),
+        )
+    except (ProjectIOError, KeyError, TypeError, ValueError):
+        return False
+    return not compilation.diagnostics and _story_ac_receipt_matches(
+        receipt, plan, scope, compilation.bundle
     )
 
 
@@ -560,19 +637,29 @@ def prepare_run(
             runPlan=plan_value,
             nextMode="publish",
         )
+    input_manifest = _mapping(files, plan.pending_manifest_path)
+    authored_scope = _optional_json(files, SCOPE_SLICE_PATH) if pending_run else None
+    scope_candidate = (
+        refresh_scope_candidate(plan, input_manifest, authored_scope)
+        if isinstance(authored_scope, Mapping)
+        else scope_candidate_skeleton(plan, input_manifest)
+    )
+    files.write_atomic(
+        SCOPE_SLICE_PATH,
+        canonical_json_bytes(scope_candidate),
+    )
     return _result(
         "READY_FOR_SCOPE",
         "输入与影响边界已准备，可编写 Scope 切片。",
         runPlan=plan_value,
         nextMode="accept-scope",
         pendingAnchorsPath=intake.anchors_path,
+        scopeCandidatePath=SCOPE_SLICE_PATH,
     )
 
 
 def accept_scope(
     project_root: Path,
-    candidate_path: str,
-    id_decisions_path: str,
 ) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     plan = _plan_from_value(files.read_json(RUN_PLAN_PATH))
@@ -580,8 +667,7 @@ def accept_scope(
         return _blocked("SCOPE_NOT_REQUIRED", "当前运行不需要 Scope 编译。")
     if not _pending_is_valid(files, plan):
         return _blocked("RUN_PLAN_STALE", "运行计划与 pending 输入不一致。", RUN_PLAN_PATH)
-    candidate = dict(_input_mapping(files, candidate_path))
-    id_decisions = _input_mapping(files, id_decisions_path)
+    candidate = dict(_mapping(files, SCOPE_SLICE_PATH))
     if candidate.get("impactPlanSha256") != impact_plan_sha256(plan.impact):
         return _blocked(
             "SCOPE_IMPACT_HASH_MISMATCH",
@@ -628,7 +714,18 @@ def accept_scope(
             renderer_contract=plan.renderer_contract,
         )
         _write_plan(files, plan)
-        candidate["impactPlanSha256"] = impact_plan_sha256(final_impact)
+    candidate = refresh_scope_candidate(plan, manifest, candidate)
+    id_decisions, id_diagnostics = build_id_decisions(
+        candidate,
+        previous_scope,
+        stage="scope",
+    )
+    if id_diagnostics:
+        return _result(
+            "BLOCKED",
+            "Scope 对象的稳定 ID 与语义变化不一致。",
+            diagnostics=id_diagnostics,
+        )
     compilation = compile_scope(
         manifest,
         anchors,
@@ -645,20 +742,24 @@ def accept_scope(
     files.write_atomic(SCOPE_SLICE_PATH, canonical_json_bytes(candidate))
     files.write_atomic(SCOPE_IDS_PATH, canonical_json_bytes(id_decisions))
     files.write_atomic(SCOPE_PATH, canonical_json_bytes(compilation.bundle))
+    delivery_candidate = delivery_candidate_skeleton(plan, compilation.bundle)
+    files.write_atomic(
+        DELIVERY_SLICE_PATH,
+        canonical_json_bytes(delivery_candidate),
+    )
     return _result(
         "READY_FOR_DELIVERY",
-        "完整 Scope 已接受，可编写 Delivery 切片。",
-        nextMode="accept-delivery",
+        "完整 Scope 已接受，可先编写并验收 Story 与 AC。",
+        nextMode="accept-story-ac",
         scopePath=SCOPE_PATH,
+        deliveryCandidatePath=DELIVERY_SLICE_PATH,
         scopeSha256=compilation.bundle_sha256,
         metrics=dict(compilation.metrics),
     )
 
 
-def accept_delivery(
+def accept_story_ac(
     project_root: Path,
-    candidate_path: str,
-    id_decisions_path: str,
 ) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     try:
@@ -669,14 +770,113 @@ def accept_delivery(
         raise
     if not _scope_is_current(files, plan):
         return _blocked("SCOPE_NOT_ACCEPTED", "必须先接受与当前计划一致的 Scope。")
-    candidate = _input_mapping(files, candidate_path)
-    id_decisions = _input_mapping(files, id_decisions_path)
     scope = _mapping(files, SCOPE_PATH)
+    authored_candidate = _mapping(files, DELIVERY_SLICE_PATH)
+    candidate = refresh_delivery_candidate(plan, scope, authored_candidate)
     pending_manifest = _mapping(files, plan.pending_manifest_path)
     manifest_root = str(Path(plan.pending_manifest_path).parent)
     anchors = files.read_json(f"{manifest_root}/{pending_manifest['anchorsPath']}")
     current = load_current(files)
     _previous_scope, previous_delivery = _previous_bundles(files, current)
+    id_decisions, id_diagnostics = build_id_decisions(
+        candidate,
+        previous_delivery,
+        stage="delivery",
+    )
+    if id_diagnostics:
+        return _result(
+            "BLOCKED",
+            "Story/AC 对象的稳定 ID 与语义变化不一致。",
+            diagnostics=id_diagnostics,
+        )
+    compilation = compile_delivery_foundation(
+        scope,
+        previous_delivery,
+        candidate,
+        id_decisions,
+        plan.impact,
+        _anchor_source_ref_inventory(anchors),
+    )
+    if compilation.diagnostics:
+        return _result(
+            "BLOCKED",
+            "Story/AC 编译未通过。",
+            diagnostics=compilation.diagnostics,
+        )
+    receipt = _story_ac_receipt_value(plan, scope, compilation.bundle)
+    _clear_downstream(files, keep_scope=True)
+    files.write_atomic(DELIVERY_SLICE_PATH, canonical_json_bytes(candidate))
+    files.write_atomic(STORY_AC_RECEIPT_PATH, canonical_json_bytes(receipt))
+    return _result(
+        "READY_FOR_TASK",
+        "Story 与 AC 已接受；当前流程可在此停止。",
+        nextMode="accept-delivery",
+        deliveryCandidatePath=DELIVERY_SLICE_PATH,
+        storyAcReceiptPath=STORY_AC_RECEIPT_PATH,
+        storyAcSha256=receipt["foundationSha256"],
+        storyCount=receipt["storyCount"],
+        acceptanceCriterionCount=receipt["acceptanceCriterionCount"],
+    )
+
+
+def accept_delivery(
+    project_root: Path,
+) -> dict[str, object]:
+    files = ProjectFiles.open(project_root)
+    try:
+        plan = _plan_from_value(files.read_json(RUN_PLAN_PATH))
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            return _blocked("SCOPE_NOT_ACCEPTED", "必须先准备并接受 Scope。")
+        raise
+    if not _scope_is_current(files, plan):
+        return _blocked("SCOPE_NOT_ACCEPTED", "必须先接受与当前计划一致的 Scope。")
+    authored_candidate = _mapping(files, DELIVERY_SLICE_PATH)
+    scope = _mapping(files, SCOPE_PATH)
+    candidate = refresh_delivery_candidate(plan, scope, authored_candidate)
+    pending_manifest = _mapping(files, plan.pending_manifest_path)
+    manifest_root = str(Path(plan.pending_manifest_path).parent)
+    anchors = files.read_json(f"{manifest_root}/{pending_manifest['anchorsPath']}")
+    current = load_current(files)
+    _previous_scope, previous_delivery = _previous_bundles(files, current)
+    id_decisions, id_diagnostics = build_id_decisions(
+        candidate,
+        previous_delivery,
+        stage="delivery",
+    )
+    if id_diagnostics:
+        return _result(
+            "BLOCKED",
+            "Delivery 对象的稳定 ID 与语义变化不一致。",
+            diagnostics=id_diagnostics,
+        )
+    foundation = compile_delivery_foundation(
+        scope,
+        previous_delivery,
+        candidate,
+        id_decisions,
+        plan.impact,
+        _anchor_source_ref_inventory(anchors),
+    )
+    if foundation.diagnostics:
+        return _result(
+            "BLOCKED",
+            "Story/AC 编译未通过。",
+            diagnostics=foundation.diagnostics,
+        )
+    receipt = _optional_json(files, STORY_AC_RECEIPT_PATH)
+    if receipt is None:
+        return _blocked(
+            "STORY_AC_RECEIPT_MISSING",
+            "必须先接受当前 Story 与 AC。",
+            STORY_AC_RECEIPT_PATH,
+        )
+    if not _story_ac_receipt_matches(receipt, plan, scope, foundation.bundle):
+        return _blocked(
+            "STORY_AC_RECEIPT_STALE",
+            "Story 或 AC 已在验收后变化，必须重新接受。",
+            STORY_AC_RECEIPT_PATH,
+        )
     try:
         template_path = _resolve_run_template(files, plan)
     except ProjectIOError as error:
@@ -1101,11 +1301,18 @@ def status(project_root: Path) -> dict[str, object]:
             missingArtifacts=[SCOPE_SLICE_PATH, SCOPE_IDS_PATH, SCOPE_PATH],
         )
     if not _delivery_is_current(files, plan):
+        if _story_ac_receipt_is_current(files, plan):
+            return _result(
+                "READY_FOR_TASK",
+                "Story 与 AC 已接受；当前流程可在此停止。",
+                nextMode="accept-delivery",
+                missingArtifacts=[DELIVERY_IDS_PATH, DELIVERY_PATH],
+            )
         return _result(
             "READY_FOR_DELIVERY",
-            "等待接受 Delivery 切片。",
-            nextMode="accept-delivery",
-            missingArtifacts=[DELIVERY_SLICE_PATH, DELIVERY_IDS_PATH, DELIVERY_PATH],
+            "等待接受 Story 与 AC。",
+            nextMode="accept-story-ac",
+            missingArtifacts=[STORY_AC_RECEIPT_PATH],
         )
     final_review = _optional_json(files, FINAL_REVIEW_PATH)
     if final_review is None:
@@ -1155,48 +1362,50 @@ def run_mode(
     mode: str,
     *,
     request: str | None = None,
-    candidate: str | None = None,
-    ids: str | None = None,
     review: str | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> dict[str, object]:
     clock = now or (lambda: datetime.now(UTC))
     try:
         if mode == "prepare":
-            if request is None or candidate is not None or ids is not None or review is not None:
+            if request is None or review is not None:
                 return _blocked("CLI_ARGUMENTS_INVALID", "prepare 只接受 --request。")
             return prepare_run(project_root, request, now=clock)
         if mode == "accept-scope":
-            if candidate is None or ids is None or request is not None or review is not None:
+            if request is not None or review is not None:
                 return _blocked(
-                    "CLI_ARGUMENTS_INVALID", "accept-scope 必须提供 --candidate 和 --ids。"
+                    "CLI_ARGUMENTS_INVALID", "accept-scope 不接受工件参数。"
                 )
-            return accept_scope(project_root, candidate, ids)
+            return accept_scope(project_root)
+        if mode == "accept-story-ac":
+            if request is not None or review is not None:
+                return _blocked(
+                    "CLI_ARGUMENTS_INVALID", "accept-story-ac 不接受工件参数。"
+                )
+            return accept_story_ac(project_root)
         if mode == "accept-delivery":
-            if candidate is None or ids is None or request is not None or review is not None:
+            if request is not None or review is not None:
                 return _blocked(
                     "CLI_ARGUMENTS_INVALID",
-                    "accept-delivery 必须提供 --candidate 和 --ids。",
+                    "accept-delivery 不接受工件参数。",
             )
-            return accept_delivery(project_root, candidate, ids)
+            return accept_delivery(project_root)
         if mode == "prepare-review":
-            if any(value is not None for value in (request, candidate, ids, review)):
+            if request is not None or review is not None:
                 return _blocked("CLI_ARGUMENTS_INVALID", "prepare-review 不接受工件参数。")
             return prepare_review(project_root)
         if mode == "accept-review":
-            if review is None or any(
-                value is not None for value in (request, candidate, ids)
-            ):
+            if review is None or request is not None:
                 return _blocked(
                     "CLI_ARGUMENTS_INVALID", "accept-review 必须且只提供 --review。"
                 )
             return accept_review(project_root, review)
         if mode == "publish":
-            if any(value is not None for value in (request, candidate, ids, review)):
+            if request is not None or review is not None:
                 return _blocked("CLI_ARGUMENTS_INVALID", "publish 不接受工件参数。")
             return publish_run(project_root)
         if mode == "status":
-            if any(value is not None for value in (request, candidate, ids, review)):
+            if request is not None or review is not None:
                 return _blocked("CLI_ARGUMENTS_INVALID", "status 不接受工件参数。")
             return status(project_root)
         return _blocked("CLI_MODE_INVALID", "不支持的运行模式。")
@@ -1220,6 +1429,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=(
             "prepare",
             "accept-scope",
+            "accept-story-ac",
             "accept-delivery",
             "prepare-review",
             "accept-review",
@@ -1228,8 +1438,6 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--request")
-    parser.add_argument("--candidate")
-    parser.add_argument("--ids")
     parser.add_argument("--review")
     return parser
 
@@ -1252,8 +1460,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             root,
             arguments.mode,
             request=arguments.request,
-            candidate=arguments.candidate,
-            ids=arguments.ids,
             review=arguments.review,
         )
         exit_code = 0 if result["outcome"] != "BLOCKED" else 2

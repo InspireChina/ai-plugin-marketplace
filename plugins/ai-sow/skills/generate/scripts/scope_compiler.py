@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict
 from pathlib import Path
 
+from candidate_builder import (
+    SCOPE_CLARIFICATION_FIELDS as CLARIFICATION_FIELDS,
+    SCOPE_COLLECTION_TYPES as COLLECTION_TYPES,
+    impact_plan_sha256,
+)
 from contracts import (
     canonical_json_bytes,
     load_schema_registry,
@@ -16,17 +20,6 @@ from models import Diagnostic, ImpactPlan, ScopeCompilation
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_REGISTRY = load_schema_registry(SKILL_ROOT)
-COLLECTION_TYPES = {
-    "epics": ("EPIC", "epicId"),
-    "features": ("FEATURE", "featureId"),
-    "commitments": ("COMMITMENT", "commitmentId"),
-    "effectiveStartItems": ("EFFECTIVE_START_ITEM", "effectiveStartItemId"),
-    "designItems": ("DESIGN_ITEM", "designItemId"),
-    "designDecisions": ("DESIGN_DECISION", "designDecisionId"),
-    "integrations": ("INTEGRATION", "integrationId"),
-    "nfrs": ("NFR", "nfrId"),
-    "assumptions": ("ASSUMPTION", "assumptionId"),
-}
 FEATURE_LINKED_COLLECTIONS = {
     "commitments",
     "effectiveStartItems",
@@ -36,9 +29,6 @@ FEATURE_LINKED_COLLECTIONS = {
     "nfrs",
     "assumptions",
 }
-CLARIFICATION_FIELDS = frozenset(
-    {"name", "summary", "description", "rationale", "sourceRefs"}
-)
 
 
 def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
@@ -55,24 +45,6 @@ def _mappings(value: object) -> list[Mapping[str, object]]:
 
 def _ids(value: object) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
-
-
-def _impact_value(plan: ImpactPlan) -> dict[str, object]:
-    raw = asdict(plan)
-    return {
-        "action": raw["action"],
-        "baselineGenerationId": raw["baseline_generation_id"],
-        "baselineRevisionId": raw["baseline_revision_id"],
-        "changedSourceIds": list(raw["changed_source_ids"]),
-        "changedAnchorIds": list(raw["changed_anchor_ids"]),
-        "affectedFeatureIds": list(raw["affected_feature_ids"]),
-        "escalation": raw["escalation"],
-        "reasonCodes": list(raw["reason_codes"]),
-    }
-
-
-def impact_plan_sha256(plan: ImpactPlan) -> str:
-    return sha256_bytes(canonical_json_bytes(_impact_value(plan)))
 
 
 def _all_objects(bundle: Mapping[str, object] | None) -> dict[tuple[str, str], Mapping[str, object]]:

@@ -4,7 +4,7 @@
 
 ## 固定编写顺序
 
-Delivery 必须在同一候选内分两遍完成。第一遍只从已验证 Scope 和当前来源形成 Story 与 AC，并在工作上下文建立一次性来源义务闭包清单，复核 Epic → Feature → Story 的层级、Story 触发归属、每条 AC 的精确来源与可观察性，以及来源条件、跨 Feature 规则和适用 Integration/NFR 是否遗漏。该清单不发布为稳定 JSON。第二遍只能以已经完成的 Story/AC 为输入，再读取当前模板、Effective Start 与设计/集成对象拆分 Task 和依赖。不得先按模板目录罗列 Task，再反向拼 Story 或补写 AC；也不得为两遍流程增加新的稳定 JSON、Owner 或用户批准点。
+Delivery 在同一候选内分成两个可停止阶段。第一阶段只从已验证 Scope 和当前来源形成 Story 与 AC，并在工作上下文建立一次性来源义务闭包清单，复核 Epic → Feature → Story 的层级、Story 触发归属、每条 AC 的精确来源与可观察性，以及来源条件、跨 Feature 规则和适用 Integration/NFR 是否遗漏；`tasks` 与 `dependencies` 保持为空。通过后运行 `accept-story-ac`，由工作区收据绑定精确 Story/AC foundation，并停在 `READY_FOR_TASK`。这一阶段不读取模板、不生成稳定 Delivery，也不要求用户批准。后续明确进入 Task 阶段时，只能以已验收 Story/AC 为输入，再读取当前模板、Effective Start 与设计/集成对象拆分 Task 和依赖；不得先按模板目录罗列 Task，再反向拼 Story 或补写 AC。
 
 ## 按对象查阅
 

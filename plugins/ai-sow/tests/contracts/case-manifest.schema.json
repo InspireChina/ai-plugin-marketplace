@@ -17,9 +17,7 @@
           "mode",
           "requestPath",
           "scopeSlicePath",
-          "scopeIdDecisionsPath",
           "deliverySlicePath",
-          "deliveryIdDecisionsPath",
           "finalReviewPath",
           "expectedDecision",
           "expectedCounts"
@@ -29,9 +27,7 @@
           "mode": {"enum": ["GREENFIELD", "BROWNFIELD"]},
           "requestPath": {"$ref": "#/$defs/path"},
           "scopeSlicePath": {"$ref": "#/$defs/path"},
-          "scopeIdDecisionsPath": {"$ref": "#/$defs/path"},
           "deliverySlicePath": {"$ref": "#/$defs/path"},
-          "deliveryIdDecisionsPath": {"$ref": "#/$defs/path"},
           "finalReviewPath": {"$ref": "#/$defs/path"},
           "expectedDecision": {"enum": ["PASS", "PASS_WITH_NOTES"]},
           "expectedCounts": {

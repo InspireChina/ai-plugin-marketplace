@@ -13,6 +13,7 @@ ReviewDecision = Literal["PASS", "PASS_WITH_NOTES", "BLOCKED"]
 OrchestratorOutcome = Literal[
     "READY_FOR_SCOPE",
     "READY_FOR_DELIVERY",
+    "READY_FOR_TASK",
     "REVIEW_REQUIRED",
     "READY_TO_RENDER",
     "PUBLISHED",

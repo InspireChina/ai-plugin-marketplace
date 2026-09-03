@@ -2,11 +2,9 @@
     [Parameter(Mandatory = $true)]
     [string]$ProjectRoot,
     [Parameter(Mandatory = $true)]
-    [ValidateSet("prepare", "accept-scope", "accept-delivery", "prepare-review", "accept-review", "publish", "status")]
+    [ValidateSet("prepare", "accept-scope", "accept-story-ac", "accept-delivery", "prepare-review", "accept-review", "publish", "status")]
     [string]$Mode,
     [string]$Request,
-    [string]$Candidate,
-    [string]$Ids,
     [string]$Review
 )
 
@@ -148,8 +146,6 @@ if ($SafeProjectRoot.Length -ge 97 -and -not (Test-LongPathsEnabled)) {
 
 $OrchestratorArgs = @($Orchestrator, "--project-root", $SafeProjectRoot, "--mode", $Mode)
 if (-not [string]::IsNullOrWhiteSpace($Request)) { $OrchestratorArgs += @("--request", $Request) }
-if (-not [string]::IsNullOrWhiteSpace($Candidate)) { $OrchestratorArgs += @("--candidate", $Candidate) }
-if (-not [string]::IsNullOrWhiteSpace($Ids)) { $OrchestratorArgs += @("--ids", $Ids) }
 if (-not [string]::IsNullOrWhiteSpace($Review)) { $OrchestratorArgs += @("--review", $Review) }
 
 & $PythonBin @OrchestratorArgs

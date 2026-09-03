@@ -33,22 +33,12 @@ def stage_delivery(project: Path) -> dict[str, object]:
     request_path = write_request(project)
     prepared = run_mode(project, "prepare", request=request_path, now=NOW)
     prepare_scope_files(project, prepared)
-    scope_result = run_mode(
-        project,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    scope_result = run_mode(project, "accept-scope", now=NOW)
     assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
     prepare_delivery_files(project, prepared)
-    delivery_result = run_mode(
-        project,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    story_ac_result = run_mode(project, "accept-story-ac", now=NOW)
+    assert story_ac_result["outcome"] == "READY_FOR_TASK", story_ac_result
+    delivery_result = run_mode(project, "accept-delivery", now=NOW)
     assert delivery_result["outcome"] == "REVIEW_REQUIRED", delivery_result
     return prepared
 
@@ -130,31 +120,21 @@ def test_question_answer_source_ref_is_accepted_by_scope_delivery_and_review(
     }
 
     prepare_scope_files(tmp_path, prepared)
-    scope_candidate = json.loads((tmp_path / "scope.json").read_text(encoding="utf-8"))
+    scope_candidate_path = tmp_path / ".ai-sow/work/scope-slice.candidate.json"
+    scope_candidate = json.loads(scope_candidate_path.read_text(encoding="utf-8"))
     scope_candidate["features"][0]["sourceRefs"] = [source_ref]
-    (tmp_path / "scope.json").write_bytes(canonical_json_bytes(scope_candidate))
-    scope_result = run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    scope_candidate_path.write_bytes(canonical_json_bytes(scope_candidate))
+    scope_result = run_mode(tmp_path, "accept-scope", now=NOW)
     assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
 
     prepare_delivery_files(tmp_path, prepared)
-    delivery_candidate = json.loads(
-        (tmp_path / "delivery.json").read_text(encoding="utf-8")
-    )
+    delivery_candidate_path = tmp_path / ".ai-sow/work/delivery-slice.candidate.json"
+    delivery_candidate = json.loads(delivery_candidate_path.read_text(encoding="utf-8"))
     delivery_candidate["acceptanceCriteria"][0]["sourceRefs"] = [source_ref]
-    (tmp_path / "delivery.json").write_bytes(canonical_json_bytes(delivery_candidate))
-    delivery_result = run_mode(
-        tmp_path,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    delivery_candidate_path.write_bytes(canonical_json_bytes(delivery_candidate))
+    story_ac_result = run_mode(tmp_path, "accept-story-ac", now=NOW)
+    assert story_ac_result["outcome"] == "READY_FOR_TASK", story_ac_result
+    delivery_result = run_mode(tmp_path, "accept-delivery", now=NOW)
     assert delivery_result["outcome"] == "REVIEW_REQUIRED", delivery_result
 
     packet_result = build_review_packet(ProjectFiles.open(tmp_path))

@@ -8,7 +8,8 @@ AI SOW `0.1.0-beta.1` 通过唯一公开 Skill `ai-sow:generate`，把 PRD、HLD
 ```text
 输入归档
   -> Scope 编译
-  -> Delivery 编译
+  -> Story/AC 验收
+  -> Task 与完整 Delivery 编译
   -> 自动终审
   -> 工作簿与说明渲染
   -> 不可变发布
@@ -127,10 +128,27 @@ Table、全部输入行、公式缓存、校验结果、参数/目录、汇总�
 下一轮检测到模板变化时重新编译 Delivery，而不是只用新模板重渲染旧 Task。成功 generation 还会在
 自身的 `input/sow-template.xlsx` 保存本轮模板原字节并由 manifest hash 闭合。
 
-Epic 表达完整业务线或长期技术能力域，Feature 表达用户可感知且可归责的模块；Story 使用自然的
+Epic 和 Feature 使用稳定领域能力的名词或名词短语，并以共同投入理由维持同质边界，不能用“平台”“闭环”“保障”等抽象词把无关主题装入同一层级。Story 使用自然的
 `[模块/接口] 角色或对象＋动作` 标题，只归属一个 Feature、至少包含两条 AC 且最多包含四个 Task。
-Delivery 先从来源完成并复核全部 Story/AC，再以这些已成立的 Story/AC 进入 Task 拆分；Task 不得反向
-补造或改写上游范围。两遍仍写入同一候选，不增加用户批准步骤。
+Delivery 先从来源完成并复核全部 Story/AC，运行 `accept-story-ac` 后停在 `READY_FOR_TASK`；这个阶段
+不读取估算模板、不生成或校验 Task，也不发布稳定 Delivery。后续明确进入 Task 阶段时才以已验收的
+Story/AC 拆分 Task，且不得反向补造或改写上游范围。两个阶段仍写入同一候选，工作区收据不是用户批准点。
+`prepare` 和 `accept-scope` 分别生成带静态信封的 Scope、Delivery candidate 骨架；模型只写 Schema
+约束的动态业务集合。orchestrator 接受时根据基线自动生成 ID decisions，运行中不需要创建一次性
+Python/JavaScript/Shell builder，也不允许用测试用例专用拼装器替代正式流程。
+来源中的每个原子目标、指标、阈值或控制先逐项进入全部适用具体 Story 的来源可追溯 AC，同一语义义务可
+以不同 AC ID 出现在多个 Story；项目级且没有 Story 特定行为的义务留在 NFR、DoD 或质量门禁。Story 必须
+命名一个可独立移交并关闭的具体结果，并共同具备具体交付物或能力、责任方或消费者、独立验收、独立关闭
+或发布边界；可分别测试或可验收的 NFR、质量属性、政策类别或合规陈述不会自动膨胀为 Story。自动化、性能、
+安全或合规测试只在已成立 Story/AC 下成为 Task。只有一个具体机制、配置、证据包或运营能力同时拥有上述
+边界、且由来源或已批准设计明确支持为可独立运行或消费的能力时才可成为 Technical Story，不能由控制归组、
+验收活动或指定验收人制造，也不能用数据治理或服务水平等兜底 Story 汇总无关控制。授权、状态或政策控制若
+只在提交、审批、查询等已有业务触发执行，先写入每个受影响业务 Story 的 AC；规则跨切面不形成共享控制
+Story。来源规定的阈值必须保留在每个适用 AC 或项目级质量/NFR 门禁，报表或仪表盘只能交付显示/测量，
+不能关闭阈值满足义务。
+在接受 Story/AC 前，工作流会在内存中完成零未解决项的来源—Scope—Story/AC 语义收敛审计；发现 Scope
+缺陷会回到 Scope 修正，发现 Story/AC 缺陷会先修正同一受管 candidate，不会让机械通过的候选绕过来源
+义务、NFR 适用性、Brownfield 承诺或 Story/AC 证据边界。Design Task、依赖和估算检查只属于后续阶段。
 Story 稳定数据不保存描述；九列需求故事表不再保存内部故事路径，Task 直接引用唯一 Story 名称。每条
 AC 以 `• ` 开头并独占一行，任务列表逐行显示 `[任务类型/工作方式/复杂度] 任务名称`。备注只显示对象
 特有的特殊情况、不确定性、风险、例外、依赖或评审边界；跨 Feature 的项目级通用事项只进入

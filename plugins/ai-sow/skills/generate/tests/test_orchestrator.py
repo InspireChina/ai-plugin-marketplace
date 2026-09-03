@@ -59,22 +59,6 @@ def write_request(project: Path) -> str:
     return "request.json"
 
 
-def decisions(candidate: dict[str, object], collections: dict[str, tuple[str, str]]):
-    values = []
-    for collection, (object_type, id_field) in collections.items():
-        for item in candidate[collection]:
-            values.append(
-                {
-                    "objectType": object_type,
-                    "objectId": item[id_field],
-                    "disposition": "NEW",
-                    "meaningPreserved": False,
-                    "rationale": "新对象分配稳定 ID。",
-                }
-            )
-    return {"contract": "ai-sow-id-decisions-v1", "decisions": values}
-
-
 SCOPE_COLLECTIONS = {
     "epics": ("EPIC", "epicId"),
     "features": ("FEATURE", "featureId"),
@@ -94,10 +78,10 @@ DELIVERY_COLLECTIONS = {
 }
 
 
-def prepare_scope_files(project: Path, result: dict[str, object]) -> None:
-    plan = result["runPlan"]
+def populate_scope_candidate(project: Path, result: dict[str, object]) -> None:
+    candidate_path = project / ".ai-sow/work/scope-slice.candidate.json"
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
     bundle = fixture("greenfield", "scope.json")
-    bundle["inputRevisionId"] = plan["targetRevisionId"]
     anchors = json.loads(
         (project / ".ai-sow/inputs/pending/anchors.json").read_text(encoding="utf-8")
     )
@@ -115,68 +99,40 @@ def prepare_scope_files(project: Path, result: dict[str, object]) -> None:
                 }
                 for ref in item.get("sourceRefs", [])
             ]
-    candidate = {
-        "contract": "ai-sow-scope-slice-v1",
-        "inputRevisionId": plan["targetRevisionId"],
-        "impactPlanSha256": sha256_bytes(canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": (
-            []
-            if plan["impact"]["baselineGenerationId"] is None
-            else list(plan["impact"]["affectedFeatureIds"])
-        ),
-        "newAnchorMappings": [],
-        **{name: copy.deepcopy(bundle[name]) for name in SCOPE_COLLECTIONS},
-        "responsibilityBoundaries": copy.deepcopy(bundle["responsibilityBoundaries"]),
-    }
-    write_json(project / "scope.json", candidate)
-    write_json(project / "scope-ids.json", decisions(candidate, SCOPE_COLLECTIONS))
+    for collection in SCOPE_COLLECTIONS:
+        candidate[collection] = copy.deepcopy(bundle[collection])
+    write_json(candidate_path, candidate)
+
+
+def populate_delivery_candidate(project: Path) -> None:
+    candidate_path = project / ".ai-sow/work/delivery-slice.candidate.json"
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    bundle = fixture("greenfield", "delivery.json")
+    for collection in DELIVERY_COLLECTIONS:
+        candidate[collection] = copy.deepcopy(bundle[collection])
+    write_json(candidate_path, candidate)
+
+
+def prepare_scope_files(project: Path, result: dict[str, object]) -> None:
+    populate_scope_candidate(project, result)
 
 
 def prepare_delivery_files(project: Path, prepared: dict[str, object]) -> None:
-    plan = json.loads(
-        (project / ".ai-sow/work/run-plan.json").read_text(encoding="utf-8")
-    )
-    scope = json.loads(
-        (project / ".ai-sow/work/scope.candidate.json").read_text(encoding="utf-8")
-    )
-    bundle = fixture("greenfield", "delivery.json")
-    bundle["inputRevisionId"] = plan["targetRevisionId"]
-    candidate = {
-        "contract": "ai-sow-delivery-slice-v3",
-        "inputRevisionId": plan["targetRevisionId"],
-        "scopeSha256": sha256_bytes(canonical_json_bytes(scope)),
-        "impactPlanSha256": sha256_bytes(canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": (
-            []
-            if plan["impact"]["baselineGenerationId"] is None
-            else list(plan["impact"]["affectedFeatureIds"])
-        ),
-        **{name: copy.deepcopy(bundle[name]) for name in DELIVERY_COLLECTIONS},
-    }
-    write_json(project / "delivery.json", candidate)
-    write_json(
-        project / "delivery-ids.json", decisions(candidate, DELIVERY_COLLECTIONS)
-    )
+    populate_delivery_candidate(project)
+
+
+def accept_story_ac_checkpoint(project: Path) -> None:
+    result = run_mode(project, "accept-story-ac", now=NOW)
+    assert result["outcome"] == "READY_FOR_TASK", result
 
 
 def publish_verified_current(project: Path, prepared: dict[str, object]) -> None:
     prepare_scope_files(project, prepared)
-    scope_result = run_mode(
-        project,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    scope_result = run_mode(project, "accept-scope", now=NOW)
     assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
     prepare_delivery_files(project, prepared)
-    delivery_result = run_mode(
-        project,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    accept_story_ac_checkpoint(project)
+    delivery_result = run_mode(project, "accept-delivery", now=NOW)
     assert delivery_result["outcome"] == "REVIEW_REQUIRED", delivery_result
     packet = run_mode(project, "prepare-review", now=NOW)
     plan = prepared["runPlan"]
@@ -212,6 +168,220 @@ def test_prepare_initial_project_requests_full_scope(tmp_path: Path) -> None:
     assert result["outcome"] == "READY_FOR_SCOPE"
     assert result["runPlan"]["action"] == "FULL_COMPILE"
     assert (tmp_path / ".ai-sow/work/run-plan.json").is_file()
+
+
+def test_prepare_scaffolds_scope_candidate_with_run_owned_fields(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    result = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    candidate_path = tmp_path / ".ai-sow/work/scope-slice.candidate.json"
+    assert candidate_path.is_file()
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    assert candidate == {
+        "contract": "ai-sow-scope-slice-v1",
+        "inputRevisionId": result["runPlan"]["targetRevisionId"],
+        "impactPlanSha256": sha256_bytes(
+            canonical_json_bytes(result["runPlan"]["impact"])
+        ),
+        "replacesFeatureIds": [],
+        "newAnchorMappings": [],
+        "epics": [],
+        "features": [],
+        "commitments": [],
+        "effectiveStartItems": [],
+        "designItems": [],
+        "designDecisions": [],
+        "integrations": [],
+        "nfrs": [],
+        "assumptions": [],
+        "responsibilityBoundaries": fixture("greenfield", "request.json")[
+            "responsibilityBoundaries"
+        ],
+    }
+    assert not validate_contract(
+        candidate,
+        "scope-slice.schema.json",
+        load_schema_registry(SKILL_ROOT),
+    )
+
+
+def test_prepare_resume_preserves_authored_scope_collections(tmp_path: Path) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    populate_scope_candidate(tmp_path, prepared)
+    candidate_path = tmp_path / ".ai-sow/work/scope-slice.candidate.json"
+    authored = json.loads(candidate_path.read_text(encoding="utf-8"))
+
+    resumed = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    assert resumed["outcome"] == "READY_FOR_SCOPE", resumed
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    assert candidate["epics"] == authored["epics"]
+    assert candidate["features"] == authored["features"]
+
+
+def test_accept_scope_derives_ids_and_scaffolds_delivery_candidate(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    populate_scope_candidate(tmp_path, prepared)
+
+    result = run_mode(tmp_path, "accept-scope", now=NOW)
+
+    assert result["outcome"] == "READY_FOR_DELIVERY", result
+    id_decisions = json.loads(
+        (tmp_path / ".ai-sow/work/scope-id-decisions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert id_decisions["decisions"]
+    assert {item["disposition"] for item in id_decisions["decisions"]} == {"NEW"}
+    scope = json.loads(
+        (tmp_path / ".ai-sow/work/scope.candidate.json").read_text(encoding="utf-8")
+    )
+    candidate = json.loads(
+        (tmp_path / ".ai-sow/work/delivery-slice.candidate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    current_plan = json.loads(
+        (tmp_path / ".ai-sow/work/run-plan.json").read_text(encoding="utf-8")
+    )
+    assert candidate == {
+        "contract": "ai-sow-delivery-slice-v3",
+        "inputRevisionId": current_plan["targetRevisionId"],
+        "scopeSha256": sha256_bytes(canonical_json_bytes(scope)),
+        "impactPlanSha256": sha256_bytes(
+            canonical_json_bytes(current_plan["impact"])
+        ),
+        "replacesFeatureIds": [],
+        "stories": [],
+        "acceptanceCriteria": [],
+        "tasks": [],
+        "dependencies": [],
+    }
+    assert not validate_contract(
+        candidate,
+        "delivery-slice.schema.json",
+        load_schema_registry(SKILL_ROOT),
+    )
+
+
+def test_accept_delivery_derives_ids_from_managed_candidate(tmp_path: Path) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    populate_scope_candidate(tmp_path, prepared)
+    assert run_mode(tmp_path, "accept-scope", now=NOW)["outcome"] == (
+        "READY_FOR_DELIVERY"
+    )
+    populate_delivery_candidate(tmp_path)
+    accept_story_ac_checkpoint(tmp_path)
+
+    result = run_mode(tmp_path, "accept-delivery", now=NOW)
+
+    assert result["outcome"] == "REVIEW_REQUIRED", result
+    id_decisions = json.loads(
+        (tmp_path / ".ai-sow/work/delivery-id-decisions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert id_decisions["decisions"]
+    assert {item["disposition"] for item in id_decisions["decisions"]} == {"NEW"}
+
+
+def test_accept_story_ac_advances_without_reading_the_task_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    prepare_scope_files(tmp_path, prepared)
+    assert run_mode(tmp_path, "accept-scope", now=NOW)["outcome"] == (
+        "READY_FOR_DELIVERY"
+    )
+    populate_delivery_candidate(tmp_path)
+    candidate_path = tmp_path / ".ai-sow/work/delivery-slice.candidate.json"
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate["tasks"] = []
+    candidate["dependencies"] = []
+    write_json(candidate_path, candidate)
+
+    def template_read_is_forbidden(_path: Path) -> object:
+        raise AssertionError("Story/AC checkpoint must not read the task template")
+
+    monkeypatch.setattr(
+        orchestrator_module, "read_template_catalog", template_read_is_forbidden
+    )
+
+    result = run_mode(tmp_path, "accept-story-ac", now=NOW)
+
+    assert result["outcome"] == "READY_FOR_TASK", result
+    assert result["nextMode"] == "accept-delivery"
+    assert (tmp_path / ".ai-sow/work/story-ac-receipt.json").is_file()
+    assert not (tmp_path / ".ai-sow/work/delivery.candidate.json").exists()
+    assert not (tmp_path / ".ai-sow/work/delivery-id-decisions.json").exists()
+    assert run_mode(tmp_path, "status", now=NOW)["outcome"] == "READY_FOR_TASK"
+
+
+def test_accept_delivery_requires_current_story_ac_receipt(tmp_path: Path) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    prepare_scope_files(tmp_path, prepared)
+    assert run_mode(tmp_path, "accept-scope", now=NOW)["outcome"] == (
+        "READY_FOR_DELIVERY"
+    )
+    prepare_delivery_files(tmp_path, prepared)
+
+    result = run_mode(tmp_path, "accept-delivery", now=NOW)
+
+    assert result["outcome"] == "BLOCKED"
+    assert result["diagnostics"][0]["code"] == "STORY_AC_RECEIPT_MISSING"
+
+
+def test_story_ac_receipt_ignores_tasks_but_rejects_story_mutation(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    prepare_scope_files(tmp_path, prepared)
+    assert run_mode(tmp_path, "accept-scope", now=NOW)["outcome"] == (
+        "READY_FOR_DELIVERY"
+    )
+    populate_delivery_candidate(tmp_path)
+    candidate_path = tmp_path / ".ai-sow/work/delivery-slice.candidate.json"
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate["tasks"] = []
+    candidate["dependencies"] = []
+    write_json(candidate_path, candidate)
+    assert run_mode(tmp_path, "accept-story-ac", now=NOW)["outcome"] == (
+        "READY_FOR_TASK"
+    )
+
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate["tasks"] = fixture("greenfield", "delivery.json")["tasks"]
+    candidate["dependencies"] = fixture("greenfield", "delivery.json")[
+        "dependencies"
+    ]
+    candidate["tasks"][0]["baseUnit"] = "missing-base-unit"
+    write_json(candidate_path, candidate)
+
+    task_result = run_mode(tmp_path, "accept-delivery", now=NOW)
+
+    assert task_result["outcome"] == "BLOCKED"
+    assert "DELIVERY_BASE_UNIT_UNKNOWN" in {
+        item["code"] for item in task_result["diagnostics"]
+    }
+
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate["stories"][0]["name"] = "退款申请服务（已变更）"
+    write_json(candidate_path, candidate)
+
+    stale_result = run_mode(tmp_path, "accept-delivery", now=NOW)
+
+    assert stale_result["outcome"] == "BLOCKED"
+    assert stale_result["diagnostics"][0]["code"] == "STORY_AC_RECEIPT_STALE"
 
 
 def test_prepare_freezes_current_template_for_entire_run(tmp_path: Path) -> None:
@@ -250,13 +420,7 @@ def test_live_template_change_does_not_change_active_run(tmp_path: Path) -> None
     snapshot = tmp_path / prepared["runPlan"]["templateSnapshotPath"]
     snapshot_before = snapshot.read_bytes()
     prepare_scope_files(tmp_path, prepared)
-    scope_result = run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    scope_result = run_mode(tmp_path, "accept-scope", now=NOW)
     assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
     prepare_delivery_files(tmp_path, prepared)
 
@@ -271,13 +435,8 @@ def test_live_template_change_does_not_change_active_run(tmp_path: Path) -> None
     finally:
         workbook.close()
 
-    result = run_mode(
-        tmp_path,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    accept_story_ac_checkpoint(tmp_path)
+    result = run_mode(tmp_path, "accept-delivery", now=NOW)
 
     assert result["outcome"] == "REVIEW_REQUIRED", result
     assert snapshot.read_bytes() == snapshot_before
@@ -289,22 +448,13 @@ def test_changed_run_snapshot_blocks_before_compile(tmp_path: Path) -> None:
     snapshot = tmp_path / prepared["runPlan"]["templateSnapshotPath"]
     snapshot.write_bytes(snapshot.read_bytes() + b"changed")
     prepare_scope_files(tmp_path, prepared)
-    assert run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )["outcome"] == "READY_FOR_DELIVERY"
+    assert run_mode(tmp_path, "accept-scope", now=NOW)["outcome"] == (
+        "READY_FOR_DELIVERY"
+    )
     prepare_delivery_files(tmp_path, prepared)
 
-    result = run_mode(
-        tmp_path,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    accept_story_ac_checkpoint(tmp_path)
+    result = run_mode(tmp_path, "accept-delivery", now=NOW)
 
     assert {item["code"] for item in result["diagnostics"]} == {
         "RUN_TEMPLATE_CHANGED"
@@ -396,15 +546,7 @@ def test_publication_counts_separate_recompute_reuse_delete_and_final() -> None:
 def test_modes_are_ordered_and_fail_closed(tmp_path: Path) -> None:
     request_path = write_request(tmp_path)
     run_mode(tmp_path, "prepare", request=request_path, now=NOW)
-    write_json(tmp_path / "delivery.json", {})
-    write_json(tmp_path / "ids.json", {})
-    result = run_mode(
-        tmp_path,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="ids.json",
-        now=NOW,
-    )
+    result = run_mode(tmp_path, "accept-delivery", now=NOW)
     assert result["outcome"] == "BLOCKED"
     assert result["diagnostics"][0]["code"] == "SCOPE_NOT_ACCEPTED"
 
@@ -413,13 +555,7 @@ def test_accept_scope_writes_complete_bundle_and_advances(tmp_path: Path) -> Non
     request_path = write_request(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
     prepare_scope_files(tmp_path, prepared)
-    result = run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    result = run_mode(tmp_path, "accept-scope", now=NOW)
     assert result["outcome"] == "READY_FOR_DELIVERY", result
     assert result["scopeSha256"] == sha256_bytes(
         (tmp_path / ".ai-sow/work/scope.candidate.json").read_bytes()
@@ -430,22 +566,11 @@ def test_accept_delivery_binds_exact_scope_and_advances_to_review(tmp_path: Path
     request_path = write_request(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
     prepare_scope_files(tmp_path, prepared)
-    scope_result = run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    scope_result = run_mode(tmp_path, "accept-scope", now=NOW)
     assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
     prepare_delivery_files(tmp_path, prepared)
-    result = run_mode(
-        tmp_path,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    accept_story_ac_checkpoint(tmp_path)
+    result = run_mode(tmp_path, "accept-delivery", now=NOW)
     assert result["outcome"] == "REVIEW_REQUIRED", result
     assert result["deliverySha256"] == sha256_bytes(
         (tmp_path / ".ai-sow/work/delivery.candidate.json").read_bytes()
@@ -458,13 +583,9 @@ def test_accept_delivery_returns_one_self_contained_question_per_affected_task(
     request_path = write_request(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
     prepare_scope_files(tmp_path, prepared)
-    assert run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )["outcome"] == "READY_FOR_DELIVERY"
+    assert run_mode(tmp_path, "accept-scope", now=NOW)["outcome"] == (
+        "READY_FOR_DELIVERY"
+    )
     scope_path = tmp_path / ".ai-sow/work/scope.candidate.json"
     scope = json.loads(scope_path.read_text(encoding="utf-8"))
     scope["effectiveStartItems"].append(
@@ -480,7 +601,7 @@ def test_accept_delivery_returns_one_self_contained_question_per_affected_task(
     )
     write_json(scope_path, scope)
     prepare_delivery_files(tmp_path, prepared)
-    delivery_path = tmp_path / "delivery.json"
+    delivery_path = tmp_path / ".ai-sow/work/delivery-slice.candidate.json"
     delivery = json.loads(delivery_path.read_text(encoding="utf-8"))
     task = delivery["tasks"][0]
     task["workMode"] = "调整"
@@ -490,13 +611,8 @@ def test_accept_delivery_returns_one_self_contained_question_per_affected_task(
     delivery["scopeSha256"] = sha256_bytes(canonical_json_bytes(scope))
     write_json(delivery_path, delivery)
 
-    result = run_mode(
-        tmp_path,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )
+    accept_story_ac_checkpoint(tmp_path)
+    result = run_mode(tmp_path, "accept-delivery", now=NOW)
 
     assert result["outcome"] == "BLOCKED"
     assert len(result["questions"]) == 1
@@ -759,21 +875,14 @@ def test_review_modes_bind_packet_and_enable_render_only_after_pass(
     request_path = write_request(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
     prepare_scope_files(tmp_path, prepared)
-    assert run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )["outcome"] == "READY_FOR_DELIVERY"
+    assert run_mode(tmp_path, "accept-scope", now=NOW)["outcome"] == (
+        "READY_FOR_DELIVERY"
+    )
     prepare_delivery_files(tmp_path, prepared)
-    assert run_mode(
-        tmp_path,
-        "accept-delivery",
-        candidate="delivery.json",
-        ids="delivery-ids.json",
-        now=NOW,
-    )["outcome"] == "REVIEW_REQUIRED"
+    accept_story_ac_checkpoint(tmp_path)
+    assert run_mode(tmp_path, "accept-delivery", now=NOW)["outcome"] == (
+        "REVIEW_REQUIRED"
+    )
 
     packet_result = run_mode(tmp_path, "prepare-review", now=NOW)
     assert packet_result["outcome"] == "REVIEW_REQUIRED", packet_result
@@ -810,16 +919,11 @@ def test_stale_scope_candidate_is_rejected(tmp_path: Path) -> None:
     request_path = write_request(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
     prepare_scope_files(tmp_path, prepared)
-    candidate = json.loads((tmp_path / "scope.json").read_text(encoding="utf-8"))
+    candidate_path = tmp_path / ".ai-sow/work/scope-slice.candidate.json"
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
     candidate["impactPlanSha256"] = "0" * 64
-    write_json(tmp_path / "scope.json", candidate)
-    result = run_mode(
-        tmp_path,
-        "accept-scope",
-        candidate="scope.json",
-        ids="scope-ids.json",
-        now=NOW,
-    )
+    write_json(candidate_path, candidate)
+    result = run_mode(tmp_path, "accept-scope", now=NOW)
     assert result["outcome"] == "BLOCKED"
     assert "SCOPE_IMPACT_HASH_MISMATCH" in {
         item["code"] for item in result["diagnostics"]
