@@ -40,6 +40,7 @@
       "path": "inputs/refund-prior-sow.xlsx"
     }
   ],
+  "questions": [],
   "questionnaireAnswers": [],
   "currentStateDelta": {
     "status": "NO_KNOWN_CHANGES",

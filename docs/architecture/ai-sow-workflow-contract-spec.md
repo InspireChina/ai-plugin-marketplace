@@ -1136,7 +1136,7 @@ Owner-local validator 分别证明自己的业务不变量；Gate runtime 只组
 
 #### 机械 PASS 条件
 
-1. 每个 Story 至少一个 Task；
+1. 每个 Story 至少一个且最多四个 Task；超过上限的 Trial Finding 必须先拆分 Story；
 2. 每个 AC 至少由一个同 Story Task 覆盖；
 3. 每个 Task 恰好一个基础单元、工作模式和复杂度；
 4. 没有 `X` 复杂度；

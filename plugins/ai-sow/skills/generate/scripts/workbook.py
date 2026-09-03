@@ -3,93 +3,102 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import math
-import os
 import re
 import tempfile
 import unicodedata
-import zipfile
+import xml.etree.ElementTree as ET
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
 import openpyxl
 from openpyxl.formula.translate import Translator
-from openpyxl.styles import PatternFill, Protection
 from openpyxl.utils import get_column_letter, range_boundaries
 from openpyxl.workbook.properties import CalcProperties
-from openpyxl.worksheet.filters import AutoFilter
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.table import TableFormula
 
+from models import WorkbookAudit
+from office_engine import normalize_xlsx, recalculate_workbook
+from story_notes import story_note_projection
 
-TOPIC_LABELS = {
-    "SYSTEM_CONTEXT": "系统边界与参与方",
-    "CAPABILITY": "能力与流程",
-    "APPLICATION": "应用与组件",
-    "INTEGRATION": "集成与外部依赖",
-    "DATA": "数据与存储",
-    "PLATFORM": "平台、环境与部署",
-    "SECURITY_COMPLIANCE": "安全与合规",
-    "OPERATIONS_QUALITY": "运维与质量",
-    "DELIVERY_CONSTRAINTS": "交付与约束",
-}
-EPIC_TYPE_LABELS = {"BUSINESS": "业务", "TECHNICAL": "技术"}
-FEATURE_SOURCE_LABELS = {
-    "SOURCE_INPUT": "来源输入",
-    "DESIGN_DERIVED": "设计派生",
-}
-DIRECTION_LABELS = {"INBOUND": "入站", "OUTBOUND": "出站"}
-ASIS_START_AVAILABILITY_LABELS = {
-    "CURRENT": "当前已存在",
-    "EXPECTED_BEFORE_START": "预计开工前具备",
-}
-ASIS_TABLES = {"AsIsDetailTable"}
-ASIS_DROPDOWN_HEADERS = {"主题名称", "起点可用性"}
-ASIS_INPUT_LIMIT = 1000
-TABLES = (
-    "EpicTable",
-    "FeatureTable",
-    "SOWStoryTable",
-    "AcceptanceCriterionTable",
-    "TaskTable",
-    "IntegrationTable",
-    "AssumptionRiskTable",
-    "AsIsDetailTable",
+
+FORMAL_SHEETS = (
+    "01-需求故事",
+    "02-任务清单",
+    "03-工作量汇总",
+    "90-估算标准",
 )
+TABLES = ("SOWStoryTable", "TaskTable")
+FORMAL_TABLES = {
+    "SOWStoryTable",
+    "TaskTable",
+    "ProjectSummaryTable",
+    "BaseUnitCatalogTable",
+    "ProjectParameterTable",
+}
 FORMULA_HEADERS = {
-    "SOWStoryTable": {"需求名称", "验收条件", "任务明细", "人天", "假设/风险状态"},
-    "AcceptanceCriterionTable": {"需求名称", "子需求名称"},
-    "TaskTable": {"需求名称", "子需求名称", "任务族", "基础人天", "复杂度倍率", "人天小计"},
-    "IntegrationTable": {"需求名称", "子需求名称", "工作模式", "复杂度", "支持单价", "SIT人天"},
+    "SOWStoryTable": {"任务列表", "故事人天", "校验结果"},
+    "TaskTable": {"M档标准人天", "复杂度系数", "任务人天", "SIT支持人天", "校验结果"},
 }
 TABLE_HEADERS = {
-    "EpicTable": ["需求名称", "需求类型", "需求描述", "涉及系统/数据", "目标结果", "公共约束/范围外"],
-    "FeatureTable": ["需求名称", "子需求名称", "场景/范围描述", "涉及系统/数据", "约束/NFR", "来源类型", "推断理由"],
-    "SOWStoryTable": ["需求名称", "子需求名称", "故事名称", "UAT适用", "验收条件", "任务明细", "人天", "关联假设/风险名称", "假设/风险状态"],
-    "AcceptanceCriterionTable": ["需求名称", "子需求名称", "故事名称", "验收条件名称"],
-    "TaskTable": ["需求名称", "子需求名称", "故事名称", "任务名称", "基础单元名称", "任务族", "工作模式", "工作模式理由", "复杂度", "复杂度理由", "关联现状条目", "判断依据与备注", "基础人天", "复杂度倍率", "人天小计"],
-    "IntegrationTable": ["需求名称", "子需求名称", "故事名称", "集成任务名称", "来源", "目标", "触发条件", "方向", "业务目的", "责任边界", "工作模式", "复杂度", "支持单价", "SIT人天"],
-    "AssumptionRiskTable": ["假设/风险名称", "类型", "触发条件", "责任边界", "状态", "处理方式"],
-    "AsIsDetailTable": ["主题名称", "现状条目名称", "现状描述", "起点可用性"],
+    "SOWStoryTable": [
+        "需求",
+        "子需求",
+        "故事",
+        "UAT适用",
+        "验收条件",
+        "备注",
+        "任务列表",
+        "故事人天",
+        "校验结果",
+    ],
+    "TaskTable": [
+        "所属故事",
+        "任务名称",
+        "任务类型",
+        "工作方式",
+        "复杂度",
+        "备注",
+        "M档标准人天",
+        "复杂度系数",
+        "任务人天",
+        "SIT支持人天",
+        "校验结果",
+    ],
 }
-PROTECTED_SHEETS = {
-    "03-SOW主表",
-    "04-验收条件",
-    "05-任务明细",
-    "06-集成点",
-    "20-项目汇总",
-}
+SUMMARY_HEADERS = ["工作量项", "人天"]
+CATALOG_HEADERS = [
+    "任务族ID",
+    "任务族名称",
+    "基础单元ID",
+    "基础单元名称",
+    "计数口径",
+    "包含内容",
+    "不包含内容",
+    "新建M档人天",
+    "调整M档人天",
+    "接入复用M档人天",
+    "S标准",
+    "M标准",
+    "L标准",
+    "X/拆分条件",
+]
+PARAMETER_HEADERS = ["参数代码", "名称", "值", "单位", "适用范围", "验证状态/说明"]
+PROTECTED_SHEETS = {"01-需求故事", "02-任务清单"}
 RISKY_TEXT = re.compile(r"^[=+\-@]")
 BARE_TEXTJOIN = re.compile(r"(?<![\w.])TEXTJOIN\(")
 DETERMINISTIC_TIME = dt.datetime(2000, 1, 1, 0, 0, 0)
-DETERMINISTIC_ZIP_TIME = (2000, 1, 1, 0, 0, 0)
-# zipfile 按运行平台写入宿主标记（Unix 3 / Windows 0），openpyxl 从临时文件流出的条目还会
-# 带上该文件的权限位。两者都与输入无关，必须钉死，否则同一份已批准数据在不同平台生成的
-# 工作簿字节不同，package 复用和 manifest 绑定会失效。
-DETERMINISTIC_CREATE_SYSTEM = 3
-DETERMINISTIC_UNIX_MODE = 0o600
 WRAPPED_LINE_HEIGHT = 15
 WRAPPED_ROW_PADDING = 4
 MAX_EXCEL_ROW_HEIGHT = 409.5
+FORMULA_ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "Err:")
+SUMMARY_LABELS = (
+    "直接开发人天",
+    "SIT支持人天",
+    "UAT支持人天",
+    "总开发人天",
+)
 
 
 def safe_text(value: object) -> object:
@@ -117,17 +126,10 @@ def normalize_table_formula(formula: object) -> str:
     return '"'.join(parts)
 
 
-def display_text(value: object) -> object:
-    return safe_text(value if value is not None else "")
-
-
-def joined(values: list[object]) -> object:
-    return display_text("、".join(str(value) for value in values))
-
-
-def localized(value: object, labels: dict[str, str]) -> object:
-    text = str(value) if value is not None else ""
-    return display_text(labels.get(text, text))
+def comparable_formula(formula: object) -> str:
+    """Normalize equivalent formula spelling used by Excel and LibreOffice."""
+    value = formula_text(formula).replace("_xlfn.", "")
+    return re.sub(r"\b(TRUE|FALSE)\(\)", r"\1", value)
 
 
 def require_unique_names(entries: list[dict[str, Any]], label: str) -> None:
@@ -146,220 +148,93 @@ def require_unique_names(entries: list[dict[str, Any]], label: str) -> None:
         projected_names[key] = name
 
 
-def fill_asis_header(workbook: Any, scope: dict[str, Any]) -> None:
-    commitments = scope["commitments"]
-    carried = sum(item["treatment"] == "CARRY_FORWARD" for item in commitments)
-    excluded = sum(item["treatment"] == "EXCLUDE" for item in commitments)
-    header = safe_text(
-        f"有效起点：{len(scope['effectiveStartItems'])} 项 | "
-        f"往期承诺沿用：{carried} 项 | 排除：{excluded} 项"
-    )
-    cell = workbook["90-系统现状"]["A2"]
-    cell.value = header
-    cell.data_type = "s"
-    worksheet = cell.parent
-    prototype_height = worksheet.row_dimensions[cell.row].height or 15
-    worksheet.row_dimensions[cell.row].height = max(
-        prototype_height,
-        wrapped_line_count(header, effective_cell_width(worksheet, cell)) * 15,
-    )
-
-
 def build_rows(
     scope: dict[str, Any],
     delivery: dict[str, Any],
     base_unit_names: dict[str, str],
 ) -> dict[str, list[dict[str, object]]]:
+    if not delivery["stories"]:
+        raise ValueError("formal workbook requires at least one Story")
+    if not delivery["tasks"]:
+        raise ValueError("formal workbook requires at least one Task")
+
     epics = {entry["epicId"]: entry for entry in scope["epics"]}
     features = {entry["featureId"]: entry for entry in scope["features"]}
     stories = {entry["storyId"]: entry for entry in delivery["stories"]}
-    design_items = {entry["designItemId"]: entry for entry in scope["designItems"]}
-    nfrs = {entry["nfrId"]: entry for entry in scope["nfrs"]}
-    integrations = {entry["integrationId"]: entry for entry in scope["integrations"]}
-    responsibilities = {
-        entry["responsibilityBoundaryId"]: entry
-        for entry in scope["responsibilityBoundaries"]
-    }
-    effective_start_names = {
-        entry["effectiveStartItemId"]: entry["name"]
-        for entry in scope["effectiveStartItems"]
-    }
-    integration_tasks: dict[str, dict[str, Any]] = {}
-    for task in delivery["tasks"]:
-        if task["taskKind"] != "IMPLEMENTATION":
-            continue
-        for integration_id in task["integrationIds"]:
-            integration_tasks[integration_id] = task
-    acceptance_names_by_story: dict[str, list[str]] = {}
-    for entry in delivery["acceptanceCriteria"]:
-        acceptance_names_by_story.setdefault(entry["storyId"], []).append(entry["name"])
-    task_names_by_story: dict[str, list[str]] = {}
-    for entry in delivery["tasks"]:
-        task_names_by_story.setdefault(entry["storyId"], []).append(entry["name"])
-    assumptions_by_feature: dict[str, list[dict[str, Any]]] = {}
-    for assumption in scope["assumptions"]:
-        for feature_id in assumption["featureIds"]:
-            assumptions_by_feature.setdefault(feature_id, []).append(assumption)
+
     for label, entries in (
         ("Epic", scope["epics"]),
         ("Feature", scope["features"]),
         ("Story", delivery["stories"]),
-        ("Acceptance Criterion", delivery["acceptanceCriteria"]),
         ("Task", delivery["tasks"]),
-        ("Assumption/Risk", scope["assumptions"]),
-        ("Effective Start", scope["effectiveStartItems"]),
     ):
         require_unique_names(entries, label)
-    return {
-        "EpicTable": [
+
+    acceptance_names_by_story: dict[str, list[str]] = {}
+    for criterion in delivery["acceptanceCriteria"]:
+        acceptance_names_by_story.setdefault(criterion["storyId"], []).append(
+            criterion["name"]
+        )
+
+    task_display_names_by_story: dict[str, list[str]] = {}
+    for task in delivery["tasks"]:
+        base_unit = task["baseUnit"]
+        if base_unit not in base_unit_names:
+            raise ValueError(f"template base-unit name is missing: {base_unit}")
+        task_display_names_by_story.setdefault(task["storyId"], []).append(
+            f"• [{base_unit_names[base_unit]}/{task['workMode']}/{task['complexity']}] "
+            f"{task['name']}"
+        )
+
+    story_notes, _story_note_inventory = story_note_projection(scope, delivery)
+
+    story_rows: list[dict[str, object]] = []
+    for story in delivery["stories"]:
+        feature = features[story["featureId"]]
+        epic = epics[feature["epicId"]]
+        story_name = str(safe_text(story["name"]))
+        story_rows.append(
             {
-                "需求名称": entry["name"],
-                "需求类型": EPIC_TYPE_LABELS[entry["kind"]],
-                "需求描述": entry["summary"],
-                "涉及系统/数据": joined(
-                    [
-                        item["name"]
-                        for item in scope["designItems"]
-                        if set(item["featureIds"])
-                        & {
-                            feature["featureId"]
-                            for feature in scope["features"]
-                            if feature["epicId"] == entry["epicId"]
-                        }
-                    ]
-                ),
-                "目标结果": joined(
-                    [
-                        feature["summary"]
-                        for feature in scope["features"]
-                        if feature["epicId"] == entry["epicId"]
-                    ]
-                ),
-                "公共约束/范围外": joined(
-                    [
-                        feature["scopeDecision"]["rationale"]
-                        for feature in scope["features"]
-                        if feature["epicId"] == entry["epicId"]
-                        and feature["scopeDecision"]["decision"] != "IN_SCOPE"
-                    ]
-                ),
-            }
-            for entry in scope["epics"]
-        ],
-        "FeatureTable": [
-            {
-                "需求名称": epics[entry["epicId"]]["name"],
-                "子需求名称": entry["name"],
-                "场景/范围描述": entry["summary"],
-                "涉及系统/数据": joined(
-                    [
-                        design_items[item_id]["name"]
-                        for item_id in entry["scopeDecision"]["designItemIds"]
-                    ]
-                    + [
-                        integrations[item_id]["name"]
-                        for item_id in entry["scopeDecision"]["requiredIntegrationIds"]
-                    ]
-                ),
-                "约束/NFR": joined(
-                    [
-                        nfrs[item_id]["name"]
-                        for item_id in entry["scopeDecision"]["requiredNfrIds"]
-                    ]
-                ),
-                "来源类型": FEATURE_SOURCE_LABELS[
-                    "SOURCE_INPUT" if entry["kind"] == "BUSINESS" else "DESIGN_DERIVED"
-                ],
-                "推断理由": entry["scopeDecision"]["rationale"],
-            }
-            for entry in scope["features"]
-        ],
-        "SOWStoryTable": [
-            {
-                # 模板的公式合同要求每个 Story 行只使用一个可匹配的子需求名称。
-                # 完整多 Feature 追溯保留在 Delivery JSON；工作簿采用顺序稳定的主 Feature。
-                "子需求名称": features[entry["featureIds"][0]]["name"],
-                "故事名称": entry["name"],
-                "UAT适用": "是" if entry["uatRelevant"] else "否",
+                "需求": safe_text(epic["name"]),
+                "子需求": safe_text(feature["name"]),
+                "故事": story_name,
+                "UAT适用": "是" if story["uatRelevant"] else "否",
                 "验收条件": "\n".join(
                     f"• {name}"
-                    for name in acceptance_names_by_story.get(entry["storyId"], [])
+                    for name in acceptance_names_by_story.get(story["storyId"], [])
                 ),
-                "任务明细": "\n".join(
-                    f"• {name}"
-                    for name in task_names_by_story.get(entry["storyId"], [])
-                ),
-                "关联假设/风险名称": next(
-                    (
-                        assumption["name"]
-                        for feature_id in entry["featureIds"]
-                        for assumption in assumptions_by_feature.get(feature_id, [])
-                    ),
-                    "",
+                "备注": story_notes.get(story["storyId"], ""),
+                "任务列表": "\n".join(
+                    task_display_names_by_story.get(story["storyId"], [])
                 ),
             }
-            for entry in delivery["stories"]
-        ],
-        "AcceptanceCriterionTable": [
+        )
+
+    task_rows: list[dict[str, object]] = []
+    for task in delivery["tasks"]:
+        story = stories[task["storyId"]]
+        story_name = str(safe_text(story["name"]))
+        base_unit = task["baseUnit"]
+        if base_unit not in base_unit_names:
+            raise ValueError(f"template base-unit name is missing: {base_unit}")
+        notes = [
+            f"任务理由：{task['rationale']}",
+            f"工作方式理由：{task['workModeRationale']}",
+        ]
+        if task.get("complexityRationale"):
+            notes.append(f"复杂度理由：{task['complexityRationale']}")
+        task_rows.append(
             {
-                "故事名称": stories[entry["storyId"]]["name"],
-                "验收条件名称": entry["name"],
+                "所属故事": story_name,
+                "任务名称": task["name"],
+                "任务类型": base_unit_names[base_unit],
+                "工作方式": task["workMode"],
+                "复杂度": task["complexity"],
+                "备注": "\n".join(notes),
             }
-            for entry in delivery["acceptanceCriteria"]
-        ],
-        "TaskTable": [
-            {
-                "故事名称": stories[entry["storyId"]]["name"],
-                "任务名称": entry["name"],
-                "基础单元名称": base_unit_names[entry["baseUnit"]],
-                "工作模式": entry["workMode"],
-                "工作模式理由": entry["workModeRationale"],
-                "复杂度": entry["complexity"],
-                "复杂度理由": entry.get("complexityRationale", ""),
-                "关联现状条目": effective_start_names[entry["matchedEffectiveStartItemId"]]
-                if entry.get("matchedEffectiveStartItemId")
-                else "",
-                "判断依据与备注": entry["rationale"],
-            }
-            for entry in delivery["tasks"]
-        ],
-        "IntegrationTable": [
-            {
-                "故事名称": stories[integration_tasks[entry["integrationId"]]["storyId"]]["name"],
-                "集成任务名称": integration_tasks[entry["integrationId"]]["name"],
-                "来源": entry["source"],
-                "目标": entry["target"],
-                "触发条件": entry["trigger"],
-                "方向": "出站",
-                "业务目的": entry["purpose"],
-                "责任边界": responsibilities[entry["responsibilityBoundaryId"]]["name"],
-            }
-            for entry in scope["integrations"]
-            if entry["integrationId"] in integration_tasks
-        ],
-        "AssumptionRiskTable": [
-            {
-                "假设/风险名称": entry["name"],
-                "类型": entry["type"],
-                "触发条件": entry["trigger"],
-                "责任边界": responsibilities[entry["responsibilityBoundaryId"]]["name"],
-                "状态": entry["status"],
-                "处理方式": entry["handling"],
-            }
-            for entry in scope["assumptions"]
-        ],
-        "AsIsDetailTable": [
-            {
-                "主题名称": "能力与流程",
-                "现状条目名称": entry["name"],
-                "现状描述": entry["summary"],
-                "起点可用性": ASIS_START_AVAILABILITY_LABELS[
-                    "EXPECTED_BEFORE_START" if entry["commitmentIds"] else "CURRENT"
-                ],
-            }
-            for entry in scope["effectiveStartItems"]
-        ],
-    }
+        )
+
+    return {"SOWStoryTable": story_rows, "TaskTable": task_rows}
 
 
 def table_index(workbook: Any) -> dict[str, tuple[Any, Any]]:
@@ -375,27 +250,16 @@ def table_index(workbook: Any) -> dict[str, tuple[Any, Any]]:
     return found
 
 
-def enable_asis_manual_editing(workbook: Any) -> None:
-    worksheet = workbook["90-系统现状"]
-    worksheet.protection.sheet = False
-    editable_fill = PatternFill(fill_type="solid", fgColor="FFFFFF")
-    worksheet["A2"].protection = Protection(locked=False)
-    worksheet["A2"].fill = copy.copy(editable_fill)
-    for table_name in ASIS_TABLES:
-        table_worksheet, table = table_index(workbook)[table_name]
-        if table_worksheet is not worksheet:
-            raise ValueError(f"As-Is table is on the wrong worksheet: {table_name}")
-        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
-        for row in range(min_row + 1, max_row + 1):
-            for column in range(min_col, max_col + 1):
-                cell = worksheet.cell(row, column)
-                cell.protection = Protection(locked=False)
-
-
 def base_unit_name_map(workbook: Any) -> dict[str, str]:
-    worksheet, table = table_index(workbook)["BaseUnitCatalogTable"]
+    index = table_index(workbook)
+    if "BaseUnitCatalogTable" not in index:
+        raise ValueError("template base-unit catalog is missing")
+    worksheet, table = index["BaseUnitCatalogTable"]
     min_col, min_row, max_col, max_row = range_boundaries(table.ref)
-    headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+    headers = [
+        worksheet.cell(min_row, column).value
+        for column in range(min_col, max_col + 1)
+    ]
     if "基础单元ID" not in headers or "基础单元名称" not in headers:
         raise ValueError("template base-unit name projection columns are missing")
     id_column = min_col + headers.index("基础单元ID")
@@ -416,6 +280,104 @@ def base_unit_name_map(workbook: Any) -> dict[str, str]:
         result[unit_id] = name
         used_names.add(name)
     return result
+
+
+def table_records(workbook: Any, table_name: str) -> list[dict[str, object]]:
+    worksheet, table = table_index(workbook)[table_name]
+    min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+    headers = [
+        worksheet.cell(min_row, column).value
+        for column in range(min_col, max_col + 1)
+    ]
+    if not all(isinstance(header, str) and header for header in headers):
+        raise ValueError(f"invalid table header: {table_name}")
+    return [
+        {
+            str(header): worksheet.cell(row, min_col + offset).value
+            for offset, header in enumerate(headers)
+        }
+        for row in range(min_row + 1, max_row + 1)
+    ]
+
+
+def require_number(value: object, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"calculated workbook value is not numeric: {label}")
+    if not math.isfinite(float(value)):
+        raise ValueError(f"calculated workbook value is not finite: {label}")
+    return float(value)
+
+
+def formula_errors(workbook: Any) -> tuple[str, ...]:
+    errors: list[str] = []
+    for worksheet in workbook.worksheets:
+        for row in worksheet.iter_rows():
+            for cell in row:
+                value = cell.value
+                if cell.data_type == "e" or (
+                    isinstance(value, str)
+                    and value.startswith(FORMULA_ERROR_PREFIXES)
+                ):
+                    errors.append(f"{worksheet.title}!{cell.coordinate}:{value}")
+    return tuple(errors)
+
+
+def verify_formula_cache_results(
+    formula_workbook: Any,
+    cached_workbook: Any,
+    reference_formula_workbook: Any,
+    reference_cached_workbook: Any,
+) -> None:
+    """Compare every formula cache with a fresh Office calculation.
+
+    Python deliberately does not reimplement the workbook's estimation rules.
+    Instead, the authoritative template is projected and independently
+    recalculated by the same supported Office engine; every resulting formula
+    cache must then match that reference calculation.
+    """
+    for sheet_name in FORMAL_SHEETS:
+        formula_sheet = formula_workbook[sheet_name]
+        cached_sheet = cached_workbook[sheet_name]
+        reference_formula_sheet = reference_formula_workbook[sheet_name]
+        reference_cached_sheet = reference_cached_workbook[sheet_name]
+        coordinates = {
+            cell.coordinate
+            for row in formula_sheet.iter_rows()
+            for cell in row
+            if cell.data_type == "f" and isinstance(cell.value, (str, ArrayFormula))
+        }
+        reference_coordinates = {
+            cell.coordinate
+            for row in reference_formula_sheet.iter_rows()
+            for cell in row
+            if cell.data_type == "f" and isinstance(cell.value, (str, ArrayFormula))
+        }
+        if coordinates != reference_coordinates:
+            raise ValueError(f"formula inventory mismatch: {sheet_name}")
+        for coordinate in sorted(coordinates):
+            actual_formula = formula_sheet[coordinate].value
+            reference_formula = reference_formula_sheet[coordinate].value
+            if comparable_formula(actual_formula) != comparable_formula(
+                reference_formula
+            ):
+                raise ValueError(
+                    f"formula mismatch against reference: {sheet_name}!{coordinate}"
+                )
+            actual = cached_sheet[coordinate].value
+            expected = reference_cached_sheet[coordinate].value
+            if (
+                isinstance(actual, (int, float))
+                and not isinstance(actual, bool)
+                and isinstance(expected, (int, float))
+                and not isinstance(expected, bool)
+            ):
+                matches = math.isclose(float(actual), float(expected), abs_tol=1e-9)
+            else:
+                matches = actual == expected
+            if not matches:
+                raise ValueError(
+                    f"cached formula result mismatch: {sheet_name}!{coordinate}"
+                )
 
 
 def clear_orphan_table_formulas(workbook: Any) -> None:
@@ -479,13 +441,17 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
     worksheet, table = table_index(workbook)[table_name]
     min_col, min_row, max_col, old_max_row = range_boundaries(table.ref)
     prototype_row = min_row + 1
-    headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+    headers = [
+        worksheet.cell(min_row, column).value
+        for column in range(min_col, max_col + 1)
+    ]
     if not all(isinstance(header, str) for header in headers):
         raise ValueError(f"invalid table header: {table_name}")
     expected_headers = TABLE_HEADERS[table_name]
     if headers != expected_headers:
         raise ValueError(
-            f"template header mismatch in {table_name}: expected {expected_headers}, got {headers}"
+            f"template header mismatch in {table_name}: "
+            f"expected {expected_headers}, got {headers}"
         )
     metadata_headers = [column.name for column in table.tableColumns]
     if metadata_headers != expected_headers:
@@ -493,12 +459,13 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
             f"template table metadata mismatch in {table_name}: "
             f"expected {expected_headers}, got {metadata_headers}"
         )
-    prototypes = [worksheet.cell(prototype_row, column) for column in range(min_col, max_col + 1)]
+
+    prototypes = [
+        worksheet.cell(prototype_row, column)
+        for column in range(min_col, max_col + 1)
+    ]
     formulas = {
-        offset: (
-            normalize_table_formula(cell.value),
-            isinstance(cell.value, ArrayFormula),
-        )
+        offset: (normalize_table_formula(cell.value), isinstance(cell.value, ArrayFormula))
         for offset, cell in enumerate(prototypes)
         if cell.data_type == "f" and isinstance(cell.value, (str, ArrayFormula))
     }
@@ -512,15 +479,14 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
             column.calculatedColumnFormula = None
             continue
         formula, is_array = specification
-        column.calculatedColumnFormula = (
-            TableFormula(
-                array=True if is_array else None,
-                attr_text=formula.removeprefix("="),
-            )
+        column.calculatedColumnFormula = TableFormula(
+            array=True if is_array else None,
+            attr_text=formula.removeprefix("="),
         )
 
     physical_rows = rows if rows else [{}]
-    for row in range(prototype_row, max(old_max_row, min_row + len(physical_rows), prototype_row) + 1):
+    clear_through = max(old_max_row, min_row + len(physical_rows), prototype_row)
+    for row in range(prototype_row, clear_through + 1):
         for column in range(min_col, max_col + 1):
             worksheet.cell(row, column).value = None
 
@@ -550,10 +516,7 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
                     cell.data_type = "s"
         wrapped_lines = max(
             (
-                wrapped_line_count(
-                    visible_value,
-                    effective_cell_width(worksheet, cell),
-                )
+                wrapped_line_count(visible_value, effective_cell_width(worksheet, cell))
                 for column_offset, cell in enumerate(
                     worksheet[row][min_col - 1 : max_col]
                 )
@@ -586,9 +549,10 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
             cell._style = None
         if worksheet.row_dimensions[row].height == prototype_height:
             worksheet.row_dimensions[row].height = None
-    table.ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_max_row}"
-    if table_name in ASIS_TABLES and table.autoFilter is None:
-        table.autoFilter = AutoFilter(ref=table.ref)
+    table.ref = (
+        f"{get_column_letter(min_col)}{min_row}:"
+        f"{get_column_letter(max_col)}{new_max_row}"
+    )
     if table.autoFilter is not None:
         table.autoFilter.ref = table.ref
 
@@ -599,10 +563,13 @@ def projection_contract(workbook: Any) -> dict[str, dict[str, object]]:
         if table_name not in TABLES:
             continue
         min_col, min_row, max_col, _ = range_boundaries(table.ref)
-        headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+        headers = [
+            worksheet.cell(min_row, column).value
+            for column in range(min_col, max_col + 1)
+        ]
         if not all(isinstance(header, str) for header in headers):
             raise ValueError(f"invalid table header: {table_name}")
-        formulas: dict[str, tuple[str, str]] = {}
+        formulas: dict[str, tuple[str, str, bool]] = {}
         styles: dict[str, tuple[object, ...]] = {}
         for offset, header in enumerate(headers):
             cell = worksheet.cell(min_row + 1, min_col + offset)
@@ -637,51 +604,124 @@ def style_signature(cell: Any) -> tuple[object, ...]:
     )
 
 
-def fill_input_hashes(workbook: Any, input_hashes: dict[str, str]) -> None:
-    expected = {
-        "sourceRequirements",
-        "asis",
-        "design",
-        "derivedRequirements",
-        "delivery",
-        "estimate",
-    }
-    if set(input_hashes) != expected:
-        raise ValueError("workbook input hash set is invalid")
-    worksheet = workbook["00-使用说明"]
-    slots = {
-        str(worksheet.cell(row, 1).value): worksheet.cell(row, 2)
-        for row in range(1, worksheet.max_row + 1)
-        if worksheet.cell(row, 1).value in expected
-    }
-    if set(slots) != expected:
-        raise ValueError("workbook input hash slots are missing")
-    for name, digest in input_hashes.items():
-        if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-            raise ValueError(f"workbook input hash is invalid: {name}")
-        slots[name].value = digest
-        slots[name].data_type = "s"
+def _visible_color(color: Any) -> tuple[object, ...] | None:
+    if color is None:
+        return None
+    value = getattr(color, color.type, None)
+    if color.type == "rgb" and isinstance(value, str):
+        value = value[-6:].upper()
+    return (
+        color.type,
+        value,
+        round(float(color.tint or 0), 8),
+    )
+
+
+def _visible_side(side: Any) -> tuple[object, ...] | None:
+    if side is None or (side.style is None and side.color is None):
+        return None
+    return (side.style, _visible_color(side.color))
+
+
+def visible_style_signature(cell: Any) -> tuple[object, ...]:
+    """Compare rendered appearance while tolerating Office font substitution."""
+    font = cell.font
+    fill = cell.fill
+    border = cell.border
+    alignment = cell.alignment
+    return (
+        (
+            bool(font.bold),
+            bool(font.italic),
+            float(font.sz) if font.sz is not None else None,
+            font.underline,
+            bool(font.strike),
+            _visible_color(font.color),
+        ),
+        (
+            fill.patternType,
+            _visible_color(fill.fgColor),
+            (
+                _visible_color(fill.bgColor)
+                if fill.patternType not in {None, "solid"}
+                else None
+            ),
+        ),
+        tuple(
+            _visible_side(getattr(border, name))
+            for name in ("left", "right", "top", "bottom", "diagonal")
+        ),
+        (
+            alignment.horizontal or "general",
+            alignment.vertical or "bottom",
+            int(alignment.textRotation or 0),
+            bool(alignment.wrapText),
+            bool(alignment.shrinkToFit),
+            float(alignment.indent or 0),
+        ),
+        cell.number_format,
+        (bool(cell.protection.locked), bool(cell.protection.hidden)),
+    )
+
+
+def verify_visible_layout(workbook: Any, expected_workbook: Any) -> None:
+    for sheet_name in FORMAL_SHEETS:
+        worksheet = workbook[sheet_name]
+        expected_sheet = expected_workbook[sheet_name]
+        max_row = max(worksheet.max_row, expected_sheet.max_row)
+        max_column = max(worksheet.max_column, expected_sheet.max_column)
+        for row in range(1, max_row + 1):
+            actual_height = (
+                worksheet.row_dimensions[row].height
+                or worksheet.sheet_format.defaultRowHeight
+            )
+            expected_height = (
+                expected_sheet.row_dimensions[row].height
+                or expected_sheet.sheet_format.defaultRowHeight
+            )
+            if actual_height != expected_height:
+                raise ValueError(f"row height mismatch: {sheet_name}!{row}")
+            for column in range(1, max_column + 1):
+                actual = worksheet.cell(row, column)
+                expected = expected_sheet.cell(row, column)
+                if visible_style_signature(actual) != visible_style_signature(expected):
+                    raise ValueError(
+                        f"visible style mismatch: {sheet_name}!{actual.coordinate}"
+                    )
+
+
+def verify_print_layout(workbook: Any) -> None:
+    """Reject pagination that makes long sheets unreadable when printed."""
+    for sheet_name in FORMAL_SHEETS:
+        page_setup = workbook[sheet_name].page_setup
+        if page_setup.fitToWidth != 1 or page_setup.fitToHeight != 0:
+            raise ValueError(f"print layout mismatch: {sheet_name}")
 
 
 def verify_workbook(
     path: Path,
     expected: dict[str, list[dict[str, object]]],
     contract: dict[str, dict[str, object]],
-    input_hashes: dict[str, str],
+    *,
+    require_recalculation: bool = True,
+    verify_styles: bool = True,
 ) -> None:
     workbook = openpyxl.load_workbook(path, data_only=False, read_only=False)
     try:
+        if tuple(workbook.sheetnames) != FORMAL_SHEETS:
+            raise ValueError("formal workbook sheet contract changed")
         index = table_index(workbook)
-        if workbook.calculation.calcMode != "auto":
+        if require_recalculation and workbook.calculation.calcMode != "auto":
             raise ValueError("workbook recalculation is not enabled")
         for table_name, rows in expected.items():
             worksheet, table = index[table_name]
             min_col, min_row, max_col, max_row = range_boundaries(table.ref)
-            actual_count = max_row - min_row
-            expected_count = max(1, len(rows))
-            if actual_count != expected_count:
+            if max_row - min_row != max(1, len(rows)):
                 raise ValueError(f"table row count mismatch: {table_name}")
-            headers = [worksheet.cell(min_row, column).value for column in range(min_col, max_col + 1)]
+            headers = [
+                worksheet.cell(min_row, column).value
+                for column in range(min_col, max_col + 1)
+            ]
             if headers != TABLE_HEADERS[table_name]:
                 raise ValueError(f"table header mismatch: {table_name}")
             specification = contract[table_name]
@@ -694,8 +734,10 @@ def verify_workbook(
             for row_offset, payload in enumerate(physical_rows, start=1):
                 for column_offset, header in enumerate(headers):
                     cell = worksheet.cell(min_row + row_offset, min_col + column_offset)
-                    if style_signature(cell) != styles[header]:
-                        raise ValueError(f"prototype style changed in {table_name}.{header}")
+                    if verify_styles and style_signature(cell) != styles[header]:
+                        raise ValueError(
+                            f"prototype style changed in {table_name}.{header}"
+                        )
                     if header in formulas:
                         origin, prototype, is_array = formulas[header]
                         expected_formula = Translator(
@@ -709,31 +751,41 @@ def verify_workbook(
                         )
                         formula_kind_matches = (
                             isinstance(cell.value, ArrayFormula)
-                            and cell.value.ref == cell.coordinate
+                            and cell.value.ref
+                            in {cell.coordinate, f"{cell.coordinate}:{cell.coordinate}"}
                             if is_array
                             else isinstance(cell.value, str)
                         )
                         if (
-                            actual_formula != expected_formula
+                            comparable_formula(actual_formula or "")
+                            != comparable_formula(expected_formula)
                             or cell.data_type != "f"
                             or not formula_kind_matches
                         ):
-                            raise ValueError(f"formula mismatch in {table_name}.{header}")
+                            raise ValueError(
+                                f"formula mismatch in {table_name}.{header}"
+                            )
                     else:
-                        expected_value = None if not rows else safe_text(payload.get(header, ""))
+                        expected_value = (
+                            None if not rows else safe_text(payload.get(header, ""))
+                        )
                         if expected_value == "":
                             expected_value = None
                         if cell.value != expected_value:
-                            raise ValueError(f"projected value mismatch in {table_name}.{header}")
+                            raise ValueError(
+                                f"projected value mismatch in {table_name}.{header}"
+                            )
                         if isinstance(expected_value, str) and cell.data_type != "s":
-                            raise ValueError(f"projected text type mismatch in {table_name}.{header}")
+                            raise ValueError(
+                                f"projected text type mismatch in {table_name}.{header}"
+                            )
             calculated_headers = {
                 column.name
                 for column in table.tableColumns
                 if column.calculatedColumnFormula is not None
                 and column.calculatedColumnFormula.text
             }
-            if calculated_headers != FORMULA_HEADERS.get(table_name, set()):
+            if calculated_headers != FORMULA_HEADERS[table_name]:
                 raise ValueError(f"calculated column mismatch in {table_name}")
             formula_columns = {
                 column.name: column.calculatedColumnFormula
@@ -741,101 +793,334 @@ def verify_workbook(
                 if column.calculatedColumnFormula is not None
             }
             for header, (_, _, is_array) in formulas.items():
-                if (formula_columns[header].array is True) != is_array:
-                    raise ValueError(f"calculated column array mismatch in {table_name}.{header}")
-            if table_name in ASIS_TABLES and table.autoFilter is None:
-                raise ValueError(f"autoFilter is missing: {table_name}")
+                metadata_formula = formula_columns[header]
+                if (
+                    comparable_formula("=" + str(metadata_formula.text))
+                    != comparable_formula(formulas[header][1])
+                ):
+                    raise ValueError(
+                        f"calculated column formula mismatch in {table_name}.{header}"
+                    )
+                if (metadata_formula.array is True) != is_array:
+                    raise ValueError(
+                        f"calculated column array mismatch in {table_name}.{header}"
+                    )
             if table.autoFilter is not None and table.autoFilter.ref != table.ref:
                 raise ValueError(f"autoFilter range mismatch: {table_name}")
-        asis_sheet = workbook["90-系统现状"]
-        if asis_sheet.protection.sheet:
-            raise ValueError("As-Is worksheet must allow manual editing")
-        if asis_sheet["A2"].protection.locked:
-            raise ValueError("As-Is scope summary must allow manual editing")
-        if (
-            asis_sheet["A2"].fill.fill_type != "solid"
-            or asis_sheet["A2"].fill.fgColor.rgb[-6:] != "FFFFFF"
-        ):
-            raise ValueError("As-Is scope summary must use the editable fill")
-        table_sheet, table = index["AsIsDetailTable"]
-        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
-        headers = [
-            str(table_sheet.cell(min_row, column).value)
-            for column in range(min_col, max_col + 1)
-        ]
-        for row in range(min_row + 1, max_row + 1):
-            for offset, header in enumerate(headers):
-                cell = table_sheet.cell(row, min_col + offset)
-                if cell.protection.locked:
-                    raise ValueError(f"As-Is cell is not editable: {cell.coordinate}")
-                expected_fill = "FFF2CC" if header in ASIS_DROPDOWN_HEADERS else "FFFFFF"
-                if (
-                    cell.fill.fill_type != "solid"
-                    or cell.fill.fgColor.rgb[-6:] != expected_fill
-                ):
-                    raise ValueError(f"As-Is editable cell has the wrong fill: {cell.coordinate}")
         for sheet_name in PROTECTED_SHEETS:
-            protection = workbook[sheet_name].protection
-            if not protection.sheet:
+            if not workbook[sheet_name].protection.sheet:
                 raise ValueError(f"worksheet protection is missing: {sheet_name}")
-            if protection.formatColumns or protection.formatRows:
-                raise ValueError(f"worksheet dimensions are locked: {sheet_name}")
-            if protection.autoFilter or protection.sort:
-                raise ValueError(f"worksheet filtering or sorting is locked: {sheet_name}")
-            if not protection.formatCells:
-                raise ValueError(f"worksheet cell formatting is unlocked: {sheet_name}")
-        worksheet = workbook["00-使用说明"]
-        actual_hashes = {
-            str(worksheet.cell(row, 1).value): worksheet.cell(row, 2).value
-            for row in range(1, worksheet.max_row + 1)
-            if worksheet.cell(row, 1).value in input_hashes
-        }
-        if actual_hashes != input_hashes:
-            raise ValueError("workbook input hash projection mismatch")
     finally:
         workbook.close()
 
 
-def deterministic_external_attr(external_attr: int) -> int:
-    """Keep an entry's file-type and DOS bits, but pin its Unix mode to a fixed value."""
-    return (external_attr & 0xFFFF0000) & ~(0o777 << 16) | (DETERMINISTIC_UNIX_MODE << 16)
+def verify_static_authority(workbook: Any, template_workbook: Any) -> None:
+    """Verify immutable catalog, parameter and summary inputs/formulas."""
+    workbook_index = table_index(workbook)
+    template_index = table_index(template_workbook)
+    for table_name in sorted(FORMAL_TABLES - set(TABLES)):
+        worksheet, table = workbook_index[table_name]
+        template_sheet, template_table = template_index[table_name]
+        if table.ref != template_table.ref:
+            raise ValueError(f"static table range mismatch: {table_name}")
+        bounds = range_boundaries(table.ref)
+        template_bounds = range_boundaries(template_table.ref)
+        if bounds != template_bounds:
+            raise ValueError(f"static table bounds mismatch: {table_name}")
+        if [column.name for column in table.tableColumns] != [
+            column.name for column in template_table.tableColumns
+        ]:
+            raise ValueError(f"static table metadata mismatch: {table_name}")
+        min_col, min_row, max_col, max_row = bounds
+        for row in range(min_row, max_row + 1):
+            for column in range(min_col, max_col + 1):
+                actual = worksheet.cell(row, column)
+                expected = template_sheet.cell(row, column)
+                if expected.data_type == "f" and isinstance(
+                    expected.value, (str, ArrayFormula)
+                ):
+                    if actual.data_type != "f" or not isinstance(
+                        actual.value, (str, ArrayFormula)
+                    ):
+                        raise ValueError(f"static formula is missing: {table_name}")
+                    if comparable_formula(actual.value) != comparable_formula(
+                        expected.value
+                    ):
+                        raise ValueError(f"static formula mismatch: {table_name}")
+                elif actual.value != expected.value:
+                    raise ValueError(f"static value mismatch: {table_name}")
 
 
-def normalize_xlsx(path: Path) -> None:
-    """Normalize ZIP metadata so identical inputs produce identical XLSX bytes."""
-    with zipfile.ZipFile(path, "r") as source:
-        members = []
-        for entry in source.infolist():
-            payload = source.read(entry.filename)
-            if entry.filename == "docProps/core.xml":
-                payload = re.sub(
-                    rb"<dcterms:modified[^>]*>.*?</dcterms:modified>",
-                    b'<dcterms:modified xsi:type="dcterms:W3CDTF">2000-01-01T00:00:00Z</dcterms:modified>',
-                    payload,
-                )
-            members.append((entry.filename, payload, entry))
-    temporary: Path | None = None
+def verify_worksheet_authority(workbook: Any, template_workbook: Any) -> None:
+    """Verify worksheet controls that remain authoritative after Office roundtrip."""
+    for sheet_name in FORMAL_SHEETS:
+        worksheet = workbook[sheet_name]
+        template_sheet = template_workbook[sheet_name]
+        if ET.tostring(worksheet.data_validations.to_tree()) != ET.tostring(
+            template_sheet.data_validations.to_tree()
+        ):
+            raise ValueError(f"data validation metadata mismatch: {sheet_name}")
+        if ET.tostring(worksheet.protection.to_tree()) != ET.tostring(
+            template_sheet.protection.to_tree()
+        ):
+            raise ValueError(f"worksheet protection metadata mismatch: {sheet_name}")
+
+
+def audit_calculated_workbook(
+    path: Path,
+    template_path: Path,
+    scope: dict[str, Any],
+    delivery: dict[str, Any],
+    engine: Any,
+) -> WorkbookAudit:
+    """Verify projected inputs and reread every calculation authority/result.
+
+    The office engine, rather than Python, remains responsible for evaluating
+    formulas. This function only proves that the verified output still contains
+    the approved projection and that all authoritative cached results are usable.
+    """
+    stack = ExitStack()
     try:
-        with tempfile.NamedTemporaryFile(
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            dir=path.parent,
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as target:
-            for name, payload, original in sorted(members, key=lambda item: item[0]):
-                entry = zipfile.ZipInfo(name, DETERMINISTIC_ZIP_TIME)
-                entry.compress_type = zipfile.ZIP_DEFLATED
-                entry.create_system = DETERMINISTIC_CREATE_SYSTEM
-                entry.external_attr = deterministic_external_attr(original.external_attr)
-                entry.flag_bits = original.flag_bits
-                target.writestr(entry, payload)
-        os.replace(temporary, path)
-        temporary = None
+        temporary_root = Path(
+            stack.enter_context(tempfile.TemporaryDirectory(prefix="ai-sow-audit-"))
+        )
+        expected_layout_path = temporary_root / "expected-layout.xlsx"
+        reference_path = temporary_root / "reference.xlsx"
+        write_workbook(template_path, scope, delivery, expected_layout_path)
+        recalculate_workbook(expected_layout_path, reference_path, engine)
+        expected_layout_workbook = openpyxl.load_workbook(
+            expected_layout_path, data_only=False, read_only=False
+        )
+        reference_formula_workbook = openpyxl.load_workbook(
+            reference_path, data_only=False, read_only=False
+        )
+        reference_cached_workbook = openpyxl.load_workbook(
+            reference_path, data_only=True, read_only=False
+        )
+        template_workbook = openpyxl.load_workbook(
+            template_path, data_only=False, read_only=False
+        )
+        formula_workbook = openpyxl.load_workbook(
+            path, data_only=False, read_only=False
+        )
+        cached_workbook = openpyxl.load_workbook(
+            path, data_only=True, read_only=False
+        )
+        for workbook in (
+            expected_layout_workbook,
+            reference_formula_workbook,
+            reference_cached_workbook,
+            template_workbook,
+            formula_workbook,
+            cached_workbook,
+        ):
+            stack.callback(workbook.close)
+        for workbook in (formula_workbook, cached_workbook):
+            if tuple(workbook.sheetnames) != FORMAL_SHEETS:
+                raise ValueError("formal workbook sheet contract changed")
+            if set(table_index(workbook)) != FORMAL_TABLES:
+                raise ValueError("formal workbook table contract changed")
+
+        expected = build_rows(
+            scope,
+            delivery,
+            base_unit_name_map(formula_workbook),
+        )
+        verify_workbook(
+            path,
+            expected,
+            projection_contract(template_workbook),
+            require_recalculation=False,
+            verify_styles=False,
+        )
+        verify_static_authority(formula_workbook, template_workbook)
+        verify_worksheet_authority(formula_workbook, template_workbook)
+        verify_visible_layout(formula_workbook, expected_layout_workbook)
+        verify_print_layout(formula_workbook)
+        formula_index = table_index(formula_workbook)
+        cached_index = table_index(cached_workbook)
+        cached_errors = formula_errors(cached_workbook)
+        if cached_errors:
+            raise ValueError(
+                "calculated workbook contains formula errors: "
+                + ", ".join(cached_errors)
+            )
+        reference_errors = formula_errors(reference_cached_workbook)
+        if reference_errors:
+            raise ValueError(
+                "reference calculation contains formula errors: "
+                + ", ".join(reference_errors)
+            )
+        verify_formula_cache_results(
+            formula_workbook,
+            cached_workbook,
+            reference_formula_workbook,
+            reference_cached_workbook,
+        )
+
+        for table_name in TABLES:
+            formula_sheet, formula_table = formula_index[table_name]
+            cached_sheet, cached_table = cached_index[table_name]
+            formula_bounds = range_boundaries(formula_table.ref)
+            cached_bounds = range_boundaries(cached_table.ref)
+            if formula_bounds != cached_bounds:
+                raise ValueError(f"calculated table range changed: {table_name}")
+            min_col, min_row, max_col, max_row = formula_bounds
+            headers = [
+                formula_sheet.cell(min_row, column).value
+                for column in range(min_col, max_col + 1)
+            ]
+            if headers != TABLE_HEADERS[table_name]:
+                raise ValueError(f"calculated table header mismatch: {table_name}")
+            if max_row - min_row != len(expected[table_name]):
+                raise ValueError(f"calculated table row count mismatch: {table_name}")
+            for row_offset, payload in enumerate(expected[table_name], start=1):
+                for column_offset, header in enumerate(headers):
+                    formula_cell = formula_sheet.cell(
+                        min_row + row_offset, min_col + column_offset
+                    )
+                    cached_cell = cached_sheet.cell(
+                        min_row + row_offset, min_col + column_offset
+                    )
+                    if header in FORMULA_HEADERS[table_name]:
+                        if formula_cell.data_type != "f" or not isinstance(
+                            formula_cell.value, (str, ArrayFormula)
+                        ):
+                            raise ValueError(
+                                f"calculated formula is missing: {table_name}.{header}"
+                            )
+                    else:
+                        expected_value = safe_text(payload.get(str(header), ""))
+                        if expected_value == "":
+                            expected_value = None
+                        if formula_cell.value != expected_value:
+                            raise ValueError(
+                                f"calculated projection changed: {table_name}.{header}"
+                            )
+                        if cached_cell.value != expected_value:
+                            raise ValueError(
+                                f"cached projection changed: {table_name}.{header}"
+                            )
+
+        story_records = table_records(cached_workbook, "SOWStoryTable")
+        task_records = table_records(cached_workbook, "TaskTable")
+        task_names_by_story: dict[str, list[str]] = {}
+        task_days: list[float] = []
+        for record in task_records:
+            story_path = record["所属故事"]
+            task_name = record["任务名称"]
+            if not isinstance(story_path, str) or not isinstance(task_name, str):
+                raise ValueError("calculated task projection is incomplete")
+            task_names_by_story.setdefault(story_path, []).append(task_name)
+            for header in ("M档标准人天", "复杂度系数", "任务人天", "SIT支持人天"):
+                value = require_number(record[header], f"TaskTable.{header}")
+                if value < 0:
+                    raise ValueError(f"calculated task value is negative: {header}")
+                if header == "任务人天":
+                    task_days.append(value)
+            if record["校验结果"] != "通过":
+                raise ValueError("calculated task validation did not pass")
+
+        for record in story_records:
+            story_name = record["故事"]
+            if not isinstance(story_name, str) or not story_name:
+                raise ValueError("calculated story name is missing")
+            matching_tasks = [
+                task
+                for task in task_records
+                if task.get("所属故事") == story_name
+            ]
+            expected_task_list = "\n".join(
+                f"• [{task['任务类型']}/{task['工作方式']}/{task['复杂度']}] "
+                f"{task['任务名称']}"
+                for task in matching_tasks
+            )
+            if not expected_task_list or record["任务列表"] != expected_task_list:
+                raise ValueError("calculated story task list changed")
+            require_number(record["故事人天"], "SOWStoryTable.故事人天")
+            if record["校验结果"] != "通过":
+                raise ValueError("calculated story validation did not pass")
+
+        summary_formula_records = table_records(
+            formula_workbook, "ProjectSummaryTable"
+        )
+        summary_records = table_records(cached_workbook, "ProjectSummaryTable")
+        if [*summary_records[0].keys()] != SUMMARY_HEADERS:
+            raise ValueError("summary table header contract changed")
+        if [record["工作量项"] for record in summary_records] != list(SUMMARY_LABELS):
+            raise ValueError("summary row contract changed")
+        for record in summary_formula_records:
+            if not isinstance(record["人天"], (str, ArrayFormula)):
+                raise ValueError("summary formula is missing")
+        summary_values = [
+            require_number(record["人天"], f"ProjectSummaryTable.{record['工作量项']}")
+            for record in summary_records
+        ]
+        direct_days, sit_days, uat_days, total_days = summary_values
+        if not math.isclose(direct_days, sum(task_days), abs_tol=1e-9):
+            raise ValueError("summary direct days do not match task results")
+        if not math.isclose(total_days, direct_days + sit_days + uat_days, abs_tol=1e-9):
+            raise ValueError("summary total days do not match component results")
+
+        catalog_records = table_records(cached_workbook, "BaseUnitCatalogTable")
+        if not catalog_records or [*catalog_records[0].keys()] != CATALOG_HEADERS:
+            raise ValueError("base-unit catalog contract changed")
+        catalog_ids: set[str] = set()
+        for record in catalog_records:
+            for header in CATALOG_HEADERS:
+                if record[header] in (None, ""):
+                    raise ValueError(f"base-unit catalog value is blank: {header}")
+            unit_id = record["基础单元ID"]
+            if not isinstance(unit_id, str) or unit_id in catalog_ids:
+                raise ValueError("base-unit catalog ID is invalid or duplicated")
+            catalog_ids.add(unit_id)
+            available_modes = 0
+            for header in ("新建M档人天", "调整M档人天", "接入复用M档人天"):
+                value = record[header]
+                if value == "❌":
+                    continue
+                if require_number(value, f"BaseUnitCatalogTable.{unit_id}.{header}") <= 0:
+                    raise ValueError("base-unit catalog person-days must be positive")
+                available_modes += 1
+            if available_modes == 0:
+                raise ValueError(
+                    f"base-unit catalog row has no available work mode: {unit_id}"
+                )
+
+        parameter_records = table_records(cached_workbook, "ProjectParameterTable")
+        if [*parameter_records[0].keys()] != PARAMETER_HEADERS:
+            raise ValueError("project parameter header contract changed")
+        parameter_codes: set[str] = set()
+        parameter_statuses: list[tuple[str, str]] = []
+        for record in parameter_records:
+            code = record["参数代码"]
+            status = record["验证状态/说明"]
+            if not isinstance(code, str) or not code or code in parameter_codes:
+                raise ValueError("project parameter code is invalid or duplicated")
+            if not isinstance(status, str) or not status.strip():
+                raise ValueError(f"project parameter status is missing: {code}")
+            for header in PARAMETER_HEADERS[1:-1]:
+                if record[header] in (None, ""):
+                    raise ValueError(f"project parameter value is blank: {code}.{header}")
+            require_number(record["值"], f"ProjectParameterTable.{code}.值")
+            parameter_codes.add(code)
+            parameter_statuses.append((code, status))
+
+        return WorkbookAudit(
+            trust_state="VERIFIED",
+            story_count=len(story_records),
+            task_count=len(task_records),
+            direct_days=direct_days,
+            sit_days=sit_days,
+            uat_days=uat_days,
+            total_days=total_days,
+            parameter_statuses=tuple(parameter_statuses),
+            formula_errors=(),
+            engine_name=str(engine.name),
+            engine_version=str(engine.version),
+        )
     finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        stack.close()
 
 
 def write_workbook(
@@ -843,23 +1128,27 @@ def write_workbook(
     scope: dict[str, Any],
     delivery: dict[str, Any],
     output_path: Path,
-    input_hashes: dict[str, str],
-) -> None:
-    workbook = openpyxl.load_workbook(template_path, data_only=False, read_only=False)
+) -> WorkbookAudit:
+    workbook = openpyxl.load_workbook(
+        template_path,
+        data_only=False,
+        read_only=False,
+    )
     if workbook.calculation is None:
         workbook.calculation = CalcProperties()
     try:
         table_index(workbook)
-        enable_asis_manual_editing(workbook)
         rows = build_rows(scope, delivery, base_unit_name_map(workbook))
-        if len(rows["AsIsDetailTable"]) > ASIS_INPUT_LIMIT:
-            raise ValueError("As-Is detail table exceeds template capacity")
         contract = projection_contract(workbook)
         clear_orphan_table_formulas(workbook)
-        fill_asis_header(workbook, scope)
-        fill_input_hashes(workbook, input_hashes)
         for table_name in TABLES:
             fill_table(workbook, table_name, rows[table_name])
+        # A blank fitToHeight is interpreted as one page by LibreOffice when
+        # fit-to-page is enabled, which compresses long Task sheets until the
+        # text is unreadable. Zero means unlimited vertical pages while the
+        # template's one-page-wide layout remains authoritative.
+        for worksheet in workbook.worksheets:
+            worksheet.page_setup.fitToHeight = 0
         workbook.calculation.calcMode = "auto"
         workbook.calculation.calcOnSave = True
         workbook.calculation.forceFullCalc = True
@@ -870,4 +1159,17 @@ def write_workbook(
     finally:
         workbook.close()
     normalize_xlsx(output_path)
-    verify_workbook(output_path, rows, contract, input_hashes)
+    verify_workbook(output_path, rows, contract)
+    return WorkbookAudit(
+        trust_state="CANDIDATE",
+        story_count=len(rows["SOWStoryTable"]),
+        task_count=len(rows["TaskTable"]),
+        direct_days=None,
+        sit_days=None,
+        uat_days=None,
+        total_days=None,
+        parameter_statuses=(),
+        formula_errors=(),
+        engine_name=None,
+        engine_version=None,
+    )

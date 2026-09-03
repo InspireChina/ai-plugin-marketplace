@@ -3,6 +3,10 @@
 普通插件用户无需预装 Python、`uv` 或 Python 依赖。权威流程从 `ai-sow:generate` 开始：generate bootstrap 在
 插件安装副本内准备 `uv 0.11.7`、managed Python 3.12、锁定依赖和 `.venv`，再调用唯一生成编排器。
 
+Python bootstrap 不包含电子表格计算引擎。发布正式 `sow.xlsx` 时必须存在可执行的 LibreOffice：优先
+使用 `AI_SOW_OFFICE_BIN` 指定路径，否则从 PATH 查找 `soffice` 或 `libreoffice`。引擎在隔离 profile
+中无界面回算；缺失、超时或失败均返回稳定阻断，不发布仅含公式但没有可信缓存结果的候选件。
+
 generate 使用平台脚本，而不是要求用户预先执行环境命令：
 
 - macOS/Linux：`skills/generate/scripts/bootstrap.sh`

@@ -6,6 +6,7 @@ Scope 编译把当前输入 revision 转换为一个完整的 `ScopeBundle`。PR
 
 - 每个 Feature 必须有且只有一个 `IN_SCOPE`、`FULLY_COVERED` 或 `OUT_OF_SCOPE` 结论。
 - `IN_SCOPE` 必须连接目标 Design；`FULLY_COVERED` 必须连接有来源证据的 Effective Start。
+- `IN_SCOPE` 表示本次供应商 SOW 中存在新增交付，必须至少引用一条 `VENDOR` 责任边界；只有客户或第三方责任的事项不能进入供应商计价范围。
 - Integration 至少说明来源、目标、目的、触发、责任和 `DEFINED | DESIGN_REQUIRED` 状态。
 - NFR 使用 `TARGET_DEFINED | DESIGN_REQUIRED | NOT_APPLICABLE`。`DESIGN_REQUIRED` 必须写明当前估算边界和未来变更触发条件，后续形成 Design Task。
 - 假设和风险必须有责任方、处理方式、估算边界和变化触发条件。能够固定边界的低阶设计缺口不得升级为 `BLOCKED`。
@@ -13,7 +14,7 @@ Scope 编译把当前输入 revision 转换为一个完整的 `ScopeBundle`。PR
 
 ## Greenfield 与 Brownfield
 
-Greenfield 的最低起点是“本期新建、不继承既有合同能力”，不制造 Current State。Brownfield 必须存在适用的往期 SOW 和现状增量声明；不得用推断基线替代。往期承诺按适用范围和生效关系处置为延续、起点、排除或待决定。会改变范围或估算的 `NEEDS_DECISION` 必须在编译前解决。
+Greenfield 的最低起点是“本期新建、不继承既有合同能力”，不制造 Current State。Brownfield 必须存在适用的往期 SOW 和现状增量声明；不得用推断基线替代。往期承诺按适用范围和生效关系处置为延续、起点、排除或待决定。`NEEDS_DECISION` 承诺必须在 Scope 接受前解决。状态为 `待确认` 的假设只有在责任方、处理方式、估算边界和变化触发条件都已固定时才可由 `PASS_WITH_NOTES` 承接；否则阻断，不能把无限责任推迟到 Delivery 或终审。
 
 ## 来源、冲突与原型
 
@@ -21,4 +22,4 @@ Greenfield 的最低起点是“本期新建、不继承既有合同能力”，
 
 ## ID 与切片替换
 
-语义不变使用 `UNCHANGED`，仅说明性文字或来源定位变化且交付含义不变使用 `CLARIFIED`，实质变化必须用新 ID 和 `CHANGED`，新对象使用 `NEW`。切片替换删除受影响闭包中的旧对象，再插入完整新切片；未受影响对象保持规范字节不变。跨越闭包的共享 Design、Integration、NFR 或假设必须先扩大 ImpactPlan，不能留下半更新引用。
+语义不变使用 `UNCHANGED`，仅说明性文字或来源定位变化且交付含义不变使用 `CLARIFIED`，实质变化必须用新 ID 和 `CHANGED`，新对象使用 `NEW`。新增锚点先根据候选 Scope 对象 `sourceRefs` 中与权威输入完全相同的 `(sourceId, anchorId, sha256)` 和 Feature 关联定位基线 Feature，只有无法证明映射时才使用显式映射并保守扩大。`replacesFeatureIds` 始终只列基线旧 ID；初次完整编译没有基线，必须使用空数组。切片替换删除受影响闭包中的旧对象，再插入完整新切片；未受影响对象保持规范字节不变。跨越闭包的共享 Design、Integration、NFR 或假设必须先扩大 ImpactPlan，不能留下半更新引用。

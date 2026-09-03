@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:question:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["questionId", "subjectIds", "question", "reason", "decisionImpact", "unansweredEffect"],
+  "properties": {
+    "questionId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
+    "subjectIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+    "question": {"type": "string", "minLength": 1},
+    "reason": {"type": "string", "minLength": 1},
+    "decisionImpact": {"type": "string", "minLength": 1},
+    "unansweredEffect": {"type": "string", "minLength": 1}
+  }
+}

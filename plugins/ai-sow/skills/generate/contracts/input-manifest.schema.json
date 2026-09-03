@@ -10,6 +10,7 @@
     "mode",
     "responsibilityBoundaries",
     "sources",
+    "questions",
     "questionnaireAnswers",
     "anchorsPath",
     "anchorsSha256",
@@ -51,6 +52,11 @@
       "type": "array",
       "items": {"$ref": "#/$defs/questionnaireAnswer"},
       "description": "本 revision 固化的最小问卷答案、现状增量和明确决定。"
+    },
+    "questions": {
+      "type": "array",
+      "items": {"$ref": "urn:ai-sow:generate:question:1"},
+      "description": "本 revision 固化的完整问题包。"
     },
     "anchorsPath": {
       "$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath",
@@ -148,11 +154,15 @@
     "questionnaireAnswer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["questionId", "answer"],
+      "required": ["questionId", "questionSha256", "answer"],
       "properties": {
         "questionId": {
           "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
           "description": "最小问卷问题、现状声明或明确决定的稳定 ID。"
+        },
+        "questionSha256": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sha256",
+          "description": "回答所绑定完整问题包的 SHA-256。"
         },
         "answer": {
           "type": "string",

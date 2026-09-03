@@ -3,8 +3,12 @@ from __future__ import annotations
 import copy
 import json
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+
+import openpyxl
+import pytest
 
 
 SKILL_ROOT = Path(__file__).parents[1]
@@ -16,10 +20,16 @@ if str(SCRIPTS) not in sys.path:
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from contracts import canonical_json_bytes, sha256_bytes  # noqa: E402
-from generation_store import publish_success  # noqa: E402
-from orchestrator import run_mode  # noqa: E402
-from runtime.project_io import ProjectFiles  # noqa: E402
+from contracts import (  # noqa: E402
+    canonical_json_bytes,
+    load_schema_registry,
+    sha256_bytes,
+    validate_contract,
+)
+import orchestrator as orchestrator_module  # noqa: E402
+from orchestrator import _publication_counts, run_mode  # noqa: E402
+from models import Diagnostic  # noqa: E402
+from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
 
 
 NOW = lambda: datetime(2026, 9, 2, 8, 0, tzinfo=UTC)
@@ -109,7 +119,11 @@ def prepare_scope_files(project: Path, result: dict[str, object]) -> None:
         "contract": "ai-sow-scope-slice-v1",
         "inputRevisionId": plan["targetRevisionId"],
         "impactPlanSha256": sha256_bytes(canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": [item["featureId"] for item in bundle["features"]],
+        "replacesFeatureIds": (
+            []
+            if plan["impact"]["baselineGenerationId"] is None
+            else list(plan["impact"]["affectedFeatureIds"])
+        ),
         "newAnchorMappings": [],
         **{name: copy.deepcopy(bundle[name]) for name in SCOPE_COLLECTIONS},
         "responsibilityBoundaries": copy.deepcopy(bundle["responsibilityBoundaries"]),
@@ -128,11 +142,15 @@ def prepare_delivery_files(project: Path, prepared: dict[str, object]) -> None:
     bundle = fixture("greenfield", "delivery.json")
     bundle["inputRevisionId"] = plan["targetRevisionId"]
     candidate = {
-        "contract": "ai-sow-delivery-slice-v1",
+        "contract": "ai-sow-delivery-slice-v3",
         "inputRevisionId": plan["targetRevisionId"],
         "scopeSha256": sha256_bytes(canonical_json_bytes(scope)),
         "impactPlanSha256": sha256_bytes(canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": [item["featureId"] for item in scope["features"]],
+        "replacesFeatureIds": (
+            []
+            if plan["impact"]["baselineGenerationId"] is None
+            else list(plan["impact"]["affectedFeatureIds"])
+        ),
         **{name: copy.deepcopy(bundle[name]) for name in DELIVERY_COLLECTIONS},
     }
     write_json(project / "delivery.json", candidate)
@@ -141,78 +159,51 @@ def prepare_delivery_files(project: Path, prepared: dict[str, object]) -> None:
     )
 
 
-def publish_synthetic_current(project: Path, prepared: dict[str, object]) -> None:
+def publish_verified_current(project: Path, prepared: dict[str, object]) -> None:
+    prepare_scope_files(project, prepared)
+    scope_result = run_mode(
+        project,
+        "accept-scope",
+        candidate="scope.json",
+        ids="scope-ids.json",
+        now=NOW,
+    )
+    assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
+    prepare_delivery_files(project, prepared)
+    delivery_result = run_mode(
+        project,
+        "accept-delivery",
+        candidate="delivery.json",
+        ids="delivery-ids.json",
+        now=NOW,
+    )
+    assert delivery_result["outcome"] == "REVIEW_REQUIRED", delivery_result
+    packet = run_mode(project, "prepare-review", now=NOW)
     plan = prepared["runPlan"]
-    revision_id = plan["targetRevisionId"]
-    generation_id = plan["targetGenerationId"]
-    staged = project / "staged-generation"
-    scope = canonical_json_bytes(fixture("greenfield", "scope.json"))
-    delivery = canonical_json_bytes(fixture("greenfield", "delivery.json"))
-    workbook = b"synthetic workbook"
-    notes = "合成交付说明。\n".encode()
-    for relative, payload in (
-        ("data/scope.json", scope),
-        ("data/delivery.json", delivery),
-        ("output/sow.xlsx", workbook),
-        ("output/sow-notes.md", notes),
-    ):
-        target = staged / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload)
     review = {
         "contract": "ai-sow-final-review-v1",
         "runId": plan["runId"],
-        "inputRevisionId": revision_id,
-        "scopeSha256": sha256_bytes(scope),
-        "deliverySha256": sha256_bytes(delivery),
-        "packetSha256": "2" * 64,
+        "inputRevisionId": plan["targetRevisionId"],
+        "scopeSha256": sha256_bytes(
+            (project / ".ai-sow/work/scope.candidate.json").read_bytes()
+        ),
+        "deliverySha256": sha256_bytes(
+            (project / ".ai-sow/work/delivery.candidate.json").read_bytes()
+        ),
+        "packetSha256": sha256_bytes(
+            (project / ".ai-sow/work/review-packet.json").read_bytes()
+        ),
         "decision": "PASS",
         "notes": [],
         "questions": [],
     }
-    manifest = {
-        "contract": "ai-sow-generation-manifest-v1",
-        "generationId": generation_id,
-        "revisionId": revision_id,
-        "inputManifestPath": f".ai-sow/inputs/revisions/{revision_id}/manifest.json",
-        "inputManifestSha256": sha256_bytes(
-            (project / ".ai-sow/inputs/pending/manifest.json").read_bytes()
-        ),
-        "scopePath": f".ai-sow/generations/{generation_id}/data/scope.json",
-        "scopeSha256": sha256_bytes(scope),
-        "deliveryPath": f".ai-sow/generations/{generation_id}/data/delivery.json",
-        "deliverySha256": sha256_bytes(delivery),
-        "templatePath": ".ai-sow/templates/sow-template.xlsx",
-        "templateSha256": sha256_bytes(
-            (project / ".ai-sow/templates/sow-template.xlsx").read_bytes()
-        ),
-        "workbookPath": f".ai-sow/generations/{generation_id}/output/sow.xlsx",
-        "workbookSha256": sha256_bytes(workbook),
-        "notesPath": f".ai-sow/generations/{generation_id}/output/sow-notes.md",
-        "notesSha256": sha256_bytes(notes),
-        "scopeCompilerContract": "scope-compiler-v1",
-        "deliveryCompilerContract": "delivery-compiler-v1",
-        "rendererContract": "generation-renderer-v1",
-        "decision": "PASS",
-        "reviewMode": "AUTOMATIC_FINAL_REVIEW",
-        "impact": plan["impact"],
-        "changeCounts": {
-            "features": {"added": 1, "updated": 0, "removed": 0},
-            "recomputedStories": 1,
-            "recomputedTasks": 1,
-        },
-        "finalReview": review,
-        "finalReviewSha256": sha256_bytes(canonical_json_bytes(review)),
-        "publicationComplete": True,
-    }
-    write_json(staged / "manifest.json", manifest)
-    publish_success(
-        ProjectFiles.open(project),
-        target_revision_id=revision_id,
-        target_generation_id=generation_id,
-        pending_root=project / ".ai-sow/inputs/pending",
-        staged_generation_root=staged,
+    write_json(project / "review.json", review)
+    accepted = run_mode(
+        project, "accept-review", review="review.json", now=NOW
     )
+    assert accepted["outcome"] == "READY_TO_RENDER", accepted
+    published = run_mode(project, "publish", now=NOW)
+    assert published["outcome"] == "PUBLISHED", published
 
 
 def test_prepare_initial_project_requests_full_scope(tmp_path: Path) -> None:
@@ -221,6 +212,185 @@ def test_prepare_initial_project_requests_full_scope(tmp_path: Path) -> None:
     assert result["outcome"] == "READY_FOR_SCOPE"
     assert result["runPlan"]["action"] == "FULL_COMPILE"
     assert (tmp_path / ".ai-sow/work/run-plan.json").is_file()
+
+
+def test_prepare_freezes_current_template_for_entire_run(tmp_path: Path) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    plan = prepared["runPlan"]
+    snapshot = tmp_path / plan["templateSnapshotPath"]
+    assert snapshot.read_bytes() == (
+        tmp_path / ".ai-sow/templates/sow-template.xlsx"
+    ).read_bytes()
+    assert plan["templateSha256"] == sha256_bytes(snapshot.read_bytes())
+
+
+def test_run_template_resolver_rejects_an_arbitrary_matching_path(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    plan = orchestrator_module._plan_from_value(prepared["runPlan"])
+    alternate_path = ".ai-sow/work/alternate-template.xlsx"
+    files = ProjectFiles.open(tmp_path)
+    files.write_atomic(alternate_path, files.read_bytes(plan.template_snapshot_path))
+
+    with pytest.raises(ProjectIOError) as caught:
+        orchestrator_module._resolve_run_template(
+            files, replace(plan, template_snapshot_path=alternate_path)
+        )
+
+    assert caught.value.code == "RUN_TEMPLATE_CHANGED"
+
+
+def test_live_template_change_does_not_change_active_run(tmp_path: Path) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    snapshot = tmp_path / prepared["runPlan"]["templateSnapshotPath"]
+    snapshot_before = snapshot.read_bytes()
+    prepare_scope_files(tmp_path, prepared)
+    scope_result = run_mode(
+        tmp_path,
+        "accept-scope",
+        candidate="scope.json",
+        ids="scope-ids.json",
+        now=NOW,
+    )
+    assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
+    prepare_delivery_files(tmp_path, prepared)
+
+    template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
+    workbook = openpyxl.load_workbook(template)
+    try:
+        table = workbook["90-估算标准"].tables["BaseUnitCatalogTable"]
+        min_col = openpyxl.utils.range_boundaries(table.ref)[0]
+        min_row = openpyxl.utils.range_boundaries(table.ref)[1]
+        workbook["90-估算标准"].cell(min_row, min_col).value = "无效目录列"
+        workbook.save(template)
+    finally:
+        workbook.close()
+
+    result = run_mode(
+        tmp_path,
+        "accept-delivery",
+        candidate="delivery.json",
+        ids="delivery-ids.json",
+        now=NOW,
+    )
+
+    assert result["outcome"] == "REVIEW_REQUIRED", result
+    assert snapshot.read_bytes() == snapshot_before
+
+
+def test_changed_run_snapshot_blocks_before_compile(tmp_path: Path) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    snapshot = tmp_path / prepared["runPlan"]["templateSnapshotPath"]
+    snapshot.write_bytes(snapshot.read_bytes() + b"changed")
+    prepare_scope_files(tmp_path, prepared)
+    assert run_mode(
+        tmp_path,
+        "accept-scope",
+        candidate="scope.json",
+        ids="scope-ids.json",
+        now=NOW,
+    )["outcome"] == "READY_FOR_DELIVERY"
+    prepare_delivery_files(tmp_path, prepared)
+
+    result = run_mode(
+        tmp_path,
+        "accept-delivery",
+        candidate="delivery.json",
+        ids="delivery-ids.json",
+        now=NOW,
+    )
+
+    assert {item["code"] for item in result["diagnostics"]} == {
+        "RUN_TEMPLATE_CHANGED"
+    }
+
+
+def test_publication_counts_separate_recompute_reuse_delete_and_final() -> None:
+    previous_scope = {
+        "features": [
+            {"featureId": "feature-refund", "name": "退款"},
+            {"featureId": "feature-ledger", "name": "台账"},
+        ]
+    }
+    current_scope = {
+        "features": [
+            {"featureId": "feature-refund", "name": "退款升级"},
+            {"featureId": "feature-ledger", "name": "台账"},
+        ]
+    }
+    previous_delivery = {
+        "stories": [
+            {"storyId": "story-refund", "featureId": "feature-refund"},
+            {"storyId": "story-ledger", "featureId": "feature-ledger"},
+        ],
+        "acceptanceCriteria": [
+            {"acceptanceCriterionId": "ac-refund", "storyId": "story-refund"},
+            {"acceptanceCriterionId": "ac-ledger", "storyId": "story-ledger"},
+        ],
+        "tasks": [
+            {"taskId": "task-refund-update", "storyId": "story-refund", "v": 1},
+            {"taskId": "task-refund-delete", "storyId": "story-refund", "v": 1},
+            {"taskId": "task-ledger", "storyId": "story-ledger", "v": 1},
+        ],
+    }
+    current_delivery = {
+        "stories": [
+            {"storyId": "story-refund", "featureId": "feature-refund", "v": 2},
+            {"storyId": "story-ledger", "featureId": "feature-ledger"},
+        ],
+        "acceptanceCriteria": [
+            {"acceptanceCriterionId": "ac-refund", "storyId": "story-refund", "v": 2},
+            {"acceptanceCriterionId": "ac-ledger", "storyId": "story-ledger"},
+        ],
+        "tasks": [
+            {"taskId": "task-refund-update", "storyId": "story-refund", "v": 2},
+            {"taskId": "task-refund-new", "storyId": "story-refund", "v": 1},
+            {"taskId": "task-ledger", "storyId": "story-ledger", "v": 1},
+        ],
+    }
+
+    assert _publication_counts(
+        previous_scope,
+        previous_delivery,
+        current_scope,
+        current_delivery,
+        ("feature-refund",),
+    ) == {
+        "features": {
+            "affected": 1,
+            "recomputed": 1,
+            "reused": 1,
+            "deleted": 0,
+            "final": 2,
+        },
+        "stories": {
+            "affected": 1,
+            "recomputed": 1,
+            "reused": 1,
+            "deleted": 0,
+            "final": 2,
+        },
+        "acceptanceCriteria": {
+            "affected": 1,
+            "recomputed": 1,
+            "reused": 1,
+            "deleted": 0,
+            "final": 2,
+        },
+        "tasks": {
+            "affected": 2,
+            "recomputed": 2,
+            "reused": 1,
+            "deleted": 1,
+            "final": 3,
+        },
+    }
 
 
 def test_modes_are_ordered_and_fail_closed(tmp_path: Path) -> None:
@@ -282,16 +452,305 @@ def test_accept_delivery_binds_exact_scope_and_advances_to_review(tmp_path: Path
     )
 
 
+def test_accept_delivery_returns_one_self_contained_question_per_affected_task(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    prepare_scope_files(tmp_path, prepared)
+    assert run_mode(
+        tmp_path,
+        "accept-scope",
+        candidate="scope.json",
+        ids="scope-ids.json",
+        now=NOW,
+    )["outcome"] == "READY_FOR_DELIVERY"
+    scope_path = tmp_path / ".ai-sow/work/scope.candidate.json"
+    scope = json.loads(scope_path.read_text(encoding="utf-8"))
+    scope["effectiveStartItems"].append(
+        {
+            "effectiveStartItemId": "effective-start-return-api",
+            "matchLevel": "CAPABILITY",
+            "name": "既有退货申请接口",
+            "summary": "现有材料只能确认退货模块能力，不能确认该接口实例可直接使用。",
+            "commitmentIds": [],
+            "featureIds": ["feature-refund-processing"],
+            "sourceRefs": [scope["designItems"][0]["sourceRefs"][0]],
+        }
+    )
+    write_json(scope_path, scope)
+    prepare_delivery_files(tmp_path, prepared)
+    delivery_path = tmp_path / "delivery.json"
+    delivery = json.loads(delivery_path.read_text(encoding="utf-8"))
+    task = delivery["tasks"][0]
+    task["workMode"] = "调整"
+    task["workModeEvidence"] = {
+        "effectiveStartItemId": "effective-start-return-api"
+    }
+    delivery["scopeSha256"] = sha256_bytes(canonical_json_bytes(scope))
+    write_json(delivery_path, delivery)
+
+    result = run_mode(
+        tmp_path,
+        "accept-delivery",
+        candidate="delivery.json",
+        ids="delivery-ids.json",
+        now=NOW,
+    )
+
+    assert result["outcome"] == "BLOCKED"
+    assert len(result["questions"]) == 1
+    question = result["questions"][0]
+    assert question["subjectIds"] == ["task-refund-service"]
+    assert "既有退货申请接口" in question["question"]
+    assert "是否已经存在" in question["question"]
+    assert "直接修改或使用" in question["question"]
+    assert "从头实现" in question["question"]
+    assert validate_contract(
+        question, "question.schema.json", load_schema_registry(SKILL_ROOT)
+    ) == ()
+    user_text = "\n".join(
+        str(question[field])
+        for field in ("question", "reason", "decisionImpact", "unansweredEffect")
+    )
+    for internal in (
+        "CAPABILITY",
+        "TASK_INSTANCE",
+        "baseUnit",
+        "Effective Start",
+        "effective-start-return-api",
+    ):
+        assert internal not in user_text
+
+
+def test_work_mode_question_deduplicates_related_diagnostics_for_one_task() -> None:
+    scope = {
+        "effectiveStartItems": [
+            {
+                "effectiveStartItemId": "effective-start-return-api",
+                "name": "既有退货申请接口",
+            }
+        ]
+    }
+    delivery = {
+        "tasks": [
+            {
+                "taskId": "task-return-api",
+                "name": "调整退货申请接口",
+                "workModeEvidence": {
+                    "effectiveStartItemId": "effective-start-return-api"
+                },
+            }
+        ]
+    }
+    diagnostics = (
+        Diagnostic(
+            code="TASK_WORK_MODE_REQUIRES_INSTANCE_START",
+            message="测试诊断。",
+            path="/tasks/task-return-api/workModeEvidence/effectiveStartItemId",
+            details={},
+        ),
+        Diagnostic(
+            code="TASK_WORK_MODE_BASE_UNIT_MISMATCH",
+            message="测试诊断。",
+            path="/tasks/task-return-api/workModeEvidence/effectiveStartItemId",
+            details={},
+        ),
+    )
+
+    questions = orchestrator_module._work_mode_evidence_questions(
+        scope, delivery, diagnostics
+    )
+
+    assert [question["questionId"] for question in questions] == [
+        "question-work-mode-task-return-api"
+    ]
+
+
 def test_prepare_identical_request_reuses_verified_current_outputs(
     tmp_path: Path,
 ) -> None:
     request_path = write_request(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
-    publish_synthetic_current(tmp_path, prepared)
+    publish_verified_current(tmp_path, prepared)
     result = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
     assert result["outcome"] == "REUSED", result
     assert result["workbookPath"].endswith("/output/sow.xlsx")
     assert not (tmp_path / ".ai-sow/inputs/pending").exists()
+
+
+def test_prepare_rerenders_verified_output_from_previous_renderer_contract(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    publish_verified_current(tmp_path, prepared)
+    manifest_path = tmp_path / ".ai-sow/generations/000001/manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["rendererContract"] = "generation-renderer-v2"
+    write_json(manifest_path, manifest)
+    current_path = tmp_path / ".ai-sow/current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current["generationManifestSha256"] = sha256_bytes(manifest_path.read_bytes())
+    write_json(current_path, current)
+
+    result = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    assert result["outcome"] == "READY_TO_RENDER", result
+    assert result["runPlan"]["action"] == "RENDER_ONLY"
+    assert result["runPlan"]["rendererContract"] == "generation-renderer-v7"
+
+
+def test_prepare_full_compiles_from_legacy_v1_generation_evidence(
+    tmp_path: Path,
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    publish_verified_current(tmp_path, prepared)
+    manifest_path = tmp_path / ".ai-sow/generations/000001/manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["workbookVerification"]
+    manifest["scopeCompilerContract"] = "scope-compiler-v1"
+    manifest["deliveryCompilerContract"] = "delivery-compiler-v1"
+    manifest["rendererContract"] = "generation-renderer-v1"
+    manifest["changeCounts"] = {
+        "features": {"added": 1, "updated": 0, "removed": 0},
+        "recomputedStories": 1,
+        "recomputedTasks": 1,
+    }
+    write_json(manifest_path, manifest)
+    current_path = tmp_path / ".ai-sow/current.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    current["generationManifestSha256"] = sha256_bytes(manifest_path.read_bytes())
+    write_json(current_path, current)
+
+    result = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    assert result["outcome"] == "READY_FOR_SCOPE", result
+    assert result["runPlan"]["action"] == "FULL_COMPILE"
+    assert "COMPILER_CONTRACT_CHANGED" in result["runPlan"]["impact"][
+        "reasonCodes"
+    ]
+
+
+def test_prepare_adopts_new_bundled_template_when_project_copy_is_unchanged(
+    tmp_path: Path, monkeypatch
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    publish_verified_current(tmp_path, prepared)
+    upgraded_template = tmp_path / "upgraded-template.xlsx"
+    workbook = openpyxl.load_workbook(orchestrator_module.TEMPLATE_ASSET)
+    try:
+        workbook.properties.title = "bundled-template-upgrade"
+        workbook.save(upgraded_template)
+    finally:
+        workbook.close()
+    monkeypatch.setattr(orchestrator_module, "TEMPLATE_ASSET", upgraded_template)
+
+    result = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    assert result["outcome"] == "READY_FOR_SCOPE", result
+    assert result["runPlan"]["action"] == "FULL_COMPILE"
+    assert (tmp_path / ".ai-sow/templates/sow-template.xlsx").read_bytes() == (
+        upgraded_template.read_bytes()
+    )
+
+
+def test_previous_v6_bundled_template_remains_auto_upgradeable() -> None:
+    assert (
+        "587797c1cd369166d2273da45f07b045a7badd4caf9d5ae2b49ef6cee169b77d"
+        in orchestrator_module.BUNDLED_TEMPLATE_SHA256_HISTORY
+    )
+
+
+def test_previous_v7_bundled_template_remains_auto_upgradeable() -> None:
+    assert (
+        "edec72f7a1d91a8fa5fbdd7ebc67a0b5ad313e1d2434a444741c88c86acf7030"
+        in orchestrator_module.BUNDLED_TEMPLATE_SHA256_HISTORY
+    )
+
+
+def test_prepare_preserves_project_template_changed_after_last_publication(
+    tmp_path: Path, monkeypatch
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    publish_verified_current(tmp_path, prepared)
+    project_template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
+    workbook = openpyxl.load_workbook(project_template)
+    try:
+        workbook.properties.title = "project-specific-template"
+        workbook.save(project_template)
+    finally:
+        workbook.close()
+    project_bytes = project_template.read_bytes()
+    upgraded_template = tmp_path / "upgraded-template.xlsx"
+    workbook = openpyxl.load_workbook(orchestrator_module.TEMPLATE_ASSET)
+    try:
+        workbook.properties.title = "bundled-template-upgrade"
+        workbook.save(upgraded_template)
+    finally:
+        workbook.close()
+    monkeypatch.setattr(orchestrator_module, "TEMPLATE_ASSET", upgraded_template)
+
+    result = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    assert result["outcome"] == "READY_FOR_SCOPE", result
+    assert result["runPlan"]["action"] == "FULL_COMPILE"
+    assert project_template.read_bytes() == project_bytes
+
+
+def test_prepare_preserves_project_template_customized_before_first_publication(
+    tmp_path: Path, monkeypatch
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    project_template = tmp_path / ".ai-sow/templates/sow-template.xlsx"
+    workbook = openpyxl.load_workbook(project_template)
+    try:
+        workbook.properties.title = "project-specific-template"
+        workbook.save(project_template)
+    finally:
+        workbook.close()
+    publish_verified_current(tmp_path, prepared)
+    project_bytes = project_template.read_bytes()
+    upgraded_template = tmp_path / "upgraded-template.xlsx"
+    workbook = openpyxl.load_workbook(orchestrator_module.TEMPLATE_ASSET)
+    try:
+        workbook.properties.title = "bundled-template-upgrade"
+        workbook.save(upgraded_template)
+    finally:
+        workbook.close()
+    monkeypatch.setattr(orchestrator_module, "TEMPLATE_ASSET", upgraded_template)
+
+    result = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+
+    assert result["outcome"] == "READY_FOR_SCOPE", result
+    assert result["runPlan"]["action"] == "FULL_COMPILE"
+    assert project_template.read_bytes() == project_bytes
+
+
+def test_publish_without_office_engine_preserves_last_known_good(
+    tmp_path: Path, monkeypatch
+) -> None:
+    request_path = write_request(tmp_path)
+    prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    publish_verified_current(tmp_path, prepared)
+    previous_current = (tmp_path / ".ai-sow/current.json").read_bytes()
+
+    template_path = tmp_path / ".ai-sow/templates/sow-template.xlsx"
+    workbook = openpyxl.load_workbook(template_path)
+    try:
+        workbook.properties.title = "强制模板哈希变化"
+        workbook.save(template_path)
+    finally:
+        workbook.close()
+    rerender = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
+    assert rerender["outcome"] == "READY_FOR_SCOPE", rerender
+    assert rerender["runPlan"]["action"] == "FULL_COMPILE"
+    assert (tmp_path / ".ai-sow/current.json").read_bytes() == previous_current
+    assert not (tmp_path / ".ai-sow/generations/000002").exists()
 
 
 def test_review_modes_bind_packet_and_enable_render_only_after_pass(
@@ -318,6 +777,7 @@ def test_review_modes_bind_packet_and_enable_render_only_after_pass(
 
     packet_result = run_mode(tmp_path, "prepare-review", now=NOW)
     assert packet_result["outcome"] == "REVIEW_REQUIRED", packet_result
+    assert packet_result["reviewMaterialPath"] == ".ai-sow/work/review-material.md"
     plan = json.loads(
         (tmp_path / ".ai-sow/work/run-plan.json").read_text(encoding="utf-8")
     )
@@ -331,7 +791,9 @@ def test_review_modes_bind_packet_and_enable_render_only_after_pass(
         "deliverySha256": sha256_bytes(
             (tmp_path / ".ai-sow/work/delivery.candidate.json").read_bytes()
         ),
-        "packetSha256": packet_result["packetSha256"],
+        "packetSha256": sha256_bytes(
+            (tmp_path / ".ai-sow/work/review-packet.json").read_bytes()
+        ),
         "decision": "PASS",
         "notes": [],
         "questions": [],

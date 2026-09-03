@@ -56,12 +56,8 @@
       "anchorCount": 4
     }
   ],
-  "questionnaireAnswers": [
-    {
-      "questionId": "question-current-state-delta",
-      "answer": "NO_KNOWN_CHANGES：自往期 SOW 生效以来无已知范围、架构、集成或部署变化。"
-    }
-  ],
+  "questions": [],
+  "questionnaireAnswers": [],
   "anchorsPath": "anchors.json",
   "anchorsSha256": "7222222222222222222222222222222222222222222222222222222222222222",
   "recordedAt": "2026-09-02T00:00:00Z"

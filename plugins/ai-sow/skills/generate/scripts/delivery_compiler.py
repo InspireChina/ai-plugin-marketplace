@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import AbstractSet, Any
 
 import openpyxl
 from openpyxl.utils.cell import range_boundaries
@@ -59,6 +60,7 @@ MODE_EFFORT_HEADERS = {
 COMPLEXITIES = ("S", "M", "L")
 CALIBRATED_PARAMETER_STATUSES = {"固定规则", "已校准", "已批准"}
 CLARIFICATION_FIELDS = frozenset({"name", "description", "rationale"})
+MAX_TASKS_PER_STORY = 4
 
 
 def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
@@ -152,7 +154,8 @@ def read_template_catalog(template_path: Path) -> TemplateCatalog:
         _require_headers(catalog_rows, CATALOG_HEADERS, "BaseUnitCatalogTable")
         _require_headers(parameter_rows, PARAMETER_HEADERS, "ProjectParameterTable")
         base_units: dict[str, BaseUnitRule] = {}
-        family_ids: set[str] = set()
+        if not catalog_rows:
+            raise ValueError("template base-unit catalog must not be empty")
         for index, row in enumerate(catalog_rows, 1):
             subject = f"base-unit catalog row {index}"
             base_unit = _require_text(row, "基础单元ID", subject)
@@ -166,7 +169,6 @@ def read_template_catalog(template_path: Path) -> TemplateCatalog:
             if not modes:
                 raise ValueError(f"base-unit has no work mode: {base_unit}")
             family_id = _require_text(row, "任务族ID", subject)
-            family_ids.add(family_id)
             base_units[base_unit] = BaseUnitRule(
                 base_unit=base_unit,
                 name=_require_text(row, "基础单元名称", subject),
@@ -183,8 +185,6 @@ def read_template_catalog(template_path: Path) -> TemplateCatalog:
                 },
                 split_rule=_require_text(row, "X/拆分条件", subject),
             )
-        if len(base_units) != 37 or len(family_ids) != 13:
-            raise ValueError("template must define exactly 37 base units and 13 task families")
         _validate_complexity_parameters(parameter_rows)
         return TemplateCatalog(
             template_sha256=hashlib.sha256(payload).hexdigest(),
@@ -332,6 +332,7 @@ def _has_cycle(task_ids: set[str], edges: set[tuple[str, str]]) -> bool:
 def _validate_delivery(
     bundle: Mapping[str, object],
     scope: Mapping[str, object],
+    source_ref_inventory: AbstractSet[tuple[str, str, str]],
     catalog: TemplateCatalog,
 ) -> list[Diagnostic]:
     diagnostics = list(
@@ -347,12 +348,34 @@ def _validate_delivery(
         for item in _mappings(bundle.get("acceptanceCriteria"))
     }
     tasks = {str(item.get("taskId")): item for item in _mappings(bundle.get("tasks"))}
+    story_names: dict[str, str] = {}
+
+    for criterion_index, criterion in enumerate(
+        _mappings(bundle.get("acceptanceCriteria"))
+    ):
+        for ref_index, ref in enumerate(_mappings(criterion.get("sourceRefs"))):
+            source_id = ref.get("sourceId")
+            anchor_id = ref.get("anchorId")
+            sha256 = ref.get("sha256")
+            identity = (
+                (str(source_id), str(anchor_id), str(sha256))
+                if all(isinstance(value, str) for value in (source_id, anchor_id, sha256))
+                else None
+            )
+            if identity not in source_ref_inventory:
+                diagnostics.append(
+                    _diagnostic(
+                        "DELIVERY_AC_SOURCE_REF_INVALID",
+                        "AC 来源必须精确匹配当前输入 revision 中的 sourceId、anchorId 和 sha256。",
+                        f"/acceptanceCriteria/{criterion_index}/sourceRefs/{ref_index}",
+                    )
+                )
 
     for feature_id, feature in features.items():
         decision = feature.get("scopeDecision")
         requires_story = isinstance(decision, Mapping) and decision.get("decision") == "IN_SCOPE"
         if requires_story and not any(
-            feature_id in _ids(story.get("featureIds")) for story in stories.values()
+            feature_id == story.get("featureId") for story in stories.values()
         ):
             diagnostics.append(
                 _diagnostic(
@@ -362,25 +385,44 @@ def _validate_delivery(
                 )
             )
     for story_id, story in stories.items():
-        if any(feature_id not in features for feature_id in _ids(story.get("featureIds"))):
+        if story.get("featureId") not in features:
             diagnostics.append(
                 _diagnostic("DELIVERY_STORY_FEATURE_UNKNOWN", "Story 引用了未知 Feature。")
             )
+        story_name = story.get("name")
+        if isinstance(story_name, str):
+            name_key = unicodedata.normalize("NFC", story_name).strip().casefold()
+            previous_story_id = story_names.get(name_key)
+            if previous_story_id is not None:
+                diagnostics.append(
+                    _diagnostic(
+                        "DELIVERY_STORY_NAME_DUPLICATE",
+                        "Story 标题必须唯一，确保 Task 能直接、无歧义地引用所属 Story。",
+                        f"/stories/{story_id}/name",
+                    )
+                )
+            else:
+                story_names[name_key] = story_id
         story_criteria = [
             item for item in criteria.values() if item.get("storyId") == story_id
         ]
-        if not story_criteria:
+        if len(story_criteria) < 2:
             diagnostics.append(
-                _diagnostic("DELIVERY_STORY_AC_MISSING", "每个 Story 必须至少有一条 AC。")
+                _diagnostic(
+                    "DELIVERY_STORY_AC_INSUFFICIENT",
+                    "每个 Story 必须至少有两条独立、可观察、可判定的 AC。",
+                    f"/stories/{story_id}",
+                )
             )
-        sequences = sorted(
-            item.get("sequence") for item in story_criteria if isinstance(item.get("sequence"), int)
-        )
-        if sequences and sequences != list(range(1, len(sequences) + 1)):
+        story_tasks = [item for item in tasks.values() if item.get("storyId") == story_id]
+        if len(story_tasks) > MAX_TASKS_PER_STORY:
             diagnostics.append(
-                _diagnostic("DELIVERY_AC_SEQUENCE_INVALID", "Story 内 AC 顺序必须从 1 连续递增。")
+                _diagnostic(
+                    "DELIVERY_STORY_TASK_LIMIT_EXCEEDED",
+                    f"每个 Story 最多包含 {MAX_TASKS_PER_STORY} 个 Task；超过时必须按独立验收结果拆分。",
+                    f"/stories/{story_id}",
+                )
             )
-
     covered_criteria: set[str] = set()
     integration_tasks: defaultdict[str, list[str]] = defaultdict(list)
     design_required = {
@@ -390,7 +432,6 @@ def _validate_delivery(
         if isinstance(item, Mapping) and item.get("status") == "DESIGN_REQUIRED"
     }
     designed: set[str] = set()
-    edges: set[tuple[str, str]] = set()
     for task_id, task in tasks.items():
         story_id = task.get("storyId")
         story = stories.get(str(story_id))
@@ -404,7 +445,7 @@ def _validate_delivery(
             if criterion is None or criterion.get("storyId") != story_id:
                 diagnostics.append(
                     _diagnostic(
-                        "DELIVERY_TASK_AC_WRONG_STORY",
+                        "DELIVERY_TASK_AC_CROSS_STORY",
                         "Task 只能覆盖同一 Story 的 AC。",
                     )
                 )
@@ -458,31 +499,35 @@ def _validate_delivery(
                 diagnostics.append(
                     _diagnostic("DELIVERY_COMPLEXITY_INVALID", "Task 复杂度不受支持。")
                 )
-        if any(token in str(task.get("name", "")) for token in ("不限", "其他支持", "持续支持")):
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_OPEN_ENDED_SUPPORT_FORBIDDEN",
-                    "Task 不得表达无边界的持续或其他支持。",
-                )
-            )
         evidence = task.get("workModeEvidence")
-        matched = task.get("matchedEffectiveStartItemId")
         if isinstance(evidence, Mapping):
-            effective = indices["effectiveStartItems"].get(str(matched))
-            if (
-                effective is None
-                or evidence.get("effectiveStartItemId") != matched
-                or evidence.get("effectiveStartItemName") != effective.get("name")
-            ):
+            effective_id = evidence.get("effectiveStartItemId")
+            effective = indices["effectiveStartItems"].get(str(effective_id))
+            if effective is None:
                 diagnostics.append(
                     _diagnostic(
                         "DELIVERY_WORK_MODE_EVIDENCE_INVALID",
                         "工作模式证据必须精确匹配 Effective Start。",
+                        f"/tasks/{task_id}/workModeEvidence/effectiveStartItemId",
                     )
                 )
-        for predecessor in _ids(task.get("dependsOnTaskIds")):
-            edges.add((predecessor, task_id))
-
+            elif task.get("workMode") in {"调整", "接入复用"}:
+                if effective.get("matchLevel") != "TASK_INSTANCE":
+                    diagnostics.append(
+                        _diagnostic(
+                            "TASK_WORK_MODE_REQUIRES_INSTANCE_START",
+                            "调整或接入复用必须引用与当前 Task 精确匹配的既有实例。",
+                            f"/tasks/{task_id}/workModeEvidence/effectiveStartItemId",
+                        )
+                    )
+                elif effective.get("baseUnit") != base_unit:
+                    diagnostics.append(
+                        _diagnostic(
+                            "TASK_WORK_MODE_BASE_UNIT_MISMATCH",
+                            "工作模式证据的基础单元必须与当前 Task 一致。",
+                            f"/tasks/{task_id}/workModeEvidence/effectiveStartItemId",
+                        )
+                    )
     missing_coverage = set(criteria) - covered_criteria
     if missing_coverage:
         diagnostics.append(
@@ -522,14 +567,7 @@ def _validate_delivery(
                 )
             )
         declared_edges.add((predecessor, successor))
-    if edges != declared_edges:
-        diagnostics.append(
-            _diagnostic(
-                "DELIVERY_DEPENDENCY_MISMATCH",
-                "Task 前置列表必须与 Dependency 集合完全一致。",
-            )
-        )
-    if _has_cycle(set(tasks), edges | declared_edges):
+    if _has_cycle(set(tasks), declared_edges):
         diagnostics.append(
             _diagnostic("DELIVERY_DEPENDENCY_CYCLE", "Task 依赖不得形成循环。")
         )
@@ -542,20 +580,21 @@ def _merge_delivery(
     impact: ImpactPlan,
     diagnostics: list[Diagnostic],
 ) -> dict[str, object]:
+    replaced = set(_ids(candidate.get("replacesFeatureIds")))
+    expected = set() if previous is None else set(impact.affected_feature_ids)
+    if replaced != expected:
+        diagnostics.append(
+            _diagnostic(
+                "DELIVERY_REPLACEMENT_CLOSURE_MISMATCH",
+                "Delivery 切片替换 Feature 必须与最终 ImpactPlan 完全一致；初次编译必须为空。",
+            )
+        )
     if previous is None or impact.action == "FULL_COMPILE":
         collections = {
             collection: list(_mappings(candidate.get(collection)))
             for collection in COLLECTION_TYPES
         }
     else:
-        replaced = set(_ids(candidate.get("replacesFeatureIds")))
-        if replaced != set(impact.affected_feature_ids):
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_REPLACEMENT_CLOSURE_MISMATCH",
-                    "Delivery 切片替换 Feature 必须与最终 ImpactPlan 完全一致。",
-                )
-            )
         old_stories = list(_mappings(previous.get("stories")))
         removed_story_ids: set[str] = set()
         remove_story_indexes: list[int] = []
@@ -563,15 +602,7 @@ def _merge_delivery(
             str(item.get("storyId")) for item in _mappings(candidate.get("stories"))
         }
         for index, story in enumerate(old_stories):
-            linked = set(_ids(story.get("featureIds")))
-            if linked & replaced and not linked <= replaced:
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_SHARED_STORY_REQUIRES_WIDENING",
-                        "共享 Story 跨越受影响闭包，必须扩大 ImpactPlan。",
-                    )
-                )
-            if linked & replaced or str(story.get("storyId")) in candidate_story_ids:
+            if story.get("featureId") in replaced or str(story.get("storyId")) in candidate_story_ids:
                 remove_story_indexes.append(index)
                 removed_story_ids.add(str(story.get("storyId")))
         insertion = min(remove_story_indexes, default=len(old_stories))
@@ -632,7 +663,7 @@ def _merge_delivery(
             "dependencies": dependency_rows,
         }
     return {
-        "contract": "ai-sow-delivery-bundle-v1",
+        "contract": "ai-sow-delivery-bundle-v3",
         "inputRevisionId": candidate.get("inputRevisionId"),
         "scopeSha256": candidate.get("scopeSha256"),
         **collections,
@@ -674,7 +705,8 @@ def compile_delivery(
     delivery_slice: Mapping[str, object],
     id_decisions: object,
     impact: ImpactPlan,
-    template_catalog: TemplateCatalog,
+    source_ref_inventory: AbstractSet[tuple[str, str, str]],
+    catalog: TemplateCatalog,
 ) -> DeliveryCompilation:
     diagnostics = list(
         validate_contract(delivery_slice, "delivery-slice.schema.json", SCHEMA_REGISTRY)
@@ -703,7 +735,7 @@ def compile_delivery(
         _validate_id_ledger(delivery_slice, previous_delivery, id_decisions)
     )
     bundle = _merge_delivery(previous_delivery, delivery_slice, impact, diagnostics)
-    diagnostics.extend(_validate_delivery(bundle, scope, template_catalog))
+    diagnostics.extend(_validate_delivery(bundle, scope, source_ref_inventory, catalog))
     return DeliveryCompilation(
         bundle=bundle,
         bundle_sha256=sha256_bytes(canonical_json_bytes(bundle)),

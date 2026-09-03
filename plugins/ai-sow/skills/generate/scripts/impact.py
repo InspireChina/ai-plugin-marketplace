@@ -55,11 +55,20 @@ def _source_refs(value: Mapping[str, object]) -> list[Mapping[str, object]]:
     return _mappings(value.get("sourceRefs"))
 
 
+def _source_ref_identity(ref: Mapping[str, object]) -> tuple[str, str, str] | None:
+    source_id = ref.get("sourceId")
+    anchor_id = ref.get("anchorId")
+    sha256 = ref.get("sha256")
+    if not all(isinstance(value, str) for value in (source_id, anchor_id, sha256)):
+        return None
+    return str(source_id), str(anchor_id), str(sha256)
+
+
 def _ref_matches(ref: Mapping[str, object], change) -> bool:
     if ref.get("sourceId") != change.source_id:
         return False
-    return ref.get("anchorId") == change.anchor_id or (
-        change.previous_sha256 is not None and ref.get("sha256") == change.previous_sha256
+    return ref.get("anchorId") == change.anchor_id and (
+        change.previous_sha256 is None or ref.get("sha256") == change.previous_sha256
     )
 
 
@@ -100,6 +109,7 @@ def _scope_object_feature_sets(
 def _seed_features(
     changes: InputChangeSet,
     scope: Mapping[str, object] | None,
+    delivery: Mapping[str, object] | None,
 ) -> tuple[set[str], bool]:
     linked, _ = _scope_object_feature_sets(scope)
     affected: set[str] = set()
@@ -112,6 +122,22 @@ def _seed_features(
             if any(_ref_matches(ref, change) for ref in _source_refs(item)):
                 affected.update(feature_ids)
                 matched = True
+        if delivery is not None:
+            story_features = {
+                str(story.get("storyId")): str(story.get("featureId"))
+                for story in _mappings(delivery.get("stories"))
+                if isinstance(story.get("storyId"), str)
+                and isinstance(story.get("featureId"), str)
+            }
+            for criterion in _mappings(delivery.get("acceptanceCriteria")):
+                if not any(
+                    _ref_matches(ref, change) for ref in _source_refs(criterion)
+                ):
+                    continue
+                feature_id = story_features.get(str(criterion.get("storyId")))
+                if feature_id is not None:
+                    affected.add(feature_id)
+                    matched = True
         if not matched:
             unmapped_structured = True
 
@@ -131,18 +157,6 @@ def _seed_features(
         if not matched:
             unmapped_structured = True
 
-    for answer_id in changes.answer_ids:
-        matched = False
-        for item, feature_ids in linked:
-            for ref in _source_refs(item):
-                locator = ref.get("locator")
-                if ref.get("anchorId") == answer_id or (
-                    isinstance(locator, str) and f"question:{answer_id}" in locator
-                ):
-                    affected.update(feature_ids)
-                    matched = True
-        if not matched:
-            unmapped_structured = True
     return affected, unmapped_structured
 
 
@@ -166,8 +180,9 @@ def _closure(
     if delivery is not None:
         for story in _mappings(delivery.get("stories")):
             story_id = story.get("storyId")
-            if isinstance(story_id, str):
-                story_features[story_id] = set(_ids(story.get("featureIds")))
+            feature_id = story.get("featureId")
+            if isinstance(story_id, str) and isinstance(feature_id, str):
+                story_features[story_id] = {feature_id}
         for task in _mappings(delivery.get("tasks")):
             task_id = task.get("taskId")
             story_id = task.get("storyId")
@@ -178,8 +193,6 @@ def _closure(
                 for object_id in _ids(task.get(field)):
                     feature_ids.update(object_features.get(object_id, set()))
             task_features[task_id] = feature_ids
-            for predecessor in _ids(task.get("dependsOnTaskIds")):
-                dependencies.append((predecessor, task_id))
         for dependency in _mappings(delivery.get("dependencies")):
             predecessor = dependency.get("predecessorTaskId")
             successor = dependency.get("successorTaskId")
@@ -243,6 +256,11 @@ def compute_impact_plan(
         affected = all_features
         escalation = "FULL"
         reasons = ("COMPILER_CONTRACT_CHANGED",)
+    elif template_changed:
+        action = "FULL_COMPILE"
+        affected = all_features
+        escalation = "FULL"
+        reasons = ("TEMPLATE_CHANGED",)
     elif baseline_generation_id is None or previous_scope is None:
         action = "FULL_COMPILE"
         affected = all_features
@@ -250,13 +268,13 @@ def compute_impact_plan(
         reasons = ("NO_CURRENT_GENERATION",)
     elif pending_run:
         action = "RESUME_PENDING"
-        affected, unmapped = _seed_features(changes, previous_scope)
+        affected, unmapped = _seed_features(changes, previous_scope, previous_delivery)
         affected = _closure(affected, previous_scope, previous_delivery)
         escalation = "FULL" if unmapped else ("FEATURE" if affected else "NONE")
         if unmapped:
             affected = all_features
         reasons = ("PENDING_RUN_EXISTS",)
-    elif changes.exact_match and not template_changed and not renderer_changed:
+    elif changes.exact_match and not renderer_changed:
         action = "REUSE"
         affected = set()
         escalation = "NONE"
@@ -267,15 +285,12 @@ def compute_impact_plan(
         escalation = "NONE"
         reasons = tuple(
             reason
-            for changed, reason in (
-                (template_changed, "TEMPLATE_CHANGED"),
-                (renderer_changed, "RENDERER_CHANGED"),
-            )
+            for changed, reason in ((renderer_changed, "RENDERER_CHANGED"),)
             if changed
         )
     else:
         action = "SLICE_COMPILE"
-        affected, unmapped = _seed_features(changes, previous_scope)
+        affected, unmapped = _seed_features(changes, previous_scope, previous_delivery)
         if unmapped:
             affected = all_features
             escalation = "FULL"
@@ -307,11 +322,13 @@ def finalize_impact_plan(
     candidate_slice: Mapping[str, object],
     previous_scope: Mapping[str, object] | None,
     previous_delivery: Mapping[str, object] | None,
+    added_anchor_refs: Sequence[Mapping[str, object]],
 ) -> ImpactPlan:
     candidate_scope: Mapping[str, object] = {
-        "features": candidate_slice.get("features", [])
+        collection: candidate_slice.get(collection, [])
+        for collection in ("epics", "features", *SCOPE_LINK_COLLECTIONS)
     }
-    order = _feature_order(previous_scope, candidate_scope)
+    order = _feature_order(previous_scope)
     all_features = set(order)
     affected = set(plan.affected_feature_ids)
     escalation = plan.escalation
@@ -321,23 +338,56 @@ def finalize_impact_plan(
         for reason in plan.reason_codes
         if reason.startswith("ADDED_ANCHOR:")
     }
+    added_anchor_identities = {
+        identity
+        for ref in added_anchor_refs
+        for identity in [_source_ref_identity(ref)]
+        if identity is not None and identity[1] in added_anchor_ids
+    }
     mappings = _mappings(candidate_slice.get("newAnchorMappings"))
-    mapped_anchor_ids: set[str] = set()
+    mapped_anchor_identities: set[tuple[str, str, str]] = set()
 
     feature_domains: dict[str, str] = {}
-    for scope in (previous_scope, candidate_scope):
-        for feature in _features(scope):
-            feature_id = feature.get("featureId")
-            domain_id = feature.get("domainId")
-            if isinstance(feature_id, str) and isinstance(domain_id, str):
-                feature_domains[feature_id] = domain_id
+    for feature in _features(previous_scope):
+        feature_id = feature.get("featureId")
+        domain_id = feature.get("domainId")
+        if isinstance(feature_id, str) and isinstance(domain_id, str):
+            feature_domains[feature_id] = domain_id
+
+    candidate_linked, _candidate_objects = _scope_object_feature_sets(
+        candidate_scope
+    )
+    for identity in sorted(added_anchor_identities):
+        directly_linked = {
+            feature_id
+            for item, feature_ids in candidate_linked
+            if any(
+                _source_ref_identity(ref) == identity
+                for ref in _source_refs(item)
+            )
+            for feature_id in feature_ids
+            if feature_id in all_features
+        }
+        if not directly_linked:
+            continue
+        mapped_anchor_identities.add(identity)
+        affected.update(directly_linked)
+        if ESCALATION_RANK[escalation] < ESCALATION_RANK["FEATURE"]:
+            escalation = "FEATURE"
+        reasons.add("ADDED_ANCHOR_CANDIDATE_LINK")
 
     for mapping in mappings:
         source_ref = mapping.get("sourceRef")
-        anchor_id = source_ref.get("anchorId") if isinstance(source_ref, Mapping) else None
-        if not isinstance(anchor_id, str) or anchor_id not in added_anchor_ids:
+        identity = (
+            _source_ref_identity(source_ref)
+            if isinstance(source_ref, Mapping)
+            else None
+        )
+        if identity is None or identity not in added_anchor_identities:
             continue
-        mapped_anchor_ids.add(anchor_id)
+        if identity in mapped_anchor_identities:
+            continue
+        mapped_anchor_identities.add(identity)
         confidence = mapping.get("confidence")
         feature_id = mapping.get("featureId")
         domain_id = mapping.get("domainId")
@@ -366,7 +416,11 @@ def finalize_impact_plan(
             affected = all_features
             reasons.add("ADDED_ANCHOR_UNKNOWN")
 
-    if added_anchor_ids - mapped_anchor_ids:
+    identified_anchor_ids = {identity[1] for identity in added_anchor_identities}
+    if (
+        not added_anchor_ids <= identified_anchor_ids
+        or added_anchor_identities - mapped_anchor_identities
+    ):
         escalation = "FULL"
         affected = all_features
         reasons.add("ADDED_ANCHOR_UNMAPPED")

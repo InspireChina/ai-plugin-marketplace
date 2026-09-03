@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import re
-import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
@@ -76,16 +73,6 @@ def _impact_value(plan: ImpactPlan) -> dict[str, object]:
 
 def impact_plan_sha256(plan: ImpactPlan) -> str:
     return sha256_bytes(canonical_json_bytes(_impact_value(plan)))
-
-
-def allocate_stable_id(prefix: str, semantic_key: str, occupied_ids: set[str]) -> str:
-    normalized = unicodedata.normalize("NFKD", semantic_key).encode("ascii", "ignore").decode()
-    slug = re.sub(r"[^a-z0-9]+", "-", normalized.casefold()).strip("-") or "item"
-    candidate = f"{prefix}-{slug[:48].rstrip('-')}"
-    if candidate not in occupied_ids:
-        return candidate
-    digest = hashlib.sha256(semantic_key.encode("utf-8")).hexdigest()[:8]
-    return f"{candidate}-{digest}"
 
 
 def _all_objects(bundle: Mapping[str, object] | None) -> dict[tuple[str, str], Mapping[str, object]]:
@@ -226,6 +213,11 @@ def _validate_scope(
         str(item.get("responsibilityBoundaryId"))
         for item in _mappings(bundle.get("responsibilityBoundaries"))
     }
+    vendor_responsibility_ids = {
+        str(item.get("responsibilityBoundaryId"))
+        for item in _mappings(bundle.get("responsibilityBoundaries"))
+        if item.get("party") == "VENDOR"
+    }
 
     seen_ids: set[tuple[str, str]] = set()
     for collection, (_object_type, id_field) in COLLECTION_TYPES.items():
@@ -273,6 +265,17 @@ def _validate_scope(
         decision = feature.get("scopeDecision")
         if not isinstance(decision, Mapping):
             continue
+        if decision.get("decision") == "IN_SCOPE" and not (
+            set(_ids(feature.get("responsibilityBoundaryIds")))
+            & vendor_responsibility_ids
+        ):
+            diagnostics.append(
+                _diagnostic(
+                    "SCOPE_IN_SCOPE_VENDOR_RESPONSIBILITY_REQUIRED",
+                    "进入供应商 SOW 的 IN_SCOPE Feature 必须绑定至少一项供应商责任边界。",
+                    f"/features/{index}/responsibilityBoundaryIds",
+                )
+            )
         for field, known, code in (
             ("designItemIds", design_ids, "SCOPE_DESIGN_UNKNOWN"),
             ("effectiveStartItemIds", effective_ids, "SCOPE_EFFECTIVE_START_UNKNOWN"),
@@ -368,22 +371,22 @@ def _merge_scope(
     impact: ImpactPlan,
     diagnostics: list[Diagnostic],
 ) -> dict[str, object]:
+    replaced = set(_ids(candidate.get("replacesFeatureIds")))
+    expected = set() if previous is None else set(impact.affected_feature_ids)
+    if replaced != expected:
+        diagnostics.append(
+            _diagnostic(
+                "SCOPE_REPLACEMENT_CLOSURE_MISMATCH",
+                "Scope 切片替换的 Feature 必须与最终 ImpactPlan 完全一致；初次编译必须为空。",
+                "/replacesFeatureIds",
+            )
+        )
     if previous is None or impact.action == "FULL_COMPILE":
         collections = {
             collection: list(_mappings(candidate.get(collection)))
             for collection in COLLECTION_TYPES
         }
     else:
-        replaced = set(_ids(candidate.get("replacesFeatureIds")))
-        expected = set(impact.affected_feature_ids)
-        if replaced != expected:
-            diagnostics.append(
-                _diagnostic(
-                    "SCOPE_REPLACEMENT_CLOSURE_MISMATCH",
-                    "Scope 切片替换的 Feature 必须与最终 ImpactPlan 完全一致。",
-                    "/replacesFeatureIds",
-                )
-            )
         collections = {
             collection: _merge_collection(
                 collection,

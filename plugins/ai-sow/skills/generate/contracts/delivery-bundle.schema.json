@@ -14,7 +14,7 @@
   ],
   "properties": {
     "contract": {
-      "const": "ai-sow-delivery-bundle-v1",
+      "const": "ai-sow-delivery-bundle-v3",
       "description": "DeliveryBundle 使用的固定合同 token。"
     },
     "inputRevisionId": {
@@ -51,29 +51,20 @@
     "story": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["storyId", "featureIds", "storyType", "name", "description", "uatRelevant"],
+      "required": ["storyId", "featureId", "name", "uatRelevant"],
       "properties": {
         "storyId": {
           "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
           "description": "Story 在可验收结果不变时保持稳定的 ID。"
         },
-        "featureIds": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray",
-          "description": "该 Story 实现的一个或多个紧密相关 Feature ID。"
-        },
-        "storyType": {
-          "const": "IMPLEMENTATION",
-          "description": "Story 始终表达交付结果；待设计工作通过 DESIGN Task 表达。"
+        "featureId": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
+          "description": "该 Story 唯一归属的 Feature ID。"
         },
         "name": {
           "type": "string",
           "minLength": 1,
           "description": "以可交付业务或技术结果命名的 Story 标题。"
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1,
-          "description": "说明完成后可观察的结果和责任边界。"
         },
         "uatRelevant": {
           "type": "boolean",
@@ -84,7 +75,7 @@
     "acceptanceCriterion": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["acceptanceCriterionId", "storyId", "sequence", "name", "rationale"],
+      "required": ["acceptanceCriterionId", "storyId", "name", "sourceRefs"],
       "properties": {
         "acceptanceCriterionId": {
           "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
@@ -94,36 +85,25 @@
           "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
           "description": "该验收结果唯一归属的 Story ID。"
         },
-        "sequence": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "同一 Story 内评审和验收该结果的连续顺序。"
-        },
         "name": {
           "type": "string",
           "minLength": 1,
           "description": "可观察且明确判定通过或不通过的验收条件。"
         },
-        "rationale": {
-          "type": "string",
-          "minLength": 1,
-          "description": "说明该 AC 如何实现 Feature 的业务或技术完成边界。"
+        "sourceRefs": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
+          "description": "该验收条件的最小充分精确来源。"
         }
       }
     },
     "workModeEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["effectiveStartItemId", "effectiveStartItemName"],
+      "required": ["effectiveStartItemId"],
       "properties": {
         "effectiveStartItemId": {
           "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
           "description": "支撑调整或接入复用判断的 Effective Start ID。"
-        },
-        "effectiveStartItemName": {
-          "type": "string",
-          "minLength": 1,
-          "description": "与 ScopeBundle 中 Effective Start 完全一致的名称。"
         },
         "projectSideWorkTypes": {
           "type": "array",
@@ -168,7 +148,6 @@
         "designItemIds",
         "integrationIds",
         "nfrIds",
-        "dependsOnTaskIds",
         "rationale"
       ],
       "properties": {
@@ -235,14 +214,6 @@
           "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
           "description": "该 Task 满足或设计的 NFR ID。"
         },
-        "dependsOnTaskIds": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
-          "description": "该 Task 开始前必须完成的前置 Task ID。"
-        },
-        "matchedEffectiveStartItemId": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
-          "description": "可选：最能证明工作模式的一条 Effective Start ID。"
-        },
         "rationale": {
           "type": "string",
           "minLength": 1,
@@ -263,9 +234,7 @@
             "properties": {"workMode": {"enum": ["调整", "接入复用"]}},
             "required": ["workMode"]
           },
-          "then": {
-            "required": ["workModeEvidence", "matchedEffectiveStartItemId"]
-          },
+          "then": {"required": ["workModeEvidence"]},
           "else": {"not": {"required": ["workModeEvidence"]}}
         },
         {
@@ -279,6 +248,29 @@
                 "allOf": [
                   {"$ref": "#/$defs/workModeEvidence"},
                   {"required": ["projectSideWorkTypes", "projectSideWorkCommitment"]}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"workMode": {"const": "调整"}},
+            "required": ["workMode"]
+          },
+          "then": {
+            "properties": {
+              "workModeEvidence": {
+                "allOf": [
+                  {"$ref": "#/$defs/workModeEvidence"},
+                  {
+                    "not": {
+                      "anyOf": [
+                        {"required": ["projectSideWorkTypes"]},
+                        {"required": ["projectSideWorkCommitment"]}
+                      ]
+                    }
+                  }
                 ]
               }
             }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import sys
@@ -22,12 +23,14 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from contracts import canonical_json_bytes, load_schema_registry  # noqa: E402
+from impact import compute_impact_plan  # noqa: E402
 from intake import (  # noqa: E402
     IntakeRequestError,
     compare_input_revisions,
     load_request,
     prepare_pending,
 )
+from questions import question_sha256  # noqa: E402
 from runtime.project_io import ProjectFiles  # noqa: E402
 
 
@@ -81,6 +84,255 @@ def prepare_from_request(project: Path, request_file: Path, registry, revision="
     files = ProjectFiles.open(project)
     request = load_request(files, request_file.relative_to(project).as_posix(), registry)
     return prepare_pending(files, request, revision_id=revision, now=NOW)
+
+
+def question_packet(question_id: str = "confirm-return-api") -> dict[str, object]:
+    return {
+        "questionId": question_id,
+        "subjectIds": ["input-current-return-api"],
+        "question": "当前是否已有退货申请提交接口？",
+        "reason": "现状接口能力会影响本期交付边界。",
+        "decisionImpact": "答案将决定接口工作方式和 Task 人天。",
+        "unansweredEffect": "未回答时无法确定接口是否应纳入本期估算。",
+    }
+
+
+def bound_answer(question: dict[str, object], answer: str) -> dict[str, object]:
+    return {
+        "questionId": question["questionId"],
+        "questionSha256": question_sha256(question),
+        "answer": answer,
+    }
+
+
+def test_pending_manifest_preserves_questions_and_bound_answers(
+    tmp_path: Path, registry
+) -> None:
+    request_file = write_request(tmp_path)
+    request = read_json(request_file)
+    question = question_packet()
+    answer = bound_answer(question, "已有，并由本项目直接修改。")
+    request["questions"] = [question]
+    request["questionnaireAnswers"] = [answer]
+    request_file.write_bytes(canonical_json_bytes(request))
+
+    prepare_from_request(tmp_path, request_file, registry)
+
+    manifest = read_json(tmp_path / ".ai-sow/inputs/pending/manifest.json")
+    assert manifest["questions"] == [question]
+    assert manifest["questionnaireAnswers"] == [answer]
+
+
+def test_document_source_id_cannot_collide_with_question_answer_source_id(
+    tmp_path: Path, registry
+) -> None:
+    request_file = write_request(tmp_path)
+    request = read_json(request_file)
+    question = question_packet("confirm-return-api")
+    answer = bound_answer(question, "已有，并由本项目直接修改。")
+    first_identity = hashlib.sha256(
+        canonical_json_bytes({"questionId": question["questionId"]})
+    ).hexdigest()
+    request["sources"][0]["sourceId"] = f"question-answer-{first_identity}"
+    request["questions"] = [question]
+    request["questionnaireAnswers"] = [answer]
+    request_file.write_bytes(canonical_json_bytes(request))
+
+    result = prepare_from_request(tmp_path, request_file, registry)
+
+    assert result.outcome == "BLOCKED"
+    assert diagnostic_codes(result) == {
+        "QUESTION_ANSWER_SOURCE_ID_CONFLICT"
+    }
+    assert not (tmp_path / ".ai-sow/inputs/pending").exists()
+
+
+def test_bound_answers_create_distinct_question_answer_anchors(
+    tmp_path: Path, registry
+) -> None:
+    request_file = write_request(tmp_path)
+    request = read_json(request_file)
+    questions = [
+        question_packet("confirm-return-api"),
+        question_packet("confirm-return-api-owner"),
+    ]
+    answers = [
+        bound_answer(question, "已有，并由本项目直接修改。")
+        for question in questions
+    ]
+    request["questions"] = questions
+    request["questionnaireAnswers"] = answers
+    request_file.write_bytes(canonical_json_bytes(request))
+
+    result = prepare_from_request(tmp_path, request_file, registry)
+
+    anchors = json.loads(
+        (tmp_path / ".ai-sow/inputs/pending/anchors.json").read_text(encoding="utf-8")
+    )
+    answer_anchors = [
+        anchor for anchor in anchors if anchor["kind"] == "QUESTION_ANSWER"
+    ]
+    assert result.outcome == "READY"
+    assert len(answer_anchors) == 2
+    assert len({anchor["sourceId"] for anchor in answer_anchors}) == 2
+    assert {
+        anchor["locator"] for anchor in answer_anchors
+    } == {
+        "question:confirm-return-api",
+        "question:confirm-return-api-owner",
+    }
+
+
+def test_duplicate_question_id_is_rejected_before_pending_write(
+    tmp_path: Path, registry
+) -> None:
+    request_file = write_request(tmp_path)
+    request = read_json(request_file)
+    first_question = question_packet("confirm-return-api")
+    second_question = {
+        **first_question,
+        "reason": "供应商责任边界会影响本期接口估算。",
+    }
+    request["questions"] = [first_question, second_question]
+    request["questionnaireAnswers"] = [
+        bound_answer(second_question, "已有，并由本项目直接修改。")
+    ]
+    request_file.write_bytes(canonical_json_bytes(request))
+
+    result = prepare_from_request(tmp_path, request_file, registry)
+
+    assert result.outcome == "BLOCKED"
+    assert diagnostic_codes(result) == {"QUESTION_ID_DUPLICATE"}
+    assert not (tmp_path / ".ai-sow/inputs/pending").exists()
+
+
+def test_unanswered_question_does_not_create_evidence_anchor(
+    tmp_path: Path, registry
+) -> None:
+    request_file = write_request(tmp_path)
+    request = read_json(request_file)
+    request["questions"] = [question_packet()]
+    request["questionnaireAnswers"] = []
+    request_file.write_bytes(canonical_json_bytes(request))
+
+    result = prepare_from_request(tmp_path, request_file, registry)
+
+    anchors = json.loads(
+        (tmp_path / ".ai-sow/inputs/pending/anchors.json").read_text(encoding="utf-8")
+    )
+    assert result.outcome == "READY"
+    assert all(anchor["kind"] != "QUESTION_ANSWER" for anchor in anchors)
+
+
+def test_answer_only_change_keeps_anchor_identity_and_is_modified_for_impact(
+    tmp_path: Path, registry
+) -> None:
+    manifests = []
+    anchors_by_answer = []
+    for directory_name, answer_text in (
+        ("before", "已有，并由本项目直接修改。"),
+        ("after", "没有，允许本项目从头实现。"),
+    ):
+        project = tmp_path / directory_name
+        project.mkdir()
+        request_file = write_request(project)
+        request = read_json(request_file)
+        question = question_packet()
+        request["questions"] = [question]
+        request["questionnaireAnswers"] = [bound_answer(question, answer_text)]
+        request_file.write_bytes(canonical_json_bytes(request))
+        prepare_from_request(project, request_file, registry)
+        manifests.append(read_json(project / ".ai-sow/inputs/pending/manifest.json"))
+        anchors_by_answer.append(
+            json.loads(
+                (project / ".ai-sow/inputs/pending/anchors.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        )
+
+    before_anchor = next(
+        anchor for anchor in anchors_by_answer[0] if anchor["kind"] == "QUESTION_ANSWER"
+    )
+    after_anchor = next(
+        anchor for anchor in anchors_by_answer[1] if anchor["kind"] == "QUESTION_ANSWER"
+    )
+    changes = compare_input_revisions(
+        manifests[0], anchors_by_answer[0], manifests[1], anchors_by_answer[1]
+    )
+    answer_change = next(
+        change
+        for change in changes.source_changes
+        if change.anchor_id == before_anchor["anchorId"]
+    )
+    source_ref = {
+        "sourceId": before_anchor["sourceId"],
+        "anchorId": before_anchor["anchorId"],
+        "locator": before_anchor["locator"],
+        "sha256": before_anchor["sha256"],
+    }
+    previous_scope = {
+        "features": [
+            {
+                "featureId": "feature-refund",
+                "epicId": "epic-refund",
+                "sourceRefs": [source_ref],
+            }
+        ],
+        "epics": [],
+        "commitments": [],
+        "effectiveStartItems": [],
+        "designItems": [],
+        "designDecisions": [],
+        "integrations": [],
+        "nfrs": [],
+        "assumptions": [],
+    }
+    plan = compute_impact_plan(
+        changes,
+        previous_scope=previous_scope,
+        previous_delivery=None,
+        baseline_generation_id="000001",
+        baseline_revision_id="000001",
+    )
+
+    assert (before_anchor["sourceId"], before_anchor["anchorId"]) == (
+        after_anchor["sourceId"],
+        after_anchor["anchorId"],
+    )
+    assert before_anchor["sha256"] != after_anchor["sha256"]
+    assert answer_change.change == "MODIFIED"
+    assert answer_change.previous_sha256 == before_anchor["sha256"]
+    assert answer_change.current_sha256 == after_anchor["sha256"]
+    assert plan.affected_feature_ids == ("feature-refund",)
+
+
+def test_intake_rejects_answer_bound_to_changed_question(tmp_path: Path, registry) -> None:
+    request_file = write_request(tmp_path)
+    request = read_json(request_file)
+    question = {
+        "questionId": "confirm-return-api",
+        "subjectIds": ["input-current-return-api"],
+        "question": "当前是否已有退货申请提交接口？",
+        "reason": "现状接口能力会影响本期交付边界。",
+        "decisionImpact": "答案将决定接口工作方式和 Task 人天。",
+        "unansweredEffect": "未回答时无法确定接口是否应纳入本期估算。",
+    }
+    request["questions"] = [{**question, "decisionImpact": "答案将改变工作方式和 Task 人天。"}]
+    request["questionnaireAnswers"] = [
+        {
+            "questionId": question["questionId"],
+            "questionSha256": question_sha256(question),
+            "answer": "已有，并由本项目直接修改。",
+        }
+    ]
+    request_file.write_bytes(canonical_json_bytes(request))
+
+    loaded = load_request(ProjectFiles.open(tmp_path), "request.json", registry)
+    result = prepare_pending(ProjectFiles.open(tmp_path), loaded, revision_id="000001", now=NOW)
+
+    assert diagnostic_codes(result) == {"QUESTION_ANSWER_HASH_MISMATCH"}
+    assert not (tmp_path / ".ai-sow/inputs/pending").exists()
 
 
 def test_greenfield_intake_copies_sources_and_sanitizes_paths(
@@ -168,9 +420,20 @@ def test_pending_resume_retains_revision_and_deduplicates_answers(
     assert first.outcome == "READY"
 
     request = read_json(request_file)
-    request["questionnaireAnswers"].append(
-        {"questionId": "question-migration-owner", "answer": "客户负责数据准备。"}
-    )
+    question = {
+        "questionId": "question-migration-owner",
+        "subjectIds": ["input-migration"],
+        "question": "谁负责数据准备？",
+        "reason": "数据准备责任会影响供应商工作边界。",
+        "decisionImpact": "答案将决定责任边界和估算范围。",
+        "unansweredEffect": "未回答时无法确定数据准备是否计价。",
+    }
+    request["questions"] = [question]
+    request["questionnaireAnswers"] = [{
+        "questionId": question["questionId"],
+        "questionSha256": question_sha256(question),
+        "answer": "客户负责数据准备。",
+    }]
     request_file.write_bytes(canonical_json_bytes(request))
     second = prepare_from_request(tmp_path, request_file, registry, revision="000099")
     manifest = read_json(tmp_path / ".ai-sow/inputs/pending/manifest.json")
@@ -181,18 +444,32 @@ def test_pending_resume_retains_revision_and_deduplicates_answers(
     ].count("question-migration-owner") == 1
 
 
-def test_conflicting_answer_is_retained_and_asked_once(tmp_path: Path, registry) -> None:
+def test_pending_resume_replaces_answer_with_currently_bound_answer(tmp_path: Path, registry) -> None:
     request_file = write_request(tmp_path)
+    request = read_json(request_file)
+    question = {
+        "questionId": "question-environment-readiness",
+        "subjectIds": ["input-environment"],
+        "question": "谁负责测试环境？",
+        "reason": "环境责任会影响交付计划。",
+        "decisionImpact": "答案将决定责任边界和估算范围。",
+        "unansweredEffect": "未回答时无法确定环境准备是否计价。",
+    }
+    request["questions"] = [question]
+    request["questionnaireAnswers"] = [{
+        "questionId": question["questionId"],
+        "questionSha256": question_sha256(question),
+        "answer": "测试环境由客户提供。",
+    }]
+    request_file.write_bytes(canonical_json_bytes(request))
     prepare_from_request(tmp_path, request_file, registry)
     request = read_json(request_file)
     request["questionnaireAnswers"][0]["answer"] = "测试环境由供应商准备。"
     request_file.write_bytes(canonical_json_bytes(request))
     result = prepare_from_request(tmp_path, request_file, registry, revision="000002")
     answers = read_json(tmp_path / ".ai-sow/inputs/pending/answers.json")
-    assert len(
-        [item for item in answers if item["questionId"] == "question-environment-readiness"]
-    ) == 2
-    assert len(result.questions) == 1
+    assert answers == request["questionnaireAnswers"]
+    assert result.questions == ()
 
 
 @pytest.mark.parametrize("suffix", [".docx", ".pdf"])

@@ -13,7 +13,7 @@
     "packetSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
     "decision": {"type": "string", "enum": ["PASS", "PASS_WITH_NOTES", "BLOCKED"]},
     "notes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/reviewNote"}},
-    "questions": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/blockingQuestion"}}
+    "questions": {"type": "array", "uniqueItems": true, "items": {"$ref": "urn:ai-sow:generate:question:1"}}
   },
   "allOf": [
     {
@@ -40,17 +40,6 @@
         "subjectIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
         "summary": {"type": "string", "minLength": 1},
         "sowNotesText": {"type": "string", "minLength": 1}
-      }
-    },
-    "blockingQuestion": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["blockingConditionId", "subjectIds", "summary", "question"],
-      "properties": {
-        "blockingConditionId": {"$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"},
-        "subjectIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
-        "summary": {"type": "string", "minLength": 1},
-        "question": {"type": "string", "minLength": 1}
       }
     }
   }

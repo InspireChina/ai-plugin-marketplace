@@ -38,17 +38,19 @@ bootstrap 固定准备 `uv 0.11.7`、managed Python 3.12、锁定的插件 `.ven
 
 按 orchestrator 的 `outcome` 继续，直到形成终态：
 
-1. `READY_FOR_SCOPE`：读取 pending anchors 和 [Scope 编译合同](references/scope-compilation.md)，完成全部受影响 Feature、引用和 ID decisions；以 `accept-scope --candidate <path> --ids <path>` 接受。
-2. `READY_FOR_DELIVERY`：读取 [Delivery 编译合同](references/delivery-compilation.md)，基于当前 Scope 完成受影响 Story、AC、Task、依赖、集成与设计任务及 ID decisions；以 `accept-delivery --candidate <path> --ids <path>` 接受。
-3. `REVIEW_REQUIRED`：先运行 `prepare-review`，再把 review packet 与 [终审合同](references/final-review.md)交给恰好一名 fresh-context Reviewer。Reviewer 必须复核跨层追踪、完整性、估算边界和阻塞问题；将结果以 `accept-review --review <path>` 接受。
-4. `READY_TO_RENDER`：直接运行 `publish`。该分支复用已有 Scope/Delivery 和有效终审，不重新编写语义产物。
+1. `READY_FOR_SCOPE`：读取 pending anchors、[Scope 编译合同](references/scope-compilation.md)、[Epic 编写](references/epic-authoring.md)、[Feature 编写](references/feature-authoring.md)、[技术工作分类](references/technical-work-classification.md)与[Effective Start 匹配](references/effective-start-matching.md)。完成全部受影响 Feature、技术项分类、项目起点判断、引用和 ID decisions；以 `accept-scope --candidate <path> --ids <path>` 接受。
+2. `READY_FOR_DELIVERY`：先读取[Delivery 编译合同](references/delivery-compilation.md)、[Delivery 编写导航](references/delivery-authoring.md)、[Story 编写](references/story-authoring.md)、[Acceptance Criteria](references/acceptance-criteria.md)与[动态拆解](references/delivery-decomposition.md)，基于当前 Scope 完成并复核全部受影响 Story 与 AC。在工作上下文建立一次性来源义务闭包清单，保留来源的全部条件、实际触发、跨 Feature 适用范围及 Integration/NFR 落点，但不发布新的稳定数据。只有 Story/AC 的来源闭包、归属和可观察结果已经成立，才读取[Task 编写](references/task-authoring.md)、[Effective Start 匹配](references/effective-start-matching.md)与[交付工作分类](references/delivery-work-classification.md)，从已完成的 Story/AC 进入 Task、依赖、集成与设计任务拆分。两遍结果仍写入同一 Delivery candidate 和一份 ID decisions，不创建中间稳定 JSON、Owner 或额外批准；以 `accept-delivery --candidate <path> --ids <path>` 接受。
+3. `REVIEW_REQUIRED`：读取[问题编写](references/question-authoring.md)、[非证据性示例](references/delivery-examples.md)和[终审合同](references/final-review.md)。逐项展示每个问题的“问题、为什么要问、答案决定什么、未回答后果”。先运行 `prepare-review`；当确认内容较长时，优先提供结果中的 `reviewMaterialPath`，而非要求使用内部哈希识别确认内容。将 review packet 交给恰好一名 fresh-context Reviewer。Reviewer 必须复核跨层追踪、完整性、估算边界和阻塞问题；将结果以 `accept-review --review <path>` 接受。
+4. `READY_TO_RENDER`：直接运行 `publish`。该分支复用已有 Scope/Delivery 和有效终审，不重新编写语义产物。发布必须找到受支持的 LibreOffice，完成隔离回算和全量复读；缺少计算引擎时返回 `BLOCKED` 并保留上一份有效结果。
 5. `REUSED`：立即返回当前 workbook/notes 项目相对路径，不创建 revision 或 generation。
-6. `PUBLISHED`：只报告 decision、Feature 新增/更新/删除数、重算 Story/Task 数、当前 workbook/notes 项目相对路径，以及结果中的固定免责声明，然后停止。
+6. `PUBLISHED`：只报告 decision、Feature/Story/AC/Task 的 `affected / recomputed / reused / deleted / final` 统计、当前 workbook/notes 项目相对路径，以及结果中的固定免责声明，然后停止。
 
 每次模式调用都解析唯一 UTF-8 JSON 结果；仅在前一结果明确给出下一分支后继续。Module 名与内部模式不作为用户命令暴露。
 
+工作簿先以 `CANDIDATE` 生成，再由 LibreOffice 重算为正式 `sow.xlsx`。只有 4 个 Sheet、5 个命名 Table、全部参数/目录、每行缓存结果、校验列和汇总恒等关系均复读通过，manifest 才记录 `workbookVerification.trustState = VERIFIED` 并允许发布；`待样本校准` 参数按模板原值披露在说明中，不能改写成固定规则。
+
 ## 阻塞与恢复
 
-`BLOCKED` 时只呈现返回的去重问题，并说明上一份有效 SOW 保持不变，然后停止。后续再次调用时，把用户的新答案合并进 pending 标准请求，重新运行 `prepare` 并按 outcome 续接；保留稳定 ID，除非语义实质变化。
+`BLOCKED` 时只呈现返回的去重问题，并说明上一份有效 SOW 保持不变，然后停止。每个问题都按“问题、为什么要问、答案决定什么、未回答后果”逐项展示；后续再次调用时，把用户的新答案合并进 pending 标准请求，重新运行 `prepare` 并按 outcome 续接；保留稳定 ID，除非语义实质变化。
 
 Windows 返回 `WINDOWS_LONG_PATH_REQUIRED` 时，提供缩短项目路径或启用机器级长路径策略两种选择。只有用户明确同意机器级影响后，才可运行 `enable_long_paths.ps1 -Apply`；不带 `-Apply` 只读检查。

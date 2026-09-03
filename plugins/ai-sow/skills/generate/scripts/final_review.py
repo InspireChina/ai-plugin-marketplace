@@ -26,7 +26,9 @@ from models import (  # noqa: E402
     ReviewPacketResult,
 )
 from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
+from review_material import render_review_material  # noqa: E402
 from scope_compiler import compile_scope, impact_plan_sha256  # noqa: E402
+from story_notes import story_note_projection  # noqa: E402
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +42,7 @@ DELIVERY_IDS_PATH = ".ai-sow/work/delivery-id-decisions.json"
 DELIVERY_PATH = ".ai-sow/work/delivery.candidate.json"
 PACKET_PATH = ".ai-sow/work/review-packet.json"
 REVIEW_PATH = ".ai-sow/work/final-review.json"
+REVIEW_MATERIAL_PATH = ".ai-sow/work/review-material.md"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 
 
@@ -78,6 +81,17 @@ def _mappings(value: object) -> list[Mapping[str, object]]:
 
 def _ids(value: object) -> list[str]:
     return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
+def _anchor_source_ref_inventory(anchors: object) -> frozenset[tuple[str, str, str]]:
+    return frozenset(
+        (str(anchor["sourceId"]), str(anchor["anchorId"]), str(anchor["sha256"]))
+        for anchor in _mappings(anchors)
+        if all(
+            isinstance(anchor.get(field), str)
+            for field in ("sourceId", "anchorId", "sha256")
+        )
+    )
 
 
 def _impact(value: object) -> ImpactPlan:
@@ -161,7 +175,7 @@ def _decision_summary(*ledgers: Mapping[str, object]) -> dict[str, list[str]]:
 
 def _source_ref_inventory(
     manifest: Mapping[str, object],
-    scope: Mapping[str, object],
+    anchors: object,
     manifest_root: str,
 ) -> list[dict[str, object]]:
     source_paths = {
@@ -170,32 +184,96 @@ def _source_ref_inventory(
         if isinstance(source.get("sourceId"), str) and isinstance(source.get("path"), str)
     }
     inventory: dict[tuple[str, str, str], dict[str, object]] = {}
-    for collection in (
-        "epics",
-        "features",
-        "commitments",
-        "effectiveStartItems",
-        "designItems",
-        "designDecisions",
-        "integrations",
-        "nfrs",
-        "assumptions",
-    ):
-        for item in _mappings(scope.get(collection)):
-            for ref in _mappings(item.get("sourceRefs")):
-                source_id = ref.get("sourceId")
-                anchor_id = ref.get("anchorId")
-                sha256 = ref.get("sha256")
-                if not all(isinstance(value, str) for value in (source_id, anchor_id, sha256)):
-                    continue
-                inventory[(str(source_id), str(anchor_id), str(sha256))] = {
-                    "sourceId": source_id,
-                    "anchorId": anchor_id,
-                    "locator": ref.get("locator"),
-                    "sha256": sha256,
-                    "snapshotPath": source_paths.get(str(source_id), ""),
-                }
+    for anchor in _mappings(anchors):
+        source_id = anchor.get("sourceId")
+        anchor_id = anchor.get("anchorId")
+        sha256 = anchor.get("sha256")
+        if not all(isinstance(value, str) for value in (source_id, anchor_id, sha256)):
+            continue
+        inventory[(str(source_id), str(anchor_id), str(sha256))] = {
+            "sourceId": source_id,
+            "anchorId": anchor_id,
+            "locator": anchor.get("locator"),
+            "sha256": sha256,
+            "snapshotPath": source_paths.get(str(source_id), ""),
+        }
     return [inventory[key] for key in sorted(inventory)]
+
+
+def _acceptance_criterion_sources(
+    delivery: Mapping[str, object],
+    source_ref_inventory: frozenset[tuple[str, str, str]],
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for criterion in _mappings(delivery.get("acceptanceCriteria")):
+        criterion_id = criterion.get("acceptanceCriterionId")
+        if not isinstance(criterion_id, str):
+            continue
+        refs = [dict(ref) for ref in _mappings(criterion.get("sourceRefs"))]
+        resolvable = bool(refs) and all(
+            isinstance(ref.get("sourceId"), str)
+            and isinstance(ref.get("anchorId"), str)
+            and isinstance(ref.get("sha256"), str)
+            and (
+                str(ref["sourceId"]), str(ref["anchorId"]), str(ref["sha256"])
+            )
+            in source_ref_inventory
+            for ref in refs
+        )
+        result.append(
+            {
+                "acceptanceCriterionId": criterion_id,
+                "storyId": criterion.get("storyId"),
+                "sourceRefs": refs,
+                "resolvable": resolvable,
+            }
+        )
+    return sorted(result, key=lambda item: str(item["acceptanceCriterionId"]))
+
+
+def _review_claims(
+    scope: Mapping[str, object], delivery: Mapping[str, object]
+) -> dict[str, list[dict[str, object]]]:
+    """Project deterministic hierarchy-grain signals for review."""
+    stories_by_feature: dict[str, list[str]] = {}
+    for story in _mappings(delivery.get("stories")):
+        feature_id = story.get("featureId")
+        story_id = story.get("storyId")
+        if isinstance(feature_id, str) and isinstance(story_id, str):
+            stories_by_feature.setdefault(feature_id, []).append(story_id)
+
+    features_by_epic: dict[str, list[str]] = {}
+    for feature in _mappings(scope.get("features")):
+        epic_id = feature.get("epicId")
+        feature_id = feature.get("featureId")
+        if isinstance(epic_id, str) and isinstance(feature_id, str):
+            features_by_epic.setdefault(epic_id, []).append(feature_id)
+
+    epic_grain = [
+        {
+            "epicId": epic_id,
+            "featureIds": sorted(feature_ids),
+            "requiresReview": True,
+        }
+        for epic_id, feature_ids in features_by_epic.items()
+        if len(feature_ids) == 1
+    ]
+    feature_grain = [
+        {
+            "featureId": feature_id,
+            "storyIds": sorted(story_ids),
+            "requiresReview": True,
+        }
+        for feature_id, story_ids in stories_by_feature.items()
+        if len(story_ids) == 1
+    ]
+
+    return {
+        "epicGrain": sorted(epic_grain, key=lambda item: str(item["epicId"])),
+        "featureGrain": sorted(
+            feature_grain, key=lambda item: str(item["featureId"])
+        ),
+    }
 
 
 def build_review_packet(files: ProjectFiles) -> ReviewPacketResult:
@@ -207,6 +285,54 @@ def build_review_packet(files: ProjectFiles) -> ReviewPacketResult:
     delivery_ids = _mapping(files, DELIVERY_IDS_PATH)
     delivery = _mapping(files, DELIVERY_PATH)
     impact = _impact(run_plan.get("impact"))
+    template_path = run_plan.get("templateSnapshotPath")
+    template_sha256 = run_plan.get("templateSha256")
+    if not isinstance(template_path, str) or not isinstance(template_sha256, str):
+        return ReviewPacketResult(
+            outcome="BLOCKED",
+            packet_path=None,
+            packet_sha256=None,
+            diagnostics=(
+                _diagnostic(
+                    "RUN_TEMPLATE_CHANGED",
+                    "本轮使用的模板副本已变化，请重新开始本轮生成。",
+                    RUN_PLAN_PATH,
+                ),
+            ),
+            questions=(),
+        )
+    try:
+        template_bytes = files.read_bytes(template_path)
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            return ReviewPacketResult(
+                outcome="BLOCKED",
+                packet_path=None,
+                packet_sha256=None,
+                diagnostics=(
+                    _diagnostic(
+                        "RUN_TEMPLATE_CHANGED",
+                        "本轮使用的模板副本已变化，请重新开始本轮生成。",
+                        template_path,
+                    ),
+                ),
+                questions=(),
+            )
+        raise
+    if sha256_bytes(template_bytes) != template_sha256:
+        return ReviewPacketResult(
+            outcome="BLOCKED",
+            packet_path=None,
+            packet_sha256=None,
+            diagnostics=(
+                _diagnostic(
+                    "RUN_TEMPLATE_CHANGED",
+                    "本轮使用的模板副本已变化，请重新开始本轮生成。",
+                    template_path,
+                ),
+            ),
+            questions=(),
+        )
     manifest_path = str(run_plan["pendingManifestPath"])
     manifest = _mapping(files, manifest_path)
     manifest_root = str(Path(manifest_path).parent)
@@ -235,13 +361,14 @@ def build_review_packet(files: ProjectFiles) -> ReviewPacketResult:
                 SCOPE_PATH,
             )
         )
-    template = read_template_catalog(files.resolve(TEMPLATE_PATH))
+    template = read_template_catalog(files.resolve(template_path))
     delivery_compilation = compile_delivery(
         scope,
         previous_delivery,
         delivery_slice,
         delivery_ids,
         impact,
+        _anchor_source_ref_inventory(anchors),
         template,
     )
     diagnostics.extend(delivery_compilation.diagnostics)
@@ -288,6 +415,13 @@ def build_review_packet(files: ProjectFiles) -> ReviewPacketResult:
             "scopeSha256": previous_manifest.get("scopeSha256"),
             "deliverySha256": previous_manifest.get("deliverySha256"),
         }
+    allowed_subjects = {
+        category: sorted(subject_ids)
+        for category, subject_ids in _note_subjects(scope, delivery).items()
+    }
+    _story_note_assignments, story_note_inventory = story_note_projection(
+        scope, delivery
+    )
     packet = {
         "contract": "ai-sow-final-review-packet-v1",
         "runId": run_plan["runId"],
@@ -301,14 +435,20 @@ def build_review_packet(files: ProjectFiles) -> ReviewPacketResult:
             "deliveryIdDecisions": _artifact(
                 DELIVERY_IDS_PATH, files.read_bytes(DELIVERY_IDS_PATH)
             ),
-            "template": _artifact(TEMPLATE_PATH, files.read_bytes(TEMPLATE_PATH)),
+            "template": _artifact(template_path, template_bytes),
         },
         "bundles": {
             "inputManifest": manifest,
             "scope": scope,
             "delivery": delivery,
         },
-        "sourceRefInventory": _source_ref_inventory(manifest, scope, manifest_root),
+        "sourceRefInventory": _source_ref_inventory(manifest, anchors, manifest_root),
+        "acceptanceCriterionSources": _acceptance_criterion_sources(
+            delivery, _anchor_source_ref_inventory(anchors)
+        ),
+        "claims": _review_claims(scope, delivery),
+        "allowedSubjects": allowed_subjects,
+        "storyNoteProjection": story_note_inventory,
         "changeSummary": summary,
         "priorCurrent": prior,
         "mechanicalSummary": {
@@ -333,6 +473,22 @@ def build_review_packet(files: ProjectFiles) -> ReviewPacketResult:
         diagnostics=(),
         questions=(),
     )
+
+
+def write_review_material(files: ProjectFiles) -> str:
+    run_plan = _mapping(files, RUN_PLAN_PATH)
+    manifest = _mapping(files, str(run_plan["pendingManifestPath"]))
+    scope = _mapping(files, SCOPE_PATH)
+    delivery = _mapping(files, DELIVERY_PATH)
+    try:
+        final_review = _mapping(files, REVIEW_PATH)
+    except ProjectIOError as error:
+        if error.code != "PROJECT_PATH_MISSING":
+            raise
+        final_review = None
+    material = render_review_material(manifest, scope, delivery, final_review)
+    files.write_atomic(REVIEW_MATERIAL_PATH, material.encode("utf-8"))
+    return REVIEW_MATERIAL_PATH
 
 
 def _normalized_questions(value: Mapping[str, object]) -> dict[str, object]:
@@ -422,11 +578,7 @@ def _review_result(
         for item in _mappings(value.get("notes"))
         if isinstance(item.get("sowNotesText"), str)
     )
-    questions = tuple(
-        str(item["question"])
-        for item in _mappings(value.get("questions"))
-        if isinstance(item.get("question"), str)
-    )
+    questions = tuple(dict(item) for item in _mappings(value.get("questions")))
     return FinalReviewResult(
         decision=decision,  # type: ignore[arg-type]
         review_path=REVIEW_PATH,
@@ -492,6 +644,18 @@ def record_review(files: ProjectFiles, review_result_path: str) -> FinalReviewRe
     delivery = bundles.get("delivery") if isinstance(bundles, Mapping) else None
     if isinstance(scope, Mapping) and isinstance(delivery, Mapping):
         allowed = _note_subjects(scope, delivery)
+        expected_inventory = {
+            category: sorted(subject_ids)
+            for category, subject_ids in allowed.items()
+        }
+        if packet.get("allowedSubjects") != expected_inventory:
+            diagnostics.append(
+                _diagnostic(
+                    "FINAL_REVIEW_SUBJECT_INVENTORY_MISMATCH",
+                    "终审主题清单与当前 Scope/Delivery 不一致。",
+                    "/allowedSubjects",
+                )
+            )
         for index, note in enumerate(_mappings(value.get("notes"))):
             category = note.get("category")
             subject_ids = set(_ids(note.get("subjectIds")))
@@ -501,6 +665,19 @@ def record_review(files: ProjectFiles, review_result_path: str) -> FinalReviewRe
                         "FINAL_REVIEW_NOTE_UNBOUND",
                         "终审说明必须绑定该类别真实存在的固定边界。",
                         f"/notes/{index}/subjectIds",
+                    )
+                )
+        question_subjects = _all_object_ids(
+            scope, delivery=False
+        ) | _all_object_ids(delivery, delivery=True)
+        for index, question in enumerate(_mappings(value.get("questions"))):
+            subject_ids = set(_ids(question.get("subjectIds")))
+            if not subject_ids or not subject_ids <= question_subjects:
+                diagnostics.append(
+                    _diagnostic(
+                        "FINAL_REVIEW_QUESTION_UNBOUND",
+                        "终审阻断问题必须绑定当前 Scope/Delivery 中真实存在的对象。",
+                        f"/questions/{index}/subjectIds",
                     )
                 )
     if diagnostics:

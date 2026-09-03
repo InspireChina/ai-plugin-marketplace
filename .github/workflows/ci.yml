@@ -23,8 +23,25 @@ jobs:
         with:
           version: "0.11.7"
           enable-cache: true
+      - name: Install LibreOffice (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-calc
+          echo "AI_SOW_OFFICE_BIN=$(command -v soffice)" >> "$GITHUB_ENV"
+      - name: Install LibreOffice (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install --cask libreoffice
+          echo "AI_SOW_OFFICE_BIN=/Applications/LibreOffice.app/Contents/MacOS/soffice" >> "$GITHUB_ENV"
+      - name: Install LibreOffice (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install libreoffice-fresh -y --no-progress
+          "AI_SOW_OFFICE_BIN=C:\Program Files\LibreOffice\program\soffice.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: python -m unittest discover -s tests -v
       - run: uv sync --project plugins/ai-sow --locked
-      - run: uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow/skills -q
+      - run: uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow -q
       - run: uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
       - run: python scripts/validate_repository.py

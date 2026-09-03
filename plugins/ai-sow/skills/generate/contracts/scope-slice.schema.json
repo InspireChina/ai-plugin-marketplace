@@ -24,7 +24,10 @@
     "contract": {"const": "ai-sow-scope-slice-v1"},
     "inputRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
     "impactPlanSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
-    "replacesFeatureIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+    "replacesFeatureIds": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+      "description": "只列出本次替换的基线 Feature ID；首次全量编译为空。"
+    },
     "newAnchorMappings": {
       "type": "array",
       "uniqueItems": true,

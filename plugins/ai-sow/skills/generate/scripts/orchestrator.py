@@ -21,7 +21,11 @@ from contracts import (  # noqa: E402
     validate_generation_hash_closure,
 )
 from delivery_compiler import compile_delivery, read_template_catalog  # noqa: E402
-from final_review import build_review_packet, record_review  # noqa: E402
+from final_review import (  # noqa: E402
+    build_review_packet,
+    record_review,
+    write_review_material,
+)
 from generation_store import (  # noqa: E402
     allocate_next_ids,
     cleanup_interrupted_publication,
@@ -30,7 +34,13 @@ from generation_store import (  # noqa: E402
 )
 from impact import compute_impact_plan, finalize_impact_plan  # noqa: E402
 from intake import IntakeRequestError, load_request, prepare_pending  # noqa: E402
-from models import CurrentGeneration, Diagnostic, ImpactPlan, RunPlan  # noqa: E402
+from models import (  # noqa: E402
+    CurrentGeneration,
+    Diagnostic,
+    ImpactPlan,
+    RunPlan,
+    workbook_audit_value,
+)
 from package_renderer import PackageRenderError, render_package  # noqa: E402
 from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
 from scope_compiler import compile_scope, impact_plan_sha256  # noqa: E402
@@ -40,7 +50,16 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_REGISTRY = load_schema_registry(SKILL_ROOT)
 TEMPLATE_ASSET = SKILL_ROOT / "assets/sow-template.xlsx"
 TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
+BUNDLED_TEMPLATE_SHA256_HISTORY = frozenset(
+    {
+        "0f1dd3be4a124d93b5442ca2415b0cf724acd57a5061086db7614e04183b6fc7",
+        "587797c1cd369166d2273da45f07b045a7badd4caf9d5ae2b49ef6cee169b77d",
+        "edec72f7a1d91a8fa5fbdd7ebc67a0b5ad313e1d2434a444741c88c86acf7030",
+        sha256_bytes(TEMPLATE_ASSET.read_bytes()),
+    }
+)
 WORK_ROOT = ".ai-sow/work"
+RUN_TEMPLATE_PATH = f"{WORK_ROOT}/run-template.xlsx"
 RUN_PLAN_PATH = f"{WORK_ROOT}/run-plan.json"
 SCOPE_SLICE_PATH = f"{WORK_ROOT}/scope-slice.candidate.json"
 SCOPE_IDS_PATH = f"{WORK_ROOT}/scope-id-decisions.json"
@@ -50,6 +69,7 @@ DELIVERY_IDS_PATH = f"{WORK_ROOT}/delivery-id-decisions.json"
 DELIVERY_PATH = f"{WORK_ROOT}/delivery.candidate.json"
 REVIEW_PACKET_PATH = f"{WORK_ROOT}/review-packet.json"
 FINAL_REVIEW_PATH = f"{WORK_ROOT}/final-review.json"
+REVIEW_MATERIAL_PATH = f"{WORK_ROOT}/review-material.md"
 GENERATION_ROOT = f"{WORK_ROOT}/generation"
 DISCLAIMER = "本次生成不代表客户签署、验收完成或产生法律效力。"
 
@@ -69,6 +89,94 @@ def _diagnostic_value(value: Diagnostic) -> dict[str, object]:
 
 def _mappings(value: object) -> list[Mapping[str, object]]:
     return [item for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
+
+
+def _review_questions(files: ProjectFiles) -> list[dict[str, object]]:
+    review = _optional_json(files, FINAL_REVIEW_PATH)
+    if not isinstance(review, Mapping):
+        return []
+    return [dict(item) for item in _mappings(review.get("questions"))]
+
+
+WORK_MODE_EVIDENCE_CODES = frozenset(
+    {
+        "DELIVERY_WORK_MODE_EVIDENCE_INVALID",
+        "TASK_WORK_MODE_REQUIRES_INSTANCE_START",
+        "TASK_WORK_MODE_BASE_UNIT_MISMATCH",
+    }
+)
+
+
+def _work_mode_evidence_questions(
+    scope: Mapping[str, object],
+    delivery: Mapping[str, object],
+    diagnostics: Sequence[Diagnostic],
+) -> list[dict[str, object]]:
+    tasks = {
+        str(task.get("taskId")): task
+        for task in _mappings(delivery.get("tasks"))
+        if isinstance(task.get("taskId"), str)
+    }
+    starts = {
+        str(item.get("effectiveStartItemId")): item
+        for item in _mappings(scope.get("effectiveStartItems"))
+        if isinstance(item.get("effectiveStartItemId"), str)
+    }
+    task_ids = {
+        diagnostic.path.split("/")[2]
+        for diagnostic in diagnostics
+        if diagnostic.code in WORK_MODE_EVIDENCE_CODES
+        and diagnostic.path.startswith("/tasks/")
+        and len(diagnostic.path.split("/")) > 2
+    }
+    questions: list[dict[str, object]] = []
+    for task_id in sorted(task_ids):
+        task = tasks.get(task_id)
+        if task is None:
+            continue
+        evidence = task.get("workModeEvidence")
+        start_id = (
+            evidence.get("effectiveStartItemId")
+            if isinstance(evidence, Mapping)
+            else None
+        )
+        start = starts.get(str(start_id))
+        existing_name = (
+            start.get("name")
+            if isinstance(start, Mapping) and isinstance(start.get("name"), str)
+            else "相关已有内容"
+        )
+        task_name = task.get("name") if isinstance(task.get("name"), str) else "该项交付"
+        question = {
+            "questionId": f"question-work-mode-{task_id}",
+            "subjectIds": [task_id],
+            "question": (
+                f"请确认“{existing_name}”是否已经存在；如存在，是否允许本项目直接修改或使用；"
+                "如不存在或不能使用，是否允许从头实现？"
+            ),
+            "reason": f"“{task_name}”需要确认可依赖的已有内容，才能固定本期交付边界和估算。",
+            "decisionImpact": f"答案将决定“{task_name}”按直接修改、使用既有内容或从头实现安排。",
+            "unansweredEffect": f"未确认前，无法确定“{task_name}”的交付范围和估算，当前交付将保持阻断。",
+        }
+        if validate_contract(question, "question.schema.json", SCHEMA_REGISTRY):
+            continue
+        questions.append(question)
+    return questions
+
+
+def _ids(value: object) -> tuple[str, ...]:
+    return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
+
+
+def _anchor_source_ref_inventory(anchors: object) -> frozenset[tuple[str, str, str]]:
+    return frozenset(
+        (str(anchor["sourceId"]), str(anchor["anchorId"]), str(anchor["sha256"]))
+        for anchor in _mappings(anchors)
+        if all(
+            isinstance(anchor.get(field), str)
+            for field in ("sourceId", "anchorId", "sha256")
+        )
+    )
 
 
 def _result(
@@ -155,6 +263,8 @@ def _run_plan_value(plan: RunPlan) -> dict[str, object]:
         "action": plan.action,
         "targetRevisionId": plan.target_revision_id,
         "targetGenerationId": plan.target_generation_id,
+        "templateSnapshotPath": plan.template_snapshot_path,
+        "templateSha256": plan.template_sha256,
         "impact": _impact_value(plan.impact),
         "scopeCompilerContract": plan.scope_compiler_contract,
         "deliveryCompilerContract": plan.delivery_compiler_contract,
@@ -176,6 +286,8 @@ def _plan_from_value(value: object) -> RunPlan:
             if value.get("targetGenerationId") is not None
             else None
         ),
+        template_snapshot_path=str(value["templateSnapshotPath"]),
+        template_sha256=str(value["templateSha256"]),
         impact=_impact_from_value(value["impact"]),
         scope_compiler_contract=str(value["scopeCompilerContract"]),
         delivery_compiler_contract=str(value["deliveryCompilerContract"]),
@@ -192,13 +304,58 @@ def _write_plan(files: ProjectFiles, plan: RunPlan) -> dict[str, object]:
     return value
 
 
-def _ensure_template(files: ProjectFiles) -> None:
+def _ensure_template(files: ProjectFiles, current: CurrentGeneration | None) -> None:
     try:
-        files.resolve(TEMPLATE_PATH)
+        project_template = files.read_bytes(TEMPLATE_PATH)
     except ProjectIOError as error:
         if error.code != "PROJECT_PATH_MISSING":
             raise
         files.publish_new(TEMPLATE_PATH, TEMPLATE_ASSET.read_bytes())
+        return
+    if current is None:
+        return
+    manifest = _mapping(files, current.manifest_path)
+    published_template_sha256 = manifest.get("templateSha256")
+    project_template_sha256 = sha256_bytes(project_template)
+    bundled_template = TEMPLATE_ASSET.read_bytes()
+    if (
+        published_template_sha256 == project_template_sha256
+        and project_template_sha256 in BUNDLED_TEMPLATE_SHA256_HISTORY
+        and sha256_bytes(bundled_template) != project_template_sha256
+    ):
+        files.write_atomic(TEMPLATE_PATH, bundled_template)
+
+
+def _freeze_run_template(files: ProjectFiles) -> tuple[str, str]:
+    payload = files.read_bytes(TEMPLATE_PATH)
+    files.write_atomic(RUN_TEMPLATE_PATH, payload)
+    return RUN_TEMPLATE_PATH, sha256_bytes(payload)
+
+
+def _resolve_run_template(files: ProjectFiles, plan: RunPlan) -> Path:
+    if plan.template_snapshot_path != RUN_TEMPLATE_PATH:
+        raise ProjectIOError(
+            "RUN_TEMPLATE_CHANGED",
+            plan.template_snapshot_path,
+            "本轮使用的模板副本已变化，请重新开始本轮生成。",
+        )
+    try:
+        payload = files.read_bytes(plan.template_snapshot_path)
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            raise ProjectIOError(
+                "RUN_TEMPLATE_CHANGED",
+                plan.template_snapshot_path,
+                "本轮使用的模板副本已变化，请重新开始本轮生成。",
+            ) from error
+        raise
+    if sha256_bytes(payload) != plan.template_sha256:
+        raise ProjectIOError(
+            "RUN_TEMPLATE_CHANGED",
+            plan.template_snapshot_path,
+            "本轮使用的模板副本已变化，请重新开始本轮生成。",
+        )
+    return files.resolve(plan.template_snapshot_path)
 
 
 def _previous_bundles(
@@ -218,10 +375,10 @@ def _current_contract_changes(
     template_changed = manifest.get("templateSha256") != sha256_bytes(
         files.read_bytes(TEMPLATE_PATH)
     )
-    renderer_changed = manifest.get("rendererContract") != "generation-renderer-v1"
+    renderer_changed = manifest.get("rendererContract") != "generation-renderer-v7"
     compiler_changed = (
-        manifest.get("scopeCompilerContract") != "scope-compiler-v1"
-        or manifest.get("deliveryCompilerContract") != "delivery-compiler-v1"
+        manifest.get("scopeCompilerContract") != "scope-compiler-v2"
+        or manifest.get("deliveryCompilerContract") != "delivery-compiler-v5"
     )
     return template_changed, renderer_changed, compiler_changed
 
@@ -324,7 +481,7 @@ def prepare_run(
             pendingManifestPath=intake.pending_manifest_path,
         )
 
-    _ensure_template(files)
+    _ensure_template(files, current)
     previous_scope, previous_delivery = _previous_bundles(files, current)
     template_changed, renderer_changed, compiler_changed = _current_contract_changes(
         files, current
@@ -355,6 +512,20 @@ def prepare_run(
             disclaimer=DISCLAIMER,
         )
 
+    if pending_run:
+        assert isinstance(plan_before, Mapping)
+        previous_plan = _plan_from_value(plan_before)
+        try:
+            _resolve_run_template(files, previous_plan)
+        except ProjectIOError as error:
+            if error.code == "RUN_TEMPLATE_CHANGED":
+                return _blocked(error.code, str(error), error.relative_path)
+            raise
+        template_snapshot_path = previous_plan.template_snapshot_path
+        template_sha256 = previous_plan.template_sha256
+    else:
+        template_snapshot_path, template_sha256 = _freeze_run_template(files)
+
     render_only = impact.action == "RENDER_ONLY"
     target_revision_id = current.revision_id if render_only and current else revision_id
     pending_manifest_path = (
@@ -372,10 +543,12 @@ def prepare_run(
         action=impact.action,
         target_revision_id=target_revision_id,
         target_generation_id=generation_id,
+        template_snapshot_path=template_snapshot_path,
+        template_sha256=template_sha256,
         impact=impact,
-        scope_compiler_contract="scope-compiler-v1",
-        delivery_compiler_contract="delivery-compiler-v1",
-        renderer_contract="generation-renderer-v1",
+        scope_compiler_contract="scope-compiler-v2",
+        delivery_compiler_contract="delivery-compiler-v5",
+        renderer_contract="generation-renderer-v7",
     )
     plan_value = _write_plan(files, plan)
     if not pending_run:
@@ -417,8 +590,28 @@ def accept_scope(
         )
     current = load_current(files)
     previous_scope, previous_delivery = _previous_bundles(files, current)
+    manifest = _mapping(files, plan.pending_manifest_path)
+    pending_root = str(Path(plan.pending_manifest_path).parent)
+    anchors = files.read_json(f"{pending_root}/{manifest['anchorsPath']}")
+    if not isinstance(anchors, list):
+        return _blocked("INPUT_ANCHORS_INVALID", "pending 锚点文件无效。")
+    added_anchor_ids = {
+        reason.removeprefix("ADDED_ANCHOR:")
+        for reason in plan.impact.reason_codes
+        if reason.startswith("ADDED_ANCHOR:")
+    }
+    added_anchor_refs = [
+        anchor
+        for anchor in anchors
+        if isinstance(anchor, Mapping)
+        and anchor.get("anchorId") in added_anchor_ids
+    ]
     final_impact = finalize_impact_plan(
-        plan.impact, candidate, previous_scope, previous_delivery
+        plan.impact,
+        candidate,
+        previous_scope,
+        previous_delivery,
+        added_anchor_refs,
     )
     if final_impact != plan.impact:
         plan = RunPlan(
@@ -427,6 +620,8 @@ def accept_scope(
             action=plan.action,
             target_revision_id=plan.target_revision_id,
             target_generation_id=plan.target_generation_id,
+            template_snapshot_path=plan.template_snapshot_path,
+            template_sha256=plan.template_sha256,
             impact=final_impact,
             scope_compiler_contract=plan.scope_compiler_contract,
             delivery_compiler_contract=plan.delivery_compiler_contract,
@@ -434,11 +629,6 @@ def accept_scope(
         )
         _write_plan(files, plan)
         candidate["impactPlanSha256"] = impact_plan_sha256(final_impact)
-    manifest = _mapping(files, plan.pending_manifest_path)
-    pending_root = str(Path(plan.pending_manifest_path).parent)
-    anchors = files.read_json(f"{pending_root}/{manifest['anchorsPath']}")
-    if not isinstance(anchors, list):
-        return _blocked("INPUT_ANCHORS_INVALID", "pending 锚点文件无效。")
     compilation = compile_scope(
         manifest,
         anchors,
@@ -482,19 +672,34 @@ def accept_delivery(
     candidate = _input_mapping(files, candidate_path)
     id_decisions = _input_mapping(files, id_decisions_path)
     scope = _mapping(files, SCOPE_PATH)
+    pending_manifest = _mapping(files, plan.pending_manifest_path)
+    manifest_root = str(Path(plan.pending_manifest_path).parent)
+    anchors = files.read_json(f"{manifest_root}/{pending_manifest['anchorsPath']}")
     current = load_current(files)
     _previous_scope, previous_delivery = _previous_bundles(files, current)
+    try:
+        template_path = _resolve_run_template(files, plan)
+    except ProjectIOError as error:
+        if error.code == "RUN_TEMPLATE_CHANGED":
+            return _blocked(error.code, str(error), error.relative_path)
+        raise
     compilation = compile_delivery(
         scope,
         previous_delivery,
         candidate,
         id_decisions,
         plan.impact,
-        read_template_catalog(files.resolve(TEMPLATE_PATH)),
+        _anchor_source_ref_inventory(anchors),
+        read_template_catalog(template_path),
     )
     if compilation.diagnostics:
         return _result(
-            "BLOCKED", "Delivery 编译未通过。", diagnostics=compilation.diagnostics
+            "BLOCKED",
+            "Delivery 编译未通过。",
+            diagnostics=compilation.diagnostics,
+            questions=_work_mode_evidence_questions(
+                scope, compilation.bundle, compilation.diagnostics
+            ),
         )
     _clear_downstream(files, keep_scope=True)
     files.write_atomic(DELIVERY_SLICE_PATH, canonical_json_bytes(candidate))
@@ -526,12 +731,14 @@ def prepare_review(project_root: Path) -> dict[str, object]:
             diagnostics=result.diagnostics,
             questions=list(result.questions),
         )
+    review_material_path = write_review_material(files)
     return _result(
         "REVIEW_REQUIRED",
-        "终审 packet 已准备，需要一次全新上下文评审。",
+        "终审材料已准备，需要一次全新上下文评审。",
         nextMode="accept-review",
         packetPath=result.packet_path,
         packetSha256=result.packet_sha256,
+        reviewMaterialPath=review_material_path,
         reviewerInstructionPath="references/final-review.md",
     )
 
@@ -559,7 +766,7 @@ def accept_review(project_root: Path, review_result_path: str) -> dict[str, obje
         return _result(
             "BLOCKED",
             "终审发现会改变范围、验收或估算的缺失事实。",
-            questions=list(result.questions),
+            questions=_review_questions(files),
             reviewPath=result.review_path,
             reviewSha256=result.review_sha256,
         )
@@ -588,22 +795,29 @@ def _object_map(
     }
 
 
-def _changed_ids(
+def _collection_counts(
     previous: Mapping[str, object] | None,
     current: Mapping[str, object],
     collection: str,
     id_field: str,
-) -> tuple[set[str], set[str], set[str]]:
+    affected_before_ids: set[str],
+) -> dict[str, int]:
     before = _object_map(previous, collection, id_field)
     after = _object_map(current, collection, id_field)
-    added = set(after) - set(before)
-    removed = set(before) - set(after)
-    updated = {
+    reusable = {
         object_id
         for object_id in set(before) & set(after)
-        if canonical_json_bytes(before[object_id]) != canonical_json_bytes(after[object_id])
+        if object_id not in affected_before_ids
+        and canonical_json_bytes(before[object_id])
+        == canonical_json_bytes(after[object_id])
     }
-    return added, updated, removed
+    return {
+        "affected": len(set(before) & affected_before_ids),
+        "recomputed": len(after) - len(reusable),
+        "reused": len(reusable),
+        "deleted": len(set(before) - set(after)),
+        "final": len(after),
+    }
 
 
 def _publication_counts(
@@ -611,22 +825,50 @@ def _publication_counts(
     previous_delivery: Mapping[str, object] | None,
     scope: Mapping[str, object],
     delivery: Mapping[str, object],
+    affected_feature_ids: Sequence[str],
 ) -> dict[str, object]:
-    added, updated, removed = _changed_ids(
-        previous_scope, scope, "features", "featureId"
-    )
-    story_changes = _changed_ids(
-        previous_delivery, delivery, "stories", "storyId"
-    )
-    task_changes = _changed_ids(previous_delivery, delivery, "tasks", "taskId")
+    affected_features = set(affected_feature_ids)
+    previous_stories = _object_map(previous_delivery, "stories", "storyId")
+    affected_stories = {
+        story_id
+        for story_id, story in previous_stories.items()
+        if story.get("featureId") in affected_features
+    }
+    affected_criteria = {
+        criterion_id
+        for criterion_id, criterion in _object_map(
+            previous_delivery, "acceptanceCriteria", "acceptanceCriterionId"
+        ).items()
+        if criterion.get("storyId") in affected_stories
+    }
+    affected_tasks = {
+        task_id
+        for task_id, task in _object_map(
+            previous_delivery, "tasks", "taskId"
+        ).items()
+        if task.get("storyId") in affected_stories
+    }
     return {
-        "features": {
-            "added": len(added),
-            "updated": len(updated),
-            "removed": len(removed),
-        },
-        "recomputedStories": len(set().union(*story_changes)),
-        "recomputedTasks": len(set().union(*task_changes)),
+        "features": _collection_counts(
+            previous_scope, scope, "features", "featureId", affected_features
+        ),
+        "stories": _collection_counts(
+            previous_delivery,
+            delivery,
+            "stories",
+            "storyId",
+            affected_stories,
+        ),
+        "acceptanceCriteria": _collection_counts(
+            previous_delivery,
+            delivery,
+            "acceptanceCriteria",
+            "acceptanceCriterionId",
+            affected_criteria,
+        ),
+        "tasks": _collection_counts(
+            previous_delivery, delivery, "tasks", "taskId", affected_tasks
+        ),
     }
 
 
@@ -698,11 +940,9 @@ def publish_run(project_root: Path) -> dict[str, object]:
         review_sha = str(current_manifest["finalReviewSha256"])
         review_mode = "REUSED_SCOPE_REVIEW"
         pending_root = None
-        counts = {
-            "features": {"added": 0, "updated": 0, "removed": 0},
-            "recomputedStories": 0,
-            "recomputedTasks": 0,
-        }
+        counts = _publication_counts(
+            previous_scope, previous_delivery, scope, delivery, ()
+        )
     else:
         if not _scope_is_current(files, plan) or not _delivery_is_current(files, plan):
             return _blocked(
@@ -722,15 +962,20 @@ def publish_run(project_root: Path) -> dict[str, object]:
             str(Path(plan.pending_manifest_path).parent), expect="dir"
         )
         counts = _publication_counts(
-            previous_scope, previous_delivery, scope, delivery
+            previous_scope,
+            previous_delivery,
+            scope,
+            delivery,
+            plan.impact.affected_feature_ids,
         )
 
     input_manifest = _mapping(files, plan.pending_manifest_path)
     try:
         _clear_staged_generation(files)
+        template_path = _resolve_run_template(files, plan)
         rendered = render_package(
             generation_id=plan.target_generation_id,
-            template_path=files.resolve(TEMPLATE_PATH),
+            template_path=template_path,
             output_root=files.root / GENERATION_ROOT,
             input_manifest=input_manifest,
             scope=scope,
@@ -739,8 +984,16 @@ def publish_run(project_root: Path) -> dict[str, object]:
         )
     except PackageRenderError as error:
         return _blocked(error.code, str(error), GENERATION_ROOT)
+    except ProjectIOError as error:
+        if error.code == "RUN_TEMPLATE_CHANGED":
+            return _blocked(error.code, str(error), error.relative_path)
+        raise
 
     staged_root = Path(rendered.root)
+    template_payload = files.read_bytes(plan.template_snapshot_path)
+    template_input_path = staged_root / "input/sow-template.xlsx"
+    template_input_path.parent.mkdir()
+    template_input_path.write_bytes(template_payload)
     data_root = staged_root / "data"
     data_root.mkdir()
     scope_payload = canonical_json_bytes(scope)
@@ -762,10 +1015,13 @@ def publish_run(project_root: Path) -> dict[str, object]:
         "scopeSha256": sha256_bytes(scope_payload),
         "deliveryPath": f"{generation_root}/data/delivery.json",
         "deliverySha256": sha256_bytes(delivery_payload),
-        "templatePath": TEMPLATE_PATH,
-        "templateSha256": sha256_bytes(files.read_bytes(TEMPLATE_PATH)),
+        "templatePath": f"{generation_root}/input/sow-template.xlsx",
+        "templateSha256": plan.template_sha256,
         "workbookPath": f"{generation_root}/output/sow.xlsx",
         "workbookSha256": rendered.workbook_sha256,
+        "workbookVerification": workbook_audit_value(
+            rendered.workbook_audit, require_verified=True
+        ),
         "notesPath": f"{generation_root}/output/sow-notes.md",
         "notesSha256": rendered.notes_sha256,
         "scopeCompilerContract": plan.scope_compiler_contract,
@@ -800,9 +1056,10 @@ def publish_run(project_root: Path) -> dict[str, object]:
         "PUBLISHED",
         "已发布新的不可变 SOW generation。",
         decision=publication.decision,
-        featureCounts=dict(publication.feature_counts),
-        recomputedStoryCount=publication.recomputed_story_count,
-        recomputedTaskCount=publication.recomputed_task_count,
+        changeCounts={
+            collection: dict(values)
+            for collection, values in publication.change_counts.items()
+        },
         workbookPath=publication.workbook_path,
         notesPath=publication.notes_path,
         disclaimer=DISCLAIMER,
@@ -876,11 +1133,9 @@ def status(project_root: Path) -> dict[str, object]:
             diagnostics=review_diagnostics,
         )
     if not isinstance(final_review, Mapping) or final_review.get("decision") == "BLOCKED":
-        questions = [
-            str(item["question"])
-            for item in _mappings(final_review.get("questions"))
-            if isinstance(item.get("question"), str)
-        ] if isinstance(final_review, Mapping) else []
+        questions = [dict(item) for item in _mappings(final_review.get("questions"))]
+        if not isinstance(final_review, Mapping):
+            questions = []
         return _result(
             "BLOCKED",
             "终审仍有阻塞问题。",

@@ -19,10 +19,14 @@ EXPECTED_PYTHON_MODULES = {
     "impact.py",
     "intake.py",
     "models.py",
+    "office_engine.py",
     "orchestrator.py",
     "package_renderer.py",
+    "questions.py",
+    "review_material.py",
     "scope_compiler.py",
     "source_readers.py",
+    "story_notes.py",
     "workbook.py",
 }
 LEGACY_PROTOCOL_TOKENS = (
@@ -32,6 +36,20 @@ LEGACY_PROTOCOL_TOKENS = (
     "Reconciliation Run ID",
     ".ai-sow/validation/",
 )
+EXPECTED_DELIVERY_REFERENCES = {
+    "delivery-authoring.md",
+    "delivery-decomposition.md",
+    "technical-work-classification.md",
+    "delivery-work-classification.md",
+    "effective-start-matching.md",
+    "question-authoring.md",
+    "epic-authoring.md",
+    "feature-authoring.md",
+    "story-authoring.md",
+    "acceptance-criteria.md",
+    "task-authoring.md",
+    "delivery-examples.md",
+}
 
 
 def python_sources(root: Path) -> list[Path]:
@@ -186,16 +204,18 @@ def test_command_files_pin_utf8_and_platform_encodings() -> None:
     assert "[Console]::OutputEncoding" in powershell.decode("utf-8-sig")
 
 
-def test_renderer_fingerprint_binds_only_current_renderer_sources() -> None:
+def test_renderer_fingerprint_binds_all_current_renderer_sources() -> None:
     baseline = json.loads(
         (SKILL_ROOT / "contracts/renderer-fingerprint-baseline.json").read_text(
             encoding="utf-8"
         )
     )
-    assert baseline["rendererContract"] == "generation-renderer-v1"
+    assert baseline["rendererContract"] == "generation-renderer-v7"
     assert set(baseline["files"]) == {
         "scripts/package_renderer.py",
         "scripts/workbook.py",
+        "scripts/office_engine.py",
+        "scripts/story_notes.py",
     }
     assert all(
         re.fullmatch(r"[0-9a-f]{64}", value)
@@ -221,3 +241,17 @@ def test_no_generic_owner_pipeline_or_compatibility_wrapper_exists() -> None:
     }
     assert not [path for path in PLUGIN_ROOT.rglob("*.py") if path.name in forbidden_names]
     assert not (PLUGIN_ROOT / "contracts").exists()
+
+
+def test_generate_skill_routes_every_delivery_reference() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    for name in EXPECTED_DELIVERY_REFERENCES:
+        assert f"references/{name}" in skill
+
+
+def test_task_authoring_does_not_copy_live_catalog_values() -> None:
+    task_authoring = (SKILL_ROOT / "references/task-authoring.md").read_text(
+        encoding="utf-8"
+    )
+    assert "新建M档人天" not in task_authoring
+    assert "37 个基础单元" not in task_authoring

@@ -1,7 +1,9 @@
 {
-  "rendererContract": "generation-renderer-v1",
+  "rendererContract": "generation-renderer-v7",
   "files": {
-    "scripts/package_renderer.py": "93bab67386002d429f59edc035472f88de22431b41926a972ce1f06a4b7cc3d6",
-    "scripts/workbook.py": "1db282f6994cdfa02336ed9f45c1dd551562de3172b0c552810c63fd3204af6e"
+    "scripts/package_renderer.py": "005da414397705c7d86e9cfc4f0982c2f3127236476d814b6f51360752c630a6",
+    "scripts/workbook.py": "4dc196a53e0bb94e5918aeae8654df90e70e5c6b8c13afdad4260300aadfa099",
+    "scripts/office_engine.py": "319ed5982c20693e560694071ff1a674ead9c568ae39542472caf38772d44bd9",
+    "scripts/story_notes.py": "edd3f930ea257880d00c57271f509804a8861572bae8dd964656a3caf6028e97"
   }
 }

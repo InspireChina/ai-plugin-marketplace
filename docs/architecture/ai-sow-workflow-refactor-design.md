@@ -1,9 +1,12 @@
 # AI SOW 决策驱动工作流重构设计
 
-状态：设计提案；尚未实施  
+状态：已取代的设计提案；不代表当前实现
 日期：2026-08-31  
 适用范围：`plugins/ai-sow/` 的阶段职责、Owner seam、评审门禁、返工路径和最终生成边界  
 当前基线：插件 0.1.0、SOW 标准 v1.3
+
+> 当前权威实现见 `plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md`。本文保留早期七阶段与十一 Sheet 分析
+> 作为历史决策记录；其中阶段边界、稳定数据和 Excel 投影均已被单入口四 Sheet 实现取代。
 
 详细领域对象、阶段输入输出、状态转换、门禁条件和回退合同见
 [AI SOW 决策驱动工作流详细合同](ai-sow-workflow-contract-spec.md)。

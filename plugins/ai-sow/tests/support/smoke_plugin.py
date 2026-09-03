@@ -24,23 +24,19 @@ ORCHESTRATOR_PATH = "skills/generate/scripts/orchestrator.py"
 EXPECTED_GENERATION_FILES = {
     "data/delivery.json",
     "data/scope.json",
+    "input/sow-template.xlsx",
     "manifest.json",
     "output/sow-notes.md",
     "output/sow.xlsx",
 }
 EXPECTED_TABLES = {
-    "EpicTable",
-    "FeatureTable",
     "SOWStoryTable",
-    "AcceptanceCriterionTable",
     "TaskTable",
-    "IntegrationTable",
-    "AssumptionRiskTable",
     "ProjectSummaryTable",
-    "AsIsDetailTable",
     "ProjectParameterTable",
     "BaseUnitCatalogTable",
 }
+EXPECTED_SHEETS = ["01-需求故事", "02-任务清单", "03-工作量汇总", "90-估算标准"]
 SCOPE_COLLECTIONS = (
     "epics",
     "features",
@@ -52,12 +48,37 @@ SCOPE_COLLECTIONS = (
     "nfrs",
     "assumptions",
 )
+SCOPE_ID_FIELDS = {
+    "epics": ("EPIC", "epicId"),
+    "features": ("FEATURE", "featureId"),
+    "commitments": ("COMMITMENT", "commitmentId"),
+    "effectiveStartItems": ("EFFECTIVE_START_ITEM", "effectiveStartItemId"),
+    "designItems": ("DESIGN_ITEM", "designItemId"),
+    "designDecisions": ("DESIGN_DECISION", "designDecisionId"),
+    "integrations": ("INTEGRATION", "integrationId"),
+    "nfrs": ("NFR", "nfrId"),
+    "assumptions": ("ASSUMPTION", "assumptionId"),
+}
 DELIVERY_COLLECTIONS = (
     "stories",
     "acceptanceCriteria",
     "tasks",
     "dependencies",
 )
+DELIVERY_ID_FIELDS = {
+    "stories": ("STORY", "storyId"),
+    "acceptanceCriteria": ("ACCEPTANCE_CRITERION", "acceptanceCriterionId"),
+    "tasks": ("TASK", "taskId"),
+    "dependencies": ("DEPENDENCY", "dependencyId"),
+}
+QUESTION_FIELDS = {
+    "questionId",
+    "subjectIds",
+    "question",
+    "reason",
+    "decisionImpact",
+    "unansweredEffect",
+}
 
 
 def _canonical_json_bytes(value: object) -> bytes:
@@ -76,6 +97,31 @@ def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _generation_file_digests(root: Path) -> dict[str, str]:
+    return {
+        path.relative_to(root).as_posix(): _sha256(path.read_bytes())
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _verify_generation_template_path(
+    manifest: Mapping[str, object], generation_root: Path
+) -> None:
+    generation_id = manifest.get("generationId")
+    expected = f".ai-sow/generations/{generation_id}/input/sow-template.xlsx"
+    if (
+        not isinstance(generation_id, str)
+        or generation_root.name != generation_id
+        or manifest.get("templatePath") != expected
+        or not (generation_root / "input/sow-template.xlsx").is_file()
+    ):
+        raise RuntimeError(
+            "generation templatePath must identify its exact immutable "
+            "input/sow-template.xlsx member"
+        )
+
+
 def _load_json(path: Path) -> dict[str, object]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -86,6 +132,52 @@ def _load_json(path: Path) -> dict[str, object]:
 def _write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(_canonical_json_bytes(value))
+
+
+def _complete_id_decisions(
+    decisions: dict[str, object],
+    candidate: Mapping[str, object],
+    id_fields: Mapping[str, tuple[str, str]],
+    *,
+    has_baseline: bool,
+) -> None:
+    entries = decisions.get("decisions")
+    if not isinstance(entries, list):
+        raise RuntimeError("ID decisions fixture must contain a decisions list")
+    known = {
+        (entry.get("objectType"), entry.get("objectId"))
+        for entry in entries
+        if isinstance(entry, Mapping)
+    }
+    for collection, (object_type, id_field) in id_fields.items():
+        values = candidate.get(collection)
+        if not isinstance(values, list):
+            raise RuntimeError(f"candidate collection must be a list: {collection}")
+        for item in values:
+            if not isinstance(item, Mapping) or not isinstance(item.get(id_field), str):
+                continue
+            object_id = str(item[id_field])
+            if (object_type, object_id) not in known:
+                entries.append(
+                    {
+                        "objectType": object_type,
+                        "objectId": object_id,
+                        "disposition": "NEW",
+                        "meaningPreserved": False,
+                        "rationale": "首个 revision 中的新对象。",
+                    }
+                )
+    if has_baseline:
+        for decision in entries:
+            if isinstance(decision, dict):
+                decision.update(
+                    {
+                        "disposition": "UNCHANGED",
+                        "previousId": decision["objectId"],
+                        "meaningPreserved": True,
+                        "rationale": "模板变化未改变对象语义，保留稳定 ID。",
+                    }
+                )
 
 
 def run_command(command: list[str], cwd: Path) -> dict[str, object]:
@@ -335,11 +427,11 @@ def _scope_candidate(
         "contract": "ai-sow-scope-slice-v1",
         "inputRevisionId": plan["targetRevisionId"],
         "impactPlanSha256": _sha256(_canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": [
-            item["featureId"]
-            for item in bundle["features"]
-            if isinstance(item, Mapping)
-        ],
+        "replacesFeatureIds": (
+            []
+            if plan["impact"]["baselineGenerationId"] is None
+            else list(plan["impact"]["affectedFeatureIds"])
+        ),
         "newAnchorMappings": [],
         **{name: copy.deepcopy(bundle[name]) for name in SCOPE_COLLECTIONS},
         "responsibilityBoundaries": copy.deepcopy(bundle["responsibilityBoundaries"]),
@@ -347,7 +439,14 @@ def _scope_candidate(
     candidate_name = "scope-slice.json"
     ids_name = "scope-id-decisions.json"
     _write_json(project / candidate_name, candidate)
-    shutil.copy2(active_plugin / str(case["scopeIdDecisionsPath"]), project / ids_name)
+    decisions = _load_json(active_plugin / str(case["scopeIdDecisionsPath"]))
+    _complete_id_decisions(
+        decisions,
+        candidate,
+        SCOPE_ID_FIELDS,
+        has_baseline=plan["impact"]["baselineGenerationId"] is not None,
+    )
+    _write_json(project / ids_name, decisions)
     return candidate_name, ids_name
 
 
@@ -360,21 +459,28 @@ def _delivery_candidate(
     scope = _load_json(project / ".ai-sow/work/scope.candidate.json")
     bundle = _load_json(active_plugin / str(case["deliverySlicePath"]))
     candidate = {
-        "contract": "ai-sow-delivery-slice-v1",
+        "contract": "ai-sow-delivery-slice-v3",
         "inputRevisionId": plan["targetRevisionId"],
         "scopeSha256": _sha256(_canonical_json_bytes(scope)),
         "impactPlanSha256": _sha256(_canonical_json_bytes(plan["impact"])),
-        "replacesFeatureIds": [
-            item["featureId"]
-            for item in scope["features"]
-            if isinstance(item, Mapping)
-        ],
+        "replacesFeatureIds": (
+            []
+            if plan["impact"]["baselineGenerationId"] is None
+            else list(plan["impact"]["affectedFeatureIds"])
+        ),
         **{name: copy.deepcopy(bundle[name]) for name in DELIVERY_COLLECTIONS},
     }
     candidate_name = "delivery-slice.json"
     ids_name = "delivery-id-decisions.json"
     _write_json(project / candidate_name, candidate)
-    shutil.copy2(active_plugin / str(case["deliveryIdDecisionsPath"]), project / ids_name)
+    decisions = _load_json(active_plugin / str(case["deliveryIdDecisionsPath"]))
+    _complete_id_decisions(
+        decisions,
+        candidate,
+        DELIVERY_ID_FIELDS,
+        has_baseline=plan["impact"]["baselineGenerationId"] is not None,
+    )
+    _write_json(project / ids_name, decisions)
     return candidate_name, ids_name
 
 
@@ -404,6 +510,66 @@ def _review_candidate(
     return review_name
 
 
+def _blocked_review_candidate(
+    active_plugin: Path,
+    project: Path,
+    case: Mapping[str, object],
+    packet: Mapping[str, object],
+) -> str:
+    review_name = _review_candidate(active_plugin, project, case, packet)
+    review = _load_json(project / review_name)
+    delivery = _load_json(project / ".ai-sow/work/delivery.candidate.json")
+    stories = delivery.get("stories")
+    if not isinstance(stories, list) or not stories or not isinstance(stories[0], Mapping):
+        raise RuntimeError("blocked review smoke requires one Story")
+    review.update(
+        {
+            "decision": "BLOCKED",
+            "notes": [],
+            "questions": [
+                {
+                    "questionId": "question-smoke-review-boundary",
+                    "subjectIds": [stories[0]["storyId"]],
+                    "question": "是否确认该故事的验收边界包含异常处理结果？",
+                    "reason": "当前终审材料无法确认异常处理结果是否属于本次可验收范围。",
+                    "decisionImpact": "确认包含会保留对应 AC 与 Task；确认不包含会重新编译相关 Delivery 切片。",
+                    "unansweredEffect": "未回答时无法固定验收和估算边界，本轮保持 BLOCKED 且不发布工作簿。",
+                }
+            ],
+        }
+    )
+    _write_json(project / review_name, review)
+    return review_name
+
+
+def _verify_transparent_questions(result: Mapping[str, object]) -> None:
+    questions = result.get("questions")
+    if not isinstance(questions, list) or not questions:
+        raise RuntimeError(f"BLOCKED result omitted user questions: {result}")
+    for question in questions:
+        if not isinstance(question, Mapping) or set(question) != QUESTION_FIELDS:
+            raise RuntimeError(f"BLOCKED question is not self-contained: {question}")
+        if any(not question[field] for field in QUESTION_FIELDS):
+            raise RuntimeError(f"BLOCKED question contains an empty field: {question}")
+
+
+def _verify_review_material(project: Path, packet: Mapping[str, object]) -> None:
+    relative = packet.get("reviewMaterialPath")
+    if not isinstance(relative, str) or not relative:
+        raise RuntimeError(f"review result omitted readable material: {packet}")
+    text = (project / relative).read_text(encoding="utf-8")
+    first_line = text.partition("\n")[0]
+    if (
+        not first_line.startswith("# ")
+        or not first_line.endswith("终审材料")
+        or "## 下一步" not in text
+    ):
+        raise RuntimeError(f"review material lacks natural-language summary: {relative}")
+    packet_hash = packet.get("packetSha256")
+    if isinstance(packet_hash, str) and packet_hash in text:
+        raise RuntimeError("review material exposed the internal packet hash")
+
+
 def _verify_manifest_hashes(project: Path, manifest: Mapping[str, object]) -> None:
     pairs = (
         ("inputManifestPath", "inputManifestSha256"),
@@ -424,8 +590,10 @@ def _verify_manifest_hashes(project: Path, manifest: Mapping[str, object]) -> No
 def _verify_workbook(path: Path) -> None:
     workbook = openpyxl.load_workbook(path, data_only=False)
     try:
+        if workbook.sheetnames != EXPECTED_SHEETS:
+            raise RuntimeError(f"generated workbook sheets changed: {workbook.sheetnames}")
         tables = {name for sheet in workbook.worksheets for name in sheet.tables}
-        if not EXPECTED_TABLES.issubset(tables):
+        if tables != EXPECTED_TABLES:
             raise RuntimeError(f"generated workbook tables incomplete: {tables}")
         formulas = [
             cell.value
@@ -438,24 +606,36 @@ def _verify_workbook(path: Path) -> None:
             raise RuntimeError("generated workbook contains no formulas")
     finally:
         workbook.close()
+    calculated = openpyxl.load_workbook(path, data_only=True)
+    try:
+        values = [calculated["03-工作量汇总"][f"B{row}"].value for row in range(5, 9)]
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
+            raise RuntimeError(f"generated workbook lacks calculated summary: {values}")
+    finally:
+        calculated.close()
 
 
 def _verify_generation(
     project: Path,
     case: Mapping[str, object],
     result: Mapping[str, object],
-) -> str:
+) -> dict[str, object]:
     expected = case["expectedCounts"]
     if not isinstance(expected, Mapping):
         raise RuntimeError("case expectedCounts must be an object")
     if result.get("decision") != case["expectedDecision"]:
         raise RuntimeError(f"unexpected review decision: {result}")
-    feature_counts = result.get("featureCounts")
-    if not isinstance(feature_counts, Mapping) or feature_counts.get("added") != expected["features"]:
+    change_counts = result.get("changeCounts")
+    if not isinstance(change_counts, Mapping):
+        raise RuntimeError(f"missing change counts: {result}")
+    feature_counts = change_counts.get("features")
+    story_counts = change_counts.get("stories")
+    task_counts = change_counts.get("tasks")
+    if not isinstance(feature_counts, Mapping) or feature_counts.get("recomputed") != expected["features"]:
         raise RuntimeError(f"unexpected Feature counts: {result}")
-    if result.get("recomputedStoryCount") != expected["stories"]:
+    if not isinstance(story_counts, Mapping) or story_counts.get("recomputed") != expected["stories"]:
         raise RuntimeError(f"unexpected Story counts: {result}")
-    if result.get("recomputedTaskCount") != expected["tasks"]:
+    if not isinstance(task_counts, Mapping) or task_counts.get("recomputed") != expected["tasks"]:
         raise RuntimeError(f"unexpected Task counts: {result}")
 
     current = _load_json(project / ".ai-sow/current.json")
@@ -468,6 +648,19 @@ def _verify_generation(
     if files != EXPECTED_GENERATION_FILES:
         raise RuntimeError(f"generation leaked or omitted files: {files}")
     manifest = _load_json(generation_root / "manifest.json")
+    verification = manifest.get("workbookVerification")
+    if not isinstance(verification, Mapping) or verification.get("trustState") != "VERIFIED":
+        raise RuntimeError(f"generation workbook is not verified: {verification}")
+    engine = verification.get("engine")
+    if (
+        not isinstance(engine, Mapping)
+        or not isinstance(engine.get("name"), str)
+        or not engine["name"]
+        or not isinstance(engine.get("version"), str)
+        or not engine["version"]
+    ):
+        raise RuntimeError(f"generation lacks a real Office engine record: {verification}")
+    _verify_generation_template_path(manifest, generation_root)
     _verify_manifest_hashes(project, manifest)
     workbook_path = project / str(manifest["workbookPath"])
     notes_path = project / str(manifest["notesPath"])
@@ -491,7 +684,86 @@ def _verify_generation(
             ]
             if actual != case[hash_key]:
                 raise RuntimeError(f"fixed output hash mismatch: {hash_key}")
-    return str(workbook_path.resolve())
+    return {
+        "workbookPath": str(workbook_path.resolve()),
+        "templateSha256": manifest["templateSha256"],
+        "officeEngine": {"name": engine["name"], "version": engine["version"]},
+    }
+
+
+def _complete_prepared_case(
+    active_plugin: Path,
+    project: Path,
+    case: Mapping[str, object],
+    prepared: Mapping[str, object],
+    audit_root: Path,
+    audit_log: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
+    plan = prepared.get("runPlan")
+    if not isinstance(plan, Mapping):
+        raise RuntimeError(f"prepare result lacks a run plan: {prepared}")
+    snapshot = project / str(plan["templateSnapshotPath"])
+    if _sha256(snapshot.read_bytes()) != plan["templateSha256"]:
+        raise RuntimeError("run template snapshot hash does not close")
+
+    scope_name, scope_ids = _scope_candidate(active_plugin, project, case, prepared)
+    _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "accept-scope",
+        "--candidate",
+        scope_name,
+        "--ids",
+        scope_ids,
+        expected="READY_FOR_DELIVERY",
+    )
+    delivery_name, delivery_ids = _delivery_candidate(active_plugin, project, case)
+    _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "accept-delivery",
+        "--candidate",
+        delivery_name,
+        "--ids",
+        delivery_ids,
+        expected="REVIEW_REQUIRED",
+    )
+    packet = _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "prepare-review",
+        expected="REVIEW_REQUIRED",
+    )
+    _verify_review_material(project, packet)
+    review_name = _review_candidate(active_plugin, project, case, packet)
+    _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "accept-review",
+        "--review",
+        review_name,
+        expected="READY_TO_RENDER",
+    )
+    published = _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "publish",
+        expected="PUBLISHED",
+    )
+    verified = _verify_generation(project, case, published)
+    if verified["templateSha256"] != plan["templateSha256"]:
+        raise RuntimeError("published generation did not retain the run template")
+    return published, verified
 
 
 def _run_case(
@@ -500,7 +772,50 @@ def _run_case(
     case: Mapping[str, object],
     audit_root: Path,
     audit_log: Path,
-) -> tuple[dict[str, object], str]:
+) -> tuple[dict[str, object], dict[str, object]]:
+    request_name = _prepare_request(active_plugin, project, case)
+    prepared = _run_orchestrator(
+        active_plugin,
+        project,
+        audit_root,
+        audit_log,
+        "prepare",
+        "--request",
+        request_name,
+        expected="READY_FOR_SCOPE",
+    )
+    return _complete_prepared_case(
+        active_plugin, project, case, prepared, audit_root, audit_log
+    )
+
+
+def _mutate_project_template(path: Path) -> None:
+    workbook = openpyxl.load_workbook(path)
+    try:
+        sheet = workbook["90-估算标准"]
+        table = sheet.tables["BaseUnitCatalogTable"]
+        min_col, min_row, max_col, _ = openpyxl.utils.range_boundaries(table.ref)
+        headers = {
+            str(sheet.cell(min_row, column).value): column
+            for column in range(min_col, max_col + 1)
+        }
+        effort_column = headers["新建M档人天"]
+        value = sheet.cell(min_row + 1, effort_column).value
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise RuntimeError("template smoke could not find a numeric effort cell")
+        sheet.cell(min_row + 1, effort_column).value = value + 0.25
+        workbook.save(path)
+    finally:
+        workbook.close()
+
+
+def _run_blocked_review_case(
+    active_plugin: Path,
+    project: Path,
+    case: Mapping[str, object],
+    audit_root: Path,
+    audit_log: Path,
+) -> dict[str, object]:
     request_name = _prepare_request(active_plugin, project, case)
     prepared = _run_orchestrator(
         active_plugin,
@@ -546,8 +861,9 @@ def _run_case(
         "prepare-review",
         expected="REVIEW_REQUIRED",
     )
-    review_name = _review_candidate(active_plugin, project, case, packet)
-    _run_orchestrator(
+    _verify_review_material(project, packet)
+    review_name = _blocked_review_candidate(active_plugin, project, case, packet)
+    result = _run_orchestrator(
         active_plugin,
         project,
         audit_root,
@@ -555,17 +871,12 @@ def _run_case(
         "accept-review",
         "--review",
         review_name,
-        expected="READY_TO_RENDER",
+        expected="BLOCKED",
     )
-    published = _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "publish",
-        expected="PUBLISHED",
-    )
-    return published, _verify_generation(project, case, published)
+    _verify_transparent_questions(result)
+    if (project / ".ai-sow/current.json").exists():
+        raise RuntimeError("BLOCKED review replaced last-known-good state")
+    return result
 
 
 def run_smoke(
@@ -610,15 +921,20 @@ def run_smoke(
     greenfield = projects_root / "greenfield"
     brownfield = projects_root / "brownfield"
     blocked_resume = projects_root / "blocked-resume"
+    blocked_review = projects_root / "blocked-review"
     audit_root = work_dir / "read-guard"
     audit_log = work_dir / "forbidden-reads.log"
     _install_read_guard(audit_root)
 
-    greenfield_result, greenfield_workbook = _run_case(
+    greenfield_result, greenfield_verification = _run_case(
         active_plugin, greenfield, greenfield_case, audit_root, audit_log
     )
-    brownfield_result, brownfield_workbook = _run_case(
+    brownfield_result, brownfield_verification = _run_case(
         active_plugin, brownfield, brownfield_case, audit_root, audit_log
+    )
+
+    blocked_review_result = _run_blocked_review_case(
+        active_plugin, blocked_review, greenfield_case, audit_root, audit_log
     )
 
     incomplete_request = _prepare_request(
@@ -646,7 +962,7 @@ def run_smoke(
         if isinstance(diagnostic, Mapping)
     ):
         raise RuntimeError(f"missing-prior-SOW did not return the expected diagnostic: {blocked}")
-    blocked_resume_result, blocked_resume_workbook = _run_case(
+    blocked_resume_result, blocked_resume_verification = _run_case(
         active_plugin, blocked_resume, brownfield_case, audit_root, audit_log
     )
 
@@ -665,6 +981,90 @@ def run_smoke(
     if len(generations) != 1 or len(revisions) != 1:
         raise RuntimeError("identical replay created a new immutable artifact")
 
+    first_generation = _load_json(greenfield / ".ai-sow/current.json")
+    first_generation_root = (
+        greenfield / ".ai-sow/generations" / str(first_generation["generationId"])
+    )
+    first_template = first_generation_root / "input/sow-template.xlsx"
+    _mutate_project_template(greenfield / ".ai-sow/templates/sow-template.xlsx")
+    template_recompile = _run_orchestrator(
+        active_plugin,
+        greenfield,
+        audit_root,
+        audit_log,
+        "prepare",
+        "--request",
+        "request.json",
+        expected="READY_FOR_SCOPE",
+    )
+    recompile_plan = template_recompile.get("runPlan")
+    if (
+        not isinstance(recompile_plan, Mapping)
+        or recompile_plan.get("action") != "FULL_COMPILE"
+        or "TEMPLATE_CHANGED"
+        not in recompile_plan.get("impact", {}).get("reasonCodes", [])
+    ):
+        raise RuntimeError(
+            f"changed template did not force full Delivery compilation: {template_recompile}"
+        )
+    frozen_template = greenfield / str(recompile_plan["templateSnapshotPath"])
+    frozen_template_bytes = frozen_template.read_bytes()
+    _mutate_project_template(greenfield / ".ai-sow/templates/sow-template.xlsx")
+    if frozen_template.read_bytes() != frozen_template_bytes:
+        raise RuntimeError("live template change altered the active run snapshot")
+    template_recompile_result, template_recompile_verification = (
+        _complete_prepared_case(
+            active_plugin,
+            greenfield,
+            greenfield_case,
+            template_recompile,
+            audit_root,
+            audit_log,
+        )
+    )
+    if template_recompile_verification["templateSha256"] != _sha256(
+        frozen_template_bytes
+    ):
+        raise RuntimeError("template recompile published a drifting template")
+    if _sha256(first_template.read_bytes()) == template_recompile_verification["templateSha256"]:
+        raise RuntimeError("template recompile reused the previous generation template")
+    if len(list((greenfield / ".ai-sow/generations").iterdir())) != 2:
+        raise RuntimeError("template recompile did not create exactly one new generation")
+
+    brownfield_current = (brownfield / ".ai-sow/current.json").read_bytes()
+    brownfield_generations_root = brownfield / ".ai-sow/generations"
+    brownfield_generation_files = _generation_file_digests(
+        brownfield_generations_root
+    )
+    incomplete_after_success = _prepare_request(
+        active_plugin,
+        brownfield,
+        brownfield_case,
+        omit_prior_sow=True,
+    )
+    blocked_after_success = _run_orchestrator(
+        active_plugin,
+        brownfield,
+        audit_root,
+        audit_log,
+        "prepare",
+        "--request",
+        incomplete_after_success,
+        expected="BLOCKED",
+    )
+    if (brownfield / ".ai-sow/current.json").read_bytes() != brownfield_current:
+        raise RuntimeError("BLOCKED update replaced current.json")
+    after_blocked_files = _generation_file_digests(brownfield_generations_root)
+    if after_blocked_files != brownfield_generation_files:
+        changed = sorted(
+            path
+            for path in set(brownfield_generation_files) | set(after_blocked_files)
+            if brownfield_generation_files.get(path) != after_blocked_files.get(path)
+        )
+        raise RuntimeError(
+            f"BLOCKED update changed last-known-good generation files: {changed}"
+        )
+
     forbidden_reads = (
         audit_log.read_text(encoding="utf-8").splitlines()
         if audit_log.is_file()
@@ -679,13 +1079,32 @@ def run_smoke(
         "greenfieldOutcome": greenfield_result["outcome"],
         "brownfieldOutcome": brownfield_result["outcome"],
         "blockedResumeOutcome": blocked_resume_result["outcome"],
+        "blockedReviewOutcome": blocked_review_result["outcome"],
+        "blockedAfterSuccessOutcome": blocked_after_success["outcome"],
         "reuseOutcome": reuse["outcome"],
+        "templateRecompileOutcome": template_recompile_result["outcome"],
+        "templateRecompileAction": recompile_plan["action"],
+        "runTemplateStable": True,
+        "lastKnownGoodPreserved": True,
+        "lastKnownGoodFileCount": len(brownfield_generation_files),
         "marketplaceReadCount": len(forbidden_reads),
-        "projectRoots": [str(greenfield), str(brownfield), str(blocked_resume)],
+        "projectRoots": [
+            str(greenfield),
+            str(brownfield),
+            str(blocked_resume),
+            str(blocked_review),
+        ],
         "workbookPaths": [
-            greenfield_workbook,
-            brownfield_workbook,
-            blocked_resume_workbook,
+            greenfield_verification["workbookPath"],
+            template_recompile_verification["workbookPath"],
+            brownfield_verification["workbookPath"],
+            blocked_resume_verification["workbookPath"],
+        ],
+        "officeEngines": [
+            greenfield_verification["officeEngine"],
+            template_recompile_verification["officeEngine"],
+            brownfield_verification["officeEngine"],
+            blocked_resume_verification["officeEngine"],
         ],
     }
 

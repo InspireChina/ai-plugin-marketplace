@@ -1,14 +1,12 @@
 {
-  "contract": "ai-sow-delivery-bundle-v1",
+  "contract": "ai-sow-delivery-bundle-v3",
   "inputRevisionId": "000001",
   "scopeSha256": "9111111111111111111111111111111111111111111111111111111111111111",
   "stories": [
     {
       "storyId": "story-refund-processing",
-      "featureIds": ["feature-refund-processing"],
-      "storyType": "IMPLEMENTATION",
-      "name": "完成退款申请处理",
-      "description": "用户能够提交有效退款申请并查看处理状态。",
+      "featureId": "feature-refund-processing",
+      "name": "[退款申请] 客户提交退款",
       "uatRelevant": true
     }
   ],
@@ -16,9 +14,28 @@
     {
       "acceptanceCriterionId": "ac-refund-submit",
       "storyId": "story-refund-processing",
-      "sequence": 1,
       "name": "有效退款申请被受理并返回可追踪编号",
-      "rationale": "该结果直接证明退款申请处理能力可用。"
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund",
+          "anchorId": "anchor-a1076b3d69271346",
+          "locator": "heading:PRD",
+          "sha256": "9d4bacb4376916256e3e9f7f63f189bf9dd20499747f653562b6f5585841d1e8"
+        }
+      ]
+    },
+    {
+      "acceptanceCriterionId": "ac-refund-invalid",
+      "storyId": "story-refund-processing",
+      "name": "无效退款申请被拒绝并返回明确原因",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund",
+          "anchorId": "anchor-a1076b3d69271346",
+          "locator": "heading:PRD",
+          "sha256": "9d4bacb4376916256e3e9f7f63f189bf9dd20499747f653562b6f5585841d1e8"
+        }
+      ]
     }
   ],
   "tasks": [
@@ -26,17 +43,16 @@
       "taskId": "task-refund-service",
       "storyId": "story-refund-processing",
       "taskKind": "IMPLEMENTATION",
-      "name": "实现退款申请服务",
+      "name": "新增退款申请提交接口",
       "baseUnit": "BU-BUSINESS-SERVICE-API",
       "workMode": "新建",
       "workModeRationale": "Greenfield 项目不存在可复用的退款申请服务。",
       "complexity": "M",
-      "acceptanceCriterionIds": ["ac-refund-submit"],
+      "acceptanceCriterionIds": ["ac-refund-submit", "ac-refund-invalid"],
       "designItemIds": ["design-item-refund-service"],
       "integrationIds": [],
       "nfrIds": [],
-      "dependsOnTaskIds": [],
-      "rationale": "按一个独立退款服务接口实例计价。"
+      "rationale": "按一个可独立开发、测试和估算的退款申请提交接口计价。"
     }
   ],
   "dependencies": []

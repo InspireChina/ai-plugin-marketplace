@@ -9,6 +9,7 @@
     "mode",
     "responsibilityBoundaries",
     "sources",
+    "questions",
     "questionnaireAnswers",
     "currentStateDelta"
   ],
@@ -43,6 +44,11 @@
       "type": "array",
       "items": {"$ref": "#/$defs/questionnaireAnswer"},
       "description": "只记录影响范围、责任或估算的结构化问卷答案。"
+    },
+    "questions": {
+      "type": "array",
+      "items": {"$ref": "urn:ai-sow:generate:question:1"},
+      "description": "本次请求需要用户逐题确认的完整问题包。"
     },
     "currentStateDelta": {
       "anyOf": [{"type": "null"}, {"$ref": "#/$defs/currentStateDelta"}],
@@ -160,11 +166,15 @@
     "questionnaireAnswer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["questionId", "answer"],
+      "required": ["questionId", "questionSha256", "answer"],
       "properties": {
         "questionId": {
           "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
           "description": "最小问卷问题的稳定 ID。"
+        },
+        "questionSha256": {
+          "$ref": "urn:ai-sow:generate:common:1#/$defs/sha256",
+          "description": "回答所绑定完整问题包的 SHA-256。"
         },
         "answer": {
           "type": "string",

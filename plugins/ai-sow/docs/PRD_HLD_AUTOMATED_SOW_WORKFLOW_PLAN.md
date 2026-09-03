@@ -119,8 +119,9 @@ Story 和 Task 不再分成需要用户分别批准的阶段。
 
 ### 3.5 `package_renderer`
 
-`package_renderer` 只读取已通过终审的 `ScopeBundle`、`DeliveryBundle` 和 SOW 模板，确定性生成工作簿
-与配套说明。它不重新解释 PRD、HLD 或往期 SOW，也不重新执行范围判断。
+`package_renderer` 只读取已通过终审的 `ScopeBundle`、`DeliveryBundle` 和 SOW 模板，先生成候选工作簿，
+再由 LibreOffice 隔离回算并完整复读，最后生成配套说明。它不重新解释 PRD、HLD 或往期 SOW，也不
+重新执行范围判断；未得到 `VERIFIED` 工作簿证据时不发布。
 
 这些 Module 是内部可测试 seam，不是新的用户命令，也不重新形成多 Skill 工作流。
 
@@ -362,7 +363,8 @@ Diff 基准固定为：
 | 输入与规则均未变化 | 复用当前有效结果 |
 | 输入发生变化 | 重算受影响切片 |
 | 上次为 `BLOCKED` 且已补充材料 | 基于 `pending/` 继续生成 |
-| 仅 SOW 模板变化 | 仅完整重渲染 Package |
+| SOW 模板变化 | 重新编译 Delivery、终审并完整重渲染 Package |
+| 仅 renderer 合同变化 | 复用 Scope/Delivery，仅完整重渲染 Package |
 | 编译合同或算法版本变化 | 重新编译其影响的全部数据 |
 
 首次生成：
@@ -435,7 +437,7 @@ intake
 
 - Design Task 必须属于受该决策影响的实施 Story；
 - Design Task 通过 AC 引用或依赖关系关联其支持的实施结果；
-- 跨多个 Story 的设计事项只计算一次，由一个主 Story 承载，并记录其他依赖 Story；
+- 跨业务 Feature 的共享设计事项先形成技术 Feature，再由一个对应 Story 计算一次，并记录其他依赖 Story；
 - 常规、已包含在实施基础单元中的设计活动不重复计价；
 - 只有可独立估算的架构设计、专题调研、PoC 或关键方案决策才创建 Design Task；
 - 只有设计成果本身独立采购、独立验收且实施不在本 SOW 中时，才创建独立普通技术 Story；
@@ -444,7 +446,7 @@ intake
 例如：
 
 ```text
-Story：完成客户主数据跨系统同步
+Story：[客户主数据] 系统同步跨域变更
   |- 架构方案设计 Task
   |- 接口或适配实现 Task
   |- 数据处理 Task
@@ -502,6 +504,11 @@ Story：完成客户主数据跨系统同步
 发生阻断时，不覆盖上一次有效结果；插件一次性汇总最少量问题。用户补充后，从受影响切片继续，
 不重新要求确认已经有效的内容。
 
+每个问题都必须在同一次展示中分别给出问题、为什么要问、答案决定什么和未回答后果。fresh-context
+终审自动执行；只有确实需要用户输入或确认时，才先展示自然语言结论，内容较长时提供
+可打开的 Markdown 或 Excel 文件。内部 ID、hash、Schema 名和阶段 token 只保留为精确版本绑定，
+不作为使用者需要识别的确认正文。
+
 ## 13. 输出合同
 
 每次成功执行都生成：
@@ -513,9 +520,17 @@ sow-notes.md
 
 ### 13.1 `sow.xlsx`
 
-工作簿是可离线评审、估算和签署的交付包。基础人天、任务规则、复杂度、SIT、UAT、风险、公式和
-取整规则只来自 SOW 模板。生成器必须保留命名 Table、公式原型、样式、行高、自动筛选和跨 Sheet
-引用，并在生成后复读验证。
+工作簿是可离线评审、估算和签署的交付包。基础人天、任务规则、复杂度、SIT、UAT、公式和取整规则
+只来自 SOW 模板。正式模板固定为四个 Sheet：`01-需求故事`、`02-任务清单`、`03-工作量汇总`、
+`90-估算标准`。生成器保留五个命名 Table、公式、样式、行高、筛选和保护；LibreOffice 负责回算，
+复读同时验证公式存在、缓存数值、每行 `通过`、当前目录、全部参数状态以及总计恒等关系。模板中
+`待样本校准` 的状态原样披露，不伪装为固定规则。
+
+当前只支持 XLSX SOW 模板。`prepare` 在每轮开始时读取当时项目模板，并立即把原字节固定为
+`.ai-sow/work/run-template.xlsx`。Delivery 编译、终审、渲染和复读只使用该副本；运行期间项目
+模板变化不影响当前轮次。下一轮发现模板与上一 generation 不同时，必须重新编译 Delivery 与终审，
+不可只用新标准重渲染旧 Task。当前 Task 目录、工作方式、S/M/L/X 标准与人天只从本轮模板的
+`90-估算标准` 读取。
 
 ### 13.2 `sow-notes.md`
 
@@ -564,6 +579,8 @@ sow-notes.md
 |- generations/
 |  `- 000001/
 |     |- manifest.json
+|     |- input/
+|     |  `- sow-template.xlsx
 |     |- data/
 |     |  |- scope.json
 |     |  `- delivery.json
@@ -591,7 +608,7 @@ sow-notes.md
 
 - 输入解析失败：保留 `pending/`，报告具体不可读文件，不修改稳定结果；
 - 编译或终审失败：保留诊断和 `pending/`，不发布候选 Bundle；
-- 工作簿渲染或复读失败：不更新 `current.json`，上一份 generation 和输出保持完整；
+- 工作簿渲染、LibreOffice 回算或完整复读失败：不更新 `current.json`，上一份 generation 和输出保持完整；
 - 用户补充阻断信息：合并到 `pending/`，只重算受影响切片；
 - 输入未变化：验证当前 hash 后复用现有 Package；
 - `work/` 遗留：下一次运行可以安全清理或覆盖，不把它当作有效状态。
@@ -665,7 +682,7 @@ SOW 模板
 - 无关 Feature 不被重算；
 - 新切片未生成的旧 Story/Task 自动消失；
 - 输入完全未变化时复用当前结果；
-- 仅 SOW 模板变化时只重渲染。
+- 仅 renderer 合同变化时只重渲染；SOW 模板变化时重新编译 Delivery。
 
 ### 17.4 E2E 与故障测试
 

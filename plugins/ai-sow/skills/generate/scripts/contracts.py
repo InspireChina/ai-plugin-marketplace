@@ -214,7 +214,7 @@ def validate_final_review(
 
     for field, identifier in (
         ("notes", "noteId"),
-        ("questions", "blockingConditionId"),
+        ("questions", "questionId"),
     ):
         items = value.get(field)
         if not isinstance(items, list):

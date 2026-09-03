@@ -23,7 +23,7 @@
       "deliveryIdDecisionsPath": "tests/fixtures/explicit-architecture/brownfield-delivery-id-decisions.json",
       "finalReviewPath": "skills/generate/fixtures/brownfield/final-review.json",
       "expectedDecision": "PASS_WITH_NOTES",
-      "expectedCounts": {"features": 2, "stories": 1, "tasks": 3}
+      "expectedCounts": {"features": 2, "stories": 2, "tasks": 4}
     }
   ]
 }

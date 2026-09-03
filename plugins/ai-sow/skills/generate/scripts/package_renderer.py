@@ -7,12 +7,13 @@ import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from contracts import canonical_json_bytes, sha256_bytes
-from models import RenderedPackage
-from workbook import write_workbook
+from contracts import sha256_bytes
+from models import RenderedPackage, WorkbookAudit
+from office_engine import OfficeEngineError, recalculate_workbook, require_office_engine
+from workbook import audit_calculated_workbook, write_workbook
 
 
-RENDERER_CONTRACT = "generation-renderer-v1"
+RENDERER_CONTRACT = "generation-renderer-v7"
 
 
 class PackageRenderError(ValueError):
@@ -64,6 +65,7 @@ def render_notes(
     scope: Mapping[str, object],
     delivery: Mapping[str, object],
     review: Mapping[str, object],
+    workbook_audit: WorkbookAudit,
 ) -> str:
     notes = _review_notes(review)
     sources = [
@@ -131,6 +133,11 @@ def render_notes(
         if review.get("decision") == "PASS" and not _mappings(review.get("notes"))
         else str(review.get("decision"))
     )
+    parameter_statuses = [
+        f"{code}：{status}"
+        for code, status in workbook_audit.parameter_statuses
+        if status != "固定规则"
+    ]
     sections = [
         (
             "生成与输入版本",
@@ -152,6 +159,7 @@ def render_notes(
         ("未决 NFR", unresolved_nfr),
         ("风险与变化触发", risks),
         ("往期 SOW 沿用", carry_forward),
+        ("模板参数校准状态", parameter_statuses),
     ]
     lines = ["# SOW 生成说明", ""]
     for heading, values in sections:
@@ -178,37 +186,45 @@ def render_package(
     try:
         output = temporary / "output"
         output.mkdir()
+        candidate_path = output / "sow.candidate.xlsx"
         workbook_path = output / "sow.xlsx"
         notes_path = output / "sow-notes.md"
-        manifest_sha = sha256_bytes(canonical_json_bytes(input_manifest))
-        scope_sha = sha256_bytes(canonical_json_bytes(scope))
-        delivery_sha = sha256_bytes(canonical_json_bytes(delivery))
-        input_hashes = {
-            "sourceRequirements": manifest_sha,
-            "asis": scope_sha,
-            "design": scope_sha,
-            "derivedRequirements": scope_sha,
-            "delivery": delivery_sha,
-            "estimate": delivery_sha,
-        }
         try:
             write_workbook(
                 Path(template_path),
                 dict(scope),
                 dict(delivery),
-                workbook_path,
-                input_hashes,
+                candidate_path,
             )
         except (OSError, KeyError, TypeError, ValueError, zipfile.BadZipFile) as error:
             raise PackageRenderError(
                 "WORKBOOK_RENDER_FAILED", "工作簿渲染失败。"
             ) from error
+        try:
+            engine = require_office_engine()
+            recalculate_workbook(candidate_path, workbook_path, engine)
+            workbook_audit = audit_calculated_workbook(
+                workbook_path,
+                Path(template_path),
+                dict(scope),
+                dict(delivery),
+                engine,
+            )
+        except OfficeEngineError as error:
+            raise PackageRenderError(error.code, str(error)) from error
+        except (OSError, KeyError, TypeError, ValueError, zipfile.BadZipFile) as error:
+            raise PackageRenderError(
+                "WORKBOOK_VERIFY_FAILED", "工作簿计算结果复读失败。"
+            ) from error
+        finally:
+            candidate_path.unlink(missing_ok=True)
         notes_text = render_notes(
             generation_id=generation_id,
             input_manifest=input_manifest,
             scope=scope,
             delivery=delivery,
             review=review,
+            workbook_audit=workbook_audit,
         )
         notes_path.write_text(notes_text, encoding="utf-8", newline="\n")
         if notes_path.read_text(encoding="utf-8") != notes_text:
@@ -228,6 +244,7 @@ def render_package(
             workbook_sha256=sha256_bytes(workbook_final.read_bytes()),
             notes_sha256=sha256_bytes(notes_final.read_bytes()),
             files=("output/sow-notes.md", "output/sow.xlsx"),
+            workbook_audit=workbook_audit,
         )
     except PackageRenderError:
         raise

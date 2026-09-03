@@ -2,11 +2,17 @@
   "contract": "ai-sow-id-decisions-v1",
   "decisions": [
     {"objectType": "STORY", "objectId": "story-refund-processing", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "STORY", "objectId": "story-refund-notification", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
     {"objectType": "ACCEPTANCE_CRITERION", "objectId": "ac-refund-result", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "ACCEPTANCE_CRITERION", "objectId": "ac-refund-recovery", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "ACCEPTANCE_CRITERION", "objectId": "ac-refund-notification", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "ACCEPTANCE_CRITERION", "objectId": "ac-refund-notification-retry", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
     {"objectType": "TASK", "objectId": "task-refund-recovery-design", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
     {"objectType": "TASK", "objectId": "task-refund-orchestration", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
     {"objectType": "TASK", "objectId": "task-payment-refund-integration", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "TASK", "objectId": "task-refund-notification", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
     {"objectType": "DEPENDENCY", "objectId": "dependency-recovery-before-build", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
-    {"objectType": "DEPENDENCY", "objectId": "dependency-integration-before-orchestration", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"}
+    {"objectType": "DEPENDENCY", "objectId": "dependency-integration-before-orchestration", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "DEPENDENCY", "objectId": "dependency-orchestration-before-notification", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"}
   ]
 }

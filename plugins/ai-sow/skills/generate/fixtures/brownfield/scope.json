@@ -63,7 +63,7 @@
         "decision": "IN_SCOPE",
         "rationale": "退款状态通知是本期用户可见结果。",
         "designItemIds": ["design-item-refund-orchestration"],
-        "effectiveStartItemIds": ["effective-start-refund-api"],
+        "effectiveStartItemIds": ["effective-start-refund-status-query"],
         "requiredIntegrationIds": ["integration-payment-refund"],
         "requiredNfrIds": ["nfr-recovery-objective"]
       }
@@ -89,16 +89,51 @@
   "effectiveStartItems": [
     {
       "effectiveStartItemId": "effective-start-refund-api",
-      "name": "既有退款接口",
-      "summary": "项目启动时已有可调用的退款申请和状态查询接口。",
+      "matchLevel": "TASK_INSTANCE",
+      "baseUnit": "BU-BUSINESS-SERVICE-API",
+      "name": "既有退款申请接口",
+      "summary": "项目启动时已有可调用的退款申请接口。",
+      "commitmentIds": [],
+      "featureIds": ["feature-refund-processing"],
+      "sourceRefs": [
+        {
+          "sourceId": "prior-sow-refund",
+          "anchorId": "anchor-prior-refund-application-api",
+          "locator": "table:系统能力/退款申请接口",
+          "sha256": "c322222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    },
+    {
+      "effectiveStartItemId": "effective-start-refund-status-query",
+      "matchLevel": "TASK_INSTANCE",
+      "baseUnit": "BU-BUSINESS-SERVICE-API",
+      "name": "既有退款状态查询接口",
+      "summary": "项目启动时已有可调用的退款状态查询接口。",
+      "commitmentIds": [],
+      "featureIds": ["feature-refund-notification"],
+      "sourceRefs": [
+        {
+          "sourceId": "prior-sow-refund",
+          "anchorId": "anchor-prior-refund-status-query-api",
+          "locator": "table:系统能力/退款状态查询接口",
+          "sha256": "c422222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    },
+    {
+      "effectiveStartItemId": "effective-start-refund-module",
+      "matchLevel": "CAPABILITY",
+      "name": "既有退款模块能力",
+      "summary": "往期材料表明退款模块已有相关能力，但不足以证明某一基础单元实例可直接调整或复用。",
       "commitmentIds": [],
       "featureIds": ["feature-refund-processing", "feature-refund-notification"],
       "sourceRefs": [
         {
           "sourceId": "prior-sow-refund",
-          "anchorId": "anchor-prior-refund-api",
-          "locator": "table:系统能力/退款接口",
-          "sha256": "c222222222222222222222222222222222222222222222222222222222222222"
+          "anchorId": "anchor-prior-refund-module",
+          "locator": "table:系统能力/退款模块",
+          "sha256": "c522222222222222222222222222222222222222222222222222222222222222"
         }
       ]
     }

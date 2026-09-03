@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import stat
 import sys
+import zipfile
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -20,8 +22,14 @@ from contracts import (  # noqa: E402
     validate_contract,
     validate_generation_hash_closure,
 )
-from models import CurrentGeneration, PublicationResult  # noqa: E402
+from models import (  # noqa: E402
+    CurrentGeneration,
+    PublicationResult,
+    workbook_audit_value,
+)
+from office_engine import OfficeEngineError, require_office_engine  # noqa: E402
 from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
+from workbook import audit_calculated_workbook  # noqa: E402
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -50,15 +58,196 @@ def _require_valid(value: object, schema_name: str, path: str) -> Mapping[str, o
     return value
 
 
-def _read_mapping(files: ProjectFiles, relative_path: str) -> Mapping[str, object]:
-    return _require_valid(files.read_json(relative_path), Path(relative_path).name, relative_path)
-
-
 def _verify_hash(files: ProjectFiles, path: object, expected: object) -> None:
     if not isinstance(path, str) or not isinstance(expected, str):
         raise _error("PROJECT_HASH_CLOSURE_INVALID", str(path), "artifact hash binding is invalid")
     if sha256_bytes(files.read_bytes(path)) != expected:
         raise _error("PROJECT_HASH_MISMATCH", path, "stored artifact hash does not match")
+
+
+def _verify_staged_template(
+    staged_generation_root: Path, manifest: Mapping[str, object]
+) -> Path:
+    generation_id = manifest.get("generationId")
+    expected_path = (
+        f".ai-sow/generations/{generation_id}/input/sow-template.xlsx"
+        if isinstance(generation_id, str)
+        else None
+    )
+    template_path = manifest.get("templatePath")
+    template_sha256 = manifest.get("templateSha256")
+    if template_path != expected_path or not isinstance(template_sha256, str):
+        raise _error(
+            "PROJECT_HASH_CLOSURE_INVALID",
+            str(template_path),
+            "generation template must be stored under its immutable input directory",
+        )
+    staged_template = Path(staged_generation_root) / "input/sow-template.xlsx"
+    if not staged_template.is_file():
+        raise _error(
+            "PROJECT_PATH_MISSING",
+            str(template_path),
+            "generation template snapshot is missing",
+        )
+    if sha256_bytes(staged_template.read_bytes()) != template_sha256:
+        raise _error(
+            "PROJECT_HASH_MISMATCH",
+            str(template_path),
+            "generation template snapshot hash does not match",
+        )
+    return staged_template
+
+
+def _require_verified_workbook(
+    manifest: Mapping[str, object],
+    *,
+    staged_generation_root: Path | None = None,
+) -> Mapping[str, object]:
+    verification = manifest.get("workbookVerification")
+    if not isinstance(verification, Mapping) or verification.get("trustState") != "VERIFIED":
+        raise _error(
+            "GENERATION_WORKBOOK_UNVERIFIED",
+            "manifest.json",
+            "generation workbook lacks verified calculation evidence",
+        )
+    engine = verification.get("engine")
+    if not isinstance(engine, Mapping) or not all(
+        isinstance(engine.get(field), str) and str(engine[field]).strip()
+        for field in ("name", "version")
+    ):
+        raise _error(
+            "GENERATION_WORKBOOK_UNVERIFIED",
+            "manifest.json",
+            "generation workbook engine evidence is invalid",
+        )
+    for field in ("storyCount", "taskCount"):
+        value = verification.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise _error(
+                "GENERATION_WORKBOOK_UNVERIFIED",
+                "manifest.json",
+                "generation workbook row-count evidence is invalid",
+            )
+    for field in ("directDays", "sitDays", "uatDays", "totalDays"):
+        value = verification.get(field)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or value < 0
+        ):
+            raise _error(
+                "GENERATION_WORKBOOK_UNVERIFIED",
+                "manifest.json",
+                "generation workbook total evidence is invalid",
+            )
+    if not math.isclose(
+        float(verification["totalDays"]),
+        float(verification["directDays"])
+        + float(verification["sitDays"])
+        + float(verification["uatDays"]),
+        abs_tol=1e-9,
+    ):
+        raise _error(
+            "GENERATION_WORKBOOK_UNVERIFIED",
+            "manifest.json",
+            "generation workbook totals are inconsistent",
+        )
+    statuses = verification.get("parameterStatuses")
+    if not isinstance(statuses, list) or not statuses:
+        raise _error(
+            "GENERATION_WORKBOOK_UNVERIFIED",
+            "manifest.json",
+            "generation workbook parameter evidence is missing",
+        )
+    codes: set[str] = set()
+    for item in statuses:
+        if not isinstance(item, Mapping):
+            raise _error(
+                "GENERATION_WORKBOOK_UNVERIFIED",
+                "manifest.json",
+                "generation workbook parameter evidence is invalid",
+            )
+        code = item.get("code")
+        status = item.get("status")
+        if (
+            not isinstance(code, str)
+            or not code
+            or code in codes
+            or not isinstance(status, str)
+            or not status.strip()
+        ):
+            raise _error(
+                "GENERATION_WORKBOOK_UNVERIFIED",
+                "manifest.json",
+                "generation workbook parameter evidence is invalid",
+            )
+        codes.add(code)
+    if verification.get("formulaErrors") != []:
+        raise _error(
+            "GENERATION_WORKBOOK_UNVERIFIED",
+            "manifest.json",
+            "generation workbook contains formula errors",
+        )
+    if staged_generation_root is not None:
+        workbook = Path(staged_generation_root) / "output/sow.xlsx"
+        expected_hash = manifest.get("workbookSha256")
+        if (
+            not workbook.is_file()
+            or not isinstance(expected_hash, str)
+            or sha256_bytes(workbook.read_bytes()) != expected_hash
+        ):
+            raise _error(
+                "GENERATION_WORKBOOK_UNVERIFIED",
+                "output/sow.xlsx",
+                "verified workbook hash does not match staged output",
+            )
+    return verification
+
+
+def _reaudit_staged_workbook(
+    files: ProjectFiles,
+    manifest: Mapping[str, object],
+    staged_generation_root: Path,
+) -> None:
+    staged_template = _verify_staged_template(staged_generation_root, manifest)
+    verification = manifest["workbookVerification"]
+    assert isinstance(verification, Mapping)
+    engine = verification["engine"]
+    assert isinstance(engine, Mapping)
+    try:
+        audit_engine = require_office_engine()
+        if (
+            audit_engine.name != engine.get("name")
+            or audit_engine.version != engine.get("version")
+        ):
+            raise ValueError("publication audit engine differs from render engine")
+        audit = audit_calculated_workbook(
+            staged_generation_root / "output/sow.xlsx",
+            staged_template,
+            dict(_staged_json(staged_generation_root / "data/scope.json")),
+            dict(_staged_json(staged_generation_root / "data/delivery.json")),
+            audit_engine,
+        )
+    except (
+        OfficeEngineError,
+        OSError,
+        KeyError,
+        TypeError,
+        ValueError,
+        zipfile.BadZipFile,
+    ) as error:
+        raise _error(
+            "GENERATION_WORKBOOK_UNVERIFIED",
+            "output/sow.xlsx",
+            "staged workbook failed independent publication audit",
+        ) from error
+    if workbook_audit_value(audit, require_verified=True) != dict(verification):
+        raise _error(
+            "GENERATION_WORKBOOK_UNVERIFIED",
+            "manifest.json",
+            "staged workbook audit does not match manifest evidence",
+        )
 
 
 def _verify_input_revision(files: ProjectFiles, revision_id: str) -> Mapping[str, object]:
@@ -126,11 +315,26 @@ def _verify_generation(
             manifest_path,
             "generation manifest IDs do not match their directories",
         )
+    expected_template_path = (
+        f".ai-sow/generations/{generation_id}/input/sow-template.xlsx"
+    )
+    if manifest.get("templatePath") != expected_template_path:
+        raise _error(
+            "PROJECT_HASH_CLOSURE_INVALID",
+            str(manifest.get("templatePath")),
+            "generation template must be stored under its immutable input directory",
+        )
+    # v1 generations remain readable only as immutable impact evidence. New
+    # publications always use the current renderer and are independently
+    # re-audited by publish_success before the current pointer can move.
+    if manifest.get("rendererContract") != "generation-renderer-v1":
+        _require_verified_workbook(manifest)
     _verify_input_revision(files, revision_id)
     for path_field, hash_field in (
         ("inputManifestPath", "inputManifestSha256"),
         ("scopePath", "scopeSha256"),
         ("deliveryPath", "deliverySha256"),
+        ("templatePath", "templateSha256"),
         ("workbookPath", "workbookSha256"),
         ("notesPath", "notesSha256"),
     ):
@@ -286,6 +490,17 @@ def publish_success(
             "staged generation IDs do not match publication targets",
         )
 
+    _require_verified_workbook(
+        generation_manifest,
+        staged_generation_root=Path(staged_generation_root),
+    )
+    _verify_staged_template(Path(staged_generation_root), generation_manifest)
+    _reaudit_staged_workbook(
+        files,
+        generation_manifest,
+        Path(staged_generation_root),
+    )
+
     files.write_atomic(
         PUBLICATION_LEDGER,
         canonical_json_bytes(
@@ -340,15 +555,15 @@ def publish_success(
     decision = review.get("decision") if isinstance(review, Mapping) else None
     change_counts = manifest.get("changeCounts")
     counts = dict(change_counts) if isinstance(change_counts, Mapping) else {}
-    feature_counts = counts.get("features")
-    feature_values = (
-        {
-            key: int(feature_counts.get(key, 0))
-            for key in ("added", "updated", "removed")
+    collection_values = {
+        collection: {
+            key: int(values.get(key, 0))
+            for key in ("affected", "recomputed", "reused", "deleted", "final")
         }
-        if isinstance(feature_counts, Mapping)
-        else {"added": 0, "updated": 0, "removed": 0}
-    )
+        for collection in ("features", "stories", "acceptanceCriteria", "tasks")
+        for values in [counts.get(collection)]
+        if isinstance(values, Mapping)
+    }
     return PublicationResult(
         outcome="PUBLISHED",
         decision=decision if decision in {"PASS", "PASS_WITH_NOTES", "BLOCKED"} else None,
@@ -356,9 +571,7 @@ def publish_success(
         revision_id=target_revision_id,
         workbook_path=str(manifest["workbookPath"]),
         notes_path=str(manifest["notesPath"]),
-        feature_counts=feature_values,
-        recomputed_story_count=int(counts.get("recomputedStories", 0)),
-        recomputed_task_count=int(counts.get("recomputedTasks", 0)),
+        change_counts=collection_values,
         questions=(),
     )
 

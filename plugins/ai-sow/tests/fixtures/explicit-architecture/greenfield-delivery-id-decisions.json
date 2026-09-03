@@ -3,6 +3,7 @@
   "decisions": [
     {"objectType": "STORY", "objectId": "story-refund-processing", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
     {"objectType": "ACCEPTANCE_CRITERION", "objectId": "ac-refund-submit", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
+    {"objectType": "ACCEPTANCE_CRITERION", "objectId": "ac-refund-invalid", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"},
     {"objectType": "TASK", "objectId": "task-refund-service", "disposition": "NEW", "meaningPreserved": false, "rationale": "首个 revision 中的新对象。"}
   ]
 }

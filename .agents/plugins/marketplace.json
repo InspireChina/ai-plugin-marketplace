@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "ai-sow",
-      "description": "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿。",
+      "description": "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿，并用 LibreOffice 回算后发布。",
       "source": {
         "source": "local",
         "path": "./plugins/ai-sow"

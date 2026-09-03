@@ -34,11 +34,7 @@
       "path": "inputs/refund-hld.md"
     }
   ],
-  "questionnaireAnswers": [
-    {
-      "questionId": "question-environment-readiness",
-      "answer": "测试环境由客户在开发完成前五个工作日提供。"
-    }
-  ],
+  "questions": [],
+  "questionnaireAnswers": [],
   "currentStateDelta": null
 }

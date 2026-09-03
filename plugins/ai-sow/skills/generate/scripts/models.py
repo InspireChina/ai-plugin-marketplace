@@ -37,7 +37,8 @@ class InputRequest:
     mode: ProjectMode
     responsibility_boundaries: tuple[Mapping[str, str], ...]
     sources: tuple[SourceRequest, ...]
-    questionnaire_answers: tuple[Mapping[str, str], ...]
+    questions: tuple[Mapping[str, object], ...]
+    questionnaire_answers: tuple[Mapping[str, object], ...]
     current_state_delta: Mapping[str, object] | None
 
 
@@ -54,7 +55,6 @@ class AnchorChange:
 class InputChangeSet:
     exact_match: bool
     source_changes: tuple[AnchorChange, ...]
-    answer_ids: tuple[str, ...]
     responsibility_ids: tuple[str, ...]
 
 
@@ -77,6 +77,8 @@ class RunPlan:
     action: RunAction
     target_revision_id: str
     target_generation_id: str | None
+    template_snapshot_path: str
+    template_sha256: str
     impact: ImpactPlan
     scope_compiler_contract: str
     delivery_compiler_contract: str
@@ -91,9 +93,7 @@ class PublicationResult:
     revision_id: str | None
     workbook_path: str | None
     notes_path: str | None
-    feature_counts: Mapping[str, int]
-    recomputed_story_count: int
-    recomputed_task_count: int
+    change_counts: Mapping[str, Mapping[str, int]]
     questions: tuple[str, ...]
 
 
@@ -109,7 +109,9 @@ class Diagnostic:
 class SourceAnchor:
     anchor_id: str
     source_id: str
-    kind: Literal["HEADING", "PARAGRAPH", "TABLE_ROW", "SHEET_ROW"]
+    kind: Literal[
+        "HEADING", "PARAGRAPH", "TABLE_ROW", "SHEET_ROW", "QUESTION_ANSWER"
+    ]
     locator: str
     normalized_text: str
     sha256: str
@@ -189,8 +191,59 @@ class FinalReviewResult:
     review_path: str
     review_sha256: str
     notes: tuple[str, ...]
-    questions: tuple[str, ...]
+    questions: tuple[Mapping[str, object], ...]
     diagnostics: tuple[Diagnostic, ...]
+
+
+@dataclass(frozen=True)
+class WorkbookAudit:
+    trust_state: Literal["CANDIDATE", "VERIFIED"]
+    story_count: int
+    task_count: int
+    direct_days: float | None
+    sit_days: float | None
+    uat_days: float | None
+    total_days: float | None
+    parameter_statuses: tuple[tuple[str, str], ...]
+    formula_errors: tuple[str, ...]
+    engine_name: str | None
+    engine_version: str | None
+
+
+def workbook_audit_value(
+    audit: WorkbookAudit, *, require_verified: bool = False
+) -> dict[str, object]:
+    if require_verified and (
+        audit.trust_state != "VERIFIED"
+        or audit.engine_name is None
+        or audit.engine_version is None
+        or audit.direct_days is None
+        or audit.sit_days is None
+        or audit.uat_days is None
+        or audit.total_days is None
+    ):
+        raise ValueError("workbook audit is not verified")
+    return {
+        "trustState": audit.trust_state,
+        "engine": {"name": audit.engine_name, "version": audit.engine_version},
+        "storyCount": audit.story_count,
+        "taskCount": audit.task_count,
+        "directDays": audit.direct_days,
+        "sitDays": audit.sit_days,
+        "uatDays": audit.uat_days,
+        "totalDays": audit.total_days,
+        "parameterStatuses": [
+            {"code": code, "status": status}
+            for code, status in audit.parameter_statuses
+        ],
+        "formulaErrors": list(audit.formula_errors),
+    }
+
+
+@dataclass(frozen=True)
+class OfficeRoundtrip:
+    engine: Mapping[str, str]
+    output_path: str
 
 
 @dataclass(frozen=True)
@@ -201,3 +254,4 @@ class RenderedPackage:
     workbook_sha256: str
     notes_sha256: str
     files: tuple[str, ...]
+    workbook_audit: WorkbookAudit

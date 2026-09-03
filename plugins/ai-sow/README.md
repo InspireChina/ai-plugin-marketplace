@@ -23,6 +23,10 @@ AI SOW `0.1.0-beta.1` 通过唯一公开 Skill `ai-sow:generate`，把 PRD、HLD
 被阻断的输入保留在 `pending/`。用户补充资料后再次调用 `ai-sow:generate`，会从同一 pending 请求
 续跑；已经提供且仍有效的信息不会重复询问，上一份有效 SOW 也不会被覆盖。
 
+所有问题都在同一次展示中逐项给出问题、为什么要问、答案决定什么和未回答后果。范围或终审确认
+使用自然语言结论；内容较长时提供可打开的 Markdown 或 Excel 评审文件。hash、内部 ID、Schema 名和
+阶段 token 只用于后台精确绑定，不要求使用者据此判断正在确认什么。
+
 ## 输入合同
 
 | 来源角色 | 支持格式 | 规则 |
@@ -73,7 +77,8 @@ Brownfield 使用往期 SOW 建立合同 As-Is、历史承诺与 Effective Start
 后续仍调用 `ai-sow:generate`。工作流把当前 pending 输入与最近一次成功 revision 比较：
 
 - 输入和规则都未变化：复用当前 generation；
-- 只有模板变化：保留 Scope/Delivery，只完整重渲染 Package；
+- 只有 renderer 合同变化：保留 Scope/Delivery，只完整重渲染 Package；
+- 项目模板相对上一份 generation 变化：完整重新编译 Scope 和 Delivery、重新终审并渲染；
 - 语义输入变化：定位来源锚点，扩大至完整受影响 Feature 闭包，重算并替换该切片；
 - 编译合同变化：重算受该合同影响的全部数据。
 
@@ -100,27 +105,55 @@ Brownfield 使用往期 SOW 建立合同 As-Is、历史承诺与 Effective Start
 ```
 
 revision 与 generation 发布后不可变。候选、审核和渲染全部完成后才原子更新 `current.json`；失败、
-崩溃或阻断均保留上一份有效结果。generation manifest 绑定输入 revision、Bundle、模板和输出 hash。
+崩溃或阻断均保留上一份有效结果。generation manifest 绑定输入 revision、Bundle、模板、输出 hash，
+以及真实办公软件回算后的工作簿验证证据。
 
 `sow-notes.md` 固定披露输入版本、As-Is 证据边界、关键推断、估算假设、待设计事项、各方责任、排除
 范围、冲突处置、未决 NFR、风险和变更触发条件。`PASS_WITH_NOTES` 事项不能只留在内部日志。
 
-成功摘要只报告审核结果、本次 Feature 新增/更新/删除数、重算 Story/Task 数和两个输出路径。自动生成
+成功摘要只报告审核结果、Feature/Story/AC/Task 的受影响、重算、复用、删除和最终数量，以及两个输出路径。自动生成
 不代表客户已经签署、接受或赋予 SOW 法律效力。
 
 ## 工作簿规则
 
 [SOW 模板](skills/generate/assets/sow-template.xlsx)是基础单元、任务规则、基础人天、复杂度、SIT、UAT、
-风险、公式和取整的唯一计算权威。生成器只投影已经通过终审的稳定数据，保留命名 Table、公式原型、
-样式、行高、自动筛选、数据验证和跨 Sheet 引用，并在发布前复读。
+公式和取整的唯一计算权威。正式工作簿固定为 `01-需求故事`、`02-任务清单`、`03-工作量汇总`、
+`90-估算标准` 四个 Sheet。生成器先写候选件，再用 LibreOffice 在隔离目录中重算；只有 5 个命名
+Table、全部输入行、公式缓存、校验结果、参数/目录、汇总和一页宽/纵向分页设置均复读通过，才以
+`VERIFIED` 发布。公式和人天不会在 Python 或稳定 JSON 中重算。
 
-任务模型、37 项基础单元和 13 个任务族见
+当前只支持 XLSX 模板。每轮 `prepare` 读取当时的项目模板并保存 `.ai-sow/work/run-template.xlsx` 作为
+本轮专用副本；Delivery 编译、终审、渲染和复读只使用该副本。运行期间改动项目模板不影响当前轮次；
+下一轮检测到模板变化时重新编译 Delivery，而不是只用新模板重渲染旧 Task。成功 generation 还会在
+自身的 `input/sow-template.xlsx` 保存本轮模板原字节并由 manifest hash 闭合。
+
+Epic 表达完整业务线或长期技术能力域，Feature 表达用户可感知且可归责的模块；Story 使用自然的
+`[模块/接口] 角色或对象＋动作` 标题，只归属一个 Feature、至少包含两条 AC 且最多包含四个 Task。
+Delivery 先从来源完成并复核全部 Story/AC，再以这些已成立的 Story/AC 进入 Task 拆分；Task 不得反向
+补造或改写上游范围。两遍仍写入同一候选，不增加用户批准步骤。
+Story 稳定数据不保存描述；九列需求故事表不再保存内部故事路径，Task 直接引用唯一 Story 名称。每条
+AC 以 `• ` 开头并独占一行，任务列表逐行显示 `[任务类型/工作方式/复杂度] 任务名称`。备注只显示对象
+特有的特殊情况、不确定性、风险、例外、依赖或评审边界；跨 Feature 的项目级通用事项只进入
+`sow-notes.md`，不在 Story 行重复。Story 人天仅保留为结果展示和后续基准校准输入，不作为拆分正确性或评审通过门禁；需求、子需求、Story、AC 与 Task 的语义边界和可独立验收性才是粒度判断依据。项目直接开发和
+UAT 由模板基于 Task 人天汇总，因此相同 Task 不会因 Story 拆分或合并改变项目总人天。
+
+Task 名称必须点明一个与模板任务类型匹配的计数对象。接口 Task 一行只对应一个可独立开发、测试和
+估算的接口；属于该接口的校验、事务、权限和异常处理写入同一 Task 及其 AC，形成独立调用契约时才
+另建 Task。泛化名称或并列多个接口由编写与终审结合来源和模板语义判断，机械编译器不通过中文标题
+关键词推断业务含义。
+
+模板中标记为 `待样本校准` 的参数会按原状态进入 `sow-notes.md`，不会被误写为固定规则。空 Story 或
+空 Task 不能生成形式上成功的工作簿。
+
+当前任务目录、计数口径、包含/排除项、可用工作方式与 S/M/L/X 标准只以本轮模板的
+`90-估算标准` 为准。概念、判定方法与字段说明见
 [SOW 任务分类与开发交付人天标准](docs/reference/SOW任务分类与开发交付人天标准_v1.3.md)。示例工作簿见
 [SOW 估算与生成示例](docs/reference/SOW估算与生成示例_v1.3.xlsx)。
 
 ## 运行时
 
-普通用户无需预装 Python 或 uv。macOS/Linux 使用 `bootstrap.sh`，Windows 使用 `bootstrap.ps1`；
+普通用户无需预装 Python 或 uv。正式发布还需要可执行的 LibreOffice（可通过 `AI_SOW_OFFICE_BIN`
+指定，或由 `soffice/libreoffice` PATH 发现）；缺失时安全阻断并保留 last-known-good。macOS/Linux 使用 `bootstrap.sh`，Windows 使用 `bootstrap.ps1`；
 bootstrap 在插件安装副本内准备固定 uv、managed Python、锁定依赖和 `.venv`。后续执行不要求 uv 位于 PATH，
 也不需要激活虚拟环境。完整约束见[运行时环境合同](references/runtime-environment.md)。
 

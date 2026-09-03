@@ -10,6 +10,8 @@
     "action",
     "targetRevisionId",
     "targetGenerationId",
+    "templateSnapshotPath",
+    "templateSha256",
     "impact",
     "scopeCompilerContract",
     "deliveryCompilerContract",
@@ -32,10 +34,12 @@
     },
     "targetRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
     "targetGenerationId": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9]{6}$"}]},
+    "templateSnapshotPath": {"const": ".ai-sow/work/run-template.xlsx"},
+    "templateSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
     "impact": {"$ref": "#/$defs/impact"},
-    "scopeCompilerContract": {"const": "scope-compiler-v1"},
-    "deliveryCompilerContract": {"const": "delivery-compiler-v1"},
-    "rendererContract": {"const": "generation-renderer-v1"}
+    "scopeCompilerContract": {"const": "scope-compiler-v2"},
+    "deliveryCompilerContract": {"const": "delivery-compiler-v5"},
+    "rendererContract": {"const": "generation-renderer-v7"}
   },
   "$defs": {
     "impact": {

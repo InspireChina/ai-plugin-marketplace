@@ -277,6 +277,7 @@
       "additionalProperties": false,
       "required": [
         "effectiveStartItemId",
+        "matchLevel",
         "name",
         "summary",
         "commitmentIds",
@@ -287,6 +288,16 @@
         "effectiveStartItemId": {
           "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
           "description": "本期项目有效起点的稳定 ID。"
+        },
+        "matchLevel": {
+          "type": "string",
+          "enum": ["CAPABILITY", "TASK_INSTANCE"],
+          "description": "起点证据能够支撑能力级判断，还是唯一基础单元实例的工作方式判断。"
+        },
+        "baseUnit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "TASK_INSTANCE 起点所精确匹配的模板基础单元 ID。"
         },
         "name": {
           "type": "string",
@@ -310,7 +321,23 @@
           "$ref": "urn:ai-sow:generate:common:1#/$defs/sourceRefs",
           "description": "直接证明该有效起点的往期 SOW 或补充输入锚点。"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"matchLevel": {"const": "TASK_INSTANCE"}},
+            "required": ["matchLevel"]
+          },
+          "then": {"required": ["baseUnit"]}
+        },
+        {
+          "if": {
+            "properties": {"matchLevel": {"const": "CAPABILITY"}},
+            "required": ["matchLevel"]
+          },
+          "then": {"not": {"required": ["baseUnit"]}}
+        }
+      ]
     },
     "designItem": {
       "type": "object",

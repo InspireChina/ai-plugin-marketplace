@@ -33,6 +33,7 @@ from test_orchestrator import (  # noqa: E402
 EXPECTED_GENERATION_FILES = {
     "data/delivery.json",
     "data/scope.json",
+    "input/sow-template.xlsx",
     "manifest.json",
     "output/sow-notes.md",
     "output/sow.xlsx",
@@ -61,11 +62,30 @@ def test_installed_orchestrator_entrypoint_resolves_plugin_runtime(
     assert payload["diagnostics"][0]["code"] == "RUN_NOT_PREPARED"
 
 
-def stage_reviewed_run(project: Path, decision: str = "PASS") -> str:
-    request_path = write_request(project)
-    prepared = run_mode(project, "prepare", request=request_path, now=NOW)
+def stage_reviewed_run(
+    project: Path,
+    decision: str = "PASS",
+    *,
+    request_path: str | None = None,
+    prepared: dict[str, object] | None = None,
+) -> str:
+    request_path = request_path or write_request(project)
+    prepared = prepared or run_mode(project, "prepare", request=request_path, now=NOW)
     assert prepared["outcome"] == "READY_FOR_SCOPE", prepared
     prepare_scope_files(project, prepared)
+    if prepared["runPlan"]["impact"]["baselineGenerationId"] is not None:
+        for path in ("scope-ids.json",):
+            decisions = json.loads((project / path).read_text(encoding="utf-8"))
+            for item in decisions["decisions"]:
+                item.update(
+                    {
+                        "disposition": "UNCHANGED",
+                        "meaningPreserved": True,
+                        "previousId": item["objectId"],
+                        "rationale": "模板变化不改变对象语义，保留稳定 ID。",
+                    }
+                )
+            write_json(project / path, decisions)
     scope_result = run_mode(
         project,
         "accept-scope",
@@ -75,6 +95,20 @@ def stage_reviewed_run(project: Path, decision: str = "PASS") -> str:
     )
     assert scope_result["outcome"] == "READY_FOR_DELIVERY", scope_result
     prepare_delivery_files(project, prepared)
+    if prepared["runPlan"]["impact"]["baselineGenerationId"] is not None:
+        decisions = json.loads(
+            (project / "delivery-ids.json").read_text(encoding="utf-8")
+        )
+        for item in decisions["decisions"]:
+            item.update(
+                {
+                    "disposition": "UNCHANGED",
+                    "meaningPreserved": True,
+                    "previousId": item["objectId"],
+                    "rationale": "模板变化不改变对象语义，保留稳定 ID。",
+                }
+            )
+        write_json(project / "delivery-ids.json", decisions)
     delivery_result = run_mode(
         project,
         "accept-delivery",
@@ -137,9 +171,15 @@ def test_greenfield_first_run_publishes_one_revision_and_generation(
     result = run_mode(tmp_path, "publish", now=NOW)
     assert result["outcome"] == "PUBLISHED", result
     assert result["decision"] == "PASS"
-    assert result["featureCounts"] == {"added": 1, "updated": 0, "removed": 0}
-    assert result["recomputedStoryCount"] == 1
-    assert result["recomputedTaskCount"] == 1
+    assert result["changeCounts"]["features"] == {
+        "affected": 0,
+        "recomputed": 1,
+        "reused": 0,
+        "deleted": 0,
+        "final": 1,
+    }
+    assert result["changeCounts"]["stories"]["recomputed"] == 1
+    assert result["changeCounts"]["tasks"]["recomputed"] == 1
     assert generation_files(tmp_path, "000001") == EXPECTED_GENERATION_FILES
     assert (tmp_path / ".ai-sow/inputs/revisions/000001/manifest.json").is_file()
     assert not (tmp_path / ".ai-sow/inputs/pending").exists()
@@ -182,9 +222,10 @@ def test_published_manifest_binds_review_impact_and_completion(tmp_path: Path) -
     assert manifest["publicationComplete"] is True
     assert manifest["impact"]["action"] == "FULL_COMPILE"
     assert manifest["changeCounts"] == {
-        "features": {"added": 1, "updated": 0, "removed": 0},
-        "recomputedStories": 1,
-        "recomputedTasks": 1,
+        "features": {"affected": 0, "recomputed": 1, "reused": 0, "deleted": 0, "final": 1},
+        "stories": {"affected": 0, "recomputed": 1, "reused": 0, "deleted": 0, "final": 1},
+        "acceptanceCriteria": {"affected": 0, "recomputed": 2, "reused": 0, "deleted": 0, "final": 2},
+        "tasks": {"affected": 0, "recomputed": 1, "reused": 0, "deleted": 0, "final": 1},
     }
     assert ".ai-sow/work" not in json.dumps(manifest, ensure_ascii=False)
 
@@ -199,15 +240,16 @@ def change_template_without_breaking_contract(project: Path) -> None:
         workbook.close()
 
 
-def test_template_only_change_publishes_generation_against_same_revision(
+def test_template_change_requires_full_compile_and_new_input_revision(
     tmp_path: Path,
 ) -> None:
     request_path = stage_reviewed_run(tmp_path)
     assert run_mode(tmp_path, "publish", now=NOW)["outcome"] == "PUBLISHED"
     change_template_without_breaking_contract(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
-    assert prepared["outcome"] == "READY_TO_RENDER", prepared
-    assert prepared["runPlan"]["action"] == "RENDER_ONLY"
+    assert prepared["outcome"] == "READY_FOR_SCOPE", prepared
+    assert prepared["runPlan"]["action"] == "FULL_COMPILE"
+    stage_reviewed_run(tmp_path, request_path=request_path, prepared=prepared)
     result = run_mode(tmp_path, "publish", now=NOW)
     assert result["outcome"] == "PUBLISHED", result
     current = json.loads(
@@ -218,12 +260,13 @@ def test_template_only_change_publishes_generation_against_same_revision(
             encoding="utf-8"
         )
     )
-    assert current["revisionId"] == "000001"
+    assert current["revisionId"] == "000002"
     assert current["generationId"] == "000002"
-    assert manifest["reviewMode"] == "REUSED_SCOPE_REVIEW"
-    assert manifest["changeCounts"]["recomputedTasks"] == 0
+    assert manifest["reviewMode"] == "AUTOMATIC_FINAL_REVIEW"
+    assert manifest["changeCounts"]["tasks"]["recomputed"] == 1
+    assert manifest["changeCounts"]["tasks"]["reused"] == 0
     assert sorted(path.name for path in (tmp_path / ".ai-sow/inputs/revisions").iterdir()) == [
-        "000001"
+        "000001", "000002"
     ]
 
 
@@ -233,9 +276,10 @@ def test_render_failure_preserves_last_known_good_pointer(tmp_path: Path) -> Non
     current_before = (tmp_path / ".ai-sow/current.json").read_bytes()
     change_template_without_breaking_contract(tmp_path)
     prepared = run_mode(tmp_path, "prepare", request=request_path, now=NOW)
-    assert prepared["runPlan"]["action"] == "RENDER_ONLY"
-    (tmp_path / ".ai-sow/templates/sow-template.xlsx").write_bytes(b"not-an-xlsx")
+    assert prepared["runPlan"]["action"] == "FULL_COMPILE"
+    stage_reviewed_run(tmp_path, request_path=request_path, prepared=prepared)
+    (tmp_path / ".ai-sow/work/run-template.xlsx").write_bytes(b"not-an-xlsx")
     result = run_mode(tmp_path, "publish", now=NOW)
     assert result["outcome"] == "BLOCKED"
-    assert result["diagnostics"][0]["code"] == "WORKBOOK_RENDER_FAILED"
+    assert result["diagnostics"][0]["code"] == "RUN_TEMPLATE_CHANGED"
     assert (tmp_path / ".ai-sow/current.json").read_bytes() == current_before

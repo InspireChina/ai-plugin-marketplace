@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -17,7 +18,8 @@ SOW_STANDARD_VERSION = "1.3"
 MARKETPLACE_NAME = "ai-plugin-marketplace"
 PUBLISHER_NAME = "Inspire"
 AI_SOW_DESCRIPTION = (
-    "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿。"
+    "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿，"
+    "并用 LibreOffice 回算后发布。"
 )
 CODEX_MARKETPLACE = ".agents/plugins/marketplace.json"
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
@@ -49,7 +51,36 @@ FORBIDDEN_PUBLIC_TEXT = (
 RENDERER_FINGERPRINT_FILES = (
     "scripts/package_renderer.py",
     "scripts/workbook.py",
+    "scripts/office_engine.py",
+    "scripts/story_notes.py",
 )
+AI_SOW_GENERATE_SUPPORT_FILES = (
+    "skills/generate/contracts/question.schema.json",
+    "skills/generate/references/acceptance-criteria.md",
+    "skills/generate/references/delivery-authoring.md",
+    "skills/generate/references/delivery-decomposition.md",
+    "skills/generate/references/delivery-examples.md",
+    "skills/generate/references/delivery-work-classification.md",
+    "skills/generate/references/effective-start-matching.md",
+    "skills/generate/references/epic-authoring.md",
+    "skills/generate/references/feature-authoring.md",
+    "skills/generate/references/question-authoring.md",
+    "skills/generate/references/story-authoring.md",
+    "skills/generate/references/task-authoring.md",
+    "skills/generate/references/technical-work-classification.md",
+)
+LOWER_KEBAB_ID_REF = "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"
+NON_EMPTY_ID_ARRAY_REF = "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"
+PROJECT_RELATIVE_PATH_REF = "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"
+SHA256_REF = "urn:ai-sow:generate:common:1#/$defs/sha256"
+QUESTION_PROPERTIES = {
+    "questionId": {"$ref": LOWER_KEBAB_ID_REF},
+    "subjectIds": {"$ref": NON_EMPTY_ID_ARRAY_REF},
+    "question": {"type": "string", "minLength": 1},
+    "reason": {"type": "string", "minLength": 1},
+    "decisionImpact": {"type": "string", "minLength": 1},
+    "unansweredEffect": {"type": "string", "minLength": 1},
+}
 
 
 def load_json(path: Path) -> object:
@@ -60,6 +91,96 @@ def load_json(path: Path) -> object:
 def load_toml(path: Path) -> dict[str, object]:
     """Load a UTF-8 TOML document through the Python 3.12 standard library."""
     return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def _is_template_path_mismatch(test: ast.expr) -> bool:
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
+        return any(_is_template_path_mismatch(value) for value in test.values)
+    return (
+        isinstance(test, ast.Compare)
+        and isinstance(test.left, ast.Name)
+        and test.left.id == "template_path"
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.NotEq)
+        and len(test.comparators) == 1
+        and isinstance(test.comparators[0], ast.Name)
+        and test.comparators[0].id == "expected_path"
+    )
+
+
+def _body_has_effective_raise(body: list[ast.stmt]) -> bool:
+    for statement in body:
+        if isinstance(statement, ast.Raise):
+            return True
+        if isinstance(statement, (ast.Return, ast.Break, ast.Continue)):
+            return False
+        if isinstance(statement, (ast.With, ast.AsyncWith)) and _body_has_effective_raise(
+            statement.body
+        ):
+            return True
+        if (
+            isinstance(statement, ast.If)
+            and statement.orelse
+            and _body_has_effective_raise(statement.body)
+            and _body_has_effective_raise(statement.orelse)
+        ):
+            return True
+    return False
+
+
+def generation_store_binds_immutable_template(path: Path) -> bool:
+    """Return whether generation storage enforces its owned template copy."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return False
+    verifier = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_verify_staged_template"
+        ),
+        None,
+    )
+    if verifier is None:
+        return False
+
+    expected_path = False
+    rejection_guard = any(
+        isinstance(statement, ast.If)
+        and _is_template_path_mismatch(statement.test)
+        and _body_has_effective_raise(statement.body)
+        for statement in verifier.body
+    )
+    staged_member = False
+    for node in ast.walk(verifier):
+        if isinstance(node, ast.JoinedStr):
+            parts = "".join(
+                part.value
+                for part in node.values
+                if isinstance(part, ast.Constant) and isinstance(part.value, str)
+            )
+            if parts == ".ai-sow/generations//input/sow-template.xlsx":
+                expected_path = any(
+                    isinstance(part, ast.FormattedValue)
+                    and isinstance(part.value, ast.Name)
+                    and part.value.id == "generation_id"
+                    for part in node.values
+                )
+        elif (
+            isinstance(node, ast.BinOp)
+            and isinstance(node.op, ast.Div)
+            and isinstance(node.right, ast.Constant)
+            and node.right.value == "input/sow-template.xlsx"
+            and any(
+                isinstance(child, ast.Name)
+                and child.id == "staged_generation_root"
+                for child in ast.walk(node.left)
+            )
+        ):
+            staged_member = True
+    return expected_path and rejection_guard and staged_member
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -358,6 +479,7 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
         plugin_root / "skills/generate/scripts/bootstrap.sh",
         plugin_root / "skills/generate/scripts/bootstrap.ps1",
         plugin_root / "skills/generate/scripts/orchestrator.py",
+        plugin_root / "skills/generate/scripts/generation_store.py",
         plugin_root / "skills/generate/assets/sow-template.xlsx",
         plugin_root / "skills/generate/contracts/generation-manifest.schema.json",
         plugin_root / "skills/generate/contracts/renderer-fingerprint-baseline.json",
@@ -366,12 +488,119 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
         plugin_root / "tests/fixtures/explicit-architecture/case-manifest.json",
         plugin_root / "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
         plugin_root / "docs/reference/SOW估算与生成示例_v1.3.xlsx",
+        *(plugin_root / relative for relative in AI_SOW_GENERATE_SUPPORT_FILES),
     )
     for path in required:
         if not path.is_file():
             errors.append(f"missing release file: {path.relative_to(repo_root).as_posix()}")
     if (repo_root / "scripts" / "smoke_plugin.py").exists():
         errors.append("AI SOW smoke implementation must be plugin-scoped")
+
+    contract_root = plugin_root / "skills/generate/contracts"
+    schemas: dict[str, dict[str, object]] = {}
+    for name in (
+        "question.schema.json",
+        "run-plan.schema.json",
+        "generation-manifest.schema.json",
+    ):
+        path = contract_root / name
+        if not path.is_file():
+            continue
+        try:
+            value = load_json(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            errors.append(f"invalid AI SOW contract {name}: {exc}")
+            continue
+        if not isinstance(value, dict):
+            errors.append(f"invalid AI SOW contract {name}: expected a JSON object")
+            continue
+        schemas[name] = value
+
+    question_schema = schemas.get("question.schema.json")
+    if question_schema is not None and (
+        question_schema.get("$id") != "urn:ai-sow:generate:question:1"
+        or question_schema.get("type") != "object"
+        or question_schema.get("additionalProperties") is not False
+        or not isinstance(question_schema.get("required"), list)
+        or set(question_schema["required"]) != set(QUESTION_PROPERTIES)
+        or question_schema.get("properties") != QUESTION_PROPERTIES
+    ):
+        errors.append(
+            "question schema must match the self-contained user question contract"
+        )
+
+    run_plan_schema = schemas.get("run-plan.schema.json")
+    if run_plan_schema is not None:
+        required_fields = run_plan_schema.get("required")
+        if (
+            not isinstance(required_fields, list)
+            or not {"templateSnapshotPath", "templateSha256"}.issubset(
+                set(required_fields)
+            )
+        ):
+            errors.append(
+                "run plan must require templateSnapshotPath and templateSha256"
+            )
+        properties = run_plan_schema.get("properties")
+        snapshot = (
+            properties.get("templateSnapshotPath")
+            if isinstance(properties, dict)
+            else None
+        )
+        if not isinstance(snapshot, dict) or snapshot.get("const") != (
+            ".ai-sow/work/run-template.xlsx"
+        ):
+            errors.append(
+                "run plan templateSnapshotPath must be .ai-sow/work/run-template.xlsx"
+            )
+        template_sha256 = (
+            properties.get("templateSha256")
+            if isinstance(properties, dict)
+            else None
+        )
+        if template_sha256 != {"$ref": SHA256_REF}:
+            errors.append(
+                "run plan templateSha256 must use the 64-hex SHA-256 contract"
+            )
+
+    generation_schema = schemas.get("generation-manifest.schema.json")
+    if generation_schema is not None:
+        required_fields = generation_schema.get("required")
+        if (
+            not isinstance(required_fields, list)
+            or not {"templatePath", "templateSha256"}.issubset(set(required_fields))
+        ):
+            errors.append(
+                "generation manifest must require templatePath and templateSha256"
+            )
+        properties = generation_schema.get("properties")
+        template_path = (
+            properties.get("templatePath")
+            if isinstance(properties, dict)
+            else None
+        )
+        if template_path != {"$ref": PROJECT_RELATIVE_PATH_REF}:
+            errors.append(
+                "generation manifest templatePath must use the project-relative path contract"
+            )
+        template_sha256 = (
+            properties.get("templateSha256")
+            if isinstance(properties, dict)
+            else None
+        )
+        if template_sha256 != {"$ref": SHA256_REF}:
+            errors.append(
+                "generation manifest templateSha256 must use the 64-hex SHA-256 contract"
+            )
+
+    generation_store = plugin_root / "skills/generate/scripts/generation_store.py"
+    if generation_store.is_file() and not generation_store_binds_immutable_template(
+        generation_store
+    ):
+        errors.append(
+            "generation store must bind templatePath to the immutable generation "
+            "input/sow-template.xlsx"
+        )
 
     public_skills = sorted(
         path.parent.name for path in (plugin_root / "skills").glob("*/SKILL.md")
@@ -531,13 +760,24 @@ def validate_renderer_contract_consistency(
         if isinstance(properties, dict)
         else None
     )
-    contract = (
-        renderer_contract.get("const")
-        if isinstance(renderer_contract, dict)
-        else None
-    )
+    contract = None
+    if isinstance(renderer_contract, dict):
+        const = renderer_contract.get("const")
+        supported = renderer_contract.get("enum")
+        if isinstance(const, str):
+            contract = const
+        elif (
+            isinstance(supported, list)
+            and supported
+            and all(isinstance(item, str) and item for item in supported)
+        ):
+            # Historical generation manifests remain readable; the last enum
+            # value is the only contract allowed for new renderer output.
+            contract = supported[-1]
     if not isinstance(contract, str) or not contract:
-        errors.append("generation manifest schema must declare rendererContract const")
+        errors.append(
+            "generation manifest schema must declare a current rendererContract"
+        )
 
     baseline_contract = (
         baseline.get("rendererContract") if isinstance(baseline, dict) else None

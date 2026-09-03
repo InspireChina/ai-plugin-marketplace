@@ -74,11 +74,29 @@ def previous_delivery() -> dict[str, object]:
         "stories": [
             {
                 "storyId": "story-refund",
-                "featureIds": ["feature-refund"],
+                "featureId": "feature-refund",
             },
             {
                 "storyId": "story-ledger",
-                "featureIds": ["feature-ledger"],
+                "featureId": "feature-ledger",
+            },
+        ],
+        "acceptanceCriteria": [
+            {
+                "acceptanceCriterionId": "ac-refund-submit",
+                "storyId": "story-refund",
+                "sourceRefs": [
+                    source_ref(
+                        "prd-main", "anchor-return-submit-state", "5" * 64
+                    )
+                ],
+            },
+            {
+                "acceptanceCriterionId": "ac-ledger-posting",
+                "storyId": "story-ledger",
+                "sourceRefs": [
+                    source_ref("prd-main", "anchor-ledger-posting", "6" * 64)
+                ],
             },
         ],
         "tasks": [
@@ -88,7 +106,6 @@ def previous_delivery() -> dict[str, object]:
                 "designItemIds": [],
                 "integrationIds": [],
                 "nfrIds": [],
-                "dependsOnTaskIds": [],
             },
             {
                 "taskId": "task-ledger",
@@ -96,7 +113,6 @@ def previous_delivery() -> dict[str, object]:
                 "designItemIds": [],
                 "integrationIds": [],
                 "nfrIds": [],
-                "dependsOnTaskIds": [],
             },
         ],
         "dependencies": [],
@@ -107,9 +123,74 @@ def changes(*items: AnchorChange, exact: bool = False) -> InputChangeSet:
     return InputChangeSet(
         exact_match=exact,
         source_changes=tuple(items),
-        answer_ids=(),
         responsibility_ids=(),
     )
+
+
+def test_changed_ac_anchor_recomputes_only_its_feature_closure(
+    previous_scope, previous_delivery
+) -> None:
+    isolated_scope = copy.deepcopy(previous_scope)
+    isolated_scope["integrations"] = []
+
+    plan = compute_impact_plan(
+        changes(
+            AnchorChange(
+                "prd-main",
+                "anchor-return-submit-state",
+                "MODIFIED",
+                "5" * 64,
+                "7" * 64,
+            )
+        ),
+        previous_scope=isolated_scope,
+        previous_delivery=previous_delivery,
+        baseline_generation_id="000001",
+        baseline_revision_id="000001",
+    )
+
+    assert plan.affected_feature_ids == ("feature-refund",)
+
+
+def test_modified_question_answer_uses_delivery_ac_reference_for_feature_impact(
+    previous_scope, previous_delivery
+) -> None:
+    isolated_scope = copy.deepcopy(previous_scope)
+    isolated_scope["integrations"] = []
+    delivery = copy.deepcopy(previous_delivery)
+    answer_ref = source_ref(
+        "question-answer-confirm-refund-policy",
+        "question-answer-anchor-confirm-refund-policy",
+        "5" * 64,
+    )
+    answer_ref["locator"] = "question:confirm-refund-policy"
+    delivery["acceptanceCriteria"][0]["sourceRefs"] = [answer_ref]
+    change_set = InputChangeSet(
+        exact_match=False,
+        source_changes=(
+            AnchorChange(
+                answer_ref["sourceId"],
+                answer_ref["anchorId"],
+                "MODIFIED",
+                answer_ref["sha256"],
+                "7" * 64,
+            ),
+        ),
+        responsibility_ids=(),
+    )
+
+    plan = compute_impact_plan(
+        change_set,
+        previous_scope=isolated_scope,
+        previous_delivery=delivery,
+        baseline_generation_id="000001",
+        baseline_revision_id="000001",
+    )
+
+    assert plan.action == "SLICE_COMPILE"
+    assert plan.affected_feature_ids == ("feature-refund",)
+    assert plan.escalation == "FEATURE"
+    assert plan.reason_codes == ("INPUT_CHANGED",)
 
 
 def compute_case(scope, delivery, case: str):
@@ -162,7 +243,7 @@ def compute_case(scope, delivery, case: str):
     ("case", "action", "affected"),
     [
         ("unchanged", "REUSE", set()),
-        ("template-only", "RENDER_ONLY", set()),
+        ("template-only", "FULL_COMPILE", {"feature-refund", "feature-ledger"}),
         ("prd-feature-edit", "SLICE_COMPILE", {"feature-refund"}),
         ("shared-integration", "SLICE_COMPILE", {"feature-refund", "feature-ledger"}),
         (
@@ -178,6 +259,22 @@ def test_run_plan_matrix(
     plan = compute_case(previous_scope, previous_delivery, case)
     assert plan.action == action
     assert set(plan.affected_feature_ids) == affected
+
+
+def test_new_run_with_changed_template_requires_full_compile(
+    previous_scope, previous_delivery
+) -> None:
+    plan = compute_impact_plan(
+        changes(exact=True),
+        previous_scope=previous_scope,
+        previous_delivery=previous_delivery,
+        baseline_generation_id="000001",
+        baseline_revision_id="000001",
+        template_changed=True,
+    )
+
+    assert plan.action == "FULL_COMPILE"
+    assert plan.reason_codes == ("TEMPLATE_CHANGED",)
 
 
 def test_moved_heading_does_not_seed_recompilation(previous_scope, previous_delivery) -> None:
@@ -230,7 +327,7 @@ def test_task_dependency_expands_feature_closure(previous_scope, previous_delive
 def test_unmapped_structured_change_escalates_to_full(
     previous_scope, previous_delivery
 ) -> None:
-    change_set = InputChangeSet(False, (), ("question-unknown",), ())
+    change_set = InputChangeSet(False, (), ("responsibility-unknown",))
     plan = compute_impact_plan(
         change_set,
         previous_scope=previous_scope,
@@ -268,9 +365,100 @@ def test_added_ambiguous_anchor_widens_feature_to_domain(
         candidate,
         previous_scope,
         previous_delivery,
+        [source_ref("prd-main", "anchor-new", "7" * 64)],
     )
     assert final.escalation == "DOMAIN"
     assert set(final.affected_feature_ids) == {"feature-refund", "feature-ledger"}
+
+
+def test_added_anchor_linked_by_candidate_nfr_stays_in_known_feature_closure(
+    previous_scope, previous_delivery
+) -> None:
+    provisional = compute_impact_plan(
+        changes(
+            AnchorChange(
+                "hld-main", "anchor-data-residency", "ADDED", None, "8" * 64
+            )
+        ),
+        previous_scope=previous_scope,
+        previous_delivery=previous_delivery,
+        baseline_generation_id="000001",
+        baseline_revision_id="000001",
+    )
+    candidate = {
+        "features": [],
+        "nfrs": [
+            {
+                "nfrId": "nfr-data-residency",
+                "featureIds": ["feature-refund", "feature-ledger"],
+                "sourceRefs": [
+                    source_ref(
+                        "hld-main", "anchor-data-residency", "8" * 64
+                    )
+                ],
+            }
+        ],
+        "newAnchorMappings": [],
+    }
+
+    final = finalize_impact_plan(
+        provisional,
+        candidate,
+        previous_scope,
+        previous_delivery,
+        [source_ref("hld-main", "anchor-data-residency", "8" * 64)],
+    )
+
+    assert final.escalation != "FULL"
+    assert set(final.affected_feature_ids) == {
+        "feature-refund",
+        "feature-ledger",
+    }
+
+
+def test_added_anchor_localization_requires_source_and_sha_identity(
+    previous_scope, previous_delivery
+) -> None:
+    provisional = compute_impact_plan(
+        changes(
+            AnchorChange(
+                "hld-main", "anchor-data-residency", "ADDED", None, "8" * 64
+            )
+        ),
+        previous_scope=previous_scope,
+        previous_delivery=previous_delivery,
+        baseline_generation_id="000001",
+        baseline_revision_id="000001",
+    )
+    candidate = {
+        "features": [],
+        "nfrs": [
+            {
+                "nfrId": "nfr-wrong-source",
+                "featureIds": ["feature-refund"],
+                "sourceRefs": [
+                    source_ref(
+                        "prd-main", "anchor-data-residency", "9" * 64
+                    )
+                ],
+            }
+        ],
+        "newAnchorMappings": [],
+    }
+
+    final = finalize_impact_plan(
+        provisional,
+        candidate,
+        previous_scope,
+        previous_delivery,
+        [source_ref("hld-main", "anchor-data-residency", "8" * 64)],
+    )
+
+    assert final.escalation == "FULL"
+    assert set(final.affected_feature_ids) == {
+        "feature-refund",
+        "feature-ledger",
+    }
 
 
 def test_unknown_added_anchor_mapping_widens_to_full(
@@ -297,5 +485,61 @@ def test_unknown_added_anchor_mapping_widens_to_full(
         },
         previous_scope,
         previous_delivery,
+        [source_ref("prd-main", "anchor-new", "7" * 64)],
     )
     assert final.escalation == "FULL"
+
+
+def test_same_anchor_id_from_two_sources_keeps_both_exact_mappings(
+    previous_scope, previous_delivery
+) -> None:
+    digest_a = "8" * 64
+    digest_b = "9" * 64
+    provisional = compute_impact_plan(
+        changes(
+            AnchorChange("prd-main", "anchor-shared", "ADDED", None, digest_a),
+            AnchorChange("hld-main", "anchor-shared", "ADDED", None, digest_b),
+        ),
+        previous_scope=previous_scope,
+        previous_delivery=previous_delivery,
+        baseline_generation_id="000001",
+        baseline_revision_id="000001",
+    )
+    candidate = {
+        "features": [],
+        "nfrs": [
+            {
+                "nfrId": "nfr-prd-shared",
+                "featureIds": ["feature-refund"],
+                "sourceRefs": [
+                    source_ref("prd-main", "anchor-shared", digest_a)
+                ],
+            },
+            {
+                "nfrId": "nfr-hld-shared",
+                "featureIds": ["feature-ledger"],
+                "sourceRefs": [
+                    source_ref("hld-main", "anchor-shared", digest_b)
+                ],
+            },
+        ],
+        "newAnchorMappings": [],
+    }
+
+    final = finalize_impact_plan(
+        provisional,
+        candidate,
+        previous_scope,
+        previous_delivery,
+        [
+            source_ref("prd-main", "anchor-shared", digest_a),
+            source_ref("hld-main", "anchor-shared", digest_b),
+        ],
+    )
+
+    assert final.escalation != "FULL"
+    assert "ADDED_ANCHOR_UNMAPPED" not in final.reason_codes
+    assert set(final.affected_feature_ids) == {
+        "feature-refund",
+        "feature-ledger",
+    }

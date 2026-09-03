@@ -31,6 +31,7 @@ from models import (
     IntakeResult,
     SourceRequest,
 )
+from questions import question_answer_anchors, validate_question_answers
 from runtime.project_io import ProjectFiles, ProjectIOError
 from source_readers import SourceReadError, extract_document, source_media_type
 
@@ -145,6 +146,9 @@ def load_request(files: ProjectFiles, request_path: str, registry) -> InputReque
             if isinstance(item, Mapping)
         ),
         sources=sources,
+        questions=tuple(
+            dict(item) for item in value["questions"] if isinstance(item, Mapping)
+        ),
         questionnaire_answers=tuple(
             dict(item)
             for item in value["questionnaireAnswers"]
@@ -273,49 +277,6 @@ def _anchor_value(anchor) -> dict[str, object]:
     }
 
 
-def _delta_answer(delta: Mapping[str, object] | None) -> dict[str, str] | None:
-    if delta is None:
-        return None
-    status = str(delta.get("status", ""))
-    summary = str(delta.get("summary", ""))
-    return {
-        "questionId": "question-current-state-delta",
-        "answer": f"{status}：{summary}",
-    }
-
-
-def _merge_answers(
-    previous: object,
-    current: Sequence[Mapping[str, str]],
-) -> tuple[list[dict[str, str]], tuple[str, ...]]:
-    merged = [
-        {"questionId": str(item["questionId"]), "answer": str(item["answer"])}
-        for item in previous
-        if isinstance(previous, list)
-        and isinstance(item, Mapping)
-        and "questionId" in item
-        and "answer" in item
-    ] if isinstance(previous, list) else []
-    questions: set[str] = set()
-    for item in current:
-        candidate = {
-            "questionId": str(item["questionId"]),
-            "answer": str(item["answer"]),
-        }
-        if candidate in merged:
-            continue
-        same_id = [
-            existing
-            for existing in merged
-            if existing["questionId"] == candidate["questionId"]
-        ]
-        if same_id:
-            questions.add(f"请确认 {candidate['questionId']} 的唯一有效答案。")
-        merged.append(candidate)
-    merged.sort(key=lambda item: (item["questionId"], item["answer"]))
-    return merged, tuple(sorted(questions))
-
-
 def _read_baseline(files: ProjectFiles) -> tuple[object | None, list[Mapping[str, object]]]:
     current = _optional_project_json(files, ".ai-sow/current.json")
     if not isinstance(current, Mapping):
@@ -339,19 +300,6 @@ def _read_baseline(files: ProjectFiles) -> tuple[object | None, list[Mapping[str
 
 def _key(value: Mapping[str, object], camel: str, snake: str) -> object:
     return value.get(camel, value.get(snake))
-
-
-def _answer_map(value: object) -> dict[str, tuple[str, ...]]:
-    if not isinstance(value, list):
-        return {}
-    grouped: defaultdict[str, list[str]] = defaultdict(list)
-    for item in value:
-        if isinstance(item, Mapping):
-            question_id = item.get("questionId")
-            answer = item.get("answer")
-            if isinstance(question_id, str) and isinstance(answer, str):
-                grouped[question_id].append(answer)
-    return {key: tuple(sorted(items)) for key, items in grouped.items()}
 
 
 def _responsibility_map(value: object) -> dict[str, bytes]:
@@ -459,19 +407,6 @@ def compare_input_revisions(
             )
         )
 
-    previous_answers = _answer_map(
-        previous_manifest.get("questionnaireAnswers", [])
-        if previous_manifest is not None
-        else []
-    )
-    pending_answers = _answer_map(pending_manifest.get("questionnaireAnswers", []))
-    answer_ids = tuple(
-        sorted(
-            key
-            for key in set(previous_answers) | set(pending_answers)
-            if previous_answers.get(key) != pending_answers.get(key)
-        )
-    )
     previous_responsibilities = _responsibility_map(
         previous_manifest.get("responsibilityBoundaries", [])
         if previous_manifest is not None
@@ -495,7 +430,6 @@ def compare_input_revisions(
     exact_match = (
         previous_manifest is not None
         and not changes
-        and not answer_ids
         and not responsibility_ids
         and canonical_json_bytes(previous_sources) == canonical_json_bytes(pending_sources)
     )
@@ -504,7 +438,6 @@ def compare_input_revisions(
         source_changes=tuple(
             sorted(changes, key=lambda item: (item.source_id, item.anchor_id, item.change))
         ),
-        answer_ids=answer_ids,
         responsibility_ids=responsibility_ids,
     )
 
@@ -520,7 +453,7 @@ def _blocked_result(
         outcome="BLOCKED",
         pending_manifest_path=pending_manifest_path,
         anchors_path=anchors_path,
-        changes=InputChangeSet(False, (), (), ()),
+        changes=InputChangeSet(False, (), ()),
         diagnostics=_sort_diagnostics(diagnostics),
         questions=tuple(sorted(set(questions))),
     )
@@ -549,6 +482,28 @@ def prepare_pending(
                 [_diagnostic("PROJECT_IDENTITY_CONFLICT", "请求项目与既有项目身份不一致。")]
             )
 
+        answer_diagnostics = validate_question_answers(
+            request.questions, request.questionnaire_answers
+        )
+        if answer_diagnostics:
+            return _blocked_result(answer_diagnostics)
+
+        answer_anchors = question_answer_anchors(
+            request.questions, request.questionnaire_answers
+        )
+        answer_source_ids = {anchor.source_id for anchor in answer_anchors}
+        source_id_conflicts = tuple(
+            _diagnostic(
+                "QUESTION_ANSWER_SOURCE_ID_CONFLICT",
+                "文档 sourceId 与问答证据保留的 sourceId 冲突。",
+                f"/sources/{index}/sourceId",
+            )
+            for index, source in enumerate(request.sources)
+            if source.source_id in answer_source_ids
+        )
+        if source_id_conflicts:
+            return _blocked_result(source_id_conflicts)
+
         privacy_error = _ensure_privacy_ignore(files)
         if privacy_error is not None:
             return _blocked_result([privacy_error])
@@ -562,18 +517,13 @@ def prepare_pending(
         questions: tuple[str, ...] = ()
         try:
             existing_manifest = _optional_json(pending / "manifest.json")
-            existing_answers = _optional_json(pending / "answers.json")
             effective_revision_id = revision_id
             if isinstance(existing_manifest, Mapping):
                 previous_id = existing_manifest.get("revisionId")
                 if isinstance(previous_id, str):
                     effective_revision_id = previous_id
 
-            current_answers = [dict(item) for item in request.questionnaire_answers]
-            delta_answer = _delta_answer(request.current_state_delta)
-            if delta_answer is not None:
-                current_answers.append(delta_answer)
-            answers, questions = _merge_answers(existing_answers, current_answers)
+            answers = [dict(item) for item in request.questionnaire_answers]
 
             source_entries: list[dict[str, object]] = []
             anchor_values: list[dict[str, object]] = []
@@ -612,6 +562,11 @@ def prepare_pending(
                     }
                 )
 
+            anchor_values.extend(
+                _anchor_value(anchor)
+                for anchor in answer_anchors
+            )
+
             source_entries.sort(key=lambda item: (str(item["role"]), str(item["sourceId"]), str(item["version"])))
             anchor_values.sort(key=lambda item: (str(item["sourceId"]), str(item["anchorId"])))
             recorded_at = now().isoformat().replace("+00:00", "Z")
@@ -628,6 +583,7 @@ def prepare_pending(
                     dict(item) for item in request.responsibility_boundaries
                 ],
                 "sources": source_entries,
+                "questions": [dict(item) for item in request.questions],
                 "questionnaireAnswers": answers,
                 "anchorsPath": "anchors.json",
                 "anchorsSha256": sha256_bytes(canonical_json_bytes(anchor_values)),
@@ -678,7 +634,7 @@ def prepare_pending(
                 manifest,
                 anchor_values,
             )
-            outcome = "BLOCKED" if diagnostics or questions else "READY"
+            outcome = "BLOCKED" if diagnostics else "READY"
             return IntakeResult(
                 outcome=outcome,
                 pending_manifest_path=".ai-sow/inputs/pending/manifest.json",

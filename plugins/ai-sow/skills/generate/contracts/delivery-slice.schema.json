@@ -15,13 +15,20 @@
     "dependencies"
   ],
   "properties": {
-    "contract": {"const": "ai-sow-delivery-slice-v1"},
+    "contract": {"const": "ai-sow-delivery-slice-v3"},
     "inputRevisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
     "scopeSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
     "impactPlanSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"},
-    "replacesFeatureIds": {"$ref": "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"},
+    "replacesFeatureIds": {
+      "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
+      "description": "只列出本次替换的基线 Feature ID；首次全量编译为空。"
+    },
     "stories": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/story"}},
-    "acceptanceCriteria": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/acceptanceCriterion"}},
+    "acceptanceCriteria": {
+      "type": "array",
+      "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/acceptanceCriterion"},
+      "description": "切片中的 AC 必须携带最小充分的精确 sourceRefs。"
+    },
     "tasks": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/task"}},
     "dependencies": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:delivery-bundle:1#/$defs/dependency"}}
   }

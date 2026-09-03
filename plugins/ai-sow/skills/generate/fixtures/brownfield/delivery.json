@@ -1,14 +1,18 @@
 {
-  "contract": "ai-sow-delivery-bundle-v1",
+  "contract": "ai-sow-delivery-bundle-v3",
   "inputRevisionId": "000001",
   "scopeSha256": "1333333333333333333333333333333333333333333333333333333333333333",
   "stories": [
     {
       "storyId": "story-refund-processing",
-      "featureIds": ["feature-refund-processing", "feature-refund-notification"],
-      "storyType": "IMPLEMENTATION",
-      "name": "完成退款自动审核与状态通知",
-      "description": "退款申请自动审核后完成支付退款并向用户呈现一致状态。",
+      "featureId": "feature-refund-processing",
+      "name": "[退款处理] 系统编排分项退款",
+      "uatRelevant": true
+    },
+    {
+      "storyId": "story-refund-notification",
+      "featureId": "feature-refund-notification",
+      "name": "[退款通知] 系统同步退款状态",
       "uatRelevant": true
     }
   ],
@@ -16,9 +20,54 @@
     {
       "acceptanceCriterionId": "ac-refund-result",
       "storyId": "story-refund-processing",
-      "sequence": 1,
-      "name": "通过审核的退款获得支付结果和用户通知",
-      "rationale": "该结果共同证明退款处理与通知 Feature 已完成。"
+      "name": "通过审核的退款获得支付结果并可追踪",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund-upgrade",
+          "anchorId": "anchor-f4aef21bb7d66a2c",
+          "locator": "heading:PRD",
+          "sha256": "9d4bacb4376916256e3e9f7f63f189bf9dd20499747f653562b6f5585841d1e8"
+        }
+      ]
+    },
+    {
+      "acceptanceCriterionId": "ac-refund-recovery",
+      "storyId": "story-refund-processing",
+      "name": "失败支付分项可重试且最终状态保持一致",
+      "sourceRefs": [
+        {
+          "sourceId": "hld-refund-upgrade",
+          "anchorId": "anchor-473e6c16ed8eb35d",
+          "locator": "heading:HLD",
+          "sha256": "0c6c6f66093d11a875918fab11b4124717b8a4dc3a75620018c304ab3b31d7a5"
+        }
+      ]
+    },
+    {
+      "acceptanceCriterionId": "ac-refund-notification",
+      "storyId": "story-refund-notification",
+      "name": "退款状态变化后用户收到一致且可追踪的通知",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund-upgrade",
+          "anchorId": "anchor-f4aef21bb7d66a2c",
+          "locator": "heading:PRD",
+          "sha256": "9d4bacb4376916256e3e9f7f63f189bf9dd20499747f653562b6f5585841d1e8"
+        }
+      ]
+    },
+    {
+      "acceptanceCriterionId": "ac-refund-notification-retry",
+      "storyId": "story-refund-notification",
+      "name": "通知失败后可重试且不会产生重复状态通知",
+      "sourceRefs": [
+        {
+          "sourceId": "prd-refund-upgrade",
+          "anchorId": "anchor-f4aef21bb7d66a2c",
+          "locator": "heading:PRD",
+          "sha256": "9d4bacb4376916256e3e9f7f63f189bf9dd20499747f653562b6f5585841d1e8"
+        }
+      ]
     }
   ],
   "tasks": [
@@ -35,7 +84,6 @@
       "designItemIds": ["design-item-refund-orchestration"],
       "integrationIds": [],
       "nfrIds": ["nfr-recovery-objective"],
-      "dependsOnTaskIds": [],
       "rationale": "以一项待明确恢复目标的方案设计实例计价。"
     },
     {
@@ -47,16 +95,13 @@
       "workMode": "调整",
       "workModeRationale": "在既有退款接口基础上调整退款编排流程。",
       "workModeEvidence": {
-        "effectiveStartItemId": "effective-start-refund-api",
-        "effectiveStartItemName": "既有退款接口"
+        "effectiveStartItemId": "effective-start-refund-api"
       },
       "complexity": "M",
-      "acceptanceCriterionIds": ["ac-refund-result"],
+      "acceptanceCriterionIds": ["ac-refund-result", "ac-refund-recovery"],
       "designItemIds": ["design-item-refund-orchestration"],
       "integrationIds": [],
       "nfrIds": ["nfr-recovery-objective"],
-      "dependsOnTaskIds": ["task-payment-refund-integration"],
-      "matchedEffectiveStartItemId": "effective-start-refund-api",
       "rationale": "按一个既有退款业务操作调整实例计价。"
     },
     {
@@ -72,8 +117,28 @@
       "designItemIds": ["design-item-refund-orchestration"],
       "integrationIds": ["integration-payment-refund"],
       "nfrIds": ["nfr-recovery-objective"],
-      "dependsOnTaskIds": ["task-refund-recovery-design"],
       "rationale": "按一个外部支付平台退款对接实例计价。"
+    },
+    {
+      "taskId": "task-refund-notification",
+      "storyId": "story-refund-notification",
+      "taskKind": "IMPLEMENTATION",
+      "name": "调整退款状态通知",
+      "baseUnit": "BU-BUSINESS-SERVICE-API",
+      "workMode": "调整",
+      "workModeRationale": "在既有退款状态查询接口基础上调整通知结果生成。",
+      "workModeEvidence": {
+        "effectiveStartItemId": "effective-start-refund-status-query"
+      },
+      "complexity": "M",
+      "acceptanceCriterionIds": [
+        "ac-refund-notification",
+        "ac-refund-notification-retry"
+      ],
+      "designItemIds": ["design-item-refund-orchestration"],
+      "integrationIds": [],
+      "nfrIds": ["nfr-recovery-objective"],
+      "rationale": "按一个既有退款通知业务操作调整实例计价。"
     }
   ],
   "dependencies": [
@@ -88,6 +153,12 @@
       "predecessorTaskId": "task-payment-refund-integration",
       "successorTaskId": "task-refund-orchestration",
       "rationale": "退款编排完成前必须具备支付平台退款对接。"
+    },
+    {
+      "dependencyId": "dependency-orchestration-before-notification",
+      "predecessorTaskId": "task-refund-orchestration",
+      "successorTaskId": "task-refund-notification",
+      "rationale": "退款状态通知依赖编排结果形成一致状态。"
     }
   ]
 }
