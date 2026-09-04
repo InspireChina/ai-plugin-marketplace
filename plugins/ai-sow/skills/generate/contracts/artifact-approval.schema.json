@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:artifact-approval:1",
+  "description": "绑定已验证候选工件及用户批准、默认自动化排除或放弃决定。",
+  "oneOf": [
+    {"$ref": "#/$defs/artifactManifest"},
+    {"$ref": "#/$defs/approval"}
+  ],
+  "$defs": {
+    "artifactManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract", "runId", "candidateSha256", "sourceManifestSha256",
+        "stageCheckpointSha256s", "reviewDecisionSha256", "templateSha256",
+        "effectivePolicyDecisionSha256", "taskCatalogSemanticSha256",
+        "taskEstimationMethodSha256", "rendererContract", "rendererSha256", "workbook", "notes",
+        "workbookVerification"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-artifact-manifest-v1"},
+        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "candidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "sourceManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "stageCheckpointSha256s": {
+          "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+        },
+        "reviewDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "templateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "effectivePolicyDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "taskCatalogSemanticSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "taskEstimationMethodSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "rendererContract": {"const": "generation-renderer-v8"},
+        "rendererSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "workbook": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"},
+        "notes": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"},
+        "workbookVerification": {"$ref": "#/$defs/workbookVerification"}
+      }
+    },
+    "workbookVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trustState", "engineName", "engineVersion"],
+      "properties": {
+        "trustState": {"const": "VERIFIED"},
+        "engineName": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "engineVersion": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+      }
+    },
+    "approval": {
+      "oneOf": [
+        {"$ref": "#/$defs/approveDecision"},
+        {"$ref": "#/$defs/excludeDecision"},
+        {"$ref": "#/$defs/abandonDecision"}
+      ]
+    },
+    "approvalBase": {
+      "type": "object",
+      "required": [
+        "contract", "runId", "artifactManifestSha256", "reviewDecisionSha256",
+        "candidateSha256", "sourceManifestSha256", "templateSha256",
+        "effectivePolicyDecisionSha256", "decision"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-approval-v1"},
+        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "artifactManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "reviewDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "candidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "sourceManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "templateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "effectivePolicyDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "decision": {"enum": ["APPROVE", "EXCLUDE_DEFAULT_AUTOMATION", "ABANDON"]}
+      }
+    },
+    "approveDecision": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/approvalBase"},
+        {
+          "required": ["approvedAt"],
+          "properties": {
+            "decision": {"const": "APPROVE"},
+            "approvedAt": {"type": "string", "format": "date-time"}
+          }
+        }
+      ]
+    },
+    "excludeDecision": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/approvalBase"},
+        {
+          "required": ["excludedPolicyInstanceIds", "reason"],
+          "properties": {
+            "decision": {"const": "EXCLUDE_DEFAULT_AUTOMATION"},
+            "excludedPolicyInstanceIds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"}
+            },
+            "reason": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+          }
+        }
+      ]
+    },
+    "abandonDecision": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/approvalBase"},
+        {
+          "required": ["reason"],
+          "properties": {
+            "decision": {"const": "ABANDON"},
+            "reason": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+          }
+        }
+      ]
+    }
+  }
+}

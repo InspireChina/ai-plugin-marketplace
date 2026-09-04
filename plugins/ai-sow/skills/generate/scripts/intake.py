@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import stat
 import sys
-from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime
+import xml.etree.ElementTree as ET
+import zipfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 
@@ -19,29 +19,27 @@ if str(PLUGIN_ROOT) not in sys.path:
 
 from contracts import (
     canonical_json_bytes,
-    load_schema_registry,
+    load_registry,
     sha256_bytes,
     validate_contract,
 )
-from models import (
-    AnchorChange,
-    Diagnostic,
-    InputChangeSet,
-    InputRequest,
-    IntakeResult,
-    SourceRequest,
-)
+from models import Diagnostic, InputRevisionResult
 from questions import question_answer_anchors, validate_question_answers
 from runtime.project_io import ProjectFiles, ProjectIOError
-from source_readers import SourceReadError, extract_document, source_media_type
+from source_readers import (
+    SourceReadError,
+    extract_source_blocks,
+    inspect_source_header,
+)
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_REGISTRY = load_schema_registry(SKILL_ROOT)
-class IntakeRequestError(ValueError):
-    def __init__(self, diagnostics: tuple[Diagnostic, ...]):
-        super().__init__("输入请求未通过校验。")
-        self.diagnostics = diagnostics
+NEXT_SCHEMA_REGISTRY = load_registry(SKILL_ROOT / "contracts")
+TEMPLATE_ASSET = SKILL_ROOT / "assets/sow-template.xlsx"
+PROJECT_TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
+DELIVERY_POLICY_ASSET = SKILL_ROOT / "contracts/delivery-policy-v1.json"
+EXECUTION_POLICY_ASSET = SKILL_ROOT / "contracts/execution-policy-v1.json"
+PARSER_VERSION = "1"
 
 
 def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
@@ -52,116 +50,6 @@ def _sort_diagnostics(values: Sequence[Diagnostic]) -> tuple[Diagnostic, ...]:
     return tuple(sorted(values, key=lambda item: (item.path, item.code, item.message)))
 
 
-def _request_domain_diagnostics(value: object) -> tuple[Diagnostic, ...]:
-    if not isinstance(value, Mapping):
-        return ()
-    mode = value.get("mode")
-    sources = value.get("sources")
-    roles = {
-        source.get("role")
-        for source in sources
-        if isinstance(sources, list) and isinstance(source, Mapping)
-    } if isinstance(sources, list) else set()
-    diagnostics: list[Diagnostic] = []
-    if isinstance(sources, list):
-        for index, source in enumerate(sources):
-            if not isinstance(source, Mapping):
-                continue
-            role = source.get("role")
-            path = source.get("path")
-            if role not in {"PRD", "HLD", "PRIOR_SOW", "SUPPLEMENT"} or not isinstance(
-                path, str
-            ):
-                continue
-            try:
-                source_media_type(Path(path), str(role))
-            except SourceReadError as error:
-                diagnostics.append(
-                    _diagnostic(error.code, str(error), f"/sources/{index}/path")
-                )
-    if mode == "BROWNFIELD":
-        if "PRIOR_SOW" not in roles:
-            diagnostics.append(
-                _diagnostic(
-                    "BROWNFIELD_PRIOR_SOW_REQUIRED",
-                    "Brownfield 必须提供至少一份适用的往期 SOW。",
-                    "/sources",
-                )
-            )
-        if value.get("currentStateDelta") is None:
-            diagnostics.append(
-                _diagnostic(
-                    "BROWNFIELD_CURRENT_STATE_DELTA_REQUIRED",
-                    "Brownfield 必须提供现状增量声明。",
-                    "/currentStateDelta",
-                )
-            )
-    if mode == "GREENFIELD" and "PRIOR_SOW" in roles:
-        diagnostics.append(
-            _diagnostic(
-                "GREENFIELD_PRIOR_SOW_FORBIDDEN",
-                "Greenfield 不得把往期 SOW 作为输入来源。",
-                "/sources",
-            )
-        )
-    return tuple(diagnostics)
-
-
-def load_request(files: ProjectFiles, request_path: str, registry) -> InputRequest:
-    try:
-        value = files.read_json(request_path)
-    except ProjectIOError as error:
-        raise IntakeRequestError(
-            (_diagnostic(error.code, "输入请求文件无法读取。", request_path),)
-        ) from error
-
-    diagnostics = list(validate_contract(value, "request.schema.json", registry))
-    diagnostics.extend(_request_domain_diagnostics(value))
-    if diagnostics:
-        raise IntakeRequestError(_sort_diagnostics(diagnostics))
-    assert isinstance(value, Mapping)
-    project = value["project"]
-    assert isinstance(project, Mapping)
-    source_values = value["sources"]
-    assert isinstance(source_values, list)
-    sources = tuple(
-        SourceRequest(
-            source_id=str(source["sourceId"]),
-            role=source["role"],
-            path=Path(str(source["path"])),
-            version=str(source["version"]),
-        )
-        for source in source_values
-        if isinstance(source, Mapping)
-    )
-    current_state_delta = value.get("currentStateDelta")
-    return InputRequest(
-        project_id=str(project["projectId"]),
-        project_name=str(project["name"]),
-        planned_effective_date=str(project["plannedEffectiveDate"]),
-        mode=value["mode"],
-        responsibility_boundaries=tuple(
-            dict(item)
-            for item in value["responsibilityBoundaries"]
-            if isinstance(item, Mapping)
-        ),
-        sources=sources,
-        questions=tuple(
-            dict(item) for item in value["questions"] if isinstance(item, Mapping)
-        ),
-        questionnaire_answers=tuple(
-            dict(item)
-            for item in value["questionnaireAnswers"]
-            if isinstance(item, Mapping)
-        ),
-        current_state_delta=(
-            dict(current_state_delta)
-            if isinstance(current_state_delta, Mapping)
-            else None
-        ),
-    )
-
-
 def _is_unsafe(snapshot: os.stat_result) -> bool:
     reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
     return stat.S_ISLNK(snapshot.st_mode) or bool(
@@ -169,489 +57,487 @@ def _is_unsafe(snapshot: os.stat_result) -> bool:
     )
 
 
-def _ensure_privacy_ignore(files: ProjectFiles) -> Diagnostic | None:
-    target = files.root / ".gitignore"
-    try:
-        snapshot = target.lstat()
-    except FileNotFoundError:
-        files.write_atomic(".gitignore", b"/.ai-sow/\n")
-        return None
-    if _is_unsafe(snapshot) or not stat.S_ISREG(snapshot.st_mode):
-        return _diagnostic(
-            "GITIGNORE_UNSAFE",
-            "项目根目录 .gitignore 必须是普通文件。",
-            ".gitignore",
-        )
-    payload = target.read_bytes()
-    try:
-        text = payload.decode("utf-8")
-    except UnicodeDecodeError:
-        return _diagnostic(
-            "GITIGNORE_INVALID_UTF8",
-            "项目根目录 .gitignore 必须使用 UTF-8。",
-            ".gitignore",
-        )
-    if any(line.strip().rstrip("/") == "/.ai-sow" for line in text.splitlines()):
-        return None
-    separator = b"" if not payload or payload.endswith((b"\n", b"\r")) else b"\n"
-    files.write_atomic(".gitignore", payload + separator + b"/.ai-sow/\n")
-    return None
-
-
-def _optional_json(path: Path) -> object | None:
-    try:
-        snapshot = path.lstat()
-    except FileNotFoundError:
-        return None
-    if _is_unsafe(snapshot) or not stat.S_ISREG(snapshot.st_mode):
-        raise ValueError("unsafe managed JSON")
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError("invalid managed JSON") from error
-
-
-def _optional_project_json(files: ProjectFiles, relative_path: str) -> object | None:
-    try:
-        return files.read_json(relative_path)
-    except ProjectIOError as error:
-        if error.code == "PROJECT_PATH_MISSING":
-            return None
-        raise ValueError("invalid managed JSON") from error
-
-
-def _existing_project_id(files: ProjectFiles) -> str | None:
-    pending_manifest = _optional_project_json(
-        files, ".ai-sow/inputs/pending/manifest.json"
-    )
-    if isinstance(pending_manifest, Mapping):
-        project = pending_manifest.get("project")
-        if isinstance(project, Mapping) and isinstance(project.get("projectId"), str):
-            return project["projectId"]
-
-    current = _optional_project_json(files, ".ai-sow/current.json")
-    if not isinstance(current, Mapping):
-        return None
-    revision_id = current.get("revisionId")
-    if not isinstance(revision_id, str):
-        return None
-    manifest = _optional_project_json(
-        files, f".ai-sow/inputs/revisions/{revision_id}/manifest.json"
-    )
-    if isinstance(manifest, Mapping):
-        project = manifest.get("project")
-        if isinstance(project, Mapping) and isinstance(project.get("projectId"), str):
-            return project["projectId"]
-    return None
-
-
-def _remove_work_request(files: ProjectFiles) -> None:
-    path = files.root / ".ai-sow/work/request.json"
-    try:
-        snapshot = path.lstat()
-    except FileNotFoundError:
-        return
-    if stat.S_ISREG(snapshot.st_mode) or stat.S_ISLNK(snapshot.st_mode):
-        path.unlink(missing_ok=True)
-
-
-def _source_path(files: ProjectFiles, source: SourceRequest) -> Path:
-    candidate = source.path if source.path.is_absolute() else files.root / source.path
-    try:
-        snapshot = candidate.lstat()
-    except OSError as error:
-        raise SourceReadError("SOURCE_UNREADABLE", "来源文件无法读取。") from error
-    if _is_unsafe(snapshot) or not stat.S_ISREG(snapshot.st_mode):
-        raise SourceReadError("SOURCE_UNREADABLE", "来源文件无法读取。")
-    return candidate
-
-
-def _anchor_value(anchor) -> dict[str, object]:
-    return {
-        "anchorId": anchor.anchor_id,
-        "sourceId": anchor.source_id,
-        "kind": anchor.kind,
-        "locator": anchor.locator,
-        "normalizedText": anchor.normalized_text,
-        "sha256": anchor.sha256,
-    }
-
-
-def _read_baseline(files: ProjectFiles) -> tuple[object | None, list[Mapping[str, object]]]:
-    current = _optional_project_json(files, ".ai-sow/current.json")
-    if not isinstance(current, Mapping):
-        return None, []
-    revision_id = current.get("revisionId")
-    if not isinstance(revision_id, str):
-        return None, []
-    manifest = _optional_project_json(
-        files, f".ai-sow/inputs/revisions/{revision_id}/manifest.json"
-    )
-    anchors = _optional_project_json(
-        files, f".ai-sow/inputs/revisions/{revision_id}/anchors.json"
-    )
-    return (
-        manifest,
-        [item for item in anchors if isinstance(item, Mapping)]
-        if isinstance(anchors, list)
-        else [],
-    )
-
-
-def _key(value: Mapping[str, object], camel: str, snake: str) -> object:
-    return value.get(camel, value.get(snake))
-
-
-def _responsibility_map(value: object) -> dict[str, bytes]:
-    if not isinstance(value, list):
-        return {}
-    return {
-        str(item["responsibilityBoundaryId"]): canonical_json_bytes(item)
-        for item in value
-        if isinstance(item, Mapping) and "responsibilityBoundaryId" in item
-    }
-
-
-def compare_input_revisions(
-    previous_manifest: Mapping[str, object] | None,
-    previous_anchors: Sequence[Mapping[str, object]],
-    pending_manifest: Mapping[str, object],
-    pending_anchors: Sequence[Mapping[str, object]],
-) -> InputChangeSet:
-    previous_remaining = set(range(len(previous_anchors)))
-    pending_remaining = set(range(len(pending_anchors)))
-    changes: list[AnchorChange] = []
-
-    previous_semantic: defaultdict[tuple[object, object], list[int]] = defaultdict(list)
-    pending_semantic: defaultdict[tuple[object, object], list[int]] = defaultdict(list)
-    for index, anchor in enumerate(previous_anchors):
-        previous_semantic[
-            (_key(anchor, "sourceId", "source_id"), anchor.get("sha256"))
-        ].append(index)
-    for index, anchor in enumerate(pending_anchors):
-        pending_semantic[
-            (_key(anchor, "sourceId", "source_id"), anchor.get("sha256"))
-        ].append(index)
-
-    for semantic_key in sorted(set(previous_semantic) & set(pending_semantic), key=str):
-        old_indexes = previous_semantic[semantic_key]
-        new_indexes = pending_semantic[semantic_key]
-        if len(old_indexes) == len(new_indexes) == 1:
-            old_index, new_index = old_indexes[0], new_indexes[0]
-            previous_remaining.discard(old_index)
-            pending_remaining.discard(new_index)
-            old = previous_anchors[old_index]
-            new = pending_anchors[new_index]
-            if old.get("locator") != new.get("locator"):
-                changes.append(
-                    AnchorChange(
-                        source_id=str(_key(new, "sourceId", "source_id")),
-                        anchor_id=str(_key(new, "anchorId", "anchor_id")),
-                        change="MOVED_UNCHANGED",
-                        previous_sha256=str(old.get("sha256")),
-                        current_sha256=str(new.get("sha256")),
-                    )
-                )
-        elif len(old_indexes) == len(new_indexes):
-            old_locators = [previous_anchors[index].get("locator") for index in old_indexes]
-            new_locators = [pending_anchors[index].get("locator") for index in new_indexes]
-            if old_locators == new_locators:
-                previous_remaining.difference_update(old_indexes)
-                pending_remaining.difference_update(new_indexes)
-
-    previous_ids = {
-        (_key(previous_anchors[index], "sourceId", "source_id"), _key(previous_anchors[index], "anchorId", "anchor_id")): index
-        for index in previous_remaining
-    }
-    pending_ids = {
-        (_key(pending_anchors[index], "sourceId", "source_id"), _key(pending_anchors[index], "anchorId", "anchor_id")): index
-        for index in pending_remaining
-    }
-    for identity in sorted(set(previous_ids) & set(pending_ids), key=str):
-        old_index, new_index = previous_ids[identity], pending_ids[identity]
-        previous_remaining.discard(old_index)
-        pending_remaining.discard(new_index)
-        old = previous_anchors[old_index]
-        new = pending_anchors[new_index]
-        if old.get("sha256") != new.get("sha256"):
-            changes.append(
-                AnchorChange(
-                    source_id=str(identity[0]),
-                    anchor_id=str(identity[1]),
-                    change="MODIFIED",
-                    previous_sha256=str(old.get("sha256")),
-                    current_sha256=str(new.get("sha256")),
-                )
-            )
-
-    for index in sorted(previous_remaining):
-        anchor = previous_anchors[index]
-        changes.append(
-            AnchorChange(
-                source_id=str(_key(anchor, "sourceId", "source_id")),
-                anchor_id=str(_key(anchor, "anchorId", "anchor_id")),
-                change="REMOVED",
-                previous_sha256=str(anchor.get("sha256")),
-                current_sha256=None,
-            )
-        )
-    for index in sorted(pending_remaining):
-        anchor = pending_anchors[index]
-        changes.append(
-            AnchorChange(
-                source_id=str(_key(anchor, "sourceId", "source_id")),
-                anchor_id=str(_key(anchor, "anchorId", "anchor_id")),
-                change="ADDED",
-                previous_sha256=None,
-                current_sha256=str(anchor.get("sha256")),
-            )
-        )
-
-    previous_responsibilities = _responsibility_map(
-        previous_manifest.get("responsibilityBoundaries", [])
-        if previous_manifest is not None
-        else []
-    )
-    pending_responsibilities = _responsibility_map(
-        pending_manifest.get("responsibilityBoundaries", [])
-    )
-    responsibility_ids = tuple(
-        sorted(
-            key
-            for key in set(previous_responsibilities) | set(pending_responsibilities)
-            if previous_responsibilities.get(key) != pending_responsibilities.get(key)
-        )
-    )
-
-    previous_sources = (
-        previous_manifest.get("sources", []) if previous_manifest is not None else []
-    )
-    pending_sources = pending_manifest.get("sources", [])
-    exact_match = (
-        previous_manifest is not None
-        and not changes
-        and not responsibility_ids
-        and canonical_json_bytes(previous_sources) == canonical_json_bytes(pending_sources)
-    )
-    return InputChangeSet(
-        exact_match=exact_match,
-        source_changes=tuple(
-            sorted(changes, key=lambda item: (item.source_id, item.anchor_id, item.change))
-        ),
-        responsibility_ids=responsibility_ids,
-    )
-
-
-def _blocked_result(
-    diagnostics: Sequence[Diagnostic],
-    questions: Sequence[str] = (),
-    *,
-    pending_manifest_path: str = ".ai-sow/inputs/pending/manifest.json",
-    anchors_path: str = ".ai-sow/inputs/pending/anchors.json",
-) -> IntakeResult:
-    return IntakeResult(
-        outcome="BLOCKED",
-        pending_manifest_path=pending_manifest_path,
-        anchors_path=anchors_path,
-        changes=InputChangeSet(False, (), ()),
+def _revision_failure(diagnostics: Sequence[Diagnostic]) -> InputRevisionResult:
+    return InputRevisionResult(
+        value=None,
+        path=None,
+        sha256=None,
         diagnostics=_sort_diagnostics(diagnostics),
-        questions=tuple(sorted(set(questions))),
     )
 
 
-def prepare_pending(
-    files: ProjectFiles,
-    request: InputRequest,
-    *,
-    revision_id: str,
-    now: Callable[[], datetime],
-) -> IntakeResult:
+def _selected_next_sources(value: Mapping[str, object]) -> list[Mapping[str, object]]:
+    sources = value.get("sources")
+    assert isinstance(sources, list)
+    return [
+        source
+        for source in sources
+        if isinstance(source, Mapping)
+        and not (source.get("role") == "DEMO" and source.get("status") == "NOT_SELECTED")
+    ]
+
+
+def _template_table_names(path: Path) -> set[str]:
     try:
-        if not revision_id.isdigit() or len(revision_id) != 6:
-            return _blocked_result(
-                [_diagnostic("REVISION_ID_INVALID", "revision ID 必须是六位数字。")]
+        with zipfile.ZipFile(path) as archive:
+            table_paths = sorted(
+                name
+                for name in archive.namelist()
+                if re.fullmatch(r"xl/tables/table[0-9]+\.xml", name)
             )
-        try:
-            existing_project_id = _existing_project_id(files)
-        except ValueError:
-            return _blocked_result(
-                [_diagnostic("PROJECT_IDENTITY_INVALID", "既有项目身份无法安全读取。")]
-            )
-        if existing_project_id is not None and existing_project_id != request.project_id:
-            return _blocked_result(
-                [_diagnostic("PROJECT_IDENTITY_CONFLICT", "请求项目与既有项目身份不一致。")]
-            )
-
-        answer_diagnostics = validate_question_answers(
-            request.questions, request.questionnaire_answers
-        )
-        if answer_diagnostics:
-            return _blocked_result(answer_diagnostics)
-
-        answer_anchors = question_answer_anchors(
-            request.questions, request.questionnaire_answers
-        )
-        answer_source_ids = {anchor.source_id for anchor in answer_anchors}
-        source_id_conflicts = tuple(
-            _diagnostic(
-                "QUESTION_ANSWER_SOURCE_ID_CONFLICT",
-                "文档 sourceId 与问答证据保留的 sourceId 冲突。",
-                f"/sources/{index}/sourceId",
-            )
-            for index, source in enumerate(request.sources)
-            if source.source_id in answer_source_ids
-        )
-        if source_id_conflicts:
-            return _blocked_result(source_id_conflicts)
-
-        privacy_error = _ensure_privacy_ignore(files)
-        if privacy_error is not None:
-            return _blocked_result([privacy_error])
-
-        ai_sow = files.ensure_dir(".ai-sow")
-        inputs_root = files.ensure_dir(".ai-sow/inputs")
-        pending = inputs_root / "pending"
-        temp = ai_sow / f".pending-{secrets.token_hex(6)}"
-        temp.mkdir()
-        diagnostics: list[Diagnostic] = []
-        questions: tuple[str, ...] = ()
-        try:
-            existing_manifest = _optional_json(pending / "manifest.json")
-            effective_revision_id = revision_id
-            if isinstance(existing_manifest, Mapping):
-                previous_id = existing_manifest.get("revisionId")
-                if isinstance(previous_id, str):
-                    effective_revision_id = previous_id
-
-            answers = [dict(item) for item in request.questionnaire_answers]
-
-            source_entries: list[dict[str, object]] = []
-            anchor_values: list[dict[str, object]] = []
-            for source in request.sources:
-                original = _source_path(files, source)
-                original_name = original.name
-                relative = (
-                    f"sources/{source.role.lower()}/{source.source_id}/{original_name}"
-                )
-                destination = temp / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                payload = original.read_bytes()
-                destination.write_bytes(payload)
-                try:
-                    anchors = extract_document(
-                        destination,
-                        source_id=source.source_id,
-                        role=source.role,
-                    )
-                except SourceReadError as error:
-                    diagnostics.append(_diagnostic(error.code, str(error), f"/sources/{source.source_id}"))
-                    continue
-                serialized = [_anchor_value(anchor) for anchor in anchors]
-                anchor_values.extend(serialized)
-                source_entries.append(
-                    {
-                        "sourceId": source.source_id,
-                        "role": source.role,
-                        "version": source.version,
-                        "originalName": original_name,
-                        "mediaType": source_media_type(destination, source.role),
-                        "path": relative,
-                        "sha256": hashlib.sha256(payload).hexdigest(),
-                        "semanticSha256": sha256_bytes(canonical_json_bytes(serialized)),
-                        "anchorCount": len(serialized),
-                    }
-                )
-
-            anchor_values.extend(
-                _anchor_value(anchor)
-                for anchor in answer_anchors
-            )
-
-            source_entries.sort(key=lambda item: (str(item["role"]), str(item["sourceId"]), str(item["version"])))
-            anchor_values.sort(key=lambda item: (str(item["sourceId"]), str(item["anchorId"])))
-            recorded_at = now().isoformat().replace("+00:00", "Z")
-            manifest: dict[str, object] = {
-                "contract": "ai-sow-input-manifest-v1",
-                "revisionId": effective_revision_id,
-                "project": {
-                    "projectId": request.project_id,
-                    "name": request.project_name,
-                    "plannedEffectiveDate": request.planned_effective_date,
-                },
-                "mode": request.mode,
-                "responsibilityBoundaries": [
-                    dict(item) for item in request.responsibility_boundaries
-                ],
-                "sources": source_entries,
-                "questions": [dict(item) for item in request.questions],
-                "questionnaireAnswers": answers,
-                "anchorsPath": "anchors.json",
-                "anchorsSha256": sha256_bytes(canonical_json_bytes(anchor_values)),
-                "recordedAt": recorded_at,
+            return {
+                str(ET.fromstring(archive.read(name)).attrib["name"])
+                for name in table_paths
             }
-            (temp / "manifest.json").write_bytes(canonical_json_bytes(manifest))
-            (temp / "answers.json").write_bytes(canonical_json_bytes(answers))
-            (temp / "anchors.json").write_bytes(canonical_json_bytes(anchor_values))
-            if diagnostics:
-                (temp / "diagnostics.json").write_bytes(
-                    canonical_json_bytes(
-                        [
-                            {"code": item.code, "message": item.message, "path": item.path}
-                            for item in diagnostics
-                        ]
-                    )
+    except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile) as error:
+        raise SourceReadError(
+            "TEMPLATE_CONTRACT_INVALID", "SOW 模板无法读取 Table 合同。"
+        ) from error
+
+
+def _next_template_path(files: ProjectFiles) -> Path:
+    try:
+        return files.resolve(PROJECT_TEMPLATE_PATH)
+    except ProjectIOError as error:
+        if error.code != "PROJECT_PATH_MISSING":
+            raise
+    return TEMPLATE_ASSET
+
+
+def _cheap_prepare_gate(
+    value: object,
+    *,
+    files: ProjectFiles,
+) -> tuple[
+    Mapping[str, object] | None,
+    tuple[Mapping[str, object], ...],
+    Path | None,
+    tuple[Diagnostic, ...],
+]:
+    diagnostics = list(
+        validate_contract(value, "request.schema.json", NEXT_SCHEMA_REGISTRY)
+    )
+    if diagnostics or not isinstance(value, Mapping):
+        return None, (), None, _sort_diagnostics(diagnostics)
+
+    sources = _selected_next_sources(value)
+    source_ids: set[str] = set()
+    for index, source in enumerate(sources):
+        source_id = source.get("sourceId")
+        if isinstance(source_id, str) and source_id in source_ids:
+            diagnostics.append(
+                _diagnostic(
+                    "SOURCE_ID_DUPLICATE",
+                    "sourceId 必须在当前请求中唯一。",
+                    f"/sources/{index}/sourceId",
+                )
+            )
+        if isinstance(source_id, str):
+            source_ids.add(source_id)
+
+    roles = [source.get("role") for source in sources]
+    if "PRD" not in roles:
+        diagnostics.append(
+            _diagnostic("PRD_REQUIRED", "必须提供已批准 PRD。", "/sources")
+        )
+    design_sources = [
+        source for source in sources if source.get("role") in {"HLD", "ADR"}
+    ]
+    for source in design_sources:
+        if source.get("status") != "APPROVED":
+            diagnostics.append(
+                _diagnostic(
+                    "DESIGN_SOURCE_NOT_APPROVED",
+                    "HLD/ADR 只有在状态为 APPROVED 时才能构成设计基线。",
+                    f"/sources/{source.get('sourceId')}/status",
+                )
+            )
+    if not any(source.get("status") == "APPROVED" for source in design_sources):
+        if not any(item.code == "DESIGN_SOURCE_NOT_APPROVED" for item in diagnostics):
+            diagnostics.append(
+                _diagnostic(
+                    "APPROVED_DESIGN_REQUIRED",
+                    "必须提供至少一份已批准 HLD 或 ADR。",
+                    "/sources",
+                )
+            )
+    if value.get("mode") == "BROWNFIELD" and value.get("currentStateDelta") is None:
+        diagnostics.append(
+            _diagnostic(
+                "BROWNFIELD_CURRENT_STATE_DELTA_REQUIRED",
+                "Brownfield 必须声明当前状态变化。",
+                "/currentStateDelta",
+            )
+        )
+
+    question_values = value.get("questions")
+    answer_values = value.get("questionnaireAnswers")
+    if isinstance(question_values, list) and isinstance(answer_values, list):
+        diagnostics.extend(
+            validate_question_answers(
+                [item for item in question_values if isinstance(item, Mapping)],
+                [item for item in answer_values if isinstance(item, Mapping)],
+            )
+        )
+
+    resolved: list[Mapping[str, object]] = []
+    if not diagnostics:
+        for index, source in enumerate(sources):
+            relative_path = source.get("path")
+            role = source.get("role")
+            assert isinstance(relative_path, str) and isinstance(role, str)
+            try:
+                path = files.resolve(relative_path)
+                inspect_source_header(path, source_role=role)
+            except (ProjectIOError, SourceReadError) as error:
+                code = error.code
+                diagnostics.append(
+                    _diagnostic(code, str(error), f"/sources/{index}/path")
                 )
             else:
-                contract_diagnostics = validate_contract(
-                    manifest,
-                    "input-manifest.schema.json",
-                    SCHEMA_REGISTRY,
-                )
-                diagnostics.extend(contract_diagnostics)
+                resolved.append({**source, "_resolvedPath": path})
 
-            backup = inputs_root / f".pending-backup-{secrets.token_hex(6)}"
-            had_pending = pending.exists()
-            try:
-                if had_pending:
-                    os.replace(pending, backup)
-                os.replace(temp, pending)
-            except OSError:
-                if had_pending and backup.exists() and not pending.exists():
-                    os.replace(backup, pending)
-                return _blocked_result(
-                    [_diagnostic("PENDING_PUBLISH_FAILED", "pending 输入未能原子发布。")]
-                )
-            finally:
-                if temp.exists():
-                    shutil.rmtree(temp)
-            if backup.exists():
-                shutil.rmtree(backup)
+    template_path: Path | None = None
+    if not diagnostics:
+        try:
+            template_path = _next_template_path(files)
+            from workbook import FORMAL_TABLES
 
-            baseline_manifest, baseline_anchors = _read_baseline(files)
-            changes = compare_input_revisions(
-                baseline_manifest if isinstance(baseline_manifest, Mapping) else None,
-                baseline_anchors,
-                manifest,
-                anchor_values,
+            table_names = _template_table_names(template_path)
+            if table_names != FORMAL_TABLES:
+                diagnostics.append(
+                    _diagnostic(
+                        "TEMPLATE_TABLES_INVALID",
+                        "SOW 模板命名 Table 集合不符合合同。",
+                        PROJECT_TEMPLATE_PATH,
+                    )
+                )
+        except (ProjectIOError, SourceReadError, OSError) as error:
+            code = getattr(error, "code", "TEMPLATE_CONTRACT_INVALID")
+            diagnostics.append(
+                _diagnostic(code, str(error), PROJECT_TEMPLATE_PATH)
             )
-            outcome = "BLOCKED" if diagnostics else "READY"
-            return IntakeResult(
-                outcome=outcome,
-                pending_manifest_path=".ai-sow/inputs/pending/manifest.json",
-                anchors_path=".ai-sow/inputs/pending/anchors.json",
-                changes=changes,
-                diagnostics=_sort_diagnostics(diagnostics),
-                questions=questions,
-            )
-        except SourceReadError as error:
-            if temp.exists():
-                shutil.rmtree(temp)
-            return _blocked_result([_diagnostic(error.code, str(error))])
-        except (OSError, ValueError, ProjectIOError):
-            if temp.exists():
-                shutil.rmtree(temp)
-            return _blocked_result(
-                [_diagnostic("PENDING_PREPARATION_FAILED", "pending 输入准备失败。")]
-            )
+
+    if diagnostics:
+        return value, (), None, _sort_diagnostics(diagnostics)
+    return value, tuple(resolved), template_path, ()
+
+
+def _bind_source_blocks(
+    source_id: str,
+    blocks: Sequence[Mapping[str, object]],
+) -> tuple[dict[str, object], ...]:
+    replacements = {
+        str(block["blockId"]): (
+            "block-"
+            + sha256_bytes(
+                canonical_json_bytes([source_id, str(block["blockId"])])
+            )[:20]
+        )
+        for block in blocks
+    }
+    bound: list[dict[str, object]] = []
+    for block in blocks:
+        block_id = replacements[str(block["blockId"])]
+        primary = replacements.get(
+            str(block["primaryCoverageBlockId"]),
+            str(block["primaryCoverageBlockId"]),
+        )
+        parent_value = block.get("structuralParentId")
+        bound.append(
+            {
+                **block,
+                "blockId": block_id,
+                "sourceId": source_id,
+                "primaryCoverageBlockId": primary,
+                "contextBlockIds": [
+                    replacements.get(str(item), str(item))
+                    for item in block.get("contextBlockIds", [])
+                ],
+                "structuralParentId": (
+                    replacements.get(str(parent_value), str(parent_value))
+                    if parent_value is not None
+                    else None
+                ),
+            }
+        )
+    return tuple(bound)
+
+
+def _manifest_block(block: Mapping[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in block.items()
+        if key
+        in {
+            "blockId",
+            "sourceId",
+            "rawSha256",
+            "contentSha256",
+            "locator",
+            "primaryCoverageBlockId",
+            "contextBlockIds",
+            "structuralParentId",
+            "extractionDisposition",
+            "droppedContentCategories",
+        }
+    }
+
+
+def _tree_snapshot(path: Path) -> dict[str, bytes]:
+    snapshot = path.lstat()
+    if _is_unsafe(snapshot) or not stat.S_ISDIR(snapshot.st_mode):
+        raise ProjectIOError(
+            "PROJECT_PATH_UNSAFE",
+            str(path),
+            "Input Revision tree 必须是无链接的普通目录树。",
+        )
+    result: dict[str, bytes] = {}
+
+    def visit(directory: Path) -> None:
+        for child in sorted(directory.iterdir(), key=lambda item: item.name):
+            child_snapshot = child.lstat()
+            if _is_unsafe(child_snapshot):
+                raise ProjectIOError(
+                    "PROJECT_PATH_UNSAFE",
+                    str(child),
+                    "Input Revision tree 包含链接或 reparse point。",
+                )
+            if stat.S_ISDIR(child_snapshot.st_mode):
+                visit(child)
+            elif stat.S_ISREG(child_snapshot.st_mode):
+                result[child.relative_to(path).as_posix()] = child.read_bytes()
+            else:
+                raise ProjectIOError(
+                    "PROJECT_PATH_TYPE",
+                    str(child),
+                    "Input Revision tree 包含特殊文件。",
+                )
+
+    visit(path)
+    return result
+
+
+def _accept_revision_tree(
+    files: ProjectFiles,
+    built_root: Path,
+    revision_id: str,
+) -> str:
+    files.ensure_dir(".ai-sow/inputs")
+    pending_root = files.ensure_dir(".ai-sow/inputs/pending")
+    revisions_root = files.ensure_dir(".ai-sow/inputs/revisions")
+    final = revisions_root / revision_id
+    relative_root = f".ai-sow/inputs/revisions/{revision_id}"
+    if final.exists():
+        if _tree_snapshot(final) == _tree_snapshot(built_root):
+            return relative_root
+        raise ProjectIOError(
+            "PROJECT_CONTENT_CONFLICT",
+            relative_root,
+            "content-addressed Input Revision 已存在但内容不一致。",
+        )
+
+    staging = pending_root / f".stage-{secrets.token_hex(6)}"
+    try:
+        shutil.copytree(built_root, staging)
+        try:
+            os.replace(staging, final)
+        except OSError:
+            if final.exists() and _tree_snapshot(final) == _tree_snapshot(built_root):
+                return relative_root
+            raise
     finally:
-        _remove_work_request(files)
+        if staging.exists():
+            shutil.rmtree(staging)
+    return relative_root
+
+
+def prepare(request_path: str, *, files: ProjectFiles) -> InputRevisionResult:
+    """Create or reuse one immutable, lossless Input Revision from a strict request."""
+    try:
+        request_payload = files.read_bytes(request_path)
+        try:
+            request_value = json.loads(request_payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return _revision_failure(
+                [_diagnostic("PROJECT_JSON_INVALID", "输入请求不是有效 JSON。", request_path)]
+            )
+        value, sources, template_path, diagnostics = _cheap_prepare_gate(
+            request_value,
+            files=files,
+        )
+        if diagnostics or value is None or template_path is None:
+            return _revision_failure(diagnostics)
+
+        source_results: list[dict[str, object]] = []
+        bound_blocks: list[dict[str, object]] = []
+        raw_sources: list[tuple[str, str, bytes]] = []
+        for index, source in enumerate(sources):
+            source_id = str(source["sourceId"])
+            role = str(source["role"])
+            path = source["_resolvedPath"]
+            assert isinstance(path, Path)
+            try:
+                document = extract_source_blocks(
+                    path,
+                    source_role=role,
+                    parser_version=PARSER_VERSION,
+                )
+            except SourceReadError as error:
+                return _revision_failure(
+                    [_diagnostic(error.code, str(error), f"/sources/{index}/path")]
+                )
+            blocks = _bind_source_blocks(source_id, document.blocks)
+            bound_blocks.extend(blocks)
+            extension = path.suffix.casefold()
+            directory = "prior-sows" if role == "PRIOR_SOW" else "sources"
+            source_relative = f"{directory}/{source_id}/source{extension}"
+            source_payload = path.read_bytes()
+            if sha256_bytes(source_payload) != document.raw_sha256:
+                return _revision_failure(
+                    [
+                        _diagnostic(
+                            "SOURCE_CHANGED_DURING_PREPARE",
+                            "来源在解析期间发生变化，请重新准备输入。",
+                            f"/sources/{index}/path",
+                        )
+                    ]
+                )
+            raw_sources.append((source_relative, source_id, source_payload))
+            source_results.append(
+                {
+                    "sourceId": source_id,
+                    "role": role,
+                    "status": source["status"],
+                    "path": source_relative,
+                    "rawSha256": document.raw_sha256,
+                    "parserId": document.parser_id,
+                    "parserVersion": document.parser_version,
+                    "blockIds": [block["blockId"] for block in blocks],
+                }
+            )
+
+        answer_anchors = question_answer_anchors(
+            [item for item in value["questions"] if isinstance(item, Mapping)],
+            [
+                item
+                for item in value["questionnaireAnswers"]
+                if isinstance(item, Mapping)
+            ],
+        )
+        for anchor in answer_anchors:
+            content = anchor.normalized_text
+            raw = content.encode("utf-8")
+            block_id = f"block-{sha256_bytes(canonical_json_bytes([anchor.source_id, anchor.anchor_id]))[:20]}"
+            block = {
+                "blockId": block_id,
+                "sourceId": anchor.source_id,
+                "rawSha256": sha256_bytes(raw),
+                "contentSha256": sha256_bytes(raw),
+                "locator": anchor.locator,
+                "primaryCoverageBlockId": block_id,
+                "contextBlockIds": [],
+                "structuralParentId": None,
+                "extractionDisposition": "INCLUDED",
+                "droppedContentCategories": [],
+                "content": content,
+            }
+            bound_blocks.append(block)
+            answer_path = f"sources/{anchor.source_id}/answer.txt"
+            raw_sources.append((answer_path, anchor.source_id, raw))
+            source_results.append(
+                {
+                    "sourceId": anchor.source_id,
+                    "role": "QUESTION_ANSWER",
+                    "status": "BOUND",
+                    "path": answer_path,
+                    "rawSha256": sha256_bytes(raw),
+                    "parserId": "question-answer",
+                    "parserVersion": PARSER_VERSION,
+                    "blockIds": [block_id],
+                }
+            )
+
+        template_payload = template_path.read_bytes()
+        delivery_policy = DELIVERY_POLICY_ASSET.read_bytes()
+        execution_policy = EXECUTION_POLICY_ASSET.read_bytes()
+        prior_hashes = sorted(
+            str(source["rawSha256"])
+            for source in source_results
+            if source["role"] == "PRIOR_SOW"
+        )
+        source_results.sort(key=lambda item: (str(item["role"]), str(item["sourceId"])))
+        bound_blocks.sort(key=lambda item: (str(item["sourceId"]), str(item["locator"]), str(item["blockId"])))
+        identity = {
+            "requestSha256": sha256_bytes(request_payload),
+            "templateSha256": sha256_bytes(template_payload),
+            "deliveryPolicySha256": sha256_bytes(delivery_policy),
+            "executionPolicySha256": sha256_bytes(execution_policy),
+            "sources": source_results,
+            "blocks": [_manifest_block(block) for block in bound_blocks],
+        }
+        revision_id = f"revision-{sha256_bytes(canonical_json_bytes(identity))[:16]}"
+        revision_root = f".ai-sow/inputs/revisions/{revision_id}"
+        for source in source_results:
+            source["path"] = f"{revision_root}/{source['path']}"
+        manifest = {
+            "contract": "ai-sow-input-revision-v1",
+            "revisionId": revision_id,
+            "requestSha256": sha256_bytes(request_payload),
+            "templateSha256": sha256_bytes(template_payload),
+            "deliveryPolicySha256": sha256_bytes(delivery_policy),
+            "executionPolicySha256": sha256_bytes(execution_policy),
+            "priorSowState": "PROVIDED" if prior_hashes else "NOT_PROVIDED",
+            "priorSowSha256s": prior_hashes,
+            "sources": source_results,
+            "blocks": [_manifest_block(block) for block in bound_blocks],
+        }
+        contract_diagnostics = validate_contract(
+            manifest,
+            "input-revision.schema.json",
+            NEXT_SCHEMA_REGISTRY,
+        )
+        if contract_diagnostics:
+            return _revision_failure(contract_diagnostics)
+        manifest_payload = canonical_json_bytes(manifest)
+
+        build_root = files.ensure_dir(".ai-sow/inputs/pending") / (
+            f".build-{secrets.token_hex(6)}"
+        )
+        try:
+            build_root.mkdir()
+            built_root = build_root / revision_id
+            built_root.mkdir()
+            (built_root / "request.json").write_bytes(request_payload)
+            (built_root / "sow-template.xlsx").write_bytes(template_payload)
+            (built_root / "delivery-policy.json").write_bytes(delivery_policy)
+            (built_root / "execution-policy.json").write_bytes(execution_policy)
+            for relative, _, payload in raw_sources:
+                destination = built_root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(payload)
+            for block in bound_blocks:
+                destination = built_root / "blocks" / f"{block['blockId']}.json"
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(canonical_json_bytes(block))
+            (built_root / "manifest.json").write_bytes(manifest_payload)
+            accepted_root = _accept_revision_tree(files, built_root, revision_id)
+        finally:
+            if build_root.exists():
+                shutil.rmtree(build_root)
+
+        manifest_path = f"{accepted_root}/manifest.json"
+        return InputRevisionResult(
+            value=manifest,
+            path=manifest_path,
+            sha256=sha256_bytes(manifest_payload),
+            diagnostics=(),
+        )
+    except ProjectIOError as error:
+        return _revision_failure(
+            [_diagnostic(error.code, str(error), error.relative_path)]
+        )
+    except (OSError, ValueError) as error:
+        return _revision_failure(
+            [_diagnostic("INPUT_REVISION_PREPARATION_FAILED", str(error), request_path)]
+        )

@@ -18,9 +18,15 @@ from openpyxl.workbook.properties import CalcProperties
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.table import TableFormula
 
-from models import WorkbookAudit
-from office_engine import normalize_xlsx, recalculate_workbook
-from story_notes import story_note_projection
+from models import TaskStandardCatalog, WorkbookAudit
+from sow_model import derive_sit_assignments
+from task_standard_catalog import catalog as load_task_standard_catalog
+if __package__:
+    from .office_engine import normalize_xlsx, recalculate_workbook
+    from .story_notes import model_story_note_projection
+else:
+    from office_engine import normalize_xlsx, recalculate_workbook
+    from story_notes import model_story_note_projection
 
 
 FORMAL_SHEETS = (
@@ -34,12 +40,12 @@ FORMAL_TABLES = {
     "SOWStoryTable",
     "TaskTable",
     "ProjectSummaryTable",
-    "BaseUnitCatalogTable",
+    "TaskStandardTable",
     "ProjectParameterTable",
 }
 FORMULA_HEADERS = {
     "SOWStoryTable": {"任务列表", "故事人天", "校验结果"},
-    "TaskTable": {"M档标准人天", "复杂度系数", "任务人天", "SIT支持人天", "校验结果"},
+    "TaskTable": {"工作类型名称", "M档标准人天", "复杂度系数", "任务人天", "SIT支持人天", "校验结果"},
 }
 TABLE_HEADERS = {
     "SOWStoryTable": [
@@ -56,9 +62,12 @@ TABLE_HEADERS = {
     "TaskTable": [
         "所属故事",
         "任务名称",
-        "任务类型",
+        "工作类型ID",
+        "工作类型名称",
         "工作方式",
         "复杂度",
+        "SIT支持分类",
+        "SIT计费点ID",
         "备注",
         "M档标准人天",
         "复杂度系数",
@@ -69,20 +78,37 @@ TABLE_HEADERS = {
 }
 SUMMARY_HEADERS = ["工作量项", "人天"]
 CATALOG_HEADERS = [
-    "任务族ID",
-    "任务族名称",
-    "基础单元ID",
-    "基础单元名称",
-    "计数口径",
+    "序号",
+    "分类",
+    "工作类型ID",
+    "工作类型名称",
+    "计量单位",
+    "标准交付物",
     "包含内容",
     "不包含内容",
+    "说明",
+    "新建适用",
     "新建M档人天",
+    "新建完成标准",
+    "调整适用",
     "调整M档人天",
+    "调整完成标准",
+    "接入复用适用",
     "接入复用M档人天",
+    "接入复用完成标准",
+    "主要计量维度",
     "S标准",
     "M标准",
     "L标准",
     "X/拆分条件",
+    "模式适用说明",
+    "相邻工作类型IDs",
+    "相邻类型选择规则",
+    "不建Task条件",
+    "SIT支持资格",
+    "标准版本",
+    "参数状态",
+    "来源版本",
 ]
 PARAMETER_HEADERS = ["参数代码", "名称", "值", "单位", "适用范围", "验证状态/说明"]
 PROTECTED_SHEETS = {"01-需求故事", "02-任务清单"}
@@ -149,47 +175,50 @@ def require_unique_names(entries: list[dict[str, Any]], label: str) -> None:
 
 
 def build_rows(
-    scope: dict[str, Any],
-    delivery: dict[str, Any],
-    base_unit_names: dict[str, str],
+    model: dict[str, Any],
+    task_catalog: TaskStandardCatalog,
 ) -> dict[str, list[dict[str, object]]]:
-    if not delivery["stories"]:
+    if not model["stories"]:
         raise ValueError("formal workbook requires at least one Story")
-    if not delivery["tasks"]:
+    if not model["tasks"]:
         raise ValueError("formal workbook requires at least one Task")
 
-    epics = {entry["epicId"]: entry for entry in scope["epics"]}
-    features = {entry["featureId"]: entry for entry in scope["features"]}
-    stories = {entry["storyId"]: entry for entry in delivery["stories"]}
+    epics = {entry["epicId"]: entry for entry in model["epics"]}
+    features = {entry["featureId"]: entry for entry in model["features"]}
+    stories = {entry["storyId"]: entry for entry in model["stories"]}
+    catalog_rows = dict(task_catalog.by_work_type_id)
 
     for label, entries in (
-        ("Epic", scope["epics"]),
-        ("Feature", scope["features"]),
-        ("Story", delivery["stories"]),
-        ("Task", delivery["tasks"]),
+        ("Epic", model["epics"]),
+        ("Feature", model["features"]),
+        ("Story", model["stories"]),
+        ("Task", model["tasks"]),
     ):
         require_unique_names(entries, label)
 
     acceptance_names_by_story: dict[str, list[str]] = {}
-    for criterion in delivery["acceptanceCriteria"]:
+    for criterion in model["acceptanceCriteria"]:
         acceptance_names_by_story.setdefault(criterion["storyId"], []).append(
-            criterion["name"]
+            criterion["text"]
         )
 
     task_display_names_by_story: dict[str, list[str]] = {}
-    for task in delivery["tasks"]:
-        base_unit = task["baseUnit"]
-        if base_unit not in base_unit_names:
-            raise ValueError(f"template base-unit name is missing: {base_unit}")
+    for task in model["tasks"]:
+        work_type_id = task["workTypeId"]
+        catalog_row = catalog_rows.get(work_type_id)
+        if not isinstance(catalog_row, dict):
+            raise ValueError(f"template work type is missing: {work_type_id}")
+        if catalog_row.get("rowSemanticSha256") != task["rowSemanticSha256"]:
+            raise ValueError(f"task standard row hash changed: {work_type_id}")
         task_display_names_by_story.setdefault(task["storyId"], []).append(
-            f"• [{base_unit_names[base_unit]}/{task['workMode']}/{task['complexity']}] "
+            f"• [{catalog_row['工作类型名称']}/{task['workMode']}/{task['complexity']}] "
             f"{task['name']}"
         )
 
-    story_notes, _story_note_inventory = story_note_projection(scope, delivery)
+    story_notes, _story_note_inventory = model_story_note_projection(model)
 
     story_rows: list[dict[str, object]] = []
-    for story in delivery["stories"]:
+    for story in model["stories"]:
         feature = features[story["featureId"]]
         epic = epics[feature["epicId"]]
         story_name = str(safe_text(story["name"]))
@@ -198,7 +227,7 @@ def build_rows(
                 "需求": safe_text(epic["name"]),
                 "子需求": safe_text(feature["name"]),
                 "故事": story_name,
-                "UAT适用": "是" if story["uatRelevant"] else "否",
+                "UAT适用": "是" if story["uatApplicable"] else "否",
                 "验收条件": "\n".join(
                     f"• {name}"
                     for name in acceptance_names_by_story.get(story["storyId"], [])
@@ -211,25 +240,27 @@ def build_rows(
         )
 
     task_rows: list[dict[str, object]] = []
-    for task in delivery["tasks"]:
+    sit_by_task = {
+        item["taskId"]: item for item in derive_sit_assignments(model, task_catalog)
+    }
+    for task in model["tasks"]:
         story = stories[task["storyId"]]
         story_name = str(safe_text(story["name"]))
-        base_unit = task["baseUnit"]
-        if base_unit not in base_unit_names:
-            raise ValueError(f"template base-unit name is missing: {base_unit}")
-        notes = [
-            f"任务理由：{task['rationale']}",
-            f"工作方式理由：{task['workModeRationale']}",
-        ]
-        if task.get("complexityRationale"):
-            notes.append(f"复杂度理由：{task['complexityRationale']}")
+        work_type_id = task["workTypeId"]
+        catalog_row = catalog_rows.get(work_type_id)
+        if not isinstance(catalog_row, dict):
+            raise ValueError(f"template work type is missing: {work_type_id}")
+        sit = sit_by_task[task["taskId"]]
+        notes = [f"实际计量范围：{task['actualMeasurementScope']}"]
         task_rows.append(
             {
                 "所属故事": story_name,
                 "任务名称": task["name"],
-                "任务类型": base_unit_names[base_unit],
+                "工作类型ID": work_type_id,
                 "工作方式": task["workMode"],
                 "复杂度": task["complexity"],
+                "SIT支持分类": sit["sitSupportClass"],
+                "SIT计费点ID": sit["sitSupportPointId"] or "",
                 "备注": "\n".join(notes),
             }
         )
@@ -250,33 +281,33 @@ def table_index(workbook: Any) -> dict[str, tuple[Any, Any]]:
     return found
 
 
-def base_unit_name_map(workbook: Any) -> dict[str, str]:
+def task_standard_name_map(workbook: Any) -> dict[str, str]:
     index = table_index(workbook)
-    if "BaseUnitCatalogTable" not in index:
-        raise ValueError("template base-unit catalog is missing")
-    worksheet, table = index["BaseUnitCatalogTable"]
+    if "TaskStandardTable" not in index:
+        raise ValueError("template Task Standard catalog is missing")
+    worksheet, table = index["TaskStandardTable"]
     min_col, min_row, max_col, max_row = range_boundaries(table.ref)
     headers = [
         worksheet.cell(min_row, column).value
         for column in range(min_col, max_col + 1)
     ]
-    if "基础单元ID" not in headers or "基础单元名称" not in headers:
-        raise ValueError("template base-unit name projection columns are missing")
-    id_column = min_col + headers.index("基础单元ID")
-    name_column = min_col + headers.index("基础单元名称")
+    if "工作类型ID" not in headers or "工作类型名称" not in headers:
+        raise ValueError("template work type name projection columns are missing")
+    id_column = min_col + headers.index("工作类型ID")
+    name_column = min_col + headers.index("工作类型名称")
     result: dict[str, str] = {}
     used_names: set[str] = set()
     for row in range(min_row + 1, max_row + 1):
         unit_id = worksheet.cell(row, id_column).value
         name = worksheet.cell(row, name_column).value
         if not isinstance(unit_id, str) or not unit_id.strip():
-            raise ValueError("template base-unit ID is blank")
+            raise ValueError("template work type ID is blank")
         if not isinstance(name, str) or not name.strip():
-            raise ValueError(f"template base-unit name is blank: {unit_id}")
+            raise ValueError(f"template work type name is blank: {unit_id}")
         if unit_id in result:
-            raise ValueError(f"template base-unit ID is duplicated: {unit_id}")
+            raise ValueError(f"template work type ID is duplicated: {unit_id}")
         if name in used_names:
-            raise ValueError(f"template base-unit name is duplicated: {name}")
+            raise ValueError(f"template work type name is duplicated: {name}")
         result[unit_id] = name
         used_names.add(name)
     return result
@@ -847,6 +878,13 @@ def verify_static_authority(workbook: Any, template_workbook: Any) -> None:
                         expected.value
                     ):
                         raise ValueError(f"static formula mismatch: {table_name}")
+                elif isinstance(expected.value, bool) and (
+                    actual.data_type == "f"
+                    and isinstance(actual.value, str)
+                    and actual.value.upper()
+                    == ("=TRUE()" if expected.value else "=FALSE()")
+                ):
+                    continue
                 elif actual.value != expected.value:
                     raise ValueError(f"static value mismatch: {table_name}")
 
@@ -869,8 +907,7 @@ def verify_worksheet_authority(workbook: Any, template_workbook: Any) -> None:
 def audit_calculated_workbook(
     path: Path,
     template_path: Path,
-    scope: dict[str, Any],
-    delivery: dict[str, Any],
+    model: dict[str, Any],
     engine: Any,
 ) -> WorkbookAudit:
     """Verify projected inputs and reread every calculation authority/result.
@@ -886,7 +923,7 @@ def audit_calculated_workbook(
         )
         expected_layout_path = temporary_root / "expected-layout.xlsx"
         reference_path = temporary_root / "reference.xlsx"
-        write_workbook(template_path, scope, delivery, expected_layout_path)
+        write_workbook(template_path, model, expected_layout_path)
         recalculate_workbook(expected_layout_path, reference_path, engine)
         expected_layout_workbook = openpyxl.load_workbook(
             expected_layout_path, data_only=False, read_only=False
@@ -921,11 +958,7 @@ def audit_calculated_workbook(
             if set(table_index(workbook)) != FORMAL_TABLES:
                 raise ValueError("formal workbook table contract changed")
 
-        expected = build_rows(
-            scope,
-            delivery,
-            base_unit_name_map(formula_workbook),
-        )
+        expected = build_rows(model, load_task_standard_catalog(template_path))
         verify_workbook(
             path,
             expected,
@@ -1031,7 +1064,7 @@ def audit_calculated_workbook(
                 if task.get("所属故事") == story_name
             ]
             expected_task_list = "\n".join(
-                f"• [{task['任务类型']}/{task['工作方式']}/{task['复杂度']}] "
+                f"• [{task['工作类型名称']}/{task['工作方式']}/{task['复杂度']}] "
                 f"{task['任务名称']}"
                 for task in matching_tasks
             )
@@ -1062,30 +1095,39 @@ def audit_calculated_workbook(
         if not math.isclose(total_days, direct_days + sit_days + uat_days, abs_tol=1e-9):
             raise ValueError("summary total days do not match component results")
 
-        catalog_records = table_records(cached_workbook, "BaseUnitCatalogTable")
+        catalog_records = table_records(cached_workbook, "TaskStandardTable")
         if not catalog_records or [*catalog_records[0].keys()] != CATALOG_HEADERS:
-            raise ValueError("base-unit catalog contract changed")
+            raise ValueError("task standard catalog contract changed")
+        if len(catalog_records) != 88:
+            raise ValueError("task standard catalog must contain 88 rows")
         catalog_ids: set[str] = set()
+        applicable_modes = 0
+        reusable_modes = 0
         for record in catalog_records:
-            for header in CATALOG_HEADERS:
-                if record[header] in (None, ""):
-                    raise ValueError(f"base-unit catalog value is blank: {header}")
-            unit_id = record["基础单元ID"]
+            unit_id = record["工作类型ID"]
             if not isinstance(unit_id, str) or unit_id in catalog_ids:
-                raise ValueError("base-unit catalog ID is invalid or duplicated")
+                raise ValueError("task standard ID is invalid or duplicated")
             catalog_ids.add(unit_id)
             available_modes = 0
-            for header in ("新建M档人天", "调整M档人天", "接入复用M档人天"):
-                value = record[header]
-                if value == "❌":
+            for prefix in ("新建", "调整", "接入复用"):
+                applicable = record[f"{prefix}适用"]
+                value = record[f"{prefix}M档人天"]
+                if not applicable:
+                    if value not in (None, ""):
+                        raise ValueError(
+                            f"task standard unavailable mode has days: {unit_id}.{prefix}"
+                        )
                     continue
-                if require_number(value, f"BaseUnitCatalogTable.{unit_id}.{header}") <= 0:
-                    raise ValueError("base-unit catalog person-days must be positive")
+                if require_number(value, f"TaskStandardTable.{unit_id}.{prefix}") <= 0:
+                    raise ValueError("task standard person-days must be positive")
                 available_modes += 1
+                applicable_modes += 1
+                if prefix == "接入复用":
+                    reusable_modes += 1
             if available_modes == 0:
-                raise ValueError(
-                    f"base-unit catalog row has no available work mode: {unit_id}"
-                )
+                raise ValueError(f"task standard row has no available work mode: {unit_id}")
+        if applicable_modes != 191 or reusable_modes != 26:
+            raise ValueError("task standard mode counts changed")
 
         parameter_records = table_records(cached_workbook, "ProjectParameterTable")
         if [*parameter_records[0].keys()] != PARAMETER_HEADERS:
@@ -1125,8 +1167,7 @@ def audit_calculated_workbook(
 
 def write_workbook(
     template_path: Path,
-    scope: dict[str, Any],
-    delivery: dict[str, Any],
+    model: dict[str, Any],
     output_path: Path,
 ) -> WorkbookAudit:
     workbook = openpyxl.load_workbook(
@@ -1138,7 +1179,7 @@ def write_workbook(
         workbook.calculation = CalcProperties()
     try:
         table_index(workbook)
-        rows = build_rows(scope, delivery, base_unit_name_map(workbook))
+        rows = build_rows(model, load_task_standard_catalog(template_path))
         contract = projection_contract(workbook)
         clear_orphan_table_formulas(workbook)
         for table_name in TABLES:

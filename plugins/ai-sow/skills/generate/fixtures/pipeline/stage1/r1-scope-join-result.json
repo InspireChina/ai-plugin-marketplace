@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "r1-scope-join-result-v1",
+  "requiredCheckIds": [
+    "SOURCE_TO_INPUT",
+    "SCOPE_CLOSURE",
+    "TECHNICAL_CLASSIFICATION",
+    "EPIC_FEATURE_BOUNDARY",
+    "DESIGN_SUFFICIENCY",
+    "SCOPE_EXPANSION",
+    "DELIVERY_POLICY"
+  ],
+  "passResultTemplate": {
+    "contract": "ai-sow-review-result-v1",
+    "reviewResultId": "r1-scope-result-pass",
+    "reviewSetId": "review-r1-scope",
+    "runId": "run-r1-scope",
+    "kind": "SOURCE_SCOPE",
+    "reviewPlanSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateProjectionSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "coverageSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "completedCheckIds": [
+      "SOURCE_TO_INPUT",
+      "SCOPE_CLOSURE",
+      "TECHNICAL_CLASSIFICATION",
+      "EPIC_FEATURE_BOUNDARY",
+      "DESIGN_SUFFICIENCY",
+      "SCOPE_EXPANSION",
+      "DELIVERY_POLICY"
+    ],
+    "decision": "PASS",
+    "findings": [],
+    "sourceAuditCoverageUnion": ["placeholder-block"]
+  },
+  "defectResultTemplate": {
+    "contract": "ai-sow-review-result-v1",
+    "reviewResultId": "r1-scope-result-defect",
+    "reviewSetId": "review-r1-scope",
+    "runId": "run-r1-scope",
+    "kind": "SOURCE_SCOPE",
+    "reviewPlanSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateProjectionSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "coverageSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "completedCheckIds": [
+      "SOURCE_TO_INPUT",
+      "SCOPE_CLOSURE",
+      "TECHNICAL_CLASSIFICATION",
+      "EPIC_FEATURE_BOUNDARY",
+      "DESIGN_SUFFICIENCY",
+      "SCOPE_EXPANSION",
+      "DELIVERY_POLICY"
+    ],
+    "decision": "OWNER_FIX_REQUIRED",
+    "findings": [
+      {"findingId": "finding-missing-qualifier", "type": "OWNER_FIX_REQUIRED", "owner": "STAGE_1", "subjectIds": ["input-shared-pipeline"], "evidenceIds": ["block-prd-pipeline"], "summary": "九个服务的适用范围限定词未完整进入 Scope closure。"},
+      {"findingId": "finding-missing-integration", "type": "OWNER_FIX_REQUIRED", "owner": "STAGE_1", "subjectIds": ["input-refund-event"], "evidenceIds": ["block-hld-event"], "summary": "已批准 HLD 中的内部事件集成没有对应 Integration。"},
+      {"findingId": "finding-missing-nfr", "type": "OWNER_FIX_REQUIRED", "owner": "STAGE_1", "subjectIds": ["input-i18n"], "evidenceIds": ["block-prd-i18n"], "summary": "来源中的约束信号没有进入 NFR 或明确处置。"}
+    ],
+    "sourceAuditCoverageUnion": ["placeholder-block"]
+  }
+}

@@ -8,13 +8,11 @@ AC 是证明一个 Story 已达成的可观察、可独立通过或失败的结�
 
 它不是 Story 标题复读、实现步骤、Task 清单、无来源的“最佳实践”，也不是复制到每个 Story 的全局 DoD。
 
-## 来源
+## 来源与 obligation projection
 
-每条 AC 必须精确记录最小充分 `sourceRefs`：引用足以支持该 AC 每一项实质判断的当前来源锚点；组合判断记录全部必要锚点。不得用整份文档、示例或推测代替精确来源。`sourceRefs` 不投影到 Excel，但必须供审查与影响分析使用。
+AC 不直接重抄原始来源引用。脚本以通过的 Scope checkpoint 为输入，确定性派生带 hash 的 obligation projection；它是 Story/AC 覆盖的唯一机械清单。AC 使用 `requirementRefs`、`designRefs`、`policyRefs` 与 `coverageSet` 连接已验证上游节点，Author 不得从候选自身引用反推义务，也不得生成一次性的替代清单。
 
-编写完成后还要从来源反查 AC：PRD、原型或获授权补充材料中每个会改变范围的用户动作、展示结果、状态变化、校验、权限或异常路径，都必须落入恰当 Story 的可观察 AC，或由明确的范围决定说明为何不适用。不能因为已有一个概括性 AC 就跳过来源中的独立结果。
-
-进入 Task 前，先在工作上下文建立一次性的“来源义务闭包清单”，但不要把它发布为新的稳定合同。逐条记录来源中的触发、对象、全部判断条件、结果、适用 Feature/Story 和 AC 落点：
+从 obligation 反查 AC 时，必须确认每个会改变范围的用户动作、展示结果、状态变化、校验、权限、异常路径或交付政策都有可观察落点。一个概括性 AC 不能跳过独立结果：
 
 - 来源同时列出多个决定输入、阈值或限定条件时，AC 必须保留全部实质条件；不能只用一个示例或部分条件代替整条规则。
 - 清单按原子义务而不是按段落打勾：并列的指标、阈值、责任、禁止项和变化触发分别核对，直到段落中的每个实质谓词都有落点；该清单只证明 AC 闭包，不要求每个谓词生成独立 Epic、Feature 或 Story。
@@ -23,11 +21,11 @@ AC 是证明一个 Story 已达成的可观察、可独立通过或失败的结�
 - 来源给出阈值时，AC 必须保留该阈值；若没有 Story 特定行为，则在项目级质量/NFR 门禁保留。报表、仪表盘或测量 Story 可以覆盖显示或测量能力，却不能关闭阈值满足义务。
 - Scope 中每个会影响验收的 Integration 与 NFR 目标都要有 AC 落点，或明确说明它属于项目级 DoD/责任边界而不形成 Story。
 - AC 归属由实际触发点决定：查询触发的结果归查询 Story，提交时才执行的校验归提交 Story，不能因引用同一来源段落而混放。
-- `sourceRefs` 只保留最小充分集合：每增加一个锚点都必须为 AC 贡献另一个锚点没有提供的必要判断；若单个锚点已完整支持，不再用重复证据“加固”。
+- 引用只使用 obligation 已提供的最小充分上游节点；不得增加无关 Requirement、Design 或 Policy 引用来“加固”。
 
 ## 粒度
 
-每条只写一个可独立验证的结果或不可分的约束组合。每个 Story 至少需要两条有来源的 AC；不足时回退检查 Story 是否过小、证据是否缺失或是否应与相邻 Story 合并，不能凑数。
+每条只写一个可独立验证的结果或不可分的约束组合。AC 数量由 obligation 的可观察边界决定；一条 AC 足以完整关闭单一 obligation 时不凑数，多个独立结果也不能压成固定数量。
 
 “属于本期”“需要支持”“应当安全”等范围或意图说明不是可观察结果。要写成能通过界面、状态、事件、记录、指标、导出、拒绝结果或交付物评审明确判定的行为，同时不得补造来源没有给出的异常处置。
 
@@ -37,7 +35,7 @@ AC 是证明一个 Story 已达成的可观察、可独立通过或失败的结�
 
 ## 与相邻层关系
 
-AC 只属于一个 Story，构成该 Story 的来源闭包；一个 AC 可由该 Story 的多个 Task 覆盖，一个 Task 也可覆盖多条 AC。同一跨切面义务可分别写入多个适用 Story 的 AC，但 AC 不反向创建 Task，也不跨 Story 借用覆盖。自动化、性能、安全或合规测试可以落实既有 Story/AC，却不能以测试性反向制造目标或控制 Story。
+AC 只属于一个 Story，构成该 Story 的 obligation 闭包；一个 AC 可由该 Story 的多个 Task 覆盖，一个 Task 也可覆盖多条 AC。同一跨切面义务可分别写入多个适用 Story 的 AC，但 AC 不反向创建 Task，也不跨 Story 借用覆盖。自动化、性能、安全或合规测试可以落实既有 Story/AC；当 effective delivery policy 本身要求交付自动化代码或工程化产物时，该政策 obligation 必须形成自己的可交付 Story/AC。
 
 ## 正例
 
@@ -57,7 +55,7 @@ AC 只属于一个 Story，构成该 Story 的来源闭包；一个 AC 可由该
 
 ## 机械门禁
 
-`acceptanceCriterionId`、`storyId`、文本和精确 `sourceRefs` 必须可解析且引用有效；每个 Story 的 AC 数量、同 Story Task 覆盖和引用闭包必须通过校验。
+`acceptanceCriterionId`、`storyId`、文本、`coverageSet` 与 Requirement/Design/Policy 引用必须可解析且有效；脚本从冻结 obligation 重算闭包，所有 assigned obligation、限定词和覆盖对象必须关闭。Stage 2 不读取或生成 Task。
 
 ## Reviewer 判断
 

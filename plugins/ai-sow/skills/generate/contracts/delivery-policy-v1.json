@@ -1,0 +1,51 @@
+{
+  "contract": "ai-sow-delivery-policy-v1",
+  "policyVersion": "1",
+  "lifecyclePhases": ["DEVELOPMENT", "SIT", "UAT", "GO_LIVE"],
+  "policies": [
+    {
+      "policyId": "policy-sit-automation",
+      "name": "SIT 自动化集成测试代码",
+      "scopeClass": "DELIVERY",
+      "effortPhase": "SIT",
+      "activationPhase": "SIT",
+      "inclusionPolicy": "DEFAULT_INCLUDED",
+      "deliverableRule": "必须形成自动化集成测试代码或脚本、独立 AC 和计费 Task。",
+      "supportEffortInteraction": "排除本政策不改变模板计算的常规 SIT 支持人天。",
+      "sourceRoles": []
+    },
+    {
+      "policyId": "policy-uat-automation",
+      "name": "UAT 自动化端到端测试代码",
+      "scopeClass": "DELIVERY",
+      "effortPhase": "UAT",
+      "activationPhase": "UAT",
+      "inclusionPolicy": "DEFAULT_INCLUDED",
+      "deliverableRule": "必须形成由批准技术基线支持的 API 串联或浏览器自动化代码、独立 AC 和计费 Task。",
+      "supportEffortInteraction": "排除本政策不改变模板计算的常规 UAT 支持人天。",
+      "sourceRoles": []
+    },
+    {
+      "policyId": "policy-go-live",
+      "name": "上线工程化",
+      "scopeClass": "DELIVERY",
+      "effortPhase": "GO_LIVE",
+      "activationPhase": "GO_LIVE",
+      "inclusionPolicy": "REQUIRED",
+      "deliverableRule": "每个实施型 SOW 必须覆盖上线脚本、配置、部署与发布工程化。",
+      "supportEffortInteraction": "单纯人工动作不默认形成 Task，工程化产物必须形成可验收 Task。",
+      "sourceRoles": []
+    },
+    {
+      "policyId": "policy-data-migration",
+      "name": "数据迁移或持续同步",
+      "scopeClass": "TECHNICAL",
+      "effortPhase": "DEVELOPMENT",
+      "activationPhase": "GO_LIVE",
+      "inclusionPolicy": "SOURCE_GATED",
+      "deliverableRule": "仅在批准来源明确提出时实例化；复杂迁移能力或持续同步按开发能力表达。",
+      "supportEffortInteraction": "不得把开发能力降格为少量上线支持。",
+      "sourceRoles": ["PRD", "DEMO", "HLD", "ADR", "SUPPLEMENT"]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "contract": "ai-sow-input-revision-v1",
+  "revisionId": "revision-brownfield",
+  "requestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "templateSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "deliveryPolicySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "executionPolicySha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "priorSowState": "NOT_PROVIDED",
+  "priorSowSha256s": [],
+  "sources": [
+    {
+      "sourceId": "prd-change",
+      "role": "PRD",
+      "status": "APPROVED",
+      "path": ".ai-sow/inputs/revisions/revision-brownfield/sources/prd-change/source.md",
+      "rawSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+      "parserId": "markdown-blocks",
+      "parserVersion": "1",
+      "blockIds": ["block-prd-change"]
+    },
+    {
+      "sourceId": "adr-change",
+      "role": "ADR",
+      "status": "APPROVED",
+      "path": ".ai-sow/inputs/revisions/revision-brownfield/sources/adr-change/source.md",
+      "rawSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "parserId": "markdown-blocks",
+      "parserVersion": "1",
+      "blockIds": ["block-adr-change"]
+    }
+  ],
+  "blocks": [
+    {
+      "blockId": "block-prd-change",
+      "sourceId": "prd-change",
+      "rawSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+      "contentSha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "locator": "heading:现状增量",
+      "primaryCoverageBlockId": "block-prd-change",
+      "contextBlockIds": [],
+      "structuralParentId": null,
+      "extractionDisposition": "INCLUDED",
+      "droppedContentCategories": []
+    },
+    {
+      "blockId": "block-adr-change",
+      "sourceId": "adr-change",
+      "rawSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "locator": "heading:ADR-001",
+      "primaryCoverageBlockId": "block-adr-change",
+      "contextBlockIds": [],
+      "structuralParentId": null,
+      "extractionDisposition": "INCLUDED",
+      "droppedContentCategories": []
+    }
+  ]
+}

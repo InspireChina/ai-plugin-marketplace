@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "task-checkpoint-fixture-v1",
+  "checkpoint": {
+    "contract": "ai-sow-stage-checkpoint-v1",
+    "kind": "TASK",
+    "runId": "run-task",
+    "stage": "TASK",
+    "candidateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceManifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "ownerProjectionSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "coverageSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "policyDefinitionSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "actionRecordSha256s": ["1111111111111111111111111111111111111111111111111111111111111111"],
+    "reviewResultSha256s": [],
+    "upstreamCheckpointSha256s": ["2222222222222222222222222222222222222222222222222222222222222222"],
+    "effectivePolicyDecisionSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "taskCatalogSemanticSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "taskEstimationMethodSha256": "5555555555555555555555555555555555555555555555555555555555555555",
+    "priorSowInputSha256": "NOT_PROVIDED",
+    "usedTaskStandards": [
+      {"workTypeId": "FE-COMMAND-API", "rowSemanticSha256": "6666666666666666666666666666666666666666666666666666666666666666"}
+    ],
+    "effectiveStartMatchDecisions": [
+      {"taskId": "task-refund", "decision": "NO_MATCH_NEW", "evidenceSha256": "7777777777777777777777777777777777777777777777777777777777777777"}
+    ],
+    "validatorContractSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "completedCheckIds": [
+      "STORY_AC_CHECKPOINT_BOUND",
+      "TASK_COVERAGE_COMPLETE",
+      "TASK_CATALOG_BOUND",
+      "ESTIMATION_METHOD_BOUND",
+      "EFFECTIVE_START_BOUND",
+      "STAGE_3_ACTIONS_BOUND"
+    ],
+    "decision": "PASS"
+  }
+}

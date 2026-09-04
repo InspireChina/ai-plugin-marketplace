@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,10 +25,11 @@ class PluginSmokeTests(unittest.TestCase):
     def test_copied_plugin_runs_outside_marketplace(self) -> None:
         run_smoke = load_smoke_module().run_smoke
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir = Path(tempfile.mkdtemp(prefix="ai-sow-root-smoke-"))
+        try:
             report = run_smoke(
                 REPO_ROOT / "plugins/ai-sow",
-                Path(temp_dir),
+                temp_dir,
                 copy_plugin=True,
             )
             self.assertEqual(report["pluginName"], "ai-sow")
@@ -36,9 +39,37 @@ class PluginSmokeTests(unittest.TestCase):
             self.assertEqual(report["brownfieldOutcome"], "PUBLISHED")
             self.assertEqual(report["blockedResumeOutcome"], "PUBLISHED")
             self.assertEqual(report["reuseOutcome"], "REUSED")
+            self.assertEqual(report["renderOnlyOutcome"], "PUBLISHED")
+            self.assertEqual(report["renderOnlyActionCount"], 0)
+            self.assertEqual(report["incrementalOutcome"], "PUBLISHED")
+            self.assertTrue(report["incrementalDownstreamPreserved"])
+            self.assertTrue(report["incrementalFreshContextOnly"])
+            self.assertEqual(report["hostInterface"], "PYTHON_API_NEXT_ACTION")
             self.assertEqual(report["marketplaceReadCount"], 0)
             for path in report["workbookPaths"]:
                 self.assertTrue(Path(path).is_file())
+        except Exception:
+            self.assertTrue((temp_dir / "failure-receipt.json").is_file())
+            raise
+        else:
+            shutil.rmtree(temp_dir)
+
+    def test_root_smoke_test_does_not_delete_failed_evidence(self) -> None:
+        run_smoke = load_smoke_module().run_smoke
+        work_dir = Path(tempfile.mkdtemp(prefix="ai-sow-root-smoke-failure-"))
+        try:
+            with self.assertRaises(FileNotFoundError):
+                run_smoke(
+                    work_dir / "missing-plugin",
+                    work_dir,
+                    copy_plugin=True,
+                )
+            receipt_path = work_dir / "failure-receipt.json"
+            self.assertTrue(receipt_path.is_file())
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["status"], "FAILED")
+        finally:
+            shutil.rmtree(work_dir)
 
 
 if __name__ == "__main__":

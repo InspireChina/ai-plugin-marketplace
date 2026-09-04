@@ -18,6 +18,84 @@ def _normalized_text(value: object) -> str:
     return " ".join(str(value).split())
 
 
+_TYPED_GAP_SOURCE_ROLES = {
+    "PRD",
+    "DEMO",
+    "APPROVED_DESIGN",
+    "PRIOR_SOW",
+    "SUPPLEMENT",
+    "USER_DECISION",
+}
+
+
+def validate_typed_gap_question(
+    question: Mapping[str, object],
+) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    text_fields = (
+        "questionId",
+        "question",
+        "whyAsked",
+        "unansweredConsequence",
+        "requiredSourceRole",
+    )
+    for field in text_fields:
+        value = question.get(field)
+        if not isinstance(value, str) or not value.strip():
+            diagnostics.append(
+                _diagnostic(
+                    "QUESTION_TYPED_FIELD_REQUIRED",
+                    "结构化问题缺少非空字段。",
+                    f"/{field}",
+                )
+            )
+    for field in ("subjectIds", "answerDetermines", "checkedEvidenceIds"):
+        value = question.get(field)
+        if not isinstance(value, list) or not value or not all(
+            isinstance(item, str) and item.strip() for item in value
+        ):
+            diagnostics.append(
+                _diagnostic(
+                    "QUESTION_TYPED_FIELD_REQUIRED",
+                    "结构化问题缺少非空列表字段。",
+                    f"/{field}",
+                )
+            )
+    role = question.get("requiredSourceRole")
+    if isinstance(role, str) and role not in _TYPED_GAP_SOURCE_ROLES:
+        diagnostics.append(
+            _diagnostic(
+                "QUESTION_REQUIRED_SOURCE_ROLE_INVALID",
+                "结构化问题的 requiredSourceRole 不受支持。",
+                "/requiredSourceRole",
+            )
+        )
+    return tuple(sorted(diagnostics, key=lambda item: (item.path, item.code, item.message)))
+
+
+def _question_wording(question: Mapping[str, object]) -> tuple[str, str, str, str]:
+    if "whyAsked" in question:
+        answer_determines = question.get("answerDetermines")
+        if isinstance(answer_determines, list):
+            determines_text = "；".join(
+                _normalized_text(item) for item in answer_determines
+            )
+        else:
+            determines_text = _normalized_text(answer_determines)
+        return (
+            _normalized_text(question.get("question")),
+            _normalized_text(question.get("whyAsked")),
+            determines_text,
+            _normalized_text(question.get("unansweredConsequence")),
+        )
+    return (
+        _normalized_text(question.get("question")),
+        _normalized_text(question.get("reason")),
+        _normalized_text(question.get("decisionImpact")),
+        _normalized_text(question.get("unansweredEffect")),
+    )
+
+
 def question_answer_anchors(
     questions: Sequence[Mapping[str, object]],
     answers: Sequence[Mapping[str, object]],
@@ -27,13 +105,16 @@ def question_answer_anchors(
     for answer in answers:
         question_id = str(answer["questionId"])
         question = questions_by_id[question_id]
+        question_text, why_asked, answer_determines, unanswered = _question_wording(
+            question
+        )
         identity = sha256_bytes(canonical_json_bytes({"questionId": question_id}))
         normalized_text = "\n".join(
             (
-                f"问题：{_normalized_text(question['question'])}",
-                f"为什么要问：{_normalized_text(question['reason'])}",
-                f"答案决定什么：{_normalized_text(question['decisionImpact'])}",
-                f"未回答后果：{_normalized_text(question['unansweredEffect'])}",
+                f"问题：{question_text}",
+                f"为什么要问：{why_asked}",
+                f"答案决定什么：{answer_determines}",
+                f"未回答后果：{unanswered}",
                 f"答案：{_normalized_text(answer['answer'])}",
             )
         )

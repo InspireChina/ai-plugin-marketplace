@@ -1,6 +1,6 @@
 # Delivery 动态拆解与回退
 
-静态对象定义见[Delivery 编写导航](delivery-authoring.md)。本页说明如何从证据逐层拆解，并在边界不成立时回退，而不是用层级数量包装工作。
+各阶段对象定义分别见 Epic、Feature、Story、AC 与 Task 的专门规则。本页说明如何从证据逐层拆解，并在边界不成立时回退，而不是用层级数量包装工作。
 
 ## 正向拆解
 
@@ -15,8 +15,8 @@
 
 1. 先从来源确认价值目标、责任和范围，建立 Epic 与 Feature；不要按文档标题、系统、页面或工种分层。
 2. 对每个 Feature 枚举触发者、对象、动作、状态、下游结果和责任。Story 必须命名一个可独立移交并关闭的具体结果，并把具体交付物或能力、负责方或消费者、独立验收边界、独立关闭或发布边界作为共同证据核验；不能因某个目标、指标、质量属性、政策类别或控制集合可测试或可验收就准入。Technical Story 还须由来源或已批准设计明确支持一个可独立运行或消费的机制、配置、证据包或运营能力；控制归组、验收活动或指定验收人不足以准入，标题不能只写复核、测量、取证或合规确认。排除项目级 SIT/UAT、通用 DoD 和没有独立成果的支持活动。
-3. 在工作上下文建立一次性来源义务清单：把段落中的并列指标、阈值、责任、禁止项和变化触发拆成原子义务，保留全部判断条件和限定词，标明每项义务的实际触发与适用 Feature/Story。原子化只用于证明 AC 完整性，不决定 Epic、Feature 或 Story 数量。先提取成功结果，再仅在明确适用时补充校验、状态、异常、Integration 或 NFR 约束；每条 AC 绑定最小充分 `sourceRefs`，重复支持同一判断的锚点不进入集合。
-4. 在进入 Task 前做一次双向 Story/AC 闭包检查：从每个 Story 正查 AC 是否与其触发和结果一致；从每条来源义务反查全部适用对象是否都有 AC 落点或明确排除。每个 `IN_SCOPE` Feature 的来源结果、跨 Feature 规则、会影响验收的 Integration/NFR 均须关闭，且每条 AC 来源可解析。发现遗漏时只回到 Epic/Feature/Story/AC 修正，不用 Task 填洞。
+3. Stage 1 checkpoint 通过后，由 `delivery_compiler.derive_story_obligations` 从 `scopeClosure.deliveryDisposition=STORY_AC_REQUIRED` 和 effective policy decision 重算带 hash 的 obligation projection。它保留并列指标、阈值、责任、禁止项、变化触发、限定词、Feature 路由和覆盖对象；候选 Story/AC 引用不能成为义务来源。
+4. Stage 2 按 Feature affinity 与 token 预算动态分批。每个 packet 携带紧凑的项目级 obligation routing，并只分配当前 shard 的完整义务与候选无关证据。所有 sibling action 成功后一次性应用 patch，再从 projection 双向重算 Story/AC 闭包；不按固定 Feature 数或固定对象数切分。
 5. 闭包成立后，对 Story 的全部 AC 一起识别所需交付物，再与 Design、Integration、NFR、Effective Start 和当前模板目录共同推导 Task。AC 与 Task 是多对多，不按“一条 AC 一个 Task”机械生成，也不反向改写已经成立的 Story/AC 语义。
 
 ## 原子义务的落点顺序
@@ -50,10 +50,10 @@
 
 ## 跨层复核
 
-从任一 Task 反查到 Story、AC、Feature、Epic 与来源；从任一来源反查到至少一个受影响对象或明确排除理由。某项只能由范围外组织承担时，应保留责任边界而非进入 Delivery。
+从任一 Task 反查到 Story、AC、Feature、Epic 与已验证 InputItem；从每个 obligation 反查到至少一个受影响 Story/AC 或明确的项目级处置。某项只能由范围外组织承担时，应保留责任边界而非进入 Delivery。
 
 ## Story/AC 阶段收敛
 
-在 `accept-story-ac` 前，只在内存中对受管 Scope、Story/AC candidate 与来源义务完成一次收敛审计，未解决行必须为零，不保存审计数据或辅助文件。审计逐项确认：原子义务（含数值阈值、对象上限、禁止项、变化触发）未被删改，已落到全部适用 Story 的 AC ID 或有理由的项目 NFR/DoD/质量门禁，且没有用显示/测量替代目标；Technical Story 有来源或已批准设计支持的独立可运行/消费结果，已有触发控制已分发；Scope 的双向 NFR 适用性与 Brownfield 承诺处置完整；Story/AC 只由自己的 `sourceRefs` 支持。此阶段 `tasks` 与 `dependencies` 保持为空，不读取估算模板，不以 Task 填补来源、Story 或 AC 缺口。通过后运行 `accept-story-ac` 并停在 `READY_FOR_TASK`。
+Story/AC 收敛由持久化 ActionRecord 与随后生成的 `STORY_AC` checkpoint 证明，不依赖同一主对话的历史。审计逐项确认：obligation projection 的 hash 与 Scope checkpoint/effective policy decision 一致；全部 assigned obligation（含阈值、对象、禁止项、变化触发和限定词）已落到所有适用 Story/AC；同质重复对象保留在一个 Story 的 `coverageSet`，独立定制、责任、验收或发布边界已拆分；Technical Story 只使用来源或批准设计支持的结果。此阶段 `tasks` 与 `dependencies` 保持为空，不读取估算模板，不以 Task 填补来源、Story 或 AC 缺口。
 
-审计发现 Scope 缺陷时回到受管 Scope candidate，经 `prepare`/`accept-scope` 修正后再生成 Delivery；不得在 Delivery 中绕过或补丁 Scope。发现 Story/AC 缺陷时先修正受管 Delivery candidate。后续明确进入 Task 阶段时，才检查已成立 Story 下有界需设计项、Task 的 Design/Integration/NFR 引用、AC 覆盖和依赖；Task、模板或实现词汇始终不能弥补来源、Story 或 AC 缺口。
+审计发现上游范围缺陷时，必须按返回的最低恢复阶段发出新的 hash-bound 修复动作并重建受影响 checkpoint；不得在下游区域绕过或补丁上游。发现 Story/AC 缺陷时回到 Story/AC Owner。进入 Task 阶段后，才检查已成立 Story 下有界需设计项、Task 的 Design/Integration/NFR 引用、AC 覆盖和依赖；Task、模板或实现词汇始终不能弥补来源、Story 或 AC 缺口。

@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 from referencing.exceptions import NoSuchResource
 
-from models import Diagnostic
+from models import Diagnostic, DiagnosticClassification
 
 
 def canonical_json_bytes(value: object) -> bytes:
@@ -28,23 +28,45 @@ def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def load_schema_registry(skill_root: Path) -> Registry:
+def load_registry(contract_root: Path) -> Registry:
     registry = Registry()
-    for path in sorted((skill_root / "contracts").glob("*.schema.json")):
+    seen_ids: set[str] = set()
+    for path in sorted(contract_root.glob("*.schema.json")):
         schema = json.loads(path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(schema)
         schema_id = schema.get("$id")
         if not isinstance(schema_id, str) or not schema_id:
             raise ValueError(f"Schema 缺少非空 $id：{path.name}")
+        if schema_id in seen_ids:
+            raise ValueError(f"Schema $id 重复：{schema_id}")
+        seen_ids.add(schema_id)
         registry = registry.with_resource(schema_id, Resource.from_contents(schema))
     return registry
 
 
-def _schema_id(schema_name: str) -> str:
+def load_schema_registry(skill_root: Path) -> Registry:
+    return load_registry(skill_root / "contracts")
+
+
+def _schema_ids(schema_name: str) -> tuple[str, ...]:
     suffix = ".schema.json"
     if not schema_name.endswith(suffix):
         raise ValueError(f"Schema 名称必须以 {suffix} 结尾")
-    return f"urn:ai-sow:generate:{schema_name.removesuffix(suffix)}:1"
+    stem = schema_name.removesuffix(suffix)
+    return (f"urn:ai-sow:generate:next:{stem}:1",)
+
+
+def _schema_contents(schema_name: str, registry: Registry) -> object:
+    matches: list[object] = []
+    for schema_id in _schema_ids(schema_name):
+        resource = registry.get(schema_id)
+        if resource is not None:
+            matches.append(resource.contents)
+    if len(matches) != 1:
+        raise LookupError(
+            f"Schema 必须由显式注入的单一 registry 唯一解析：{schema_name}"
+        )
+    return matches[0]
 
 
 def _json_pointer(parts: object) -> str:
@@ -73,7 +95,7 @@ def validate_contract(
     registry: Registry,
 ) -> tuple[Diagnostic, ...]:
     try:
-        schema = registry.get(_schema_id(schema_name)).contents
+        schema = _schema_contents(schema_name, registry)
         errors = tuple(Draft202012Validator(schema, registry=registry).iter_errors(value))
     except (NoSuchResource, LookupError, ValueError) as error:
         return (
@@ -110,195 +132,168 @@ def validate_contract(
     return _sort_diagnostics(diagnostics)
 
 
-def validate_id_decisions(
+def validate_state_combination(
     value: object,
     registry: Registry,
 ) -> tuple[Diagnostic, ...]:
-    diagnostics = list(validate_contract(value, "id-decisions.schema.json", registry))
-    if not isinstance(value, Mapping):
-        return _sort_diagnostics(diagnostics)
-    decisions = value.get("decisions")
-    if not isinstance(decisions, list):
+    diagnostics = list(validate_contract(value, "run-state.schema.json", registry))
+    if diagnostics or not isinstance(value, Mapping):
         return _sort_diagnostics(diagnostics)
 
-    seen: set[tuple[object, object]] = set()
-    for index, decision in enumerate(decisions):
-        if not isinstance(decision, Mapping):
-            continue
-        path = f"/decisions/{index}"
-        identity = (decision.get("objectType"), decision.get("objectId"))
-        if identity in seen:
-            diagnostics.append(
-                _diagnostic(
-                    "ID_DECISION_DUPLICATE",
-                    path,
-                    "同一对象只能有一条 ID 决定。",
-                )
-            )
-        seen.add(identity)
-
-        disposition = decision.get("disposition")
-        object_id = decision.get("objectId")
-        previous_id = decision.get("previousId")
-        if disposition in {"UNCHANGED", "CLARIFIED"} and previous_id != object_id:
-            diagnostics.append(
-                _diagnostic(
-                    "ID_PRESERVED_USES_DIFFERENT_ID",
-                    path,
-                    "含义保留的对象必须继续使用原 ID。",
-                )
-            )
-        if disposition == "CHANGED" and previous_id == object_id:
-            diagnostics.append(
-                _diagnostic(
-                    "ID_CHANGED_REUSES_PREVIOUS",
-                    path,
-                    "实质含义变化的对象不得复用原 ID。",
-                )
-            )
-    return _sort_diagnostics(diagnostics)
-
-
-def validate_final_review(
-    value: object,
-    registry: Registry,
-    *,
-    expected_packet_sha256: str | None = None,
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(validate_contract(value, "final-review.schema.json", registry))
-    if not isinstance(value, Mapping):
-        return _sort_diagnostics(diagnostics)
-
-    decision = value.get("decision")
-    notes = value.get("notes")
-    questions = value.get("questions")
-    if decision == "BLOCKED" and isinstance(questions, list) and not questions:
-        diagnostics.append(
-            _diagnostic(
-                "FINAL_REVIEW_BLOCKED_QUESTIONS_REQUIRED",
-                "/questions",
-                "BLOCKED 终审必须给出至少一个最小问题。",
-            )
-        )
-    if decision == "PASS_WITH_NOTES" and isinstance(notes, list) and not notes:
-        diagnostics.append(
-            _diagnostic(
-                "FINAL_REVIEW_NOTES_REQUIRED",
-                "/notes",
-                "PASS_WITH_NOTES 终审必须给出至少一条说明。",
-            )
-        )
-    if decision == "PASS" and (
-        (isinstance(notes, list) and notes)
-        or (isinstance(questions, list) and questions)
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "FINAL_REVIEW_PASS_MUST_BE_EMPTY",
-                "",
-                "PASS 终审不得包含说明或问题。",
-            )
-        )
-
-    if (
-        expected_packet_sha256 is not None
-        and value.get("packetSha256") != expected_packet_sha256
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "FINAL_REVIEW_PACKET_HASH_MISMATCH",
-                "/packetSha256",
-                "终审结果未绑定预期 review packet。",
-            )
-        )
-
-    for field, identifier in (
-        ("notes", "noteId"),
-        ("questions", "questionId"),
-    ):
-        items = value.get(field)
-        if not isinstance(items, list):
-            continue
-        ids = [item.get(identifier) for item in items if isinstance(item, Mapping)]
-        if len(ids) != len(set(ids)):
-            diagnostics.append(
-                _diagnostic(
-                    "FINAL_REVIEW_DUPLICATE_ITEM",
-                    f"/{field}",
-                    "终审说明或问题不得重复。",
-                )
-            )
-    return _sort_diagnostics(diagnostics)
-
-
-def validate_generation_hash_closure(
-    value: object,
-    registry: Registry,
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(
-        validate_contract(value, "generation-manifest.schema.json", registry)
-    )
-    if not isinstance(value, Mapping):
-        return _sort_diagnostics(diagnostics)
-
-    generation_id = value.get("generationId")
-    revision_id = value.get("revisionId")
-    generation_prefix = f".ai-sow/generations/{generation_id}/"
-    revision_prefix = f".ai-sow/inputs/revisions/{revision_id}/"
-    path_mismatch = False
-    for field in ("scopePath", "deliveryPath", "workbookPath", "notesPath"):
-        path = value.get(field)
-        if not isinstance(path, str) or not path.startswith(generation_prefix):
-            path_mismatch = True
-    input_path = value.get("inputManifestPath")
-    if not isinstance(input_path, str) or not input_path.startswith(revision_prefix):
-        path_mismatch = True
-    if path_mismatch:
-        diagnostics.append(
-            _diagnostic(
-                "GENERATION_PATH_ID_MISMATCH",
-                "",
-                "generation 或 revision 路径与其 ID 不一致。",
-            )
-        )
-
-    review = value.get("finalReview")
-    if isinstance(review, Mapping):
-        expected = sha256_bytes(canonical_json_bytes(review))
-        if value.get("finalReviewSha256") != expected:
-            diagnostics.append(
-                _diagnostic(
-                    "GENERATION_REVIEW_HASH_MISMATCH",
-                    "/finalReviewSha256",
-                    "generation 未绑定终审对象的 canonical SHA-256。",
-                )
-            )
+    budget = value.get("budget")
+    if isinstance(budget, Mapping):
+        started = budget.get("modelActionsStarted")
+        completed = budget.get("modelActionsCompleted")
         if (
-            review.get("inputRevisionId") != revision_id
-            or review.get("scopeSha256") != value.get("scopeSha256")
-            or review.get("deliverySha256") != value.get("deliverySha256")
+            isinstance(started, int)
+            and not isinstance(started, bool)
+            and isinstance(completed, int)
+            and not isinstance(completed, bool)
+            and completed > started
         ):
             diagnostics.append(
                 _diagnostic(
-                    "GENERATION_REVIEW_INPUT_MISMATCH",
-                    "/finalReview",
-                    "终审对象未绑定 generation 使用的 revision、Scope 或 Delivery。",
+                    "RUN_BUDGET_COUNT_INVALID",
+                    "/budget/modelActionsCompleted",
+                    "已完成的模型动作数不得超过已启动数。",
                 )
             )
-        if review.get("decision") not in {"PASS", "PASS_WITH_NOTES"}:
-            diagnostics.append(
-                _diagnostic(
-                    "GENERATION_REVIEW_NOT_ACCEPTED",
-                    "/finalReview/decision",
-                    "只有通过或带说明通过的终审才能进入 generation。",
-                )
+
+    candidate_sha256 = value.get("currentCandidateSha256")
+    candidate_path = value.get("currentCandidatePath")
+    if (candidate_sha256 is None) != (candidate_path is None):
+        diagnostics.append(
+            _diagnostic(
+                "RUN_CANDIDATE_BINDING_INCOMPLETE",
+                "/currentCandidatePath",
+                "当前候选路径与哈希必须同时存在或同时为空。",
             )
-        if value.get("decision") != review.get("decision"):
-            diagnostics.append(
-                _diagnostic(
-                    "GENERATION_DECISION_MISMATCH",
-                    "/decision",
-                    "generation decision 与内嵌终审不一致。",
-                )
-            )
+        )
     return _sort_diagnostics(diagnostics)
+
+
+def validate_action_binding(
+    envelope: Mapping[str, object],
+    *,
+    action_id: str,
+    envelope_sha256: str,
+    input_revision_sha256: str,
+    base_candidate_sha256: str,
+    result_path: object,
+    expected_action_ids: tuple[str, ...],
+) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    envelope_action_id = envelope.get("actionId")
+    if action_id != envelope_action_id:
+        diagnostics.append(
+            _diagnostic(
+                "ACTION_ID_MISMATCH",
+                "/actionId",
+                "提交的 action ID 与 envelope 不一致。",
+            )
+        )
+    if envelope_action_id not in expected_action_ids:
+        diagnostics.append(
+            _diagnostic(
+                "ACTION_NOT_EXPECTED",
+                "/actionId",
+                "该 action 不是当前 Run State 等待的动作。",
+            )
+        )
+    if envelope_sha256 != sha256_bytes(canonical_json_bytes(envelope)):
+        diagnostics.append(
+            _diagnostic(
+                "ACTION_ENVELOPE_HASH_MISMATCH",
+                "",
+                "提交未绑定当前 action envelope 的规范哈希。",
+            )
+        )
+    if input_revision_sha256 != envelope.get("inputRevisionSha256"):
+        diagnostics.append(
+            _diagnostic(
+                "ACTION_INPUT_REVISION_STALE",
+                "/inputRevisionSha256",
+                "提交绑定的 Input Revision 已过期。",
+            )
+        )
+    if base_candidate_sha256 != envelope.get("baseCandidateSha256"):
+        diagnostics.append(
+            _diagnostic(
+                "ACTION_BASE_CANDIDATE_STALE",
+                "/baseCandidateSha256",
+                "提交绑定的基础候选已过期。",
+            )
+        )
+
+    submit_operation = envelope.get("submitOperation")
+    locked_result_path = (
+        submit_operation.get("resultPath")
+        if isinstance(submit_operation, Mapping)
+        else None
+    )
+    if result_path != envelope.get("outputPath") or result_path != locked_result_path:
+        diagnostics.append(
+            _diagnostic(
+                "ACTION_RESULT_PATH_MISMATCH",
+                "/submitOperation/resultPath",
+                "提交路径必须与 envelope 锁定的输出路径完全一致。",
+            )
+        )
+    return _sort_diagnostics(diagnostics)
+
+
+_DIAGNOSTIC_CLASSIFICATIONS: dict[str, DiagnosticClassification] = {
+    "GLOBAL_SCOPE_CAPACITY_EXCEEDED": DiagnosticClassification(
+        "CONTRACT_UNSUPPORTED", "STAGE_1", False
+    ),
+    "SOURCE_SEMANTIC_CONFLICT": DiagnosticClassification(
+        "INPUT_REQUIRED", "INPUT", True
+    ),
+    "DESIGN_COVERAGE_INSUFFICIENT": DiagnosticClassification(
+        "INPUT_REQUIRED", "INPUT", True
+    ),
+    "STORY_COVERAGE_OUTSTANDING": DiagnosticClassification(
+        "OWNER_FIX_REQUIRED", "STAGE_2", True
+    ),
+    "STORY_GLOBAL_JOIN_REQUIRED": DiagnosticClassification("CONTROL", "STAGE_2", True),
+    "TASK_STANDARD_TYPE_UNREPRESENTABLE": DiagnosticClassification(
+        "CONTRACT_UNSUPPORTED", "STAGE_3", False
+    ),
+    "TASK_CHALLENGER_NOT_REVIEWED": DiagnosticClassification(
+        "OWNER_FIX_REQUIRED", "STAGE_3", True
+    ),
+    "PRIOR_MATCH_SEARCH_INCOMPLETE": DiagnosticClassification(
+        "OWNER_FIX_REQUIRED", "STAGE_3", True
+    ),
+    "TASK_X_SPLIT_REQUIRED": DiagnosticClassification(
+        "OWNER_FIX_REQUIRED", "STAGE_3", True
+    ),
+    "THEME_JOIN_REQUIRED": DiagnosticClassification("CONTROL", "REVIEW", True),
+    "RUN_IN_PROGRESS": DiagnosticClassification("CONTROL", "ORCHESTRATOR", False),
+    "SIT_SUPPORT_ASSIGNMENT_NON_UNIQUE": DiagnosticClassification(
+        "OWNER_FIX_REQUIRED", "STAGE_3", True
+    ),
+    "HOST_CAPABILITY_MISSING": DiagnosticClassification(
+        "SYSTEM_FAILED", "ORCHESTRATOR", False
+    ),
+    "BUDGET_EXCEEDED": DiagnosticClassification(
+        "SYSTEM_FAILED", "ORCHESTRATOR", False
+    ),
+}
+
+
+def classify_diagnostic(
+    code: str,
+    *,
+    source_sufficient: bool | None = None,
+) -> DiagnosticClassification:
+    if code == "TASK_TYPE_AMBIGUOUS":
+        if source_sufficient is None:
+            raise ValueError("TASK_TYPE_AMBIGUOUS 必须提供 source_sufficient")
+        if source_sufficient:
+            return DiagnosticClassification("OWNER_FIX_REQUIRED", "STAGE_3", True)
+        return DiagnosticClassification("INPUT_REQUIRED", "INPUT", True)
+    try:
+        return _DIAGNOSTIC_CLASSIFICATIONS[code]
+    except KeyError as error:
+        raise ValueError(f"未知诊断码：{code}") from error

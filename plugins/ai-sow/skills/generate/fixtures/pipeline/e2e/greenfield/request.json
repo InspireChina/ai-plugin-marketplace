@@ -1,0 +1,31 @@
+{
+  "contract": "ai-sow-generate-request-v2",
+  "project": {
+    "projectId": "project-refund-anonymous",
+    "name": "匿名退款能力交付",
+    "plannedEffectiveDate": "2026-10-01"
+  },
+  "mode": "GREENFIELD",
+  "responsibilityBoundaries": [
+    {
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "party": "VENDOR",
+      "name": "供应商交付责任",
+      "responsibilities": ["完成范围内设计、实现、自测、发布支持和交付移交"]
+    },
+    {
+      "responsibilityBoundaryId": "responsibility-customer-acceptance",
+      "party": "CUSTOMER",
+      "name": "客户输入与验收责任",
+      "responsibilities": ["提供已批准来源、目标环境和验收人员并完成业务裁决"]
+    }
+  ],
+  "sources": [
+    {"sourceId": "prd-main", "role": "PRD", "path": "inputs/prd.md", "status": "APPROVED"},
+    {"sourceId": "demo-selected", "role": "DEMO", "path": "inputs/demo.md", "status": "SELECTED"},
+    {"sourceId": "hld-main", "role": "HLD", "path": "inputs/hld.md", "status": "APPROVED"}
+  ],
+  "questions": [],
+  "questionnaireAnswers": [],
+  "currentStateDelta": null
+}

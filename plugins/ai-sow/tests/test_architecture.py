@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -12,22 +13,22 @@ RUNTIME = PLUGIN_ROOT / "runtime"
 SCRIPTS = SKILL_ROOT / "scripts"
 EXPECTED_RUNTIME = {"__init__.py", "diagnostics.py", "project_io.py"}
 REQUIRED_PYTHON_MODULES = {
-    "candidate_builder.py",
     "contracts.py",
     "delivery_compiler.py",
     "final_review.py",
     "generation_store.py",
-    "impact.py",
     "intake.py",
     "models.py",
     "office_engine.py",
     "orchestrator.py",
     "package_renderer.py",
     "questions.py",
-    "review_material.py",
     "scope_compiler.py",
+    "sow_model.py",
     "source_readers.py",
     "story_notes.py",
+    "task_compiler.py",
+    "task_standard_catalog.py",
     "workbook.py",
 }
 LEGACY_PROTOCOL_TOKENS = (
@@ -38,18 +39,18 @@ LEGACY_PROTOCOL_TOKENS = (
     ".ai-sow/validation/",
 )
 EXPECTED_DELIVERY_REFERENCES = {
-    "delivery-authoring.md",
     "delivery-decomposition.md",
+    "delivery-lifecycle-policy.md",
     "technical-work-classification.md",
     "delivery-work-classification.md",
     "effective-start-matching.md",
-    "question-authoring.md",
     "epic-authoring.md",
     "feature-authoring.md",
+    "layered-review.md",
+    "source-authority.md",
     "story-authoring.md",
     "acceptance-criteria.md",
     "task-authoring.md",
-    "delivery-examples.md",
 }
 
 
@@ -91,12 +92,21 @@ def test_generate_is_the_only_public_skill() -> None:
 
 
 def test_generate_contains_the_complete_internal_module_set() -> None:
-    assert REQUIRED_PYTHON_MODULES.issubset(
-        {path.name for path in SCRIPTS.glob("*.py")}
-    )
+    python_modules = {path.name for path in SCRIPTS.glob("*.py")}
+    assert python_modules == REQUIRED_PYTHON_MODULES
     assert {
         path.name for path in SCRIPTS.iterdir() if path.is_file() and path.suffix != ".py"
     } == {"bootstrap.ps1", "bootstrap.sh", "enable_long_paths.ps1"}
+
+
+def test_task_standard_catalog_is_owner_local_and_has_no_prior_sow_index_logic() -> None:
+    path = SCRIPTS / "task_standard_catalog.py"
+    assert imports(path).isdisjoint(
+        {"delivery_compiler", "scope_compiler", "source_readers"}
+    )
+    text = path.read_text(encoding="utf-8")
+    for token in ("PRIOR_SOW", "prior_sow", "Prior SOW", "往期 SOW"):
+        assert token not in text
 
 
 def test_runtime_contains_only_owner_agnostic_infrastructure() -> None:
@@ -154,8 +164,8 @@ def test_runtime_and_generate_source_have_no_legacy_protocol_tokens() -> None:
 
 def test_public_skill_exposes_one_orchestrator_and_no_legacy_stage_commands() -> None:
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    assert "orchestrator.py" in skill
-    assert "一次连续调用" in skill
+    assert "Python orchestrator" in skill
+    assert "NextAction" in skill
     for token in (
         "setup",
         "analyze-requirement",
@@ -183,15 +193,15 @@ def test_orchestrator_cli_modes_are_exact() -> None:
                     for element in keyword.value.elts
                     if isinstance(element, ast.Constant) and isinstance(element.value, str)
                 )
-                if "prepare" in values:
+                if "start" in values:
                     choices = values
     assert choices == (
-        "prepare",
-        "accept-scope",
-        "accept-delivery",
-        "prepare-review",
-        "accept-review",
-        "publish",
+        "start",
+        "submit",
+        "hydrate",
+        "resume",
+        "approve",
+        "abandon",
         "status",
     )
 
@@ -213,17 +223,17 @@ def test_renderer_fingerprint_binds_all_current_renderer_sources() -> None:
             encoding="utf-8"
         )
     )
-    assert baseline["rendererContract"] == "generation-renderer-v7"
+    assert baseline["rendererContract"] == "generation-renderer-v8"
     assert set(baseline["files"]) == {
         "scripts/package_renderer.py",
         "scripts/workbook.py",
         "scripts/office_engine.py",
         "scripts/story_notes.py",
     }
-    assert all(
-        re.fullmatch(r"[0-9a-f]{64}", value)
-        for value in baseline["files"].values()
-    )
+    assert baseline["files"] == {
+        name: hashlib.sha256((SKILL_ROOT / name).read_bytes()).hexdigest()
+        for name in baseline["files"]
+    }
 
 
 def test_generate_owns_the_only_bundled_sow_template() -> None:
@@ -246,10 +256,11 @@ def test_no_generic_owner_pipeline_or_compatibility_wrapper_exists() -> None:
     assert not (PLUGIN_ROOT / "contracts").exists()
 
 
-def test_generate_skill_routes_every_delivery_reference() -> None:
+def test_generate_action_protocol_can_route_every_delivery_reference() -> None:
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    assert "referencePaths" in skill
     for name in EXPECTED_DELIVERY_REFERENCES:
-        assert f"references/{name}" in skill
+        assert (SKILL_ROOT / "references" / name).is_file()
 
 
 def test_task_authoring_does_not_copy_live_catalog_values() -> None:
@@ -258,3 +269,24 @@ def test_task_authoring_does_not_copy_live_catalog_values() -> None:
     )
     assert "新建M档人天" not in task_authoring
     assert "37 个基础单元" not in task_authoring
+
+
+def test_every_retired_legacy_fixture_has_a_hash_bound_replacement_and_test() -> None:
+    manifest = json.loads(
+        (
+            SKILL_ROOT
+            / "fixtures/pipeline/legacy-fixture-retirement.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert manifest["contract"] == "ai-sow-legacy-fixture-retirement-v1"
+    assert len(manifest["entries"]) == 10
+    for entry in manifest["entries"]:
+        assert not (SKILL_ROOT / entry["legacyPath"]).exists()
+        replacement = SKILL_ROOT / entry["replacementPath"]
+        assert replacement.is_file()
+        assert hashlib.sha256(replacement.read_bytes()).hexdigest() == entry[
+            "replacementSha256"
+        ]
+        test_file, test_name = entry["replacementTest"].split("::", 1)
+        test_source = (SKILL_ROOT / "tests" / test_file).read_text(encoding="utf-8")
+        assert f"def {test_name}" in test_source

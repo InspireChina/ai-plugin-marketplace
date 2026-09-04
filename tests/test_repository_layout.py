@@ -24,22 +24,20 @@ STRUCTURED_REFERENCE = re.compile(
 )
 
 SCHEMA_SHA256 = {
-    "skills/generate/contracts/common.schema.json": "c76aaebc6b683a98a30ba09c7ee5f8d18bf328648d9ca0fd3c59b4faf4750a57",
-    "skills/generate/contracts/current.schema.json": "1c5fd52b9c1e3094ffaa95c01fa2ab2867c4306be551a1ff1f89172bb714c51a",
-    "skills/generate/contracts/delivery-bundle.schema.json": "ef50c386ea95f7513cb423d832ddc243015dc461c46b22525d22db203c6753c7",
-    "skills/generate/contracts/delivery-slice.schema.json": "b9c0cad211f01668af67cf92b8664932eec2441d16ec1d07e597151e9e817993",
-    "skills/generate/contracts/final-review.schema.json": "5aa7d403911b3e0a43a19a8537773c0e2823db43713e7e36fea805684a34b4c5",
-    "skills/generate/contracts/generation-manifest.schema.json": "8bd9152faf3ba224363fcb4e971a6399df32d0609e80d6ed83e39e3da54a8074",
-    "skills/generate/contracts/id-decisions.schema.json": "dd8a0cffae6dc3017ba7c8b0845d496a598866717a43607fef536c5b5f5347a6",
-    "skills/generate/contracts/input-manifest.schema.json": "eec15f30713865a42f13e086ac2db2f7c30fddaa2831f8a88223fa623a2b98bb",
-    "skills/generate/contracts/question.schema.json": "ee4409e67a599f7e7680b48b502ad1aa9acdbc8396347d8425fdb9691a3d40e2",
-    "skills/generate/contracts/request.schema.json": "ac292683facff487ce7df58c500eb54243f0d6ff132a6881e3ffeef4c46b2e74",
-    "skills/generate/contracts/run-plan.schema.json": "be60a53300af421d6747f3cb5bf982940eaca897d210dcb9c1a7464691a8caec",
-    "skills/generate/contracts/scope-bundle.schema.json": "147d9d911aa86e45ce075c1d9cc5d9b4954e5cb6d28879e782f2e47985d2f740",
-    "skills/generate/contracts/scope-slice.schema.json": "eaf23cb307cb18bfde2282e7bb40330f5f91d2a4edee33c1ea8add3389ca6ccb",
+    "skills/generate/contracts/action.schema.json": "cb4bb918061b58cb15a38b9fdf6842d2e21b70a8fd28b98bc959438d7d5c26eb",
+    "skills/generate/contracts/artifact-approval.schema.json": "63c38348a71cba40e8f2e430cdfbddb16b795fabf6a9e1db67c932dd80f04c4f",
+    "skills/generate/contracts/common.schema.json": "9c78d6cf27c89f89ab3303f5554bb7de43b64ba3d40ff69fad59afe6b2fe1717",
+    "skills/generate/contracts/current.schema.json": "da99fc8149bbcf1a979e268ec96e6318911e012d05d104cb03f893a5b40b51c6",
+    "skills/generate/contracts/generation-manifest.schema.json": "fdb046b50a8f0b03c491e81fd393a5ae1c0c9a4970ce741a76fad057fbdb4ae6",
+    "skills/generate/contracts/input-revision.schema.json": "d8cd2b79619669425c1b5b37081ddc52648057889e8ed96074dc7bb82e97d332",
+    "skills/generate/contracts/request.schema.json": "07c5005203ea13b04ffa648eaa2a9512a3afbdbfc76e54f4c2ba323098f97784",
+    "skills/generate/contracts/review-repair.schema.json": "925a9923949ca6893f9908d605a4573d4319e99c5b2c1465aa647e9d12595f12",
+    "skills/generate/contracts/run-state.schema.json": "97fd2084058ce2029572121a6d590418b2c5b88c86fefdd7730a77f7820046e7",
+    "skills/generate/contracts/sow-model.schema.json": "bfcf7b8ed06518aebb0ad8dec5b6648529f88dce568bbf0740feba865f57bb31",
+    "skills/generate/contracts/stage-checkpoint.schema.json": "f14438641d7238e20df7c1a0295705fb7b5e69efc0e28b46dd0e63b662828aca",
 }
 
-TEMPLATE_SHA256 = "51f88c98a6f68fb2b95b58c28b95a7d68897df38d685532ef89a5de19727bac9"
+TEMPLATE_SHA256 = "43058a761a3d5ea2e71e779b1600aa159258f732b1cb5c60d491051540454041"
 
 CURRENT_USER_DOCS = (
     "README.md",
@@ -61,15 +59,14 @@ TASK_STANDARD_DOCS = (
 
 DELIVERY_REFERENCES = (
     "acceptance-criteria.md",
-    "delivery-authoring.md",
-    "delivery-compilation.md",
     "delivery-decomposition.md",
-    "delivery-examples.md",
+    "delivery-lifecycle-policy.md",
     "delivery-work-classification.md",
     "effective-start-matching.md",
     "epic-authoring.md",
     "feature-authoring.md",
-    "question-authoring.md",
+    "layered-review.md",
+    "source-authority.md",
     "story-authoring.md",
     "task-authoring.md",
     "technical-work-classification.md",
@@ -115,12 +112,13 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertTrue(all("ai-sow:generate" in prompt for prompt in prompts))
         self.assertTrue(all("下一阶段" not in prompt for prompt in prompts))
 
-    def test_target_workflow_plan_is_marked_implemented(self) -> None:
+    def test_historical_workflow_plan_is_marked_superseded(self) -> None:
         text = (
             REPO_ROOT
             / "plugins/ai-sow/docs/PRD_HLD_AUTOMATED_SOW_WORKFLOW_PLAN.md"
         ).read_text(encoding="utf-8")
-        self.assertIn("状态：已实现", text)
+        self.assertIn("状态：已取代", text)
+        self.assertIn("不得作为实现或操作依据", text)
         self.assertIn("执行日期：2026-09-02", text)
         self.assertIn("d6738ee25cace4eb97db1cd204f769c6c63b7128", text)
 
@@ -195,7 +193,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "skills/generate/SKILL.md",
             "skills/generate/scripts/orchestrator.py",
             "skills/generate/assets/sow-template.xlsx",
-            "skills/generate/contracts/question.schema.json",
+            "skills/generate/contracts/action.schema.json",
             "tests/support/smoke_plugin.py",
             "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
             "docs/reference/SOW估算与生成示例_v1.3.xlsx",
@@ -238,15 +236,18 @@ class RepositoryLayoutTests(unittest.TestCase):
         package_schema = json.loads(
             (plugin_root / "skills/generate/contracts/generation-manifest.schema.json").read_text(encoding="utf-8")
         )
-        request = json.loads(
-            (plugin_root / "skills/generate/fixtures/greenfield/request.json").read_text(encoding="utf-8")
+        request_schema = json.loads(
+            (plugin_root / "skills/generate/contracts/request.schema.json").read_text(encoding="utf-8")
         )
         pyproject_text = (plugin_root / "pyproject.toml").read_text(encoding="utf-8")
         lock_text = (plugin_root / "uv.lock").read_text(encoding="utf-8")
         self.assertEqual(manifest["name"], "ai-sow")
         self.assertEqual(manifest["version"], release_version)
-        self.assertEqual(package_schema["$id"], "urn:ai-sow:generate:generation-manifest:1")
-        self.assertEqual(request["contract"], "ai-sow-generate-request-v1")
+        self.assertEqual(package_schema["$id"], "urn:ai-sow:generate:next:generation-manifest:1")
+        self.assertEqual(
+            request_schema["properties"]["contract"]["const"],
+            "ai-sow-generate-request-v2",
+        )
         self.assertRegex(
             pyproject_text,
             rf'(?ms)^\[project\].*?^version = "{re.escape(runtime_version)}"$',
@@ -294,10 +295,10 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_task_estimation_contract_has_no_removed_shape_or_modes(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
-        delivery = json.loads(
-            (plugin_root / "skills/generate/contracts/delivery-bundle.schema.json").read_text(encoding="utf-8")
+        model = json.loads(
+            (plugin_root / "skills/generate/contracts/sow-model.schema.json").read_text(encoding="utf-8")
         )
-        task_properties = delivery["$defs"]["task"]["properties"]
+        task_properties = model["$defs"]["task"]["properties"]
         for field in (
             "professionalDomain",
             "activity",
@@ -308,7 +309,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "personDays",
         ):
             self.assertNotIn(field, task_properties)
-        self.assertNotIn("sitEstimates", delivery["properties"])
+        self.assertNotIn("sitEstimates", model["properties"])
         self.assertEqual(
             task_properties["workMode"]["enum"],
             ["新建", "调整", "接入复用"],
@@ -608,7 +609,7 @@ class RepositoryLayoutTests(unittest.TestCase):
                 self.assertIn(required, text)
         self.assertFalse(path.with_suffix(".docx").exists())
 
-    def test_markdown_reference_task_fields_match_delivery_schema(self) -> None:
+    def test_markdown_reference_task_fields_match_sow_model_schema(self) -> None:
         document_path = (
             REPO_ROOT
             / "plugins/ai-sow/docs/reference/"
@@ -616,7 +617,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         )
         schema_path = (
             REPO_ROOT
-            / "plugins/ai-sow/skills/generate/contracts/delivery-bundle.schema.json"
+            / "plugins/ai-sow/skills/generate/contracts/sow-model.schema.json"
         )
         text = document_path.read_text(encoding="utf-8")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -641,7 +642,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         workbook = openpyxl.load_workbook(template, read_only=False, data_only=False)
         try:
             sheet = workbook["90-估算标准"]
-            table = sheet.tables["BaseUnitCatalogTable"]
+            table = sheet.tables["TaskStandardTable"]
             min_col, min_row, max_col, max_row = openpyxl.utils.range_boundaries(
                 table.ref
             )
@@ -651,13 +652,13 @@ class RepositoryLayoutTests(unittest.TestCase):
             }
             rows = range(min_row + 1, max_row + 1)
             catalog_size = sum(
-                bool(sheet.cell(row, headers["基础单元ID"]).value) for row in rows
+                bool(sheet.cell(row, headers["工作类型ID"]).value) for row in rows
             )
             task_family_count = len(
                 {
-                    sheet.cell(row, headers["任务族ID"]).value
+                    sheet.cell(row, headers["分类"]).value
                     for row in rows
-                    if sheet.cell(row, headers["任务族ID"]).value
+                    if sheet.cell(row, headers["分类"]).value
                 }
             )
         finally:
@@ -738,42 +739,28 @@ class RepositoryLayoutTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             generation_root = Path(temp_dir) / ".ai-sow/generations/000123"
-            for relative in (
-                "manifest.json",
-                "data/scope.json",
-                "data/delivery.json",
-                "input/sow-template.xlsx",
-                "output/sow.xlsx",
-                "output/sow-notes.md",
-            ):
+            for relative in module.EXPECTED_GENERATION_FILES:
                 target = generation_root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(relative.encode())
 
-            module._verify_generation_template_path(
-                {
-                    "generationId": "000123",
-                    "templatePath": (
-                        ".ai-sow/generations/000123/input/sow-template.xlsx"
-                    ),
-                },
-                generation_root,
+            template = generation_root / "input/sow-template.xlsx"
+            manifest = {
+                "generationId": "000123",
+                "templateSha256": hashlib.sha256(template.read_bytes()).hexdigest(),
+            }
+            self.assertEqual(
+                module._verify_generation_template_path(manifest, generation_root),
+                template,
             )
-            for invalid_path in (
-                ".ai-sow/templates/sow-template.xlsx",
-                ".ai-sow/work/run-template.xlsx",
-                "input/sow-template.xlsx",
-            ):
-                with self.subTest(invalid_path=invalid_path), self.assertRaises(
-                    RuntimeError
-                ):
-                    module._verify_generation_template_path(
-                        {
-                            "generationId": "000123",
-                            "templatePath": invalid_path,
-                        },
-                        generation_root,
-                    )
+            with self.assertRaises(RuntimeError):
+                module._verify_generation_template_path(
+                    manifest, generation_root.with_name("000124")
+                )
+            with self.assertRaises(RuntimeError):
+                module._verify_generation_template_path(
+                    {**manifest, "templateSha256": "0" * 64}, generation_root
+                )
 
             before = module._generation_file_digests(generation_root.parent)
             (generation_root / "output/sow-notes.md").write_bytes(b"changed")

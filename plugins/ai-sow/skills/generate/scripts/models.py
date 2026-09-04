@@ -1,89 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal, Mapping
 
 
-ProjectMode = Literal["GREENFIELD", "BROWNFIELD"]
-RunAction = Literal[
-    "REUSE", "RENDER_ONLY", "FULL_COMPILE", "SLICE_COMPILE", "RESUME_PENDING"
-]
 ReviewDecision = Literal["PASS", "PASS_WITH_NOTES", "BLOCKED"]
-OrchestratorOutcome = Literal[
-    "READY_FOR_SCOPE",
-    "READY_FOR_DELIVERY",
-    "READY_FOR_TASK",
-    "REVIEW_REQUIRED",
-    "READY_TO_RENDER",
-    "PUBLISHED",
-    "REUSED",
-    "BLOCKED",
-]
-
-
-@dataclass(frozen=True)
-class SourceRequest:
-    source_id: str
-    role: Literal["PRD", "HLD", "PRIOR_SOW", "SUPPLEMENT"]
-    path: Path
-    version: str
-
-
-@dataclass(frozen=True)
-class InputRequest:
-    project_id: str
-    project_name: str
-    planned_effective_date: str
-    mode: ProjectMode
-    responsibility_boundaries: tuple[Mapping[str, str], ...]
-    sources: tuple[SourceRequest, ...]
-    questions: tuple[Mapping[str, object], ...]
-    questionnaire_answers: tuple[Mapping[str, object], ...]
-    current_state_delta: Mapping[str, object] | None
-
-
-@dataclass(frozen=True)
-class AnchorChange:
-    source_id: str
-    anchor_id: str
-    change: Literal["ADDED", "MODIFIED", "REMOVED", "MOVED_UNCHANGED"]
-    previous_sha256: str | None
-    current_sha256: str | None
-
-
-@dataclass(frozen=True)
-class InputChangeSet:
-    exact_match: bool
-    source_changes: tuple[AnchorChange, ...]
-    responsibility_ids: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class ImpactPlan:
-    action: RunAction
-    baseline_generation_id: str | None
-    baseline_revision_id: str | None
-    changed_source_ids: tuple[str, ...]
-    changed_anchor_ids: tuple[str, ...]
-    affected_feature_ids: tuple[str, ...]
-    escalation: Literal["NONE", "FEATURE", "DOMAIN", "FULL"]
-    reason_codes: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class RunPlan:
-    run_id: str
-    pending_manifest_path: str
-    action: RunAction
-    target_revision_id: str
-    target_generation_id: str | None
-    template_snapshot_path: str
-    template_sha256: str
-    impact: ImpactPlan
-    scope_compiler_contract: str
-    delivery_compiler_contract: str
-    renderer_contract: str
 
 
 @dataclass(frozen=True)
@@ -107,6 +28,142 @@ class Diagnostic:
 
 
 @dataclass(frozen=True)
+class DiagnosticClassification:
+    category: Literal[
+        "INPUT_REQUIRED",
+        "OWNER_FIX_REQUIRED",
+        "CONTRACT_UNSUPPORTED",
+        "SYSTEM_FAILED",
+        "CONTROL",
+    ]
+    owner: Literal[
+        "INPUT", "STAGE_1", "STAGE_2", "STAGE_3", "REVIEW", "PUBLISH", "ORCHESTRATOR"
+    ]
+    retryable: bool
+
+
+# The persisted mapping remains authoritative and is validated against JSON Schema.
+# These frozen DTOs only make module boundaries explicit; they do not duplicate the
+# persisted contracts as mutable Python object graphs.
+@dataclass(frozen=True)
+class SourceDocument:
+    source_id: str
+    role: str
+    raw_sha256: str
+    parser_id: str
+    parser_version: str
+    blocks: tuple[Mapping[str, object], ...]
+
+
+@dataclass(frozen=True)
+class InputRevisionResult:
+    value: Mapping[str, object] | None
+    path: str | None
+    sha256: str | None
+    diagnostics: tuple[Diagnostic, ...]
+
+
+@dataclass(frozen=True)
+class ActionEnvelope:
+    value: Mapping[str, object]
+    path: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class ActionRecord:
+    value: Mapping[str, object]
+    path: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class RunState:
+    value: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class RouteDecision:
+    route: Literal["REUSE", "RENDER_ONLY", "FULL_COMPILE", "DELTA_COMPILE"]
+    lowest_recovery_stage: Literal[
+        "STAGE_1", "STAGE_2", "STAGE_3", "REVIEW", "RENDER"
+    ] | None
+    changed: tuple[str, ...]
+    reused: tuple[str, ...]
+    invalidated: tuple[str, ...]
+    diagnostics: tuple[Diagnostic, ...]
+    proof_sha256: str
+
+
+@dataclass(frozen=True)
+class CompilerProgress:
+    outcome: Literal["ACTION_REQUIRED", "CHECKPOINT_READY", "INPUT_REQUIRED", "FAILED"]
+    expected_action_ids: tuple[str, ...]
+    diagnostics: tuple[Diagnostic, ...]
+
+
+@dataclass(frozen=True)
+class CompilerResult:
+    model: Mapping[str, object]
+    model_sha256: str
+    checkpoint: Mapping[str, object]
+    diagnostics: tuple[Diagnostic, ...]
+
+
+@dataclass(frozen=True)
+class ReplacementOutcome:
+    candidate: Mapping[str, object]
+    candidate_sha256: str
+    active_projection: Mapping[str, object]
+    active_projection_sha256: str
+    proof_sha256: str
+    changed_node_ids: tuple[str, ...]
+    reused_node_ids: tuple[str, ...]
+    invalidated_node_ids: tuple[str, ...]
+    invalidated_checkpoint_ids: tuple[str, ...]
+    diagnostics: tuple[Diagnostic, ...]
+
+
+@dataclass(frozen=True)
+class ReviewProgress:
+    outcome: Literal["ACTION_REQUIRED", "PASS", "OWNER_FIX_REQUIRED", "INPUT_REQUIRED", "FAILED"]
+    expected_action_ids: tuple[str, ...]
+    diagnostics: tuple[Diagnostic, ...]
+
+
+@dataclass(frozen=True)
+class TaskStandardCatalog:
+    template_sha256: str
+    semantic_sha256: str
+    rows: tuple[Mapping[str, object], ...]
+    by_work_type_id: Mapping[str, Mapping[str, object]]
+
+    @property
+    def task_catalog_semantic_sha256(self) -> str:
+        return self.semantic_sha256
+
+
+@dataclass(frozen=True)
+class CatalogHydration:
+    requested_work_type_ids: tuple[str, ...]
+    query_terms: tuple[str, ...]
+    candidate_work_type_ids: tuple[str, ...]
+    neighbor_work_type_ids: tuple[str, ...]
+    challenger_work_type_ids: tuple[str, ...]
+    rows: tuple[Mapping[str, object], ...]
+    semantic_sha256: str
+    evidence: Mapping[str, object]
+
+    @property
+    def selected_work_type_ids(self) -> tuple[str, ...]:
+        return self.requested_work_type_ids
+
+    @property
+    def task_catalog_semantic_sha256(self) -> str:
+        return self.semantic_sha256
+
+
+@dataclass(frozen=True)
 class SourceAnchor:
     anchor_id: str
     source_id: str
@@ -119,81 +176,11 @@ class SourceAnchor:
 
 
 @dataclass(frozen=True)
-class IntakeResult:
-    outcome: Literal["READY", "BLOCKED"]
-    pending_manifest_path: str
-    anchors_path: str
-    changes: InputChangeSet
-    diagnostics: tuple[Diagnostic, ...]
-    questions: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class CurrentGeneration:
     generation_id: str
-    revision_id: str
     manifest_path: str
-    scope_path: str
-    delivery_path: str
     workbook_path: str
     notes_path: str
-
-
-@dataclass(frozen=True)
-class ScopeCompilation:
-    bundle: Mapping[str, object]
-    bundle_sha256: str
-    impact: ImpactPlan
-    metrics: Mapping[str, object]
-    diagnostics: tuple[Diagnostic, ...]
-
-
-@dataclass(frozen=True)
-class BaseUnitRule:
-    base_unit: str
-    name: str
-    task_family_id: str
-    task_family: str
-    count_rule: str
-    includes: str
-    excludes: str
-    allowed_work_modes: tuple[str, ...]
-    allowed_complexities: tuple[Literal["S", "M", "L"], ...]
-    complexity_standards: Mapping[str, str]
-    split_rule: str
-
-
-@dataclass(frozen=True)
-class TemplateCatalog:
-    template_sha256: str
-    base_units: Mapping[str, BaseUnitRule]
-
-
-@dataclass(frozen=True)
-class DeliveryCompilation:
-    bundle: Mapping[str, object]
-    bundle_sha256: str
-    metrics: Mapping[str, object]
-    diagnostics: tuple[Diagnostic, ...]
-
-
-@dataclass(frozen=True)
-class ReviewPacketResult:
-    outcome: Literal["REVIEW_REQUIRED", "BLOCKED"]
-    packet_path: str | None
-    packet_sha256: str | None
-    diagnostics: tuple[Diagnostic, ...]
-    questions: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class FinalReviewResult:
-    decision: ReviewDecision
-    review_path: str
-    review_sha256: str
-    notes: tuple[str, ...]
-    questions: tuple[Mapping[str, object], ...]
-    diagnostics: tuple[Diagnostic, ...]
 
 
 @dataclass(frozen=True)

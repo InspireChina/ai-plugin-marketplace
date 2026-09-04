@@ -12,42 +12,17 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "caseId",
-          "mode",
-          "requestPath",
-          "scopeSlicePath",
-          "deliverySlicePath",
-          "finalReviewPath",
-          "expectedDecision",
-          "expectedCounts"
-        ],
+        "required": ["caseId", "mode", "fixtureRootPath", "expectedMinimumActions"],
         "properties": {
           "caseId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
           "mode": {"enum": ["GREENFIELD", "BROWNFIELD"]},
-          "requestPath": {"$ref": "#/$defs/path"},
-          "scopeSlicePath": {"$ref": "#/$defs/path"},
-          "deliverySlicePath": {"$ref": "#/$defs/path"},
-          "finalReviewPath": {"$ref": "#/$defs/path"},
-          "expectedDecision": {"enum": ["PASS", "PASS_WITH_NOTES"]},
-          "expectedCounts": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["features", "stories", "tasks"],
-            "properties": {
-              "features": {"type": "integer", "minimum": 0},
-              "stories": {"type": "integer", "minimum": 0},
-              "tasks": {"type": "integer", "minimum": 0}
-            }
-          },
-          "expectedWorkbookSha256": {"$ref": "#/$defs/sha256"},
-          "expectedNotesSha256": {"$ref": "#/$defs/sha256"}
+          "fixtureRootPath": {"$ref": "#/$defs/path"},
+          "expectedMinimumActions": {"type": "integer", "minimum": 1}
         }
       }
     }
   },
   "$defs": {
-    "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.).+$"},
-    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\.\\.).+$"}
   }
 }

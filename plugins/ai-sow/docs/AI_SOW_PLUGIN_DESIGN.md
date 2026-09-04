@@ -3,7 +3,7 @@
 - 状态：当前正式合同
 - 插件版本：`0.1.0-beta.1`
 - SOW 标准：`1.3`
-- 适用宿主：Codex 与 Claude Code
+- 适用宿主：Codex、Claude Code、CI 与自定义本机宿主
 - 公开入口：`ai-sow:generate`
 - 领域语义：[CONTEXT.md](CONTEXT.md)
 - 计算权威：[sow-template.xlsx](../skills/generate/assets/sow-template.xlsx)
@@ -11,21 +11,21 @@
 
 ## 1. 设计目标
 
-AI SOW 用一个公开 Skill 完成首次生成、增量更新和阻断恢复。用户一次提供项目资料，内部自动完成输入
-固化、范围编译、交付分解、终审、渲染和发布。内部模块只形成可测试的深 seam，不成为额外命令，也
-不要求用户理解候选目录、模式名或中间 hash。
+AI SOW 用一个公开 Skill 完成首次生成、增量更新、输入恢复、候选批准与不可变发布。用户只提供项目
+资料和必要决策；内部阶段、action group、checkpoint、hash 和 reviewer shard 都是可测试 seam，不是
+额外用户命令。
 
 核心原则：
 
-1. PRD 决定业务结果，HLD 决定高层技术边界，往期 SOW 只提供 Brownfield 合同起点；
-2. 插件维护 `InputManifest`、`ScopeBundle`、`DeliveryBundle` 三类稳定数据；
-3. 输入变化按受影响 Feature 闭包整片重算，不做字段级 patch；
-4. 能建立固定范围与估算边界时继续，并通过说明文档披露限制；
-5. 失败或阻断不改变最近一次成功 generation；
-6. Excel 模板是所有计算口径的唯一权威；
-7. 自动生成不等于客户签署或接受。
+1. PRD 决定业务结果，HLD/ADR 决定高层技术边界，往期 SOW 只提供可验证的 Brownfield 合同起点；
+2. 一份 reviewed `SOW Model` 是范围、设计、Story/AC、Task 与估算输入的唯一稳定业务真相；
+3. 模型只提交 hash-bound typed result，固定实现拥有静态字段、引用、checkpoint、事务和发布；
+4. 每个模型 action 都使用 `FRESH_NO_HISTORY`，不继承主对话、兄弟 action 或前序阶段历史；
+5. 不完整输入、失败 action、Schema/hash 漂移或 Office 验证失败都 fail closed，并保留 last-known-good；
+6. Excel 模板是任务目录、基础人天、复杂度、SIT、UAT、公式和取整的唯一计算权威；
+7. 用户只批准已通过评审和 Office 复读的精确 artifact manifest；自动生成不等于客户签署。
 
-## 2. 包结构与模块所有权
+## 2. 包结构与独立安装边界
 
 ```text
 plugins/ai-sow/
@@ -34,8 +34,6 @@ plugins/ai-sow/
 ├── pyproject.toml
 ├── uv.lock
 ├── runtime/
-│   ├── diagnostics.py
-│   └── project_io.py
 ├── references/
 ├── docs/
 ├── tests/
@@ -44,240 +42,213 @@ plugins/ai-sow/
     ├── assets/
     ├── contracts/
     ├── fixtures/
+    ├── prompts/
     ├── references/
     ├── scripts/
     └── tests/
 ```
 
-`runtime/` 只提供业务无关的诊断和安全项目 I/O。`generate` 独占全部稳定业务 Schema、模板、编译器、
-渲染器、fixture 和测试。运行时不得读取插件目录之外的实现文件，也不得依赖 marketplace 根目录。
+`runtime/` 只提供业务无关的诊断和安全项目 I/O。`generate` 独占 SOW Model、Action、Run State、Stage
+Checkpoint、Review/Repair、Artifact Approval、Generation Manifest 等业务合同，以及编译器、模板、
+renderer、fixture 和测试。运行时不得读取插件目录之外的实现文件，也不得依赖 marketplace 根目录。
 
-五个内部 seam：
+内部模块所有权：
 
 | Module | 所有权与边界 |
 |---|---|
-| `intake` | 校验请求与格式，固化输入，生成锚点，比较最近成功 revision |
-| `scope_compiler` | 编译 Feature、Effective Start、Design、Integration、NFR 与范围边界 |
-| `delivery_compiler` | 编译 Story、AC、Task、依赖、假设和估算输入 |
-| `final_review` | 跨层检查完整性、追踪、责任和估算固定边界，只输出三种终态 |
-| `package_renderer` | 从已通过终审的 Bundle 和模板确定性渲染 Package |
+| `intake` | cheap gate、格式校验、来源 block、不可变 input revision 与模板快照 |
+| `scope_compiler` | Stage 1 的 InputItem、Scope Closure、Epic/Feature、Design/Integration/NFR/Policy 与返修 |
+| `delivery_compiler` | Stage 2 的 Story/AC，不能反向改变 Stage 1 |
+| `task_compiler` | Stage 3 的 Task、Dependency、Effective Start Match 与 Estimation Annotation |
+| `final_review` | R1、R2/R3 leaf review、Theme Join、Adjudication 和 repair plan |
+| `sow_model` | 唯一模型的结构、引用、Owner 写集合与 checkpoint 闭包 |
+| `package_renderer` | 从 reviewed SOW Model 与 revision 模板确定性渲染 Package |
+| `generation_store` | 独立复核暂存件、批准绑定、不可变 generation 与原子 current 切换 |
 
-`orchestrator` 只选择全量生成、无变化复用、切片更新、仅渲染或阻断恢复，并按结果串联上述模块；它
-不拥有业务规则。
+`orchestrator` 只维护公开状态机、路由、action 发放和事务，不拥有业务判断。
 
-## 3. 输入合同
+## 3. 宿主中立 NextAction 协议
 
-所有项目必须提供 PRD、HLD、项目标识、名称、计划生效日期，以及客户、供应商和第三方高层责任边界。
-未指定项目模板时使用插件内置模板。
+公共操作固定为 `start / submit / hydrate / resume / approve / abandon / status`。bootstrap 只是准备隔离
+Python 环境并调用同一个 orchestrator；运行时不调用 Codex CLI、Claude Code CLI 或其他代理产品命令。
 
-| 输入角色 | 支持格式 |
+宿主循环按 `nextAction.kind` 处理：
+
+1. `MODEL_ACTION_GROUP`：在 `maxConcurrency` 内运行一个或多个 action。每个 worker 只读取 envelope
+   指定的 `promptPath`、`packetPath`、`referencePaths` 与本 action hydrate 返回的证据；
+2. worker 把唯一 typed result 写入锁定的 `outputPath`。宿主另写 execution JSON，记录 provider/model、
+   工具、耗时、尝试次数和真实 token usage；无法取得 usage 时必须显式标记本地估算；
+3. `submit` 校验 result、execution、packet 与 action hash，并封存不可变 record。只有整组必需 shard
+   全部完成，`resume` 才一次应用，绝不部分推进；
+4. `REQUEST_INPUT` 集中展示最少问题。新 request 先通过 cheap gate，再关闭旧 run、创建新 revision；
+5. `REQUEST_APPROVAL` 展示不可变候选包与可读文件。用户批准精确
+   `artifactManifestSha256` 后才允许发布；
+6. `DONE` 报告 `PUBLISHED`、`REUSED` 或安全终态并停止。
+
+同一 worker 只在单个 action 的工具往返中复用上下文。action record 不复制 submission、证据正文或
+完整工具输出，只保存项目相对结果路径和 SHA-256；需要重建时从不可变文件复读并验 hash。
+
+## 4. 输入合同与不可变 revision
+
+PRD、DEMO、HLD、ADR、PRIOR_SOW、SUPPLEMENT 和 QUESTION_ANSWER 都进入统一来源 inventory：
+
+| 输入角色 | 支持格式与规则 |
 |---|---|
-| PRD | UTF-8 Markdown `.md` |
-| HLD | UTF-8 Markdown `.md` |
-| PRIOR_SOW | Excel `.xlsx` |
-| SUPPLEMENT | UTF-8 纯文本、Markdown、HTML、TypeScript、TSX 或 `.xlsx` |
+| PRD/HLD/ADR | UTF-8 Markdown |
+| DEMO/SUPPLEMENT | UTF-8 文本、Markdown、HTML、TypeScript/TSX 或 XLSX |
+| PRIOR_SOW | XLSX；提供时作为合同起点，不自动证明当前生产状态 |
+| QUESTION_ANSWER | 绑定当前完整问题包 hash 的精确用户答案 |
 
-PDF、Word、PowerPoint 与其他需要专用解析器的格式不支持。校验关注必需语义，不按标题机械拒绝非标准
-文档。空文件、只有占位符的模板、损坏或加密文件以及无关样例不是有效输入。
+Greenfield 不继承历史合同能力。Brownfield 可以提供适用往期 SOW；未提供时记录
+`priorSowState = NOT_PROVIDED` 并建立新基线，不虚构历史承诺。若缺口会改变范围、责任或估算，流程
+返回 `REQUEST_INPUT` 或安全终态。
 
-Greenfield 不要求往期 SOW，以“本期新建、不继承既有合同能力”为默认 Effective Start，只补充确实
-影响范围、责任或估算的最小问卷。
-
-Brownfield 至少需要一份适用往期 SOW，并回答自其生效后是否存在已知的范围、架构、集成或部署变化。
-往期 SOW 建立合同口径 As-Is、历史承诺与 Effective Start，但不自动证明当前生产状态。缺少适用文件时
-直接 `BLOCKED`。
-
-### 3.1 原型证据
-
-HTML、TypeScript 与 TSX 原型不能只按普通附件摘要。Scope 编译至少提取页面或入口、用户角色、动作、
-触发、状态变化、校验、权限、异常路径和可观察业务结果。源码不足且 Demo 可运行时，可在本地启动后
-用 Playwright 或 Computer Use 核验交互；只保存可追溯结论，不保存完整源码、截图或工具输出。原型不
-覆盖 PRD/HLD 的明确声明，实质冲突按固定边界或 `BLOCKED` 规则处理。
-
-## 4. 来源权威与稳定数据
-
-- PRD：业务目标、范围、Feature、业务规则与验收意图；
-- HLD：目标架构、跨系统设计、Integration、NFR 和上线约束；
-- 往期 SOW：Brownfield 合同起点、历史承诺和延续范围；
-- 用户答案与补充材料：本次责任、现状变化、明确决策及原型证据；
-- SOW 模板：任务分类、人天、复杂度、SIT、UAT、风险、公式和取整。
-
-PRD/HLD 实质矛盾不能按文件顺序覆盖。若假设、排除项、责任或 Design Task 可以建立固定边界，则以
-`PASS_WITH_NOTES` 继续；若不同解释会改变 Feature、责任、验收或估算且无法限定，则 `BLOCKED`。
-
-三类稳定数据：
-
-- `InputManifest`：来源角色、文件 hash、语义锚点、问卷答案和变更来源；
-- `ScopeBundle`：Epic/Feature、Effective Start、DesignItem、Integration、NFR、SourceRef；
-- `DeliveryBundle`：Story、AcceptanceCriterion、Task、依赖、假设/风险和估算投影。
-
-每个对象携带最小来源或上层引用。语义不变时沿用 ID；仅文字澄清且交付含义不变时也保留 ID；实质
-含义变化时生成新 ID，不允许旧 ID 指代新对象。
-
-通过 `questionSha256` 校验的每个答案还会在 intake 形成一个 `QUESTION_ANSWER` 语义锚点。其稳定
-source/anchor ID 只从 `questionId` 推导，内容 hash 绑定 canonical 完整问题包和精确答案；未回答问题
-不构成证据，绑定无效时不发布 pending。Scope、Delivery 与终审继续使用通用精确 SourceRef inventory，
-不建立问卷专用证据模型。同一请求的 `questionId` 必须唯一，文档 sourceId 与生成的问答 sourceId
-冲突时在 pending 写入前 fail closed，避免问答锚点被解析成文件来源。
-
-## 5. Scope 与 Delivery 编译
-
-`scope_compiler` 联合 PRD、HLD、往期 SOW 和补充来源，建立目标结果相对 Effective Start 的差值。
-`FULLY_COVERED` 必须有合同或现状证据；需要新增交付的 Feature 进入 `IN_SCOPE`；不属于本期的范围
-明确为 `OUT_OF_SCOPE`。Integration 必须有方向、触发、目的、数据类别和责任归属；适用 NFR 必须有
-目标、待设计状态或不适用结论。由于这是供应商 SOW，`IN_SCOPE` Feature 必须至少连接一条 `VENDOR`
-责任边界；只有客户或第三方责任的事项不能进入供应商计价范围。
-
-`delivery_compiler` 先形成并验收 Story/AC foundation，再在后续独立阶段形成完整 Bundle：
-
-- 编写顺序固定为两个可停止阶段：先完成并复核全部受影响 Story/AC 的层级、来源闭包和可观察结果，以 `accept-story-ac` 生成工作区收据并停在 `READY_FOR_TASK`；此阶段不读取模板、不生成或校验 Task，也不发布稳定 Delivery。后续明确进入 Task 阶段时才从已验收的 Story/AC 读取当前模板；两个阶段共享同一插件管理 candidate，固定 builder 负责静态信封与 ID decisions，不新增稳定数据或批准点；
-- Epic 与 Feature 使用稳定领域能力的名词或名词短语，并以共同投入理由维持同质边界；Story 是可独立移交、验收和关闭的单一具体结果，通过唯一 `featureId` 归属一个 Feature，最多包含四个 Task。准入共同核验具体交付物或能力、责任方或消费者、独立验收、独立关闭或发布边界；
-- AC 是可观察、可独立判定的结果，不描述实现步骤；
-- Task 一行对应一个基础单元实例，并追溯到 Story 与相关 Design/Integration/NFR；名称点明一个与任务类型匹配的计数对象，接口 Task 一行只包含一个可独立开发、测试和估算的接口，接口内部校验进入该接口 AC；
-- 待设计事项默认成为实施 Story 下可独立估算的 Design Task；
-- 每个原子目标或控制先向全部适用具体 Story 添加来源可追溯 AC；项目级且没有 Story 特定行为时保留在 NFR、DoD 或质量门禁。测量、报告阈值或符合陈述本身不产生 Story；
-- 跨业务 Feature 的可靠性、验证、发布或移交工作只有一个由来源或已批准设计明确支持、可独立运行或消费的具体机制、配置、证据包或运营能力同时拥有独立交付、责任或消费者、验收、关闭或发布边界时才形成技术 Story；控制归组、验收活动或指定验收人不创造该结果。可分别测试的 NFR、质量属性、政策类别、异质控制集合或原子来源义务本身不产生 Story；
-- 只在提交、审批、查询等已有业务触发执行的授权、状态或政策控制先进入每个受影响业务 Story 的 AC，跨切面不形成共享控制 Story；来源规定的阈值保留在每个适用 AC 或项目级质量/NFR 门禁，报表/仪表盘只能交付显示或测量，不能关闭阈值满足义务。自动化、性能、安全或合规测试只能在已成立 Story/AC 下成为 Task；
-- `accept-story-ac` 前在内存中执行零未解决行的语义收敛审计：检查来源原子义务及其阈值/上限/禁止项/变化触发的完整落点、目标未被测量替代、Technical Story 与已有触发控制的准入、双向 NFR 适用性、Brownfield 承诺以及 Story/AC 的来源支持；Scope 缺陷必须回到 `prepare`/`accept-scope`，Story/AC 缺陷必须先改受管 candidate。Task、Design Task、依赖和估算检查不属于该阶段；
-- 一个 Integration 对应一个需要交付的内部或外部系统对接 Task；
-- 正式复杂度只允许 `S / M / L`，无法限定的 `X` 不进入发布数据。
-
-Task 工作模式只允许 `新建 / 调整 / 接入复用`。`调整 / 接入复用` 必须引用匹配的 Effective Start；
-接入复用还必须明确项目侧注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作。替换与退役
-通过替代能力、数据迁移、发布切换和系统功能下线等真实基础单元拆分。
-
-## 6. 增量更新
-
-每次请求先与最近成功输入 revision 比较：
+intake 先完成格式、路径、必需字段、来源状态和模板 Table 的 cheap gate，然后创建不可变 revision：
 
 ```text
-变更来源锚点
-  -> 直接 Feature
-  -> 共享对象引用闭包
-  -> 整个受影响 Scope/Delivery 切片
-  -> 完整 Package 重渲染
+.ai-sow/inputs/revisions/<revision>/
+├── manifest.json
+├── sow-template.xlsx
+└── sources/
 ```
 
-问答锚点遵循同一闭包：只改变答案或问题包内容时保持 source/anchor identity、更新内容 hash，并以
-`MODIFIED` 定位所有引用它的 Feature；`questionId` 改变时按移除旧锚点和新增锚点处理。
+manifest 绑定 request、模板、Delivery Policy、Execution Policy、prior SOW、source 和无损 block hash。
+模型不读取原始聊天历史，来源证据由 packet inventory 与 `hydrate` 精确提供。
 
-闭包包括直接 Feature 及其 DesignItem、Integration、NFR、Story、AC、Task，并扩展到共享这些对象且会
-改变交付或估算的其他 Feature。无法可靠定位唯一 Feature 时，影响范围按 Feature、系统/业务域、全部
-Scope 逐级扩大。
+## 5. 三阶段 SOW Model 编译
 
-替换切片时，新结果仍存在且语义不变的对象保留 ID；新增对象获得新 ID；旧切片中未再生成的对象删除。
-跨切片引用和估算校验在替换后重新运行。输入、模板与渲染器合同都未变化时复用当前结果；只有渲染器
-合同变化且语义输入与模板不变时才跳过语义编译并完整重渲染。模板变化始终开始新一轮，重新编译
-Delivery 并重新终审。
+唯一 `ai-sow-model-v1` 同时保存：
 
-## 7. 自动终审
+- `inputItems` 与逐项 `scopeClosure`；
+- `epics / features / designItems / integrations / nfrs / policyInstances`；
+- `stories / acceptanceCriteria`；
+- `tasks / dependencies / effectiveStartMatches`；
+- 各 Owner annotations 与结构化 decisions。
 
-终审在所有受影响切片完成后执行一次，检查：
+阶段顺序和写集合固定：
 
-- SourceRef 与 Feature/Design/Integration/NFR 的覆盖；
-- Epic → Feature → Story → AC 的层级、来源完整性和可追溯性，以及 Story/AC 闭包完成后才进入 Task 拆分的流程；
-- Story 不得仅以目标、指标、质量属性、政策类别、合规陈述、复核、测量、取证或测试性为结果；Technical Story 必须有来源或已批准设计支持的可独立运行/消费能力。不相关控制不得因宽泛主题聚合，横切义务必须落到全部适用具体 Story 的 AC，阈值不得只由报表/仪表盘 Story 记录；
-- HLD、上线、数据、环境、安全与运维边界；
-- 重复、遗漏、共享对象和依赖闭包；
-- 任务目录、工作模式、复杂度理由与模板组合；
-- 假设、责任、排除项和变更触发条件是否形成固定估算边界。
+```text
+Stage 1 Scope
+  -> R1 Source Audit
+  -> R1 Scope Join
+  -> ScopeClosureCheckpoint
+Stage 2 Story/AC
+  -> StoryAcCheckpoint
+Stage 3 Task/Estimation
+  -> TaskCheckpoint
+Layered Review
+  -> Artifact + Office verification
+  -> User approval
+  -> Publication
+```
 
-结果为 `PASS`、`PASS_WITH_NOTES` 或 `BLOCKED`。详细设计缺失、字段级接口未定、产品未选型或部署参数
-待确认通常由 Design Task 和说明承接。待确认假设只有在责任方、处理方式、估算边界和变化触发条件都
-已固定时才允许 `PASS_WITH_NOTES`；`NEEDS_DECISION` 承诺必须在 Scope 接受前解决。只有无法建立可信
-范围/估算边界，且不同解释会实质改变交付时才允许阻断。阻断问题必须聚合、去重并只询问改变结果
-所需的信息。
+模型提交 replacement set，并为所有已存在的 upsert/delete 节点提供 expected hash。Owner 编译器只允许
+修改本阶段写集合；兄弟 shard 完成前不应用；跨阶段引用、SourceRef、Policy、Task catalog row semantic
+hash 和 checkpoint 都由固定实现验证。
 
-每个用户问题必须自包含问题、为什么要问、答案决定什么和未回答后果，并精确绑定受影响对象；批量
-展示不能用一段通用说明代替单项解释。fresh-context 终审由系统自动执行；只有确实需要用户输入或
-确认时，才展示自然语言结论，内容较长时提供可读文件，例如可打开的 Markdown 评审材料或 Excel
-交付物。内部 ID、hash、Schema 名和阶段 token 仍用于精确绑定，但不作为使用者识别确认内容的正文。
-review packet 的 `acceptanceCriterionSources` 逐条投影 AC 所属 Story、精确来源与可解析状态；`claims`
-只包含可机械证明的层级提示，不根据业务自由文本关键词猜测语义。
+Story 必须是 Feature 下单一、可独立移交、验收和关闭的具体结果。每个 Story 至少两条可观察 AC、最多
+四个 Task。Task 一行只对应模板目录中的一个计数对象、一种工作模式和一个 S/M/L 复杂度；模板语义不
+允许由 Python 或模型复制计算。
+
+## 6. 分层独立评审与返修
+
+R1 先对每个来源 shard 做独立 Source Audit，再对完整 audit union 和 Stage 1 projection 做 Scope Join。
+R1 finding 只允许一次最小 Stage 1 repair；repair 必须绑定 finding、editable/locked node 和 expected
+hash，完成后必须再运行新的 R1 Scope Recheck，之后才允许进入 Stage 2。
+
+R2 `STORY_DESIGN` 与 R3 `TASK_ESTIMATION` 按逻辑主题拆成最多八个物理 shard。多 shard 主题必须经过
+Theme Join：join 绑定全部 leaf result hash，且不得丢弃任一 finding。不同评审对同一 subject 给出不同
+结论时，必须发出新的 `FRESH_NO_HISTORY` Adjudicator action，显式选择保留的 finding；编排器不能按
+顺序覆盖或自行猜测。
+
+`INPUT_REQUIRED` 回到用户输入，`CONTRACT_GAP` 安全终止，Owner finding 生成最小影响 repair plan。
+所有通过的 review decision 绑定 SOW Model、三个 checkpoint 和每个 leaf/join/adjudication result hash。
+
+## 7. 重用、渲染与增量路由
+
+路由只由完整 hash proof closure 决定：
+
+| Route | 条件与行为 |
+|---|---|
+| `REUSE` | 路由基础全部相同；直接复用 current generation，不创建 action |
+| `RENDER_ONLY` | 变化仅限 `templateSha256`/`rendererSha256` 且任务目录语义未变；复用 SOW Model、checkpoint 和 review decision，不启动 Reviewer |
+| `DELTA_COMPILE` | 语义输入、Policy、任务目录或阶段证明变化；克隆已发布 SOW Model 为基线，重编译并保留未受影响节点原字节 |
+| `FULL_COMPILE` | 首次生成、执行政策变化、旧合同或 generation proof closure 无效；从 Stage 1 开始 |
+
+`lowestRecoveryStage` 由变化 hash 的最早 Owner 决定。任何局部恢复都必须证明上游 checkpoint 可复用；
+无法证明时扩大到更早阶段。模板任务目录或估算语义变化会重新编译 Delivery 并重新评审，不能只把旧
+Task 套入新标准；纯输出字节变化才允许 `RENDER_ONLY`。
 
 ## 8. 项目事务与不可变发布
 
 ```text
 .ai-sow/
 ├── current.json
-├── inputs/
-│   ├── pending/
-│   └── revisions/<revision>/
+├── inputs/revisions/<revision>/
 ├── generations/<generation>/
 │   ├── manifest.json
-│   ├── data/{scope.json,delivery.json}
+│   ├── data/sow-model.json
 │   └── output/{sow.xlsx,sow-notes.md}
 └── work/
+    ├── active-run.json
+    └── runs/<run>/{actions,groups,candidates,checkpoints,reviews,artifacts}
 ```
 
-pending 保存尚未成功的输入；revision 保存每次实际使用的不可变输入快照；generation 保存稳定 Bundle、
-manifest 和输出；work 只保存本次候选与临时审计数据。
+一个项目同一时间只有一个 active run。request、input revision、run state、candidate、action、result、
+execution、record、group plan、checkpoint、review decision 和 artifact manifest 都用项目相对路径与 hash
+闭合。crash 后 `status/resume` 从这些文件恢复，不依赖聊天上下文。
 
-Scope/Delivery candidate 由 orchestrator 在固定路径生成 Schema 有效的空业务骨架。模型只编辑动态
-集合；contract、revision、hash、替换集合、责任边界与 ID decisions 由插件固定实现生成或推导。
-项目运行不得创建一次性 Python、JavaScript、TypeScript 或 Shell 拼装脚本。
-
-发布顺序固定为：完成候选与终审、生成工作簿候选、用 LibreOffice 隔离回算并完整复读、固化 input revision、固化 generation、最后
-原子替换 `current.json`。指针切换前的新目录不视为有效。任何失败都不得覆盖上一份 generation；恢复
-直接合并 pending 补充并重新规划受影响切片。
+artifact 先在 work 中渲染并由 Office 回算复读；用户批准后，`generation_store` 再独立验证 SOW Model、
+模板、renderer、workbook/notes 和批准绑定，发布新 generation，最后原子替换 `current.json`。批准前、
+失败、崩溃、输入等待或手工放弃都不会覆盖 last-known-good。
 
 ## 9. Package 与工作簿
 
-每次成功 generation 包含：
+当前只支持 XLSX 模板。每个 input revision 保存 `sow-template.xlsx` 本轮专用副本；Task 编译、评审、
+渲染和复读始终使用同一份不可变模板。正式工作簿固定为 `01-需求故事`、`02-任务清单`、
+`03-工作量汇总`、`90-估算标准` 四个 Sheet 和五个命名 Table。
 
-```text
-manifest.json
-data/scope.json
-data/delivery.json
-output/sow.xlsx
-output/sow-notes.md
-```
+Python 只投影业务文本与关系并保留公式、Table 计算列、样式、行高、筛选、验证、保护和打印设置。
+LibreOffice 在项目内隔离临时目录真实回算；随后分别复读公式与缓存值，并核对全部输入行、目录、参数、
+公式错误和汇总恒等关系。只有 `workbookVerification.trustState = VERIFIED` 才能请求批准和发布。
 
-`sow-notes.md` 固定说明输入 revision、As-Is 证据边界、关键推断、假设、待设计事项、各方责任、排除
-范围、冲突处置、未决 NFR、风险和变更触发条件。
+普通文本以 `= / + / - / @` 开头时仍按文本写入。`sow-notes.md` 必须披露输入边界、关键解释、假设、
+责任、排除项、待设计事项、风险和变更触发条件；不能只存在于执行日志。
 
-工作簿模板保存当前基础单元、任务族及全部计算规则。正式拓扑只有 `01-需求故事`、
-`02-任务清单`、`03-工作量汇总`、`90-估算标准` 四个 Sheet 和五个命名 Table。生成器写入结构化文本
-和名称关系，保留公式、样式、行高、筛选和保护；公式只来自模板，Python 不计算最终人天。候选件经
-LibreOffice 真实回算后，必须同时复读公式和缓存值，并逐项核对模板公式、Table 计算列元数据、数据
-验证、Sheet 保护、可见样式、行高、一页宽且不限制纵向页数的打印布局、全部 Story/Task、基础单元、
-项目参数、公式错误与汇总恒等关系。发布存储层还要对
-暂存工作簿独立执行同一审计，并精确匹配 manifest 的 `workbookVerification`；只有
-`workbookVerification.trustState = VERIFIED` 才允许发布；缺少
-引擎、空 Story/Task 或复读不完整均保留 last-known-good。以 `= / + / - / @` 开头的普通文本按文本写入，
-防止公式注入。
+## 10. 运行时、跨平台与隐私
 
-当前只支持 XLSX 模板。项目模板副本只有同时满足“与上一份已发布 manifest 的模板哈希一致”和
-“该哈希属于已知内置模板版本”时，`prepare` 才会安全采用新的内置模板；发布后改动或首次发布前
-定制的项目模板都必须保留。每轮 `prepare` 立即将当时模板固定为 `.ai-sow/work/run-template.xlsx`，
-Delivery 编译、终审、渲染和复读共用这份本轮副本。运行期间项目模板改动不影响已开始的本轮；
-下一轮检测到模板与上一 generation 不同时，必须重新编译 Delivery 并重新终审，不允许只重渲染旧 Task。
-成功 generation 在自身 `input/sow-template.xlsx` 保存原字节模板副本，manifest 记录路径与 SHA-256。
+平台 bootstrap 在插件安装副本内准备 uv 0.11.7、managed Python 3.12、锁定依赖和 `.venv`。普通用户
+无需预装 Python/uv，也无需激活虚拟环境：
 
-`generation-renderer-v7` 与 renderer fingerprint 绑定九列 Story 表、AC 符号点、带任务类型/工作方式/复杂度前缀的任务列表、对象特异备注投影、直接 Story 名称引用、Task 原子计价、真实回算引擎和验证代码。改变输出字节语义时必须提升
-合同并同步 baseline、测试与文档。
+- macOS/Linux：`bootstrap.sh` 与 `.venv/bin/python`；
+- Windows 11 x64：`bootstrap.ps1` 与 `.venv/Scripts/python.exe`。
 
-`scope-compiler-v2` 和 `delivery-compiler-v5` 对应当前最小稳定模型：Story 只保存唯一 `featureId`、名称和 UAT 适用性，不保存类型常量或 `description`；每个 Story 至少两条 AC 且最多四个 Task，Story 准入由具体交付物或能力、责任或消费者、独立验收、独立关闭或发布边界共同判断，目标/指标/质量属性/政策/控制或测试性本身不构成 Story，接口 Task 保持一个可独立估算接口，AC 不复制
-顺序/理由，Task 不复制依赖或 Effective Start 名称。新增锚点必须用候选对象 `sourceRefs` 的
-`(sourceId, anchorId, sha256)` 精确身份定位基线 Feature；替换集合只保存旧 ID，初次完整编译为空；
-发布统计对四类对象统一使用 `affected / recomputed / reused / deleted / final`。
+所有公开结果是唯一 UTF-8 JSON。Windows PowerShell 5.1 的脚本编码、`PSModulePath` 和长路径预算由
+运行时合同约束；插件不会静默修改机器级策略。正式发布仍需可执行 LibreOffice。
 
-## 10. 运行时、安全与隐私
-
-平台 bootstrap 在插件安装副本内准备 uv 0.11.7、managed Python 3.12、锁定依赖与 `.venv`，然后调用
-唯一 orchestrator。普通用户无需预装 Python/uv，也无需手工激活环境。所有内部结果为 UTF-8 JSON。
-
-项目受管路径禁止越界和符号链接穿越。稳定数据不保存凭据、客户无关原文、私有源码、完整工具输出或
-本机绝对路径。`.ai-sow/` 默认应被版本控制忽略并按客户数据处理。插件不执行 Git 网络、历史改写、
-提交、推送或发布操作。
+`.ai-sow/` 包含客户原文和衍生数据，应默认被版本控制忽略。稳定 SOW Model、generation manifest 和
+action record 不保存凭据、私有源码、完整工具输出或本机绝对路径。项目 I/O 拒绝绝对路径、上跳、
+符号链接穿越和插件外写入。插件不执行 Git 网络、历史改写、提交、推送或发布。
 
 ## 11. 验证与非目标
 
-Module、合同、增量和 E2E 测试分别覆盖格式矩阵、引用、ID、影响闭包、终审门槛、不可变 generation、
-last-known-good、公式/Table/样式以及独立复制运行。copy smoke 必须在复制插件之外创建项目，并阻止
-访问 marketplace 根目录。
+验证覆盖合同/Owner 单测、公共 NextAction E2E、锁定输入的 fail-fast validation campaign、性能/Token
+benchmark，以及独立复制插件 smoke。配对 benchmark 只有在 `compare` 机械验证精确 32 样本矩阵、
+必需 ACTION/STAGE 覆盖、按 policy 重算全部 ACTION/STAGE/RUN 收据 outcome、ACTION→STAGE→RUN
+计量聚合、收据哈希/签名、相同输入/环境/cache namespace、同执行配置和全部目标，并生成 PASS
+comparison receipt 后，才允许声明数值改善；仓库验证器
+会按 receipt 绑定的 policy 与两份 manifest 重新求值，不能仅靠路径或 hash 字符串把门禁改成
+`SATISFIED`。copy smoke 直接使用 Python API，覆盖 Greenfield、Brownfield、
+输入恢复、`REUSE`、无 Reviewer 的 `RENDER_ONLY` 和保留未受影响下游节点的 `DELTA_COMPILE`；读取守卫
+证明 marketplace 零读取，失败收据与 worker stdout/stderr 在清理前保留。
 
-本版本明确不提供：旧命令兼容、旧业务数据迁移、候选 Schema 双轨、字段 patch、复杂业务状态机、
-Python 公式执行、XLSX 反向导入、PDF/Word/PPT 解析、自动 Git 操作或客户签署判断。generation manifest
-对旧合同 token 的枚举仅用于把既有 generation 识别为只读证据并触发当前合同完整重编译或重渲染；
-run plan、candidate、稳定 Bundle 和新 generation 始终只写当前合同，不形成旧格式兼容执行路径。
+历史提交 `75970b2` 只保留了聚合指标和匿名缺陷分类，没有逐样本收据、完整执行配置或可靠冷热配对，
+因此被登记为 `PARTIAL_BASELINE_CHECKPOINT`，只可用于根因定位和修复排序。它不能证明任何候选版本的
+相对性能。数值改善结论必须由两个通过 `pipeline-benchmark.schema.json` 校验的完整 manifest 支持：每个
+manifest 至少 32 个样本，三种成功规模分别执行五次 `COLD` 和五次 `WARM`，另含两个阻断场景，并保持
+模型、reasoning、工具、Office、计量和 cache protocol 一致。门禁未满足时，70% 目标只能作为政策目标，
+不能表述为已达成结果。
+
+本版本明确不提供：Codex/Claude CLI 运行时依赖、旧命令兼容、旧业务数据迁移、字段级未校验 patch、
+Python 公式执行、PDF/Word/PPT 解析、自动 Git 操作或客户签署判断。CI 的 Linux/macOS/Windows 矩阵
+证明协议与路径实现可移植，不等同于物理设备或 Excel Desktop 的实机认证。

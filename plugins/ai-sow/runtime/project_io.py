@@ -329,6 +329,58 @@ class ProjectFiles:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
 
+    def create_exclusive(self, relative_path: str, payload: bytes) -> bool:
+        """Atomically create a complete file, returning false if any target exists."""
+        target = self._target(relative_path)
+        if target.exists():
+            return False
+
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix=f".{target.name}.",
+                suffix=".tmp",
+                dir=target.parent,
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary, target)
+            except FileExistsError:
+                return False
+            _fsync_directory(target.parent)
+            return True
+        except OSError as error:
+            too_long = _path_too_long(error, relative_path)
+            if too_long is None:
+                raise
+            raise too_long from error
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def unlink_exact(self, relative_path: str, *, expected_payload: bytes) -> bool:
+        """Remove one regular file only when its current bytes match the caller's view."""
+        try:
+            target = self.resolve(relative_path, expect="file")
+        except ProjectIOError as error:
+            if error.code == "PROJECT_PATH_MISSING":
+                return False
+            raise
+        if target.read_bytes() != expected_payload:
+            raise ProjectIOError(
+                "PROJECT_CONTENT_CONFLICT",
+                relative_path,
+                f"project file changed before removal: {relative_path}",
+            )
+        target.unlink()
+        _fsync_directory(target.parent)
+        return True
+
     def publish_new(
         self,
         relative_path: str,

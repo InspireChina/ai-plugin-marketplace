@@ -39,22 +39,34 @@
 ai-sow:generate
   -> intake
   -> scope_compiler
+  -> R1 Source Audit / Scope Join
   -> delivery_compiler
+  -> task_compiler
   -> final_review
   -> package_renderer
+  -> generation_store
 ```
 
-- `orchestrator` 只协调全量生成、无变化复用、受影响切片更新、仅渲染和阻断恢复，不拥有业务规则。
-- `intake` 独占 `InputManifest`；`scope_compiler` 独占 `ScopeBundle`；`delivery_compiler` 独占
-  `DeliveryBundle`；`package_renderer` 不拥有新的范围事实。
+- `orchestrator` 只维护公开 NextAction 状态机、全量/增量/复用/仅渲染路由、action 发放和可恢复事务，
+  不拥有业务规则。
+- 唯一稳定业务真相是 `ai-sow-model-v1`。`scope_compiler` 独占 Stage 1 写集合，`delivery_compiler`
+  独占 Stage 2 Story/AC 写集合，`task_compiler` 独占 Stage 3 Task/Estimation 写集合；各阶段以不可变
+  checkpoint 关闭，后续 Owner 不得反向修改上游写集合。
+- `intake` 独占不可变 input revision；`final_review` 独占 R1、R2/R3 leaf、Theme Join、Adjudication 与
+  repair plan；`package_renderer` 只投影 reviewed SOW Model；`generation_store` 独占 artifact 批准绑定、
+  不可变 generation 和原子 `current.json` 切换。后二者都不拥有新的范围事实。
 - PRD/HLD 只接受 UTF-8 Markdown，往期 SOW 只接受 `.xlsx`；补充材料接受 UTF-8 纯文本、HTML、
   TypeScript、TSX 或 `.xlsx`。不得引入 PDF、Word、PowerPoint 等专用解析路径。
 - 原型必须提取页面、功能、动作、触发、状态、校验、权限、异常和可观察结果；源码不足且 Demo 可运行
   时可用 Playwright 或 Computer Use 核验，结论必须追溯到原型来源。
-- Greenfield 不要求往期 SOW；Brownfield 缺少适用往期 SOW 时稳定 `BLOCKED`。
-- 自动终审只输出 `PASS / PASS_WITH_NOTES / BLOCKED`。只要假设、责任、排除项或 Design Task 能建立
-  固定范围和估算边界，就继续并在 `sow-notes.md` 披露。
-- 输入变化按 Feature 引用闭包整片重算，不做字段 patch。语义不变时保留 ID，含义变化时创建新 ID。
+- Greenfield 不要求往期 SOW；Brownfield 建议提供适用往期 SOW，未提供时记录
+  `priorSowState = NOT_PROVIDED` 并建立新基线，不虚构历史承诺。
+- 评审 decision 只允许 `PASS / OWNER_FIX_REQUIRED / INPUT_REQUIRED / CONTRACT_GAP`；跨 leaf 冲突必须
+  经过 Theme Join 和必要的 Adjudication，不能以后写覆盖先写。公开安全终态使用
+  `MANUAL_REVIEW_REQUIRED / CONTRACT_UNSUPPORTED / SYSTEM_FAILED / ABANDONED`，不存在
+  `PASS_WITH_NOTES / BLOCKED`。
+- 输入变化按 Owner 引用闭包和固定影响后缀重算，不做未校验字段 patch。语义不变时保留 ID，含义变化
+  时创建新 ID。
 - input revision 与 generation 发布后不可变；候选和输出全部验证后最后切换 `current.json`。失败或阻断
   不得覆盖 last-known-good。
 
@@ -71,7 +83,7 @@ ai-sow:generate
   也不执行 Excel 公式。
 - renderer 保留命名 Table、公式原型、样式、行高、自动筛选、数据验证、保护和跨 Sheet 引用，并
   在发布前复读。
-- 修改确定性输出语义时更新当前 `generation-renderer-v7` 及
+- 修改确定性输出语义时更新当前 `generation-renderer-v8` 及
   `contracts/renderer-fingerprint-baseline.json`，不得只刷新 hash 掩盖合同变化。
 - `@oai/artifact-tool` 和 `.mjs` 只用于视觉检查或一次性修复；一次任务只保留一个临时 `.mjs`，完成后
   删除。可复用生成能力使用 Python。
@@ -112,8 +124,10 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 ## 代码审查规则
 
 - **独立安装：** 标记任何运行时读取插件目录之外实现文件的代码。
-- **数据所有权：** 标记跨 Module 修改其他 Bundle、复制 Schema 或让 orchestrator 拥有业务规则的实现。
-- **终审门禁：** 标记未经有效自动终审发布稳定 Bundle/Package，或绕过固定边界与引用完整性检查的流程。
+- **数据所有权：** 标记 Owner 越过 Stage 写集合、下游修改上游 checkpoint、复制业务 Schema，或让
+  orchestrator 拥有业务判断的实现。
+- **评审门禁：** 标记绕过 R1、R2/R3、Theme Join、必要 Adjudication、artifact hash 批准或 Office
+  复读而发布 SOW Model/Package 的流程。
 - **不可变发布：** 标记回写 revision/generation、先切 current 指针或失败时破坏 last-known-good 的实现。
 - **计算权威：** 标记在 Python/JSON 中硬编码基础人天、倍率、公式或取整规则的实现。
 - **合同兼容：** 当前预发布重构不提供旧流程兼容；标记任何未同步测试、fixture、文档和版本面的变更。

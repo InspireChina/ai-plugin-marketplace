@@ -1,92 +1,105 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:generate:common:1",
+  "$id": "urn:ai-sow:generate:next:common:1",
+  "description": "新生成流水线各合同共享的机器原语、来源引用、诊断、问题与路径哈希定义。",
   "$defs": {
-    "lowerKebabId": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$"
-    },
     "sha256": {
       "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
+      "pattern": "^[0-9a-f]{64}$"
     },
-    "projectRelativePath": {
+    "id": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
     },
-    "effectiveDate": {
+    "relativePath": {
       "type": "string",
-      "format": "date",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"
+    },
+    "nonEmptyText": {
+      "type": "string",
+      "minLength": 1
     },
     "idArray": {
       "type": "array",
       "uniqueItems": true,
-      "items": {"$ref": "#/$defs/lowerKebabId"}
+      "items": {
+        "$ref": "#/$defs/id"
+      }
     },
-    "nonEmptyIdArray": {
+    "sha256Array": {
       "type": "array",
-      "minItems": 1,
       "uniqueItems": true,
-      "items": {"$ref": "#/$defs/lowerKebabId"}
+      "items": {
+        "$ref": "#/$defs/sha256"
+      }
     },
     "sourceRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceId", "anchorId", "locator", "sha256"],
+      "required": ["sourceId", "blockId", "sha256", "locator"],
       "properties": {
-        "sourceId": {
-          "$ref": "#/$defs/lowerKebabId",
-          "description": "来源文档在输入 revision 内的稳定逻辑 ID。"
-        },
-        "anchorId": {
-          "$ref": "#/$defs/lowerKebabId",
-          "description": "来源中语义锚点的稳定 ID。"
-        },
-        "locator": {
-          "type": "string",
-          "minLength": 1,
-          "description": "标题、表格项或工作表行等不依赖页码和行号的逻辑定位。"
-        },
-        "sha256": {
-          "$ref": "#/$defs/sha256",
-          "description": "规范化锚点文本的 SHA-256。"
-        }
+        "sourceId": {"$ref": "#/$defs/id"},
+        "blockId": {"$ref": "#/$defs/id"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "locator": {"$ref": "#/$defs/nonEmptyText"}
       }
     },
-    "sourceRefs": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": {"$ref": "#/$defs/sourceRef"}
-    },
-    "responsibilityBoundary": {
+    "diagnostic": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["responsibilityBoundaryId", "party", "name", "responsibilities"],
+      "required": ["code", "category", "owner", "retryable", "message", "subjectIds"],
       "properties": {
-        "responsibilityBoundaryId": {
-          "$ref": "#/$defs/lowerKebabId",
-          "description": "高层责任边界的稳定 ID。"
+        "code": {"$ref": "#/$defs/id"},
+        "category": {
+          "enum": ["INPUT_REQUIRED", "OWNER_FIX_REQUIRED", "CONTRACT_UNSUPPORTED", "SYSTEM_FAILED", "CONTROL"]
         },
-        "party": {
-          "type": "string",
-          "enum": ["CUSTOMER", "VENDOR", "THIRD_PARTY"],
-          "description": "承担该责任边界的客户、供应商或第三方。"
+        "owner": {
+          "enum": ["INPUT", "STAGE_1", "STAGE_2", "STAGE_3", "REVIEW", "PUBLISH", "ORCHESTRATOR"]
         },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "面向评审展示的责任边界名称。"
-        },
-        "responsibilities": {
+        "retryable": {"type": "boolean"},
+        "message": {"$ref": "#/$defs/nonEmptyText"},
+        "subjectIds": {"$ref": "#/$defs/idArray"}
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "subjectIds",
+        "question",
+        "whyAsked",
+        "answerDetermines",
+        "unansweredConsequence",
+        "requiredSourceRole",
+        "checkedEvidenceIds"
+      ],
+      "properties": {
+        "questionId": {"$ref": "#/$defs/id"},
+        "subjectIds": {"$ref": "#/$defs/idArray"},
+        "question": {"$ref": "#/$defs/nonEmptyText"},
+        "whyAsked": {"$ref": "#/$defs/nonEmptyText"},
+        "answerDetermines": {
           "type": "array",
           "minItems": 1,
-          "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1},
-          "description": "该参与方必须提供、决定或完成的高层责任。"
-        }
+          "items": {"$ref": "#/$defs/nonEmptyText"}
+        },
+        "unansweredConsequence": {"$ref": "#/$defs/nonEmptyText"},
+        "requiredSourceRole": {
+          "enum": ["PRD", "DEMO", "APPROVED_DESIGN", "PRIOR_SOW", "SUPPLEMENT", "USER_DECISION"]
+        },
+        "checkedEvidenceIds": {"$ref": "#/$defs/idArray"}
+      }
+    },
+    "hashPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"}
       }
     }
   }

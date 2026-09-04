@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "r1-source-audit-results-v1",
+  "requiredCheckIds": [
+    "SOURCE_BLOCK_COVERAGE",
+    "SOURCE_ATOMICITY",
+    "QUALIFIER_PRESERVATION",
+    "SOURCE_CONFLICT"
+  ],
+  "passResultTemplate": {
+    "contract": "ai-sow-review-result-v1",
+    "reviewResultId": "r1-source-result-template",
+    "reviewSetId": "review-r1-scope",
+    "runId": "run-r1-scope",
+    "kind": "SOURCE_AUDIT",
+    "reviewPlanSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateProjectionSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "coverageSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "completedCheckIds": [
+      "SOURCE_BLOCK_COVERAGE",
+      "SOURCE_ATOMICITY",
+      "QUALIFIER_PRESERVATION",
+      "SOURCE_CONFLICT"
+    ],
+    "decision": "PASS",
+    "findings": [],
+    "sourceAuditCoverageUnion": ["placeholder-block"]
+  }
+}

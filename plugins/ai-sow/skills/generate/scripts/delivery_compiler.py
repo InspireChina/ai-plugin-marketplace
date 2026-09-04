@@ -1,63 +1,45 @@
 from __future__ import annotations
 
-import hashlib
-import unicodedata
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from pathlib import Path
-from typing import AbstractSet, Any
 
-import openpyxl
-from openpyxl.utils.cell import range_boundaries
-
-from candidate_builder import (
-    DELIVERY_CLARIFICATION_FIELDS as CLARIFICATION_FIELDS,
-    DELIVERY_COLLECTION_TYPES as COLLECTION_TYPES,
-    impact_plan_sha256,
-)
 from contracts import (
     canonical_json_bytes,
-    load_schema_registry,
+    load_registry,
     sha256_bytes,
     validate_contract,
-    validate_id_decisions,
 )
 from models import (
-    BaseUnitRule,
-    DeliveryCompilation,
+    CompilerProgress,
+    CompilerResult,
     Diagnostic,
-    ImpactPlan,
-    TemplateCatalog,
 )
+from scope_compiler import validate_scope_closure_checkpoint
+from sow_model import apply_replacement, validate as validate_sow_model
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_REGISTRY = load_schema_registry(SKILL_ROOT)
-CATALOG_HEADERS = {
-    "任务族ID",
-    "任务族名称",
-    "基础单元ID",
-    "基础单元名称",
-    "计数口径",
-    "包含内容",
-    "不包含内容",
-    "新建M档人天",
-    "调整M档人天",
-    "接入复用M档人天",
-    "S标准",
-    "M标准",
-    "L标准",
-    "X/拆分条件",
-}
-PARAMETER_HEADERS = {"参数代码", "名称", "值", "单位", "适用范围", "验证状态/说明"}
-MODE_EFFORT_HEADERS = {
-    "新建": "新建M档人天",
-    "调整": "调整M档人天",
-    "接入复用": "接入复用M档人天",
-}
-COMPLEXITIES = ("S", "M", "L")
-CALIBRATED_PARAMETER_STATUSES = {"固定规则", "已校准", "已批准"}
-MAX_TASKS_PER_STORY = 4
+NEXT_SCHEMA_REGISTRY = load_registry(SKILL_ROOT / "contracts")
+STORY_AC_REQUIRED_CHECK_IDS = (
+    "OBLIGATION_PROJECTION_BOUND",
+    "ASSIGNED_OBLIGATIONS_CLOSED",
+    "QUALIFIERS_PRESERVED",
+    "INDEPENDENT_BOUNDARIES_SEPARATED",
+    "DESIGN_AUTHORITY_PRESERVED",
+    "STAGE_2_WRITE_SCOPE",
+)
+STORY_AC_CHECKPOINT_CHECK_IDS = (
+    "SCOPE_CHECKPOINT_BOUND",
+    "EFFECTIVE_POLICY_DECISION_BOUND",
+    "OBLIGATION_PROJECTION_BOUND",
+    "STORY_AC_COVERAGE_COMPLETE",
+    "STAGE_2_ACTIONS_BOUND",
+)
+STAGE_2_COLLECTIONS = frozenset(
+    {"stories", "acceptanceCriteria", "deliveryAnnotations"}
+)
 
 
 def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
@@ -76,723 +58,1193 @@ def _ids(value: object) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
 
 
-def _table_rows(workbook: Any, table_name: str) -> list[dict[str, Any]]:
-    for worksheet in workbook.worksheets:
-        if table_name not in worksheet.tables:
-            continue
-        table = worksheet.tables[table_name]
-        min_col, min_row, max_col, max_row = range_boundaries(table.ref)
-        headers = [
-            worksheet.cell(min_row, column).value
-            for column in range(min_col, max_col + 1)
-        ]
-        return [
-            {
-                str(header): worksheet.cell(row, column).value
-                for header, column in zip(
-                    headers, range(min_col, max_col + 1), strict=True
-                )
-            }
-            for row in range(min_row + 1, max_row + 1)
-        ]
-    raise ValueError(f"template table is missing: {table_name}")
-
-
-def _require_headers(rows: list[dict[str, Any]], expected: set[str], table_name: str) -> None:
-    actual = set(rows[0]) if rows else set()
-    if actual != expected:
-        raise ValueError(f"template table headers are invalid: {table_name}")
-
-
-def _require_text(row: Mapping[str, object], header: str, subject: str) -> str:
-    value = row.get(header)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{subject} must define non-empty {header}")
-    return value
-
-
-def _usable_mode(row: Mapping[str, object], header: str, subject: str) -> bool:
-    value = row.get(header)
-    if value == "❌":
-        return False
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-        raise ValueError(f"{subject} {header} must be a positive number or ❌")
-    return True
-
-
-def _validate_complexity_parameters(rows: list[dict[str, Any]]) -> None:
-    seen: set[str] = set()
-    for row in rows:
-        code = row.get("参数代码")
-        if not isinstance(code, str) or not code.startswith("K_COMPLEXITY_"):
-            continue
-        level = code.removeprefix("K_COMPLEXITY_")
-        value = row.get("值")
-        if (
-            level not in COMPLEXITIES
-            or level in seen
-            or isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or value <= 0
-            or row.get("验证状态/说明") not in CALIBRATED_PARAMETER_STATUSES
-        ):
-            raise ValueError(f"complexity parameter is invalid: {code}")
-        seen.add(level)
-    if seen != set(COMPLEXITIES):
-        raise ValueError("template must define calibrated S/M/L complexity factors")
-
-
-def read_template_catalog(template_path: Path) -> TemplateCatalog:
-    payload = Path(template_path).read_bytes()
-    workbook = openpyxl.load_workbook(template_path, data_only=False, read_only=False)
-    try:
-        catalog_rows = _table_rows(workbook, "BaseUnitCatalogTable")
-        parameter_rows = _table_rows(workbook, "ProjectParameterTable")
-        _require_headers(catalog_rows, CATALOG_HEADERS, "BaseUnitCatalogTable")
-        _require_headers(parameter_rows, PARAMETER_HEADERS, "ProjectParameterTable")
-        base_units: dict[str, BaseUnitRule] = {}
-        if not catalog_rows:
-            raise ValueError("template base-unit catalog must not be empty")
-        for index, row in enumerate(catalog_rows, 1):
-            subject = f"base-unit catalog row {index}"
-            base_unit = _require_text(row, "基础单元ID", subject)
-            if base_unit in base_units:
-                raise ValueError(f"base-unit catalog ID is duplicated: {base_unit}")
-            modes = tuple(
-                mode
-                for mode, header in MODE_EFFORT_HEADERS.items()
-                if _usable_mode(row, header, subject)
-            )
-            if not modes:
-                raise ValueError(f"base-unit has no work mode: {base_unit}")
-            family_id = _require_text(row, "任务族ID", subject)
-            base_units[base_unit] = BaseUnitRule(
-                base_unit=base_unit,
-                name=_require_text(row, "基础单元名称", subject),
-                task_family_id=family_id,
-                task_family=_require_text(row, "任务族名称", subject),
-                count_rule=_require_text(row, "计数口径", subject),
-                includes=_require_text(row, "包含内容", subject),
-                excludes=_require_text(row, "不包含内容", subject),
-                allowed_work_modes=modes,
-                allowed_complexities=("S", "M", "L"),
-                complexity_standards={
-                    level: _require_text(row, f"{level}标准", subject)
-                    for level in COMPLEXITIES
-                },
-                split_rule=_require_text(row, "X/拆分条件", subject),
-            )
-        _validate_complexity_parameters(parameter_rows)
-        return TemplateCatalog(
-            template_sha256=hashlib.sha256(payload).hexdigest(),
-            base_units=base_units,
-        )
-    finally:
-        workbook.close()
-
-
-def _all_objects(bundle: Mapping[str, object] | None) -> dict[tuple[str, str], Mapping[str, object]]:
-    result: dict[tuple[str, str], Mapping[str, object]] = {}
-    if bundle is None:
-        return result
-    for collection, (object_type, id_field) in COLLECTION_TYPES.items():
-        for item in _mappings(bundle.get(collection)):
-            object_id = item.get(id_field)
-            if isinstance(object_id, str):
-                result[(object_type, object_id)] = item
+def _unique(values: Sequence[object]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if isinstance(value, str) and value not in result:
+            result.append(value)
     return result
 
 
-def _without_clarifications(value: Mapping[str, object]) -> dict[str, object]:
-    return {key: item for key, item in value.items() if key not in CLARIFICATION_FIELDS}
+def _story_token_estimate(value: object) -> int:
+    return max(1, (len(canonical_json_bytes(value)) + 3) // 4)
 
 
-def _validate_id_ledger(
-    candidate: Mapping[str, object],
-    previous: Mapping[str, object] | None,
-    id_decisions: object,
-) -> list[Diagnostic]:
-    diagnostics = list(validate_id_decisions(id_decisions, SCHEMA_REGISTRY))
-    if not isinstance(id_decisions, Mapping):
-        return diagnostics
-    candidate_objects = _all_objects(candidate)
-    previous_objects = _all_objects(previous)
-    decisions = {
-        (str(item.get("objectType")), str(item.get("objectId"))): item
-        for item in _mappings(id_decisions.get("decisions"))
+def _policy_decision_map(
+    model: Mapping[str, object],
+    effective_policy_decisions: object,
+) -> dict[str, str]:
+    expected = {
+        str(item["policyInstanceId"]): item
+        for item in _mappings(model.get("policyInstances"))
+        if isinstance(item.get("policyInstanceId"), str)
     }
-    for identity, item in candidate_objects.items():
-        decision = decisions.get(identity)
-        if decision is None:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_ID_DECISION_MISSING",
-                    "Delivery 切片中的每个对象必须有 ID 决定。",
-                    f"/{identity[0]}/{identity[1]}",
-                )
-            )
-            continue
-        disposition = decision.get("disposition")
-        previous_id = decision.get("previousId")
-        previous_item = (
-            previous_objects.get((identity[0], str(previous_id)))
-            if isinstance(previous_id, str)
-            else None
-        )
-        if disposition == "NEW" and identity in previous_objects:
-            diagnostics.append(
-                _diagnostic("DELIVERY_ID_NEW_ALREADY_EXISTS", "NEW 不得复用既有 ID。")
-            )
-        elif disposition == "UNCHANGED" and (
-            previous_item is None
-            or canonical_json_bytes(previous_item) != canonical_json_bytes(item)
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_ID_UNCHANGED_SEMANTICS_DIFFER",
-                    "UNCHANGED 对象的规范语义必须完全相同。",
-                )
-            )
-        elif disposition == "CLARIFIED" and (
-            previous_item is None
-            or canonical_json_bytes(_without_clarifications(previous_item))
-            != canonical_json_bytes(_without_clarifications(item))
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_ID_CLARIFICATION_CHANGED_MEANING",
-                    "CLARIFIED 不得改变交付含义。",
-                )
-            )
-        elif disposition == "CHANGED" and previous_item is None:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_ID_CHANGED_PREVIOUS_MISSING",
-                    "CHANGED 必须引用存在的旧对象。",
-                )
-            )
-    for identity in decisions:
-        if identity not in candidate_objects:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_ID_DECISION_ORPHAN",
-                    "ID 决定引用了切片中不存在的对象。",
-                )
-            )
-    return diagnostics
-
-
-def _scope_indices(scope: Mapping[str, object]) -> dict[str, object]:
-    features = {
-        str(item.get("featureId")): item for item in _mappings(scope.get("features"))
-    }
-    return {
-        "features": features,
-        "designItems": {
-            str(item.get("designItemId")): item
-            for item in _mappings(scope.get("designItems"))
-        },
-        "integrations": {
-            str(item.get("integrationId")): item
-            for item in _mappings(scope.get("integrations"))
-        },
-        "nfrs": {
-            str(item.get("nfrId")): item for item in _mappings(scope.get("nfrs"))
-        },
-        "effectiveStartItems": {
-            str(item.get("effectiveStartItemId")): item
-            for item in _mappings(scope.get("effectiveStartItems"))
-        },
-    }
-
-
-def _has_cycle(task_ids: set[str], edges: set[tuple[str, str]]) -> bool:
-    successors: defaultdict[str, set[str]] = defaultdict(set)
-    indegree = {task_id: 0 for task_id in task_ids}
-    for predecessor, successor in edges:
-        if successor not in successors[predecessor]:
-            successors[predecessor].add(successor)
-            indegree[successor] = indegree.get(successor, 0) + 1
-    ready = sorted(task_id for task_id, degree in indegree.items() if degree == 0)
-    visited = 0
-    while ready:
-        task_id = ready.pop(0)
-        visited += 1
-        for successor in sorted(successors.get(task_id, set())):
-            indegree[successor] -= 1
-            if indegree[successor] == 0:
-                ready.append(successor)
-                ready.sort()
-    return visited != len(task_ids)
-
-
-def _validate_delivery_foundation(
-    bundle: Mapping[str, object],
-    scope: Mapping[str, object],
-    source_ref_inventory: AbstractSet[tuple[str, str, str]],
-) -> list[Diagnostic]:
-    diagnostics = list(
-        validate_contract(bundle, "delivery-bundle.schema.json", SCHEMA_REGISTRY)
-    )
-    indices = _scope_indices(scope)
-    features = indices["features"]
-    stories = {
-        str(item.get("storyId")): item for item in _mappings(bundle.get("stories"))
-    }
-    criteria = {
-        str(item.get("acceptanceCriterionId")): item
-        for item in _mappings(bundle.get("acceptanceCriteria"))
-    }
-    story_names: dict[str, str] = {}
-
-    for criterion_index, criterion in enumerate(
-        _mappings(bundle.get("acceptanceCriteria"))
-    ):
-        for ref_index, ref in enumerate(_mappings(criterion.get("sourceRefs"))):
-            source_id = ref.get("sourceId")
-            anchor_id = ref.get("anchorId")
-            sha256 = ref.get("sha256")
-            identity = (
-                (str(source_id), str(anchor_id), str(sha256))
-                if all(isinstance(value, str) for value in (source_id, anchor_id, sha256))
-                else None
-            )
-            if identity not in source_ref_inventory:
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_AC_SOURCE_REF_INVALID",
-                        "AC 来源必须精确匹配当前输入 revision 中的 sourceId、anchorId 和 sha256。",
-                        f"/acceptanceCriteria/{criterion_index}/sourceRefs/{ref_index}",
-                    )
-                )
-
-    for feature_id, feature in features.items():
-        decision = feature.get("scopeDecision")
-        requires_story = isinstance(decision, Mapping) and decision.get("decision") == "IN_SCOPE"
-        if requires_story and not any(
-            feature_id == story.get("featureId") for story in stories.values()
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_FEATURE_STORY_MISSING",
-                    "每个 IN_SCOPE Feature 必须由至少一个 Story 交付。",
-                    f"/features/{feature_id}",
-                )
-            )
-    for story_id, story in stories.items():
-        if story.get("featureId") not in features:
-            diagnostics.append(
-                _diagnostic("DELIVERY_STORY_FEATURE_UNKNOWN", "Story 引用了未知 Feature。")
-            )
-        story_name = story.get("name")
-        if isinstance(story_name, str):
-            name_key = unicodedata.normalize("NFC", story_name).strip().casefold()
-            previous_story_id = story_names.get(name_key)
-            if previous_story_id is not None:
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_STORY_NAME_DUPLICATE",
-                        "Story 标题必须唯一，确保 Task 能直接、无歧义地引用所属 Story。",
-                        f"/stories/{story_id}/name",
-                    )
-                )
-            else:
-                story_names[name_key] = story_id
-        story_criteria = [
-            item for item in criteria.values() if item.get("storyId") == story_id
-        ]
-        if len(story_criteria) < 2:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_STORY_AC_INSUFFICIENT",
-                    "每个 Story 必须至少有两条独立、可观察、可判定的 AC。",
-                    f"/stories/{story_id}",
-                )
-            )
-    return diagnostics
-
-
-def _validate_delivery_tasks(
-    bundle: Mapping[str, object],
-    scope: Mapping[str, object],
-    catalog: TemplateCatalog,
-) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
-    indices = _scope_indices(scope)
-    stories = {
-        str(item.get("storyId")): item for item in _mappings(bundle.get("stories"))
-    }
-    criteria = {
-        str(item.get("acceptanceCriterionId")): item
-        for item in _mappings(bundle.get("acceptanceCriteria"))
-    }
-    tasks = {str(item.get("taskId")): item for item in _mappings(bundle.get("tasks"))}
-
-    for story_id in stories:
-        story_tasks = [item for item in tasks.values() if item.get("storyId") == story_id]
-        if len(story_tasks) > MAX_TASKS_PER_STORY:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_STORY_TASK_LIMIT_EXCEEDED",
-                    f"每个 Story 最多包含 {MAX_TASKS_PER_STORY} 个 Task；超过时必须按独立验收结果拆分。",
-                    f"/stories/{story_id}",
-                )
-            )
-    covered_criteria: set[str] = set()
-    integration_tasks: defaultdict[str, list[str]] = defaultdict(list)
-    design_required = {
-        identifier
-        for key in ("integrations", "nfrs")
-        for identifier, item in indices[key].items()
-        if isinstance(item, Mapping) and item.get("status") == "DESIGN_REQUIRED"
-    }
-    designed: set[str] = set()
-    for task_id, task in tasks.items():
-        story_id = task.get("storyId")
-        story = stories.get(str(story_id))
-        if story is None:
-            diagnostics.append(
-                _diagnostic("DELIVERY_TASK_STORY_UNKNOWN", "Task 引用了未知 Story。")
-            )
-            continue
-        for criterion_id in _ids(task.get("acceptanceCriterionIds")):
-            criterion = criteria.get(criterion_id)
-            if criterion is None or criterion.get("storyId") != story_id:
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_TASK_AC_CROSS_STORY",
-                        "Task 只能覆盖同一 Story 的 AC。",
-                    )
-                )
-            else:
-                covered_criteria.add(criterion_id)
-        for field, known in (
-            ("designItemIds", indices["designItems"]),
-            ("integrationIds", indices["integrations"]),
-            ("nfrIds", indices["nfrs"]),
-        ):
-            if any(identifier not in known for identifier in _ids(task.get(field))):
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_SCOPE_REF_UNKNOWN",
-                        "Task 引用了 Scope 中不存在的设计对象。",
-                    )
-                )
-        for integration_id in _ids(task.get("integrationIds")):
-            integration_tasks[integration_id].append(task_id)
-        if task.get("taskKind") == "DESIGN":
-            task_design_refs = set(_ids(task.get("integrationIds"))) | set(
-                _ids(task.get("nfrIds"))
-            )
-            if not task_design_refs & design_required:
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_DESIGN_TASK_UNBOUND",
-                        "DESIGN Task 必须落实一个 DESIGN_REQUIRED 对象。",
-                    )
-                )
-            designed.update(task_design_refs & design_required)
-        base_unit = task.get("baseUnit")
-        rule = catalog.base_units.get(str(base_unit))
-        if rule is None:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_BASE_UNIT_UNKNOWN",
-                    "Task 基础单元不在当前模板目录中。",
-                    f"/tasks/{task_id}/baseUnit",
-                )
-            )
-        else:
-            if task.get("workMode") not in rule.allowed_work_modes:
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_WORK_MODE_UNAVAILABLE",
-                        "模板未为该基础单元配置所选工作模式。",
-                    )
-                )
-            if task.get("complexity") not in rule.allowed_complexities:
-                diagnostics.append(
-                    _diagnostic("DELIVERY_COMPLEXITY_INVALID", "Task 复杂度不受支持。")
-                )
-        evidence = task.get("workModeEvidence")
-        if isinstance(evidence, Mapping):
-            effective_id = evidence.get("effectiveStartItemId")
-            effective = indices["effectiveStartItems"].get(str(effective_id))
-            if effective is None:
-                diagnostics.append(
-                    _diagnostic(
-                        "DELIVERY_WORK_MODE_EVIDENCE_INVALID",
-                        "工作模式证据必须精确匹配 Effective Start。",
-                        f"/tasks/{task_id}/workModeEvidence/effectiveStartItemId",
-                    )
-                )
-            elif task.get("workMode") in {"调整", "接入复用"}:
-                if effective.get("matchLevel") != "TASK_INSTANCE":
-                    diagnostics.append(
-                        _diagnostic(
-                            "TASK_WORK_MODE_REQUIRES_INSTANCE_START",
-                            "调整或接入复用必须引用与当前 Task 精确匹配的既有实例。",
-                            f"/tasks/{task_id}/workModeEvidence/effectiveStartItemId",
-                        )
-                    )
-                elif effective.get("baseUnit") != base_unit:
-                    diagnostics.append(
-                        _diagnostic(
-                            "TASK_WORK_MODE_BASE_UNIT_MISMATCH",
-                            "工作模式证据的基础单元必须与当前 Task 一致。",
-                            f"/tasks/{task_id}/workModeEvidence/effectiveStartItemId",
-                        )
-                    )
-    missing_coverage = set(criteria) - covered_criteria
-    if missing_coverage:
-        diagnostics.append(
-            _diagnostic(
-                "DELIVERY_AC_TASK_COVERAGE_MISSING",
-                "每条 AC 必须由同 Story 的至少一个 Task 覆盖。",
-            )
-        )
-    for integration_id in indices["integrations"]:
-        if len(integration_tasks.get(integration_id, [])) != 1:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_INTEGRATION_TASK_COUNT_INVALID",
-                    "每个 Integration 必须恰好由一个 Task 负责。",
-                    f"/integrations/{integration_id}",
-                )
-            )
-    if design_required - designed:
-        diagnostics.append(
-            _diagnostic(
-                "DELIVERY_DESIGN_TASK_MISSING",
-                "每个 DESIGN_REQUIRED Integration/NFR 必须由 Design Task 落实。",
-            )
-        )
-
-    declared_edges: set[tuple[str, str]] = set()
-    for dependency in _mappings(bundle.get("dependencies")):
-        predecessor = dependency.get("predecessorTaskId")
-        successor = dependency.get("successorTaskId")
-        if not isinstance(predecessor, str) or not isinstance(successor, str):
-            continue
-        if predecessor not in tasks or successor not in tasks or predecessor == successor:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_DEPENDENCY_TASK_UNKNOWN",
-                    "依赖必须连接两个不同的已知 Task。",
-                )
-            )
-        declared_edges.add((predecessor, successor))
-    if _has_cycle(set(tasks), declared_edges):
-        diagnostics.append(
-            _diagnostic("DELIVERY_DEPENDENCY_CYCLE", "Task 依赖不得形成循环。")
-        )
-    return diagnostics
-
-
-def _merge_delivery(
-    previous: Mapping[str, object] | None,
-    candidate: Mapping[str, object],
-    impact: ImpactPlan,
-    diagnostics: list[Diagnostic],
-) -> dict[str, object]:
-    replaced = set(_ids(candidate.get("replacesFeatureIds")))
-    expected = set() if previous is None else set(impact.affected_feature_ids)
-    if replaced != expected:
-        diagnostics.append(
-            _diagnostic(
-                "DELIVERY_REPLACEMENT_CLOSURE_MISMATCH",
-                "Delivery 切片替换 Feature 必须与最终 ImpactPlan 完全一致；初次编译必须为空。",
-            )
-        )
-    if previous is None or impact.action == "FULL_COMPILE":
-        collections = {
-            collection: list(_mappings(candidate.get(collection)))
-            for collection in COLLECTION_TYPES
+    if isinstance(effective_policy_decisions, Mapping):
+        raw = dict(effective_policy_decisions)
+    elif isinstance(effective_policy_decisions, list):
+        raw = {
+            str(item.get("policyInstanceId")): item.get("decision")
+            for item in _mappings(effective_policy_decisions)
         }
     else:
-        old_stories = list(_mappings(previous.get("stories")))
-        removed_story_ids: set[str] = set()
-        remove_story_indexes: list[int] = []
-        candidate_story_ids = {
-            str(item.get("storyId")) for item in _mappings(candidate.get("stories"))
-        }
-        for index, story in enumerate(old_stories):
-            if story.get("featureId") in replaced or str(story.get("storyId")) in candidate_story_ids:
-                remove_story_indexes.append(index)
-                removed_story_ids.add(str(story.get("storyId")))
-        insertion = min(remove_story_indexes, default=len(old_stories))
-        retained_stories = [
-            item for index, item in enumerate(old_stories) if index not in remove_story_indexes
+        raise ValueError("effective policy decisions must be a mapping or list")
+    if set(raw) != set(expected) or any(
+        value not in {"INCLUDED", "EXCLUDED"} for value in raw.values()
+    ):
+        raise ValueError("effective policy decisions must cover every policy instance")
+    for policy_instance_id, decision in raw.items():
+        policy = expected[policy_instance_id]
+        if decision == "EXCLUDED" and policy.get("inclusionPolicy") in {
+            "REQUIRED",
+            "SOURCE_GATED",
+        }:
+            raise ValueError("required or source-gated policy instance cannot be excluded")
+    return {key: str(raw[key]) for key in sorted(raw)}
+
+
+def _story_boundary_key(
+    closure: Mapping[str, object],
+) -> str:
+    qualifiers = [
+        value
+        for value in _ids(closure.get("preservedQualifiers"))
+        if any(
+            marker in value
+            for marker in (
+                "独立",
+                "责任方",
+                "验收边界",
+                "发布边界",
+                "定制",
+                "custom",
+                "responsibility",
+                "acceptance",
+                "release",
+            )
+        )
+    ]
+    boundary = {
+        "assignedFeatureIds": list(_ids(closure.get("assignedFeatureIds"))),
+        "crossFeatureRuleIds": list(_ids(closure.get("crossFeatureRuleIds"))),
+        "crossFeatureTargetIds": list(
+            _ids(closure.get("crossFeatureTargetIds"))
+        ),
+        "requiredQualifierRefs": list(
+            _ids(closure.get("requiredQualifierRefs"))
+        ),
+        "independentQualifiers": qualifiers,
+    }
+    digest = sha256_bytes(canonical_json_bytes(boundary))[:16]
+    return f"story-boundary-{digest}"
+
+
+def _coverage_set(
+    input_item: Mapping[str, object],
+    closure: Mapping[str, object],
+) -> list[str]:
+    qualifiers = [
+        *_ids(closure.get("preservedQualifiers")),
+        *_ids(input_item.get("thresholds")),
+        *_ids(input_item.get("applicableScopes")),
+    ]
+    if any("九个服务" in value for value in qualifiers):
+        return [f"service-{index:02d}" for index in range(1, 10)]
+    explicit = _unique(
+        [
+            *_ids(closure.get("requiredQualifierRefs")),
+            *_ids(closure.get("crossFeatureTargetIds")),
         ]
-        stories = (
-            retained_stories[:insertion]
-            + list(_mappings(candidate.get("stories")))
-            + retained_stories[insertion:]
-        )
-        old_criteria = list(_mappings(previous.get("acceptanceCriteria")))
-        removed_ac_ids = {
-            str(item.get("acceptanceCriterionId"))
-            for item in old_criteria
-            if item.get("storyId") in removed_story_ids
-        }
-        old_tasks = list(_mappings(previous.get("tasks")))
-        removed_task_ids = {
-            str(item.get("taskId"))
-            for item in old_tasks
-            if item.get("storyId") in removed_story_ids
-        }
-
-        def replace_rows(
-            collection: str,
-            old: list[Mapping[str, object]],
-            remove_ids: set[str],
-        ) -> list[object]:
-            _kind, id_field = COLLECTION_TYPES[collection]
-            candidate_rows = list(_mappings(candidate.get(collection)))
-            candidate_ids = {str(item.get(id_field)) for item in candidate_rows}
-            indexes = [
-                index
-                for index, item in enumerate(old)
-                if str(item.get(id_field)) in remove_ids | candidate_ids
-            ]
-            insert_at = min(indexes, default=len(old))
-            retained = [item for index, item in enumerate(old) if index not in indexes]
-            return retained[:insert_at] + candidate_rows + retained[insert_at:]
-
-        criteria_rows = replace_rows("acceptanceCriteria", old_criteria, removed_ac_ids)
-        task_rows = replace_rows("tasks", old_tasks, removed_task_ids)
-        old_dependencies = list(_mappings(previous.get("dependencies")))
-        removed_dependency_ids = {
-            str(item.get("dependencyId"))
-            for item in old_dependencies
-            if item.get("predecessorTaskId") in removed_task_ids
-            or item.get("successorTaskId") in removed_task_ids
-        }
-        dependency_rows = replace_rows(
-            "dependencies", old_dependencies, removed_dependency_ids
-        )
-        collections = {
-            "stories": stories,
-            "acceptanceCriteria": criteria_rows,
-            "tasks": task_rows,
-            "dependencies": dependency_rows,
-        }
-    return {
-        "contract": "ai-sow-delivery-bundle-v3",
-        "inputRevisionId": candidate.get("inputRevisionId"),
-        "scopeSha256": candidate.get("scopeSha256"),
-        **collections,
-    }
-
-
-def _metrics(previous: Mapping[str, object] | None, current: Mapping[str, object]) -> dict[str, object]:
-    before = _all_objects(previous)
-    after = _all_objects(current)
-    before_ids = set(before)
-    after_ids = set(after)
-    preserved = sorted(
-        identity
-        for identity in before_ids & after_ids
-        if canonical_json_bytes(before[identity]) == canonical_json_bytes(after[identity])
     )
-    changed = sorted((before_ids & after_ids) - set(preserved))
-    created = sorted(after_ids - before_ids)
-    removed = sorted(before_ids - after_ids)
+    return explicit or list(_ids(closure.get("assignedFeatureIds")))
 
-    def labels(values: Sequence[tuple[str, str]]) -> tuple[str, ...]:
-        return tuple(f"{kind}:{identifier}" for kind, identifier in values)
 
+def derive_story_obligations(
+    model: Mapping[str, object],
+    effective_policy_decisions: object,
+) -> Mapping[str, object]:
+    """Deterministically project frozen Stage 1 scope into Story/AC obligations."""
+    decisions = _policy_decision_map(model, effective_policy_decisions)
+    input_by_id = {
+        str(item["inputItemId"]): item
+        for item in _mappings(model.get("inputItems"))
+        if isinstance(item.get("inputItemId"), str)
+    }
+    feature_by_id = {
+        str(item["featureId"]): item
+        for item in _mappings(model.get("features"))
+        if isinstance(item.get("featureId"), str)
+    }
+    design_ids = {
+        str(item["designItemId"])
+        for item in _mappings(model.get("designItems"))
+        if isinstance(item.get("designItemId"), str)
+    }
+    obligations: list[dict[str, object]] = []
+    for closure in _mappings(model.get("scopeClosure")):
+        if closure.get("deliveryDisposition") != "STORY_AC_REQUIRED":
+            continue
+        input_id = closure.get("inputItemId")
+        input_item = input_by_id.get(str(input_id))
+        if input_item is None:
+            continue
+        feature_ids = list(_ids(closure.get("assignedFeatureIds")))
+        design_refs = _unique(
+            [
+                *(
+                    value
+                    for value in _ids(closure.get("targetNodeIds"))
+                    if value in design_ids
+                ),
+                *(
+                    ref
+                    for feature_id in feature_ids
+                    for ref in _ids(feature_by_id.get(feature_id, {}).get("designRefs"))
+                ),
+            ]
+        )
+        obligation_id = f"story-obligation-requirement-{input_id}"
+        obligations.append(
+            {
+                "obligationId": obligation_id,
+                "kind": "REQUIREMENT",
+                "subjectId": input_id,
+                "assignedFeatureIds": feature_ids,
+                "requirementRefs": [input_id],
+                "designRefs": design_refs,
+                "policyRefs": [],
+                "coverageSet": _coverage_set(input_item, closure),
+                "qualifiers": list(_ids(closure.get("preservedQualifiers"))),
+                "crossFeatureRuleIds": list(
+                    _ids(closure.get("crossFeatureRuleIds"))
+                ),
+                "crossFeatureTargetIds": list(
+                    _ids(closure.get("crossFeatureTargetIds"))
+                ),
+                "sourceRefs": deepcopy(list(_mappings(closure.get("sourceRefs")))),
+                "storyBoundaryKey": _story_boundary_key(closure),
+                "affinityKey": "feature-affinity-"
+                + sha256_bytes(canonical_json_bytes(feature_ids))[:16],
+            }
+        )
+    for instance in _mappings(model.get("policyInstances")):
+        instance_id = instance.get("policyInstanceId")
+        if not isinstance(instance_id, str) or decisions.get(instance_id) != "INCLUDED":
+            continue
+        feature_ids = [
+            value
+            for value in _ids(instance.get("targetNodeIds"))
+            if value in feature_by_id
+        ]
+        design_refs = _unique(
+            [
+                ref
+                for feature_id in feature_ids
+                for ref in _ids(feature_by_id.get(feature_id, {}).get("designRefs"))
+            ]
+        )
+        obligations.append(
+            {
+                "obligationId": f"story-obligation-policy-{instance_id}",
+                "kind": "DELIVERY_POLICY",
+                "subjectId": instance_id,
+                "assignedFeatureIds": feature_ids,
+                "requirementRefs": [],
+                "designRefs": design_refs,
+                "policyRefs": [instance_id],
+                "coverageSet": feature_ids,
+                "qualifiers": [],
+                "crossFeatureRuleIds": [],
+                "crossFeatureTargetIds": [],
+                "sourceRefs": deepcopy(list(_mappings(instance.get("sourceRefs")))),
+                "storyBoundaryKey": f"story-boundary-policy-{instance_id}",
+                "affinityKey": "feature-affinity-"
+                + sha256_bytes(canonical_json_bytes(feature_ids))[:16],
+            }
+        )
+    obligations.sort(key=lambda item: str(item["obligationId"]))
+    routing = [
+        {
+            "obligationId": item["obligationId"],
+            "kind": item["kind"],
+            "assignedFeatureIds": item["assignedFeatureIds"],
+            "storyBoundaryKey": item["storyBoundaryKey"],
+            "affinityKey": item["affinityKey"],
+        }
+        for item in obligations
+    ]
+    projection_core = {
+        "contract": "ai-sow-story-obligation-projection-v1",
+        "algorithmVersion": "1",
+        "effectivePolicyDecisions": decisions,
+        "obligations": obligations,
+        "obligationIds": [str(item["obligationId"]) for item in obligations],
+        "routing": routing,
+    }
     return {
-        "createdIds": labels(created),
-        "preservedIds": labels(preserved),
-        "removedIds": labels(removed),
-        "changedIds": labels(changed),
-        "createdCount": len(created),
-        "preservedCount": len(preserved),
-        "removedCount": len(removed),
-        "changedCount": len(changed),
+        **projection_core,
+        "projectionSha256": sha256_bytes(canonical_json_bytes(projection_core)),
     }
 
 
-def delivery_foundation_sha256(bundle: Mapping[str, object]) -> str:
+def _story_evidence(
+    model: Mapping[str, object],
+    obligations: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    input_by_id = {
+        str(item["inputItemId"]): item
+        for item in _mappings(model.get("inputItems"))
+        if isinstance(item.get("inputItemId"), str)
+    }
+    policy_by_id = {
+        str(item["policyInstanceId"]): item
+        for item in _mappings(model.get("policyInstances"))
+        if isinstance(item.get("policyInstanceId"), str)
+    }
+    evidence: list[dict[str, object]] = []
+    for obligation in obligations:
+        subject_id = str(obligation["subjectId"])
+        value = (
+            input_by_id.get(subject_id)
+            if obligation.get("kind") == "REQUIREMENT"
+            else policy_by_id.get(subject_id)
+        )
+        if value is None:
+            continue
+        content = canonical_json_bytes(value).decode("utf-8")
+        refs = _mappings(value.get("sourceRefs"))
+        locator = (
+            str(refs[0].get("locator"))
+            if refs
+            else f"policy-instance:{subject_id}"
+        )
+        evidence.append(
+            {
+                "evidenceId": str(obligation["obligationId"]),
+                "locator": locator,
+                "content": content,
+                "sha256": sha256_bytes(content.encode("utf-8")),
+            }
+        )
+    return evidence
+
+
+def _story_action_error(
+    outcome: str,
+    code: str,
+    message: str,
+    path: str,
+) -> Mapping[str, object]:
+    return {
+        "outcome": outcome,
+        "actionKind": "STORY_AC",
+        "specs": [],
+        "diagnostics": [
+            {"code": code, "message": message, "path": path, "details": {}}
+        ],
+    }
+
+
+def _story_spec(
+    state: Mapping[str, object],
+    projection: Mapping[str, object],
+    obligations: Sequence[Mapping[str, object]],
+    sequence: int,
+) -> dict[str, object]:
+    evidence = _story_evidence(state["baseCandidate"], obligations)
+    obligation_ids = [str(item["obligationId"]) for item in obligations]
+    return {
+        "logicalShardId": f"story-ac-{sequence:03d}",
+        "stage": "STORY_AC",
+        "role": "AUTHOR",
+        "promptId": "stage2-story-ac-v1",
+        "promptPath": "prompts/stage2-story-ac.md",
+        "resultPayloadSchema": "contracts/action.schema.json",
+        "referencePaths": [
+            "prompts/fragments/roles/author.md",
+            "prompts/fragments/outputs/author-result.md",
+            "references/story-authoring.md",
+            "references/acceptance-criteria.md",
+            "references/delivery-decomposition.md",
+            "references/delivery-lifecycle-policy.md",
+        ],
+        "evidenceCatalog": evidence,
+        "packet": {
+            "scopeClosureCheckpointSha256": sha256_bytes(
+                canonical_json_bytes(state["scopeClosureCheckpoint"])
+            ),
+            "obligationProjectionSha256": projection["projectionSha256"],
+            "effectivePolicyDecisionSha256": sha256_bytes(
+                canonical_json_bytes(projection["effectivePolicyDecisions"])
+            ),
+            "assignedObligationIds": obligation_ids,
+            "assignedObligations": deepcopy(list(obligations)),
+            "assignedEvidenceIds": obligation_ids,
+            "projectObligationRouting": deepcopy(list(projection["routing"])),
+            "requiredCheckIds": list(STORY_AC_REQUIRED_CHECK_IDS),
+            "allowedWriteCollections": sorted(STAGE_2_COLLECTIONS),
+        },
+        "modelProfileId": state["modelProfileId"],
+        "modelConfigSha256": state["modelConfigSha256"],
+        "maxOutputTokens": state["maxOutputTokens"],
+    }
+
+
+def prepare_action(
+    state: Mapping[str, object],
+    action_kind: str,
+) -> Mapping[str, object]:
+    if action_kind != "STORY_AC":
+        return _story_action_error(
+            "CONTRACT_UNSUPPORTED",
+            "COMPILER_ACTION_KIND_UNSUPPORTED",
+            "Delivery Compiler 只接受 STORY_AC action kind。",
+            "/actionKind",
+        )
+    candidate = state.get("baseCandidate")
+    checkpoint = state.get("scopeClosureCheckpoint")
+    if not isinstance(candidate, Mapping) or not isinstance(checkpoint, Mapping):
+        return _story_action_error(
+            "CONTRACT_UNSUPPORTED",
+            "STORY_AC_STATE_INVALID",
+            "Story/AC action 缺少基础 candidate 或 ScopeClosureCheckpoint。",
+            "/state",
+        )
+    checkpoint_state = {
+        **state,
+        "candidate": candidate,
+        "upstreamCheckpointSha256s": list(
+            checkpoint.get("upstreamCheckpointSha256s", [])
+        ),
+    }
+    checkpoint_diagnostics = validate_scope_closure_checkpoint(
+        checkpoint, checkpoint_state
+    )
+    stage_one_candidate = deepcopy(dict(candidate))
+    for collection in (
+        "stories",
+        "acceptanceCriteria",
+        "deliveryAnnotations",
+        "tasks",
+        "dependencies",
+        "effectiveStartMatches",
+        "estimationAnnotations",
+    ):
+        stage_one_candidate[collection] = []
+    if checkpoint.get("candidateSha256") != sha256_bytes(
+        canonical_json_bytes(stage_one_candidate)
+    ):
+        checkpoint_diagnostics = (
+            *checkpoint_diagnostics,
+            _diagnostic(
+                "SCOPE_CHECKPOINT_BINDING_STALE",
+                "ScopeClosureCheckpoint 不绑定当前 candidate 的精确 Stage 1 状态。",
+                "/candidateSha256",
+            ),
+        )
+    if checkpoint_diagnostics:
+        return {
+            "outcome": "CONTRACT_UNSUPPORTED",
+            "actionKind": "STORY_AC",
+            "specs": [],
+            "diagnostics": [
+                {
+                    "code": item.code,
+                    "message": item.message,
+                    "path": item.path,
+                    "details": dict(item.details),
+                }
+                for item in checkpoint_diagnostics
+            ],
+        }
+    try:
+        projection = derive_story_obligations(
+            candidate, state.get("effectivePolicyDecisions")
+        )
+    except ValueError as error:
+        return _story_action_error(
+            "CONTRACT_UNSUPPORTED",
+            "EFFECTIVE_POLICY_DECISION_INVALID",
+            str(error),
+            "/effectivePolicyDecisions",
+        )
+    token_budget = state.get("maxInitialPacketTokens")
+    if not isinstance(token_budget, int) or isinstance(token_budget, bool) or token_budget < 1:
+        return _story_action_error(
+            "CONTRACT_UNSUPPORTED",
+            "STORY_AC_STATE_INVALID",
+            "Story/AC 初始 packet token 预算无效。",
+            "/maxInitialPacketTokens",
+        )
+    # Feature affinity, rather than source order or a fixed feature count, is the
+    # batching seam. Greedy packing may place several affinity groups in one shard.
+    affinity_groups: list[list[Mapping[str, object]]] = []
+    by_affinity: defaultdict[str, list[Mapping[str, object]]] = defaultdict(list)
+    for obligation in projection["obligations"]:
+        by_affinity[str(obligation["affinityKey"])].append(obligation)
+    affinity_groups.extend(by_affinity[key] for key in sorted(by_affinity))
+    batches: list[list[Mapping[str, object]]] = []
+    current: list[Mapping[str, object]] = []
+    for group in affinity_groups:
+        candidate_batch = [*current, *group]
+        candidate_spec = _story_spec(
+            state, projection, candidate_batch, len(batches) + 1
+        )
+        estimate = _story_token_estimate(
+            {
+                "logicalShardId": candidate_spec["logicalShardId"],
+                "payload": candidate_spec["packet"],
+                "evidenceCatalog": candidate_spec["evidenceCatalog"],
+            }
+        )
+        if current and estimate > token_budget:
+            batches.append(current)
+            current = list(group)
+        else:
+            current = candidate_batch
+    if current:
+        batches.append(current)
+    specs = [
+        _story_spec(state, projection, batch, index)
+        for index, batch in enumerate(batches, 1)
+    ]
+    estimates = [
+        _story_token_estimate(
+            {
+                "logicalShardId": spec["logicalShardId"],
+                "payload": spec["packet"],
+                "evidenceCatalog": spec["evidenceCatalog"],
+            }
+        )
+        for spec in specs
+    ]
+    if len(specs) > 8 or any(value > token_budget for value in estimates):
+        return _story_action_error(
+            "CONTRACT_UNSUPPORTED",
+            "STORY_AC_CAPACITY_EXCEEDED",
+            "Story/AC obligations 无法在安全上下文预算和八个 shard 内完整分配。",
+            "/baseCandidate/scopeClosure",
+        )
+    return {
+        "outcome": "ACTION_REQUIRED",
+        "actionKind": "STORY_AC",
+        "obligationProjection": projection,
+        "obligationProjectionSha256": projection["projectionSha256"],
+        "specs": specs,
+        "estimatedInitialPacketTokens": estimates,
+        "diagnostics": [],
+    }
+
+
+def story_join_required(prepared: Mapping[str, object]) -> bool:
+    """Return whether the frozen Story action group needs a sibling join."""
+    return len(_mappings(prepared.get("specs"))) > 1
+
+
+def _packet_sha256(spec: Mapping[str, object]) -> str:
     return sha256_bytes(
         canonical_json_bytes(
             {
-                "inputRevisionId": bundle.get("inputRevisionId"),
-                "scopeSha256": bundle.get("scopeSha256"),
-                "stories": bundle.get("stories"),
-                "acceptanceCriteria": bundle.get("acceptanceCriteria"),
+                "logicalShardId": spec["logicalShardId"],
+                "payload": spec["packet"],
+                "evidenceCatalog": spec["evidenceCatalog"],
             }
         )
     )
 
 
-def compile_delivery_foundation(
-    scope: Mapping[str, object],
-    previous_delivery: Mapping[str, object] | None,
-    delivery_slice: Mapping[str, object],
-    id_decisions: object,
-    impact: ImpactPlan,
-    source_ref_inventory: AbstractSet[tuple[str, str, str]],
-) -> DeliveryCompilation:
+def _validate_story_record(
+    state: Mapping[str, object],
+    prepared: Mapping[str, object],
+    record: Mapping[str, object],
+) -> tuple[Diagnostic, ...]:
     diagnostics = list(
-        validate_contract(delivery_slice, "delivery-slice.schema.json", SCHEMA_REGISTRY)
+        validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY)
     )
-    diagnostics.extend(validate_contract(scope, "scope-bundle.schema.json", SCHEMA_REGISTRY))
-    scope_sha = sha256_bytes(canonical_json_bytes(scope))
-    if delivery_slice.get("inputRevisionId") != scope.get("inputRevisionId"):
+    specs = {
+        str(spec["logicalShardId"]): spec
+        for spec in _mappings(prepared.get("specs"))
+    }
+    spec = specs.get(str(record.get("logicalShardId")))
+    if spec is None:
         diagnostics.append(
             _diagnostic(
-                "DELIVERY_INPUT_REVISION_MISMATCH",
-                "Delivery 切片未绑定 Scope 使用的 input revision。",
+                "STORY_AC_SHARD_UNKNOWN",
+                "Story/AC record 不属于当前冻结 action group。",
+                "/logicalShardId",
             )
         )
-    if delivery_slice.get("scopeSha256") != scope_sha:
-        diagnostics.append(
-            _diagnostic("DELIVERY_SCOPE_HASH_MISMATCH", "Delivery 切片未绑定当前 Scope。")
-        )
-    if delivery_slice.get("impactPlanSha256") != impact_plan_sha256(impact):
+        return _sort_diagnostics(diagnostics)
+    expected_bindings = {
+        "runId": state.get("runId"),
+        "packetSha256": _packet_sha256(spec),
+        "inputRevisionSha256": sha256_bytes(
+            canonical_json_bytes(state.get("inputRevision"))
+        ),
+        "baseCandidateSha256": state.get("baseCandidateSha256"),
+        "modelProfileId": state.get("modelProfileId"),
+        "modelConfigSha256": state.get("modelConfigSha256"),
+    }
+    for field, expected in expected_bindings.items():
+        if record.get(field) != expected:
+            diagnostics.append(
+                _diagnostic(
+                    "STORY_AC_RECORD_BINDING_MISMATCH",
+                    "Story/AC record 与冻结 candidate、packet 或模型配置不匹配。",
+                    f"/{field}",
+                )
+            )
+    submission = record.get("submission")
+    if record.get("status") != "SUCCESS" or not isinstance(submission, Mapping):
         diagnostics.append(
             _diagnostic(
-                "DELIVERY_IMPACT_HASH_MISMATCH",
-                "Delivery 切片未绑定最终 ImpactPlan。",
+                "STORY_AC_RECORD_NOT_SUCCESSFUL",
+                "Story/AC 只接受成功 ActionRecord。",
+                "/status",
             )
         )
+        return _sort_diagnostics(diagnostics)
+    if submission.get("resultKind") != "PATCH":
+        diagnostics.append(
+            _diagnostic(
+                "STORY_AC_RESULT_KIND_INVALID",
+                "Story/AC action 必须返回 PATCH。",
+                "/submission/resultKind",
+            )
+        )
+    if record.get("submissionSha256") != sha256_bytes(
+        canonical_json_bytes(submission)
+    ):
+        diagnostics.append(
+            _diagnostic(
+                "STORY_AC_SUBMISSION_HASH_MISMATCH",
+                "Story/AC submission hash 与内容不匹配。",
+                "/submissionSha256",
+            )
+        )
+    packet = spec["packet"]
+    if submission.get("reviewedEvidenceIds") != packet["assignedEvidenceIds"]:
+        diagnostics.append(
+            _diagnostic(
+                "STORY_AC_EVIDENCE_MISMATCH",
+                "Story/AC 必须复核当前 shard 的全部义务证据。",
+                "/submission/reviewedEvidenceIds",
+            )
+        )
+    self_check = submission.get("selfCheck")
+    if not isinstance(self_check, Mapping) or self_check.get(
+        "completedCheckIds"
+    ) != list(STORY_AC_REQUIRED_CHECK_IDS):
+        diagnostics.append(
+            _diagnostic(
+                "STORY_AC_SELF_CHECK_INCOMPLETE",
+                "Story/AC 必须完成全部冻结检查项。",
+                "/submission/selfCheck/completedCheckIds",
+            )
+        )
+    replacement = submission.get("replacementSet")
+    if not isinstance(replacement, Mapping):
+        return _sort_diagnostics(diagnostics)
+    for position, wrapper in enumerate(_mappings(replacement.get("upserts"))):
+        if wrapper.get("collection") not in STAGE_2_COLLECTIONS:
+            diagnostics.append(
+                _diagnostic(
+                    "OWNER_WRITE_SCOPE_VIOLATION",
+                    "Story/AC action 只能写 stories、acceptanceCriteria、deliveryAnnotations。",
+                    f"/submission/replacementSet/upserts/{position}",
+                )
+            )
+    for key in [
+        *(
+            replacement.get("expectedNodeHashes", {}).keys()
+            if isinstance(replacement.get("expectedNodeHashes"), Mapping)
+            else []
+        ),
+        *(
+            replacement.get("deletes", [])
+            if isinstance(replacement.get("deletes"), list)
+            else []
+        ),
+    ]:
+        if str(key).split(":", 1)[0] not in STAGE_2_COLLECTIONS:
+            diagnostics.append(
+                _diagnostic(
+                    "OWNER_WRITE_SCOPE_VIOLATION",
+                    "Story/AC action 不得修改其他 Owner 的区域。",
+                    "/submission/replacementSet",
+                )
+            )
+    return _sort_diagnostics(diagnostics)
+
+
+def accept_result(
+    state: Mapping[str, object],
+    record: Mapping[str, object],
+) -> CompilerProgress:
+    prepared = prepare_action(state, "STORY_AC")
+    if prepared.get("outcome") != "ACTION_REQUIRED":
+        return CompilerProgress(
+            "FAILED",
+            (),
+            (
+                _diagnostic(
+                    "STORY_AC_PREPARE_FAILED",
+                    "Story/AC action 未成功冻结。",
+                    "/state",
+                ),
+            ),
+        )
+    diagnostics = _validate_story_record(state, prepared, record)
+    if diagnostics:
+        return CompilerProgress("FAILED", (), diagnostics)
+    accepted = [
+        item
+        for item in state.get("acceptedRecords", [])
+        if isinstance(item, Mapping)
+    ]
+    completed = {
+        str(item.get("logicalShardId"))
+        for item in [*accepted, record]
+        if item.get("status") == "SUCCESS"
+    }
+    required = [
+        str(spec["logicalShardId"])
+        for spec in _mappings(prepared.get("specs"))
+    ]
+    pending = tuple(item for item in required if item not in completed)
+    return CompilerProgress(
+        "ACTION_REQUIRED" if pending else "CHECKPOINT_READY",
+        pending,
+        (),
+    )
+
+
+def _obligation_coverage_diagnostics(
+    model: Mapping[str, object],
+    projection: Mapping[str, object],
+) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    stories = _mappings(model.get("stories"))
+    criteria = _mappings(model.get("acceptanceCriteria"))
+    criteria_by_story: defaultdict[str, list[Mapping[str, object]]] = defaultdict(list)
+    for criterion in criteria:
+        criteria_by_story[str(criterion.get("storyId"))].append(criterion)
+    boundary_keys_by_story: defaultdict[str, set[str]] = defaultdict(set)
+    allowed_design_by_story: defaultdict[str, set[str]] = defaultdict(set)
+    for obligation in _mappings(projection.get("obligations")):
+        subject_id = str(obligation.get("subjectId"))
+        requirement_refs = set(_ids(obligation.get("requirementRefs")))
+        policy_refs = set(_ids(obligation.get("policyRefs")))
+        assigned_features = set(_ids(obligation.get("assignedFeatureIds")))
+        required_coverage = set(_ids(obligation.get("coverageSet")))
+        matching_stories = [
+            story
+            for story in stories
+            if story.get("featureId") in assigned_features
+            and requirement_refs.issubset(set(_ids(story.get("requirementRefs"))))
+            and policy_refs.issubset(set(_ids(story.get("policyRefs"))))
+            and required_coverage.issubset(set(_ids(story.get("coverageSet"))))
+            and (
+                bool(requirement_refs)
+                or bool(policy_refs)
+            )
+        ]
+        closed = False
+        for story in matching_stories:
+            story_id = str(story.get("storyId"))
+            matching_criteria = [
+                criterion
+                for criterion in criteria_by_story[story_id]
+                if requirement_refs.issubset(
+                    set(_ids(criterion.get("requirementRefs")))
+                )
+                and policy_refs.issubset(set(_ids(criterion.get("policyRefs"))))
+                and required_coverage.issubset(
+                    set(_ids(criterion.get("coverageSet")))
+                )
+            ]
+            combined_text = "\n".join(
+                str(item.get("text", "")) for item in matching_criteria
+            )
+            if matching_criteria and all(
+                qualifier in combined_text
+                for qualifier in _ids(obligation.get("qualifiers"))
+            ):
+                closed = True
+                boundary_keys_by_story[story_id].add(
+                    str(obligation.get("storyBoundaryKey"))
+                )
+                allowed_design_by_story[story_id].update(
+                    _ids(obligation.get("designRefs"))
+                )
+        if not closed:
+            diagnostics.append(
+                _diagnostic(
+                    "STORY_OBLIGATION_UNCLOSED",
+                    "Story/AC 未关闭确定性派生的义务及其限定词。",
+                    f"/obligations/{obligation.get('obligationId')}",
+                )
+            )
+    for story_id, boundary_keys in boundary_keys_by_story.items():
+        non_policy = {
+            key for key in boundary_keys if not key.startswith("story-boundary-policy-")
+        }
+        if len(non_policy) > 1:
+            diagnostics.append(
+                _diagnostic(
+                    "INDEPENDENT_STORY_BOUNDARIES_MERGED",
+                    "独立责任、验收或发布边界不得合并为同一 Story。",
+                    f"/stories/{story_id}",
+                )
+            )
+    for story in stories:
+        story_id = str(story.get("storyId"))
+        if story_id not in allowed_design_by_story:
+            continue
+        allowed = allowed_design_by_story[story_id]
+        referenced = set(_ids(story.get("designRefs")))
+        referenced.update(
+            ref
+            for criterion in criteria_by_story[story_id]
+            for ref in _ids(criterion.get("designRefs"))
+        )
+        for design_id in sorted(referenced - allowed):
+            diagnostics.append(
+                _diagnostic(
+                    "STORY_DESIGN_REF_NOT_AUTHORIZED",
+                    "Story/AC 只能引用 obligation 投影允许的批准设计。",
+                    f"/stories/{story_id}/designRefs/{design_id}",
+                )
+            )
+    return _sort_diagnostics(diagnostics)
+
+
+def apply_ready_group(
+    state: Mapping[str, object],
+    records: Sequence[Mapping[str, object]],
+) -> CompilerResult:
+    base_candidate = state.get("baseCandidate")
+    if not isinstance(base_candidate, Mapping):
+        diagnostic = _diagnostic(
+            "STORY_AC_STATE_INVALID",
+            "Story/AC 缺少基础 candidate。",
+            "/baseCandidate",
+        )
+        return CompilerResult({}, "", {}, (diagnostic,))
+    prepared = prepare_action(state, "STORY_AC")
+    specs = _mappings(prepared.get("specs"))
+    required = [str(spec["logicalShardId"]) for spec in specs]
+    by_shard: dict[str, Mapping[str, object]] = {}
+    duplicate = False
+    for record in records:
+        shard_id = str(record.get("logicalShardId"))
+        duplicate = duplicate or shard_id in by_shard
+        by_shard[shard_id] = record
+    if (
+        prepared.get("outcome") != "ACTION_REQUIRED"
+        or duplicate
+        or set(by_shard) != set(required)
+    ):
+        diagnostic = _diagnostic(
+            "STORY_AC_GROUP_INCOMPLETE",
+            "Story/AC group 必须包含每个冻结 shard 的一条成功 record。",
+            "/records",
+        )
+        return CompilerResult(
+            deepcopy(dict(base_candidate)),
+            sha256_bytes(canonical_json_bytes(base_candidate)),
+            {},
+            (diagnostic,),
+        )
+    diagnostics = tuple(
+        diagnostic
+        for shard_id in required
+        for diagnostic in _validate_story_record(
+            state, prepared, by_shard[shard_id]
+        )
+    )
+    if diagnostics:
+        return CompilerResult(
+            deepcopy(dict(base_candidate)),
+            sha256_bytes(canonical_json_bytes(base_candidate)),
+            {},
+            _sort_diagnostics(diagnostics),
+        )
+    combined = {
+        "expectedNodeHashes": {},
+        "upserts": [],
+        "deletes": [],
+    }
+    for shard_id in required:
+        replacement = by_shard[shard_id]["submission"]["replacementSet"]
+        for key, value in replacement["expectedNodeHashes"].items():
+            if key in combined["expectedNodeHashes"]:
+                diagnostics += (
+                    _diagnostic(
+                        "STORY_AC_REPLACEMENT_OVERLAP",
+                        "不同 Story/AC shard 不得修改同一既有节点。",
+                        f"/records/{shard_id}/expectedNodeHashes/{key}",
+                    ),
+                )
+            combined["expectedNodeHashes"][key] = value
+        combined["upserts"].extend(replacement["upserts"])
+        combined["deletes"].extend(replacement["deletes"])
+    if diagnostics:
+        return CompilerResult(
+            deepcopy(dict(base_candidate)),
+            sha256_bytes(canonical_json_bytes(base_candidate)),
+            {},
+            _sort_diagnostics(diagnostics),
+        )
+    outcome = apply_replacement(
+        base_candidate, combined, owner_stage="STAGE_2"
+    )
+    if outcome.diagnostics:
+        return CompilerResult(
+            deepcopy(dict(base_candidate)),
+            sha256_bytes(canonical_json_bytes(base_candidate)),
+            {},
+            outcome.diagnostics,
+        )
+    model_diagnostics = validate_sow_model(
+        outcome.candidate, "STAGE_2", registry=NEXT_SCHEMA_REGISTRY
+    )
+    coverage_diagnostics = _obligation_coverage_diagnostics(
+        outcome.candidate, prepared["obligationProjection"]
+    )
+    all_diagnostics = _sort_diagnostics(
+        [*model_diagnostics, *coverage_diagnostics]
+    )
+    if all_diagnostics:
+        return CompilerResult(
+            outcome.candidate,
+            outcome.candidate_sha256,
+            {},
+            all_diagnostics,
+        )
+    checkpoint = {
+        "kind": "STORY_AC_CANDIDATE",
+        "obligationProjectionSha256": prepared[
+            "obligationProjectionSha256"
+        ],
+        "obligationCounts": {
+            "required": len(prepared["obligationProjection"]["obligations"]),
+            "closed": len(prepared["obligationProjection"]["obligations"]),
+        },
+        "outstandingIds": [],
+        "recordSha256s": [
+            sha256_bytes(canonical_json_bytes(by_shard[shard_id]))
+            for shard_id in required
+        ],
+    }
+    return CompilerResult(
+        outcome.candidate,
+        outcome.candidate_sha256,
+        checkpoint,
+        (),
+    )
+
+
+def _story_owner_projection(model: Mapping[str, object]) -> dict[str, object]:
+    return {
+        collection: deepcopy(list(_mappings(model.get(collection))))
+        for collection in (
+            "stories",
+            "acceptanceCriteria",
+            "deliveryAnnotations",
+        )
+    }
+
+
+def _story_coverage_sha256(
+    model: Mapping[str, object],
+    projection: Mapping[str, object],
+) -> str:
+    return sha256_bytes(
+        canonical_json_bytes(
+            {
+                "obligationIds": projection.get("obligationIds", []),
+                "routing": projection.get("routing", []),
+                "stories": [
+                    {
+                        "storyId": item.get("storyId"),
+                        "featureId": item.get("featureId"),
+                        "coverageSet": item.get("coverageSet"),
+                        "requirementRefs": item.get("requirementRefs"),
+                        "designRefs": item.get("designRefs"),
+                        "policyRefs": item.get("policyRefs"),
+                    }
+                    for item in _mappings(model.get("stories"))
+                ],
+                "acceptanceCriteria": [
+                    {
+                        "acceptanceCriterionId": item.get(
+                            "acceptanceCriterionId"
+                        ),
+                        "storyId": item.get("storyId"),
+                        "text": item.get("text"),
+                        "coverageSet": item.get("coverageSet"),
+                        "requirementRefs": item.get("requirementRefs"),
+                        "designRefs": item.get("designRefs"),
+                        "policyRefs": item.get("policyRefs"),
+                    }
+                    for item in _mappings(model.get("acceptanceCriteria"))
+                ],
+            }
+        )
+    )
+
+
+def _story_action_record_hashes(
+    state: Mapping[str, object],
+    prepared: Mapping[str, object],
+) -> tuple[list[str], tuple[Diagnostic, ...]]:
+    records = _mappings(state.get("storyActionRecords"))
+    by_shard: dict[str, Mapping[str, object]] = {}
+    duplicate = False
+    for record in records:
+        shard_id = str(record.get("logicalShardId"))
+        duplicate = duplicate or shard_id in by_shard
+        by_shard[shard_id] = record
+    required = [
+        str(spec["logicalShardId"])
+        for spec in _mappings(prepared.get("specs"))
+    ]
+    if duplicate or set(by_shard) != set(required):
+        return [], (
+            _diagnostic(
+                "STORY_AC_ACTION_PROOF_INCOMPLETE",
+                "STORY_AC checkpoint 必须绑定全部且仅绑定冻结的 Story action records。",
+                "/storyActionRecords",
+            ),
+        )
+    diagnostics = tuple(
+        diagnostic
+        for shard_id in required
+        for diagnostic in _validate_story_record(
+            state, prepared, by_shard[shard_id]
+        )
+    )
+    return [
+        sha256_bytes(canonical_json_bytes(by_shard[shard_id]))
+        for shard_id in required
+    ], _sort_diagnostics(diagnostics)
+
+
+def _story_review_result_hashes(state: Mapping[str, object]) -> list[str]:
+    results = sorted(
+        _mappings(state.get("storyReviewResults")),
+        key=lambda item: str(item.get("logicalShardId", "")),
+    )
+    return [
+        sha256_bytes(
+            canonical_json_bytes(
+                item.get("result")
+                if isinstance(item.get("result"), Mapping)
+                else item
+            )
+        )
+        for item in results
+    ]
+
+
+def _story_checkpoint_material(
+    state: Mapping[str, object],
+) -> tuple[dict[str, object], tuple[Diagnostic, ...]]:
+    candidate = state.get("candidate")
+    base_candidate = state.get("baseCandidate")
+    scope_checkpoint = state.get("scopeClosureCheckpoint")
+    if not (
+        isinstance(candidate, Mapping)
+        and isinstance(base_candidate, Mapping)
+        and isinstance(scope_checkpoint, Mapping)
+    ):
+        return {}, (
+            _diagnostic(
+                "STORY_AC_CHECKPOINT_STATE_INVALID",
+                "STORY_AC checkpoint 缺少 candidate、Stage 1 candidate 或 Scope checkpoint。",
+                "/state",
+            ),
+        )
+    prepared = prepare_action(state, "STORY_AC")
+    if prepared.get("outcome") != "ACTION_REQUIRED":
+        diagnostics = tuple(
+            _diagnostic(
+                str(item.get("code")),
+                str(item.get("message")),
+                str(item.get("path", "")),
+            )
+            for item in _mappings(prepared.get("diagnostics"))
+        )
+        return {}, diagnostics or (
+            _diagnostic(
+                "STORY_AC_PREPARE_FAILED",
+                "无法重放 Story/AC action group。",
+                "/state",
+            ),
+        )
+    action_hashes, action_diagnostics = _story_action_record_hashes(
+        state, prepared
+    )
+    diagnostics: list[Diagnostic] = list(action_diagnostics)
     diagnostics.extend(
-        _validate_id_ledger(delivery_slice, previous_delivery, id_decisions)
+        validate_sow_model(
+            candidate, "STAGE_2", registry=NEXT_SCHEMA_REGISTRY
+        )
     )
-    bundle = _merge_delivery(previous_delivery, delivery_slice, impact, diagnostics)
-    diagnostics.extend(_validate_delivery_foundation(bundle, scope, source_ref_inventory))
-    return DeliveryCompilation(
-        bundle=bundle,
-        bundle_sha256=sha256_bytes(canonical_json_bytes(bundle)),
-        metrics=_metrics(previous_delivery, bundle),
-        diagnostics=_sort_diagnostics(diagnostics),
+    diagnostics.extend(
+        _obligation_coverage_diagnostics(
+            candidate, prepared["obligationProjection"]
+        )
     )
+    if not action_diagnostics:
+        joined = apply_ready_group(state, _mappings(state.get("storyActionRecords")))
+        diagnostics.extend(joined.diagnostics)
+        if (
+            not joined.diagnostics
+            and canonical_json_bytes(_story_owner_projection(joined.model))
+            != canonical_json_bytes(_story_owner_projection(candidate))
+        ):
+            diagnostics.append(
+                _diagnostic(
+                    "STORY_AC_CANDIDATE_RECORD_MISMATCH",
+                    "当前 Story/AC candidate 不是冻结 sibling records 一次性 Join 的结果。",
+                    "/candidate",
+                )
+            )
+    decisions = prepared["obligationProjection"]["effectivePolicyDecisions"]
+    scope_checkpoint_sha256 = sha256_bytes(
+        canonical_json_bytes(scope_checkpoint)
+    )
+    upstream = [scope_checkpoint_sha256]
+    if state.get("upstreamCheckpointSha256s", upstream) != upstream:
+        diagnostics.append(
+            _diagnostic(
+                "STORY_AC_UPSTREAM_CHECKPOINT_MISMATCH",
+                "STORY_AC checkpoint 的唯一直接上游必须是当前 Scope checkpoint。",
+                "/upstreamCheckpointSha256s",
+            )
+        )
+    material = {
+        "sourceManifestSha256": scope_checkpoint.get(
+            "sourceManifestSha256"
+        ),
+        "ownerProjectionSha256": sha256_bytes(
+            canonical_json_bytes(_story_owner_projection(candidate))
+        ),
+        "coverageSha256": _story_coverage_sha256(
+            candidate, prepared["obligationProjection"]
+        ),
+        "policyDefinitionSha256": scope_checkpoint.get(
+            "policyDefinitionSha256"
+        ),
+        "actionRecordSha256s": action_hashes,
+        "reviewResultSha256s": _story_review_result_hashes(state),
+        "upstreamCheckpointSha256s": upstream,
+        "effectivePolicyDecisionSha256": sha256_bytes(
+            canonical_json_bytes(decisions)
+        ),
+        "obligationProjectionSha256": prepared[
+            "obligationProjectionSha256"
+        ],
+        "obligationCounts": {
+            "required": len(prepared["obligationProjection"]["obligations"]),
+            "closed": (
+                len(prepared["obligationProjection"]["obligations"])
+                if not any(
+                    item.code == "STORY_OBLIGATION_UNCLOSED"
+                    for item in diagnostics
+                )
+                else 0
+            ),
+        },
+        "outstandingIds": [
+            str(item["obligationId"])
+            for item in prepared["obligationProjection"]["obligations"]
+            if any(
+                diagnostic.code == "STORY_OBLIGATION_UNCLOSED"
+                and diagnostic.path.endswith(str(item["obligationId"]))
+                for diagnostic in diagnostics
+            )
+        ],
+    }
+    material["obligationCounts"]["closed"] = (
+        material["obligationCounts"]["required"]
+        - len(material["outstandingIds"])
+    )
+    return material, _sort_diagnostics(diagnostics)
 
 
-def compile_delivery(
-    scope: Mapping[str, object],
-    previous_delivery: Mapping[str, object] | None,
-    delivery_slice: Mapping[str, object],
-    id_decisions: object,
-    impact: ImpactPlan,
-    source_ref_inventory: AbstractSet[tuple[str, str, str]],
-    catalog: TemplateCatalog,
-) -> DeliveryCompilation:
-    foundation = compile_delivery_foundation(
-        scope,
-        previous_delivery,
-        delivery_slice,
-        id_decisions,
-        impact,
-        source_ref_inventory,
+def build_story_ac_checkpoint(
+    state: Mapping[str, object],
+) -> Mapping[str, object]:
+    material, diagnostics = _story_checkpoint_material(state)
+    if diagnostics:
+        return {
+            "outcome": "OWNER_FIX_REQUIRED",
+            "checkpoint": None,
+            "diagnostics": diagnostics,
+        }
+    candidate = state["candidate"]
+    checkpoint = {
+        "contract": "ai-sow-stage-checkpoint-v1",
+        "kind": "STORY_AC",
+        "runId": state["runId"],
+        "stage": "STORY_AC",
+        "candidateSha256": sha256_bytes(canonical_json_bytes(candidate)),
+        **material,
+        "validatorContractSha256": sha256_bytes(
+            (SKILL_ROOT / "contracts/sow-model.schema.json").read_bytes()
+        ),
+        "completedCheckIds": list(STORY_AC_CHECKPOINT_CHECK_IDS),
+        "decision": "PASS",
+    }
+    contract_diagnostics = validate_contract(
+        checkpoint,
+        "stage-checkpoint.schema.json",
+        NEXT_SCHEMA_REGISTRY,
     )
-    diagnostics = list(foundation.diagnostics)
-    diagnostics.extend(_validate_delivery_tasks(foundation.bundle, scope, catalog))
-    return DeliveryCompilation(
-        bundle=foundation.bundle,
-        bundle_sha256=foundation.bundle_sha256,
-        metrics=foundation.metrics,
-        diagnostics=_sort_diagnostics(diagnostics),
+    if contract_diagnostics:
+        return {
+            "outcome": "CONTRACT_UNSUPPORTED",
+            "checkpoint": None,
+            "diagnostics": contract_diagnostics,
+        }
+    return {
+        "outcome": "READY_FOR_TASK",
+        "checkpoint": checkpoint,
+        "checkpointSha256": sha256_bytes(canonical_json_bytes(checkpoint)),
+        "diagnostics": (),
+    }
+
+
+def validate_story_ac_checkpoint(
+    checkpoint: Mapping[str, object],
+    state: Mapping[str, object],
+) -> tuple[Diagnostic, ...]:
+    diagnostics = list(
+        validate_contract(
+            checkpoint,
+            "stage-checkpoint.schema.json",
+            NEXT_SCHEMA_REGISTRY,
+        )
     )
+    material, material_diagnostics = _story_checkpoint_material(state)
+    diagnostics.extend(material_diagnostics)
+    expected = {
+        "runId": state.get("runId"),
+        **material,
+        "validatorContractSha256": sha256_bytes(
+            (SKILL_ROOT / "contracts/sow-model.schema.json").read_bytes()
+        ),
+        "completedCheckIds": list(STORY_AC_CHECKPOINT_CHECK_IDS),
+    }
+    for field, value in expected.items():
+        if checkpoint.get(field) != value:
+            diagnostics.append(
+                _diagnostic(
+                    "STORY_AC_CHECKPOINT_BINDING_STALE",
+                    "STORY_AC checkpoint 不再绑定当前 Stage 2 投影或证明闭包。",
+                    f"/{field}",
+                )
+            )
+    return _sort_diagnostics(diagnostics)

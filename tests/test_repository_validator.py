@@ -17,6 +17,7 @@ from scripts.validate_repository import (
     validate_renderer_contract_consistency,
     validate_marketplace,
     validate_marketplace_parity,
+    validate_model_efficiency_gate,
     validate_plugin_manifest,
     validate_plugin_manifest_parity,
     validate_publisher_identity,
@@ -38,31 +39,45 @@ AI_SOW_ENTRY = {
 }
 
 AI_SOW_GENERATE_SUPPORT_FILES = (
-    "skills/generate/contracts/question.schema.json",
+    "skills/generate/contracts/action.schema.json",
+    "skills/generate/contracts/artifact-approval.schema.json",
+    "skills/generate/contracts/common.schema.json",
+    "skills/generate/contracts/current.schema.json",
+    "skills/generate/contracts/generation-manifest.schema.json",
+    "skills/generate/contracts/input-revision.schema.json",
+    "skills/generate/contracts/request.schema.json",
+    "skills/generate/contracts/review-repair.schema.json",
+    "skills/generate/contracts/run-state.schema.json",
+    "skills/generate/contracts/sow-model.schema.json",
+    "skills/generate/contracts/stage-checkpoint.schema.json",
     "skills/generate/references/acceptance-criteria.md",
-    "skills/generate/references/delivery-authoring.md",
     "skills/generate/references/delivery-decomposition.md",
-    "skills/generate/references/delivery-examples.md",
+    "skills/generate/references/delivery-lifecycle-policy.md",
     "skills/generate/references/delivery-work-classification.md",
     "skills/generate/references/effective-start-matching.md",
     "skills/generate/references/epic-authoring.md",
     "skills/generate/references/feature-authoring.md",
-    "skills/generate/references/question-authoring.md",
+    "skills/generate/references/layered-review.md",
+    "skills/generate/references/source-authority.md",
     "skills/generate/references/story-authoring.md",
     "skills/generate/references/task-authoring.md",
     "skills/generate/references/technical-work-classification.md",
 )
-LOWER_KEBAB_ID_REF = "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"
-NON_EMPTY_ID_ARRAY_REF = "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"
-PROJECT_RELATIVE_PATH_REF = "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"
-SHA256_REF = "urn:ai-sow:generate:common:1#/$defs/sha256"
-QUESTION_PROPERTIES = {
-    "questionId": {"$ref": LOWER_KEBAB_ID_REF},
-    "subjectIds": {"$ref": NON_EMPTY_ID_ARRAY_REF},
-    "question": {"type": "string", "minLength": 1},
-    "reason": {"type": "string", "minLength": 1},
-    "decisionImpact": {"type": "string", "minLength": 1},
-    "unansweredEffect": {"type": "string", "minLength": 1},
+AI_SOW_SCHEMA_IDS = {
+    name: f"urn:ai-sow:generate:next:{name.removesuffix('.schema.json')}:1"
+    for name in (
+        "action.schema.json",
+        "artifact-approval.schema.json",
+        "common.schema.json",
+        "current.schema.json",
+        "generation-manifest.schema.json",
+        "input-revision.schema.json",
+        "request.schema.json",
+        "review-repair.schema.json",
+        "run-state.schema.json",
+        "sow-model.schema.json",
+        "stage-checkpoint.schema.json",
+    )
 }
 
 
@@ -138,22 +153,6 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         path = plugin_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
-    for mode, project_id in (
-        ("greenfield", "validator-greenfield"),
-        ("brownfield", "validator-brownfield"),
-    ):
-        write_json(
-            plugin_root / f"skills/generate/fixtures/{mode}/request.json",
-            {
-                "contract": "ai-sow-generate-request-v1",
-                "project": {
-                    "projectId": project_id,
-                    "name": f"Validator {mode.title()}",
-                    "plannedEffectiveDate": "2026-10-01",
-                },
-                "mode": mode.upper(),
-            },
-        )
     (plugin_root / "pyproject.toml").write_text(
         '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
         encoding="utf-8",
@@ -162,6 +161,18 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         'version = 1\nrevision = 3\n\n[[package]]\n'
         'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
         encoding="utf-8",
+    )
+    write_json(
+        plugin_root / "tests/benchmarks/model-efficiency-policy-v1.json",
+        {
+            "pairedBenchmarkGate": {
+                "status": "REQUIRED_NOT_SATISFIED",
+                "claimStatus": "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS",
+                "baselineManifest": None,
+                "candidateManifest": None,
+                "comparisonReceipt": None,
+            }
+        },
     )
     generator_root = plugin_root / "skills/generate"
     renderer_payloads = {
@@ -174,60 +185,33 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         path = generator_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
-    write_json(
-        generator_root / "contracts/generation-manifest.schema.json",
-        {
+    for name, schema_id in AI_SOW_SCHEMA_IDS.items():
+        value: dict[str, object] = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": schema_id,
             "type": "object",
-            "required": ["templatePath", "templateSha256"],
-            "properties": {
-                "templatePath": {"$ref": PROJECT_RELATIVE_PATH_REF},
-                "templateSha256": {"$ref": SHA256_REF},
-                "rendererContract": {
-                    "enum": ["generation-renderer-v2", "generation-renderer-v3", "generation-renderer-v4", "generation-renderer-v5"]
-                },
-            },
-        },
-    )
-    write_json(
-        generator_root / "contracts/run-plan.schema.json",
-        {
-            "type": "object",
-            "required": ["templateSnapshotPath", "templateSha256"],
-            "properties": {
-                "templateSnapshotPath": {
-                    "const": ".ai-sow/work/run-template.xlsx"
-                },
-                "templateSha256": {"$ref": SHA256_REF},
-            },
-        },
-    )
-    write_json(
-        generator_root / "contracts/question.schema.json",
-        {
-            "$id": "urn:ai-sow:generate:question:1",
-            "type": "object",
-            "additionalProperties": False,
-            "required": list(QUESTION_PROPERTIES),
-            "properties": QUESTION_PROPERTIES,
-        },
-    )
-    (generator_root / "scripts/generation_store.py").write_text(
-        """def _verify_staged_template(staged_generation_root, manifest):
-    generation_id = manifest.get(\"generationId\")
-    expected_path = f\".ai-sow/generations/{generation_id}/input/sow-template.xlsx\"
-    template_path = manifest.get(\"templatePath\")
-    if template_path != expected_path:
-        raise RuntimeError(\"generation template must be immutable\")
-    staged_template = staged_generation_root / \"input/sow-template.xlsx\"
-    if not staged_template.is_file():
-        raise RuntimeError(\"generation template snapshot is missing\")
-""",
-        encoding="utf-8",
-    )
+        }
+        if name == "generation-manifest.schema.json":
+            value["required"] = [
+                "sowModelSha256",
+                "stageCheckpointSha256s",
+                "reviewDecisionSha256",
+                "artifactManifestSha256",
+                "approvalSha256",
+                "templateSha256",
+                "effectivePolicyDecisionSha256",
+                "workbookSha256",
+                "notesSha256",
+            ]
+            value["properties"] = {
+                "rendererContract": {"const": "generation-renderer-v8"}
+            }
+        write_json(generator_root / "contracts" / name, value)
+    (generator_root / "scripts/generation_store.py").touch()
     write_json(
         generator_root / "contracts/renderer-fingerprint-baseline.json",
         {
-            "rendererContract": "generation-renderer-v5",
+            "rendererContract": "generation-renderer-v8",
             "files": {
                 relative: hashlib.sha256(payload).hexdigest()
                 for relative, payload in renderer_payloads.items()
@@ -259,6 +243,37 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
+    def test_satisfied_model_efficiency_gate_requires_real_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_root = Path(temp_dir) / "plugins/ai-sow"
+            write_json(
+                plugin_root / "tests/benchmarks/model-efficiency-policy-v1.json",
+                {
+                    "pairedBenchmarkGate": {
+                        "status": "SATISFIED",
+                        "claimStatus": "ALLOWED_AFTER_TARGET_EVALUATION",
+                        "baselineManifest": "tests/benchmarks/baseline/manifest.json",
+                        "candidateManifest": "tests/benchmarks/candidate/manifest.json",
+                        "comparisonReceipt": {
+                            "path": "tests/benchmarks/comparison.json",
+                            "sha256": "a" * 64,
+                        },
+                    }
+                },
+            )
+
+            errors = validate_model_efficiency_gate(plugin_root)
+
+            self.assertIn(
+                "model efficiency baselineManifest evidence is missing", errors
+            )
+            self.assertIn(
+                "model efficiency candidateManifest evidence is missing", errors
+            )
+            self.assertIn(
+                "model efficiency comparisonReceipt evidence is missing", errors
+            )
+
     def test_repository_validator_uses_generate_renderer_baseline(self) -> None:
         self.assertEqual(
             RENDERER_FINGERPRINT_FILES,
@@ -491,24 +506,6 @@ class RepositoryValidatorTests(unittest.TestCase):
                 "invalid AI SOW plugin manifest .codex-plugin/plugin.json:",
             ),
             (
-                "fixture missing",
-                "skills/generate/fixtures/greenfield/request.json",
-                None,
-                "invalid AI SOW greenfield fixture request:",
-            ),
-            (
-                "fixture malformed",
-                "skills/generate/fixtures/greenfield/request.json",
-                "{",
-                "invalid AI SOW greenfield fixture request:",
-            ),
-            (
-                "fixture non-UTF-8",
-                "skills/generate/fixtures/greenfield/request.json",
-                b"\xff",
-                "invalid AI SOW greenfield fixture request:",
-            ),
-            (
                 "pyproject missing",
                 "pyproject.toml",
                 None,
@@ -575,7 +572,7 @@ class RepositoryValidatorTests(unittest.TestCase):
                 validate_ai_sow_release(root, plugin_root),
             )
 
-    def test_ai_sow_release_requires_question_contract_and_delivery_references(self) -> None:
+    def test_ai_sow_release_requires_cutover_contracts_and_references(self) -> None:
         for relative in AI_SOW_GENERATE_SUPPORT_FILES:
             with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
                 root = Path(temp_dir)
@@ -587,175 +584,46 @@ class RepositoryValidatorTests(unittest.TestCase):
                     validate_ai_sow_release(root, plugin_root),
                 )
 
-    def test_ai_sow_release_requires_run_and_generation_template_hash_closure(self) -> None:
-        mutations = (
-            (
-                "skills/generate/contracts/run-plan.schema.json",
-                "templateSnapshotPath",
-                "run plan templateSnapshotPath must be .ai-sow/work/run-template.xlsx",
-            ),
-            (
-                "skills/generate/contracts/run-plan.schema.json",
-                "templateSha256",
-                "run plan must require templateSnapshotPath and templateSha256",
-            ),
-            (
-                "skills/generate/contracts/generation-manifest.schema.json",
-                "templatePath",
-                "generation manifest must require templatePath and templateSha256",
-            ),
-            (
-                "skills/generate/contracts/generation-manifest.schema.json",
-                "templateSha256",
-                "generation manifest must require templatePath and templateSha256",
-            ),
-        )
-        for relative, field, diagnostic in mutations:
-            with self.subTest(field=field), tempfile.TemporaryDirectory() as temp_dir:
-                root = Path(temp_dir)
-                plugin_root = write_valid_ai_sow_release(root)
-                path = plugin_root / relative
-                schema = json.loads(path.read_text(encoding="utf-8"))
-                if field == "templateSnapshotPath":
-                    schema["properties"][field]["const"] = ".ai-sow/work/other.xlsx"
-                else:
-                    schema["required"].remove(field)
-                write_json(path, schema)
+    def test_ai_sow_release_requires_exact_cutover_schema_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            path = plugin_root / "skills/generate/contracts/action.schema.json"
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema["$id"] = "urn:ai-sow:generate:action:legacy"
+            write_json(path, schema)
 
-                self.assertIn(diagnostic, validate_ai_sow_release(root, plugin_root))
+            self.assertIn(
+                "AI SOW contract action.schema.json must use $id "
+                "urn:ai-sow:generate:next:action:1",
+                validate_ai_sow_release(root, plugin_root),
+            )
 
-    def test_ai_sow_release_requires_64_hex_template_hash_contracts(self) -> None:
-        cases = (
-            (
-                "skills/generate/contracts/run-plan.schema.json",
-                "run plan templateSha256 must use the 64-hex SHA-256 contract",
-            ),
-            (
-                "skills/generate/contracts/generation-manifest.schema.json",
-                "generation manifest templateSha256 must use the 64-hex SHA-256 contract",
-            ),
-        )
-        for relative, diagnostic in cases:
-            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
-                root = Path(temp_dir)
-                plugin_root = write_valid_ai_sow_release(root)
-                path = plugin_root / relative
-                schema = json.loads(path.read_text(encoding="utf-8"))
-                schema["properties"]["templateSha256"] = {
-                    "type": "string",
-                    "minLength": 1,
-                }
-                write_json(path, schema)
+    def test_ai_sow_release_requires_generation_proof_closure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            path = plugin_root / "skills/generate/contracts/generation-manifest.schema.json"
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema["required"].remove("approvalSha256")
+            write_json(path, schema)
 
-                self.assertIn(diagnostic, validate_ai_sow_release(root, plugin_root))
+            self.assertIn(
+                "generation manifest must require the v2 self-contained proof closure",
+                validate_ai_sow_release(root, plugin_root),
+            )
 
-    def test_ai_sow_release_rejects_live_generation_template_schema_paths(self) -> None:
-        for template_path in (
-            ".ai-sow/templates/sow-template.xlsx",
-            ".ai-sow/work/run-template.xlsx",
-        ):
-            with self.subTest(template_path=template_path), tempfile.TemporaryDirectory() as temp_dir:
-                root = Path(temp_dir)
-                plugin_root = write_valid_ai_sow_release(root)
-                path = (
-                    plugin_root
-                    / "skills/generate/contracts/generation-manifest.schema.json"
-                )
-                schema = json.loads(path.read_text(encoding="utf-8"))
-                schema["properties"]["templatePath"] = {"const": template_path}
-                write_json(path, schema)
-
-                self.assertIn(
-                    "generation manifest templatePath must use the project-relative path contract",
-                    validate_ai_sow_release(root, plugin_root),
-                )
-
-    def test_ai_sow_release_requires_immutable_generation_template_copy(self) -> None:
-        cases = (
-            (
-                '"input/sow-template.xlsx"',
-                '".ai-sow/templates/sow-template.xlsx"',
-            ),
-            (
-                "if template_path != expected_path:",
-                "if False:",
-            ),
-            (
-                'raise RuntimeError("generation template must be immutable")',
-                "pass",
-            ),
-            (
-                'if template_path != expected_path:\n'
-                '        raise RuntimeError("generation template must be immutable")',
-                'if template_path != expected_path:\n'
-                '        pass\n'
-                '    raise RuntimeError("unrelated failure")',
-            ),
-            (
-                'if template_path != expected_path:\n'
-                '        raise RuntimeError("generation template must be immutable")',
-                'if False:\n'
-                '        if template_path != expected_path:\n'
-                '            raise RuntimeError("generation template must be immutable")',
-            ),
-        )
-        diagnostic = (
-            "generation store must bind templatePath to the immutable "
-            "generation input/sow-template.xlsx"
-        )
-        for old, new in cases:
-            with self.subTest(mutation=new), tempfile.TemporaryDirectory() as temp_dir:
-                root = Path(temp_dir)
-                plugin_root = write_valid_ai_sow_release(root)
-                path = plugin_root / "skills/generate/scripts/generation_store.py"
-                source = path.read_text(encoding="utf-8")
-                self.assertIn(old, source)
-                path.write_text(source.replace(old, new, 1), encoding="utf-8")
-
-                self.assertIn(diagnostic, validate_ai_sow_release(root, plugin_root))
-
-    def test_ai_sow_release_requires_self_contained_question_fields(self) -> None:
-        mutations = (
-            lambda schema: schema["required"].remove("reason"),
-            lambda schema: schema["properties"].pop("reason"),
-            lambda schema: schema["properties"].update(
-                {"genericExplanation": {"type": "string"}}
-            ),
-            lambda schema: schema["properties"]["question"].update(
-                {"minLength": 0}
-            ),
-            lambda schema: schema["properties"]["questionId"].update(
-                {"$ref": NON_EMPTY_ID_ARRAY_REF}
-            ),
-            lambda schema: schema.update({"additionalProperties": True}),
-        )
-        for index, mutate in enumerate(mutations):
-            with self.subTest(mutation=index), tempfile.TemporaryDirectory() as temp_dir:
-                root = Path(temp_dir)
-                plugin_root = write_valid_ai_sow_release(root)
-                path = plugin_root / "skills/generate/contracts/question.schema.json"
-                schema = json.loads(path.read_text(encoding="utf-8"))
-                mutate(schema)
-                write_json(path, schema)
-
-                self.assertIn(
-                    "question schema must match the self-contained user question contract",
-                    validate_ai_sow_release(root, plugin_root),
-                )
-
-    def test_ai_sow_release_requires_exact_generate_skill_and_fixture_identity(self) -> None:
+    def test_ai_sow_release_rejects_legacy_schema_or_extra_skill(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plugin_root = write_valid_ai_sow_release(root)
             legacy = plugin_root / "skills/setup/SKILL.md"
             legacy.parent.mkdir(parents=True)
             legacy.write_text("legacy", encoding="utf-8")
-            request_path = (
-                plugin_root / "skills/generate/fixtures/greenfield/request.json"
+            write_json(
+                plugin_root / "skills/generate/contracts/run-plan.schema.json",
+                {"$id": "urn:ai-sow:generate:run-plan:1"},
             )
-            request = json.loads(request_path.read_text(encoding="utf-8"))
-            request["project"]["projectId"] = ""
-            write_json(request_path, request)
 
             errors = validate_ai_sow_release(root, plugin_root)
 
@@ -763,9 +631,8 @@ class RepositoryValidatorTests(unittest.TestCase):
                 "AI SOW public skills must be exactly ['generate'], found ['generate', 'setup']",
                 errors,
             )
-            self.assertIn(
-                "greenfield fixture projectId and name must be non-empty",
-                errors,
+            self.assertTrue(
+                any(error.startswith("AI SOW contract set must be") for error in errors)
             )
 
 

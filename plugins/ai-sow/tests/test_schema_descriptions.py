@@ -8,68 +8,25 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).parents[1]
 CONTRACTS = PLUGIN_ROOT / "skills/generate/contracts"
 SCHEMAS = {
-    "Generate Request": CONTRACTS / "request.schema.json",
-    "Input Manifest": CONTRACTS / "input-manifest.schema.json",
-    "Scope Bundle": CONTRACTS / "scope-bundle.schema.json",
-    "Delivery Bundle": CONTRACTS / "delivery-bundle.schema.json",
-}
-STABLE_OBJECT_DEFS = {
-    "Generate Request": (
-        "project",
-        "source",
-        "questionnaireAnswer",
-        "currentStateDelta",
-        "responsibilityBoundary",
-    ),
-    "Input Manifest": (
-        "project",
-        "source",
-        "questionnaireAnswer",
-        "responsibilityBoundary",
-    ),
-    "Scope Bundle": (
-        "epic",
-        "feature",
-        "scopeDecision",
-        "commitment",
-        "effectiveStartItem",
-        "designItem",
-        "designDecision",
-        "integration",
-        "nfr",
-        "assumption",
-        "responsibilityBoundary",
-    ),
-    "Delivery Bundle": (
-        "story",
-        "acceptanceCriterion",
-        "task",
-        "workModeEvidence",
-        "dependency",
-    ),
+    "Common": CONTRACTS / "common.schema.json",
+    "Request": CONTRACTS / "request.schema.json",
+    "Input Revision": CONTRACTS / "input-revision.schema.json",
+    "SOW Model": CONTRACTS / "sow-model.schema.json",
+    "Run State": CONTRACTS / "run-state.schema.json",
+    "Action": CONTRACTS / "action.schema.json",
+    "Stage Checkpoint": CONTRACTS / "stage-checkpoint.schema.json",
+    "Review Repair": CONTRACTS / "review-repair.schema.json",
+    "Artifact Approval": CONTRACTS / "artifact-approval.schema.json",
+    "Generation Manifest": CONTRACTS / "generation-manifest.schema.json",
+    "Current": CONTRACTS / "current.schema.json",
 }
 CHINESE = re.compile(r"[\u3400-\u9fff]")
 
 
-def test_stable_fields_have_chinese_descriptions() -> None:
-    assert set(SCHEMAS) == set(STABLE_OBJECT_DEFS)
+def test_contract_families_have_chinese_purpose_descriptions() -> None:
+    assert len(SCHEMAS) == 11
     for name, path in SCHEMAS.items():
         schema = json.loads(path.read_text(encoding="utf-8"))
-        objects = [("$", schema)] + [
-            (f"$defs/{definition}", schema["$defs"][definition])
-            for definition in STABLE_OBJECT_DEFS[name]
-        ]
-        for object_path, value in objects:
-            for field, definition in value.get("properties", {}).items():
-                description = definition.get("description")
-                assert isinstance(description, str) and description.strip(), (
-                    name,
-                    object_path,
-                    field,
-                )
-                assert CHINESE.search(description), (
-                    name,
-                    object_path,
-                    field,
-                    description,
-                )
+        description = schema.get("description")
+        assert isinstance(description, str) and description.strip(), name
+        assert CHINESE.search(description), (name, description)

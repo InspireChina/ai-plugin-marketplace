@@ -8,13 +8,13 @@ Story 是一个 Feature 下可独立移交、验收和关闭的单一业务或�
 
 它不是用户故事三段式文本、`description` 容器、多个动作拼接的工作包，也不是前端、后端、测试各自的一张卡。
 
-## 来源
+## 来源与义务
 
-Story 不重复保存来源字段：其来源由全部 AC 的精确 `sourceRefs` 并集推导。编写前应先确认候选结果与 Scope 中的 Feature、Design、Integration、NFR 一致。
+Story 不重新解释原始来源。脚本从已通过的 `ScopeClosureCheckpoint`、`scopeClosure.deliveryDisposition=STORY_AC_REQUIRED` 与 effective policy decision 确定性派生 obligation projection；Author 只能关闭分配给当前 action 的 obligation。Story 通过 `requirementRefs`、`designRefs`、`policyRefs` 和 `coverageSet` 连接到 Stage 1 已验证语义，精确 SourceRef 仍由上游 InputItem、DesignItem 与 PolicyInstance 保有。
 
 ## 粒度
 
-一个 Story 聚焦一个主要触发和一个可观察结果；正常与异常若共同服务该结果通常写入 AC。出现多个独立关闭结果或无法保持 Task 边界时应拆分。
+一个 Story 聚焦一个主要触发和一个可观察结果；正常与异常若共同服务该结果通常写入 AC。拆分依据是独立定制、责任、验收或关闭/发布边界，不是来源段落数、obligation 数或覆盖对象数。同一边界下九个同质服务应保留为一个 Story，并在 `coverageSet` 中列出九个覆盖对象。
 
 Story 的触发边界必须与 AC 一致：只在提交、审批、回调或切换时发生的结果，不能挂到查询、草稿或其他更早触发的 Story。项目级责任、常规 SIT/UAT、通用 DoD 和“支持范围”不是独立结果，不得与运维移交、迁移、发布等可单独关闭成果拼成 Story；后者只有具备自己的交付物、来源和 AC 时才可单列。
 
@@ -26,7 +26,7 @@ Technical Story 同样遵守这四项共同成立的准入规则，原子 NFR �
 
 ## 与相邻层关系
 
-它只能属于一个 Feature，向下由多个 AC 说明达成条件，再由同 Story 的 Task 覆盖。不能跨 Feature 汇总共享治理或把 Task 的技术活动直接当 Story。
+它只能属于一个 Feature，向下由一条或多条足以关闭 obligation 的 AC 说明达成条件，再由后续阶段的同 Story Task 覆盖。不能跨 Feature 汇总共享治理或把 Task 的技术活动直接当 Story。
 
 ## 正例
 
@@ -46,7 +46,7 @@ Technical Story 同样遵守这四项共同成立的准入规则，原子 NFR �
 
 ## 机械门禁
 
-Story 必须有唯一 `storyId`、可解析的 `featureId`、非空且唯一名称、至少两条 AC，并满足同 Story 的覆盖和 Task 数量约束。稳定数据不得增加 `description`。
+Story 必须有唯一 `storyId`、可解析的 `featureId`、非空名称与非空 `coverageSet`，并由至少一条 AC 关闭其 obligation。机械门禁从 obligation projection 重算覆盖，不能信任候选自行声明的引用，也不能要求每个 Story 固定两条 AC。稳定数据不得增加 `description`。
 
 ## Reviewer 判断
 

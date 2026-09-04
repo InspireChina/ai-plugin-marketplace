@@ -1,0 +1,47 @@
+{
+  "contract": "ai-sow-benchmark-case-v1",
+  "scenarioId": "large-brownfield",
+  "class": "SUCCESS",
+  "privacy": "ANONYMOUS_SYNTHETIC",
+  "mode": "BROWNFIELD",
+  "title": "多仓维修备件协同升级",
+  "objective": "在保留既有资产、库存和工单能力的前提下，增加跨仓调拨、供应商补货、移动盘点、成本追踪和分批迁移。",
+  "sources": [
+    {
+      "sourceId": "PRD-201",
+      "type": "PRD",
+      "status": "APPROVED",
+      "content": "范围包含八码：设备与备件主数据；维修工单预留和领料；安全库存与补货建议；跨仓申请、审批、出库、在途、收货和差异处理；供应商订单与到货；移动端离线盘点和冲突合并；批次成本与月末对账；角色分权、审计、运营报表和异常告警。跨仓差异超过2%需区域经理复核；离线盘点最长24小时；补货建议每天02:00生成；月结后成本批次不可直接改写。"
+    },
+    {
+      "sourceId": "HLD-201",
+      "type": "HLD",
+      "status": "APPROVED",
+      "content": "既有资产服务、库存数据库和工单API继续使用。新增调拨服务、补货编排器、移动同步网关和成本账本；通过事件总线连接库存、工单与通知，通过API网关连接供应商。幂等键覆盖领料、调拨收货和盘点上传；离线冲突按服务器版本、盘点会话和人工裁决处理。数据按仓库分区，审计保留七年，敏感供应商字段加密。SLO为核心库存查询99.9%、调拨写入p95小于800毫秒；蓝绿部署，先影子对账再按仓切流，失败时停止新写入并回放事件。"
+    },
+    {
+      "sourceId": "DEMO-201",
+      "type": "DEMO",
+      "status": "SELECTED",
+      "content": "原型明确工作台需显示待审批调拨、缺货风险、在途超时和盘点同步冲突；移动端支持扫码连续录入、离线状态提示、差异原因选择与提交前汇总；成本页面支持按仓、物料、批次钻取。"
+    },
+    {
+      "sourceId": "PRIOR-SOW-201",
+      "type": "PRIOR_SOW",
+      "status": "ACCEPTED_BASELINE",
+      "content": "既有可复用范围：资产主数据、单仓库存查询、维修工单基础流程、企业身份与邮件通知。既有缺口：没有跨仓状态机、供应商接口、离线同步、批次成本账本、差异复核和分仓迁移工具。已有接口改造按Brownfield评估，不把现状能力重复计为新建。"
+    }
+  ],
+  "expected": {
+    "terminal": "PUBLISHED",
+    "successProbe": "PUBLISHED_OFFICE_VERIFIED",
+    "minimumFeatures": 8,
+    "requiredCoverageRoots": ["主数据与现状复用", "工单预留领料", "安全库存补货", "跨仓状态机", "供应商协同", "离线盘点", "冲突裁决", "批次成本月结", "权限审计", "运营报表告警", "性能安全", "分仓迁移回退"]
+  },
+  "scaleExpectations": {
+    "requiresModelSharding": true,
+    "minimumLogicalThemes": 6,
+    "minimumAuthorShards": 2,
+    "minimumReviewerShards": 2
+  }
+}

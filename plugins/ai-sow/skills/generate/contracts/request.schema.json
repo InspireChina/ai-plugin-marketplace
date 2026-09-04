@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:generate:request:1",
+  "$id": "urn:ai-sow:generate:next:request:1",
+  "description": "记录本轮 SOW 生成意图、项目身份、责任边界和显式输入来源。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,153 +15,121 @@
     "currentStateDelta"
   ],
   "properties": {
-    "contract": {
-      "const": "ai-sow-generate-request-v1",
-      "description": "本次生成请求使用的固定合同 token。"
-    },
-    "project": {
-      "$ref": "#/$defs/project",
-      "description": "本次 SOW 的最小项目身份与计划生效信息。"
-    },
-    "mode": {
-      "type": "string",
-      "enum": ["GREENFIELD", "BROWNFIELD"],
-      "description": "项目是无历史合同基线的新建项目还是继承往期 SOW 的存量项目。"
-    },
+    "contract": {"const": "ai-sow-generate-request-v2"},
+    "project": {"$ref": "#/$defs/project"},
+    "mode": {"enum": ["GREENFIELD", "BROWNFIELD"]},
     "responsibilityBoundaries": {
       "type": "array",
       "minItems": 1,
-      "uniqueItems": true,
-      "items": {"$ref": "#/$defs/responsibilityBoundary"},
-      "description": "客户、供应商和第三方的高层责任边界。"
+      "items": {"$ref": "#/$defs/responsibilityBoundary"}
     },
     "sources": {
       "type": "array",
-      "minItems": 2,
-      "items": {"$ref": "#/$defs/source"},
-      "description": "本次请求明确提供的 PRD、HLD、往期 SOW 和补充材料；PRD/HLD 使用 .md，往期 SOW 使用 .xlsx，补充材料使用 UTF-8 纯文本或 .xlsx。"
-    },
-    "questionnaireAnswers": {
-      "type": "array",
-      "items": {"$ref": "#/$defs/questionnaireAnswer"},
-      "description": "只记录影响范围、责任或估算的结构化问卷答案。"
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/prdSource"},
+          {"$ref": "#/$defs/demoSource"},
+          {"$ref": "#/$defs/designSource"},
+          {"$ref": "#/$defs/priorSowSource"},
+          {"$ref": "#/$defs/supplementSource"}
+        ]
+      }
     },
     "questions": {
       "type": "array",
-      "items": {"$ref": "urn:ai-sow:generate:question:1"},
-      "description": "本次请求需要用户逐题确认的完整问题包。"
+      "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/question"}
+    },
+    "questionnaireAnswers": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/questionnaireAnswer"}
     },
     "currentStateDelta": {
-      "anyOf": [{"type": "null"}, {"$ref": "#/$defs/currentStateDelta"}],
-      "description": "Brownfield 自往期 SOW 生效后的已知现状变化；Greenfield 可为 null。"
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/currentStateDelta"}
+      ]
     }
   },
-  "allOf": [
-    {
-      "properties": {
-        "sources": {
-          "contains": {
-            "type": "object",
-            "properties": {"role": {"const": "PRD"}},
-            "required": ["role"]
-          }
-        }
-      }
-    },
-    {
-      "properties": {
-        "sources": {
-          "contains": {
-            "type": "object",
-            "properties": {"role": {"const": "HLD"}},
-            "required": ["role"]
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {"mode": {"const": "BROWNFIELD"}},
-        "required": ["mode"]
-      },
-      "then": {
-        "properties": {
-          "sources": {
-            "contains": {
-              "type": "object",
-              "properties": {"role": {"const": "PRIOR_SOW"}},
-              "required": ["role"]
-            }
-          },
-          "currentStateDelta": {"$ref": "#/$defs/currentStateDelta"}
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {"mode": {"const": "GREENFIELD"}},
-        "required": ["mode"]
-      },
-      "then": {
-        "properties": {
-          "sources": {
-            "not": {
-              "contains": {
-                "type": "object",
-                "properties": {"role": {"const": "PRIOR_SOW"}},
-                "required": ["role"]
-              }
-            }
-          }
-        }
-      }
-    }
-  ],
   "$defs": {
     "project": {
       "type": "object",
       "additionalProperties": false,
       "required": ["projectId", "name", "plannedEffectiveDate"],
       "properties": {
-        "projectId": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
-          "description": "项目在所有输入 revision 中保持稳定的逻辑 ID。"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "面向 SOW 展示的项目名称。"
-        },
-        "plannedEffectiveDate": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/effectiveDate",
-          "description": "计划合同生效日期，格式为 YYYY-MM-DD。"
+        "projectId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "plannedEffectiveDate": {"type": "string", "format": "date"}
+      }
+    },
+    "responsibilityBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["responsibilityBoundaryId", "party", "name", "responsibilities"],
+      "properties": {
+        "responsibilityBoundaryId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "party": {"enum": ["VENDOR", "CUSTOMER", "THIRD_PARTY"]},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "responsibilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
         }
       }
     },
-    "source": {
+    "prdSource": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceId", "role", "version", "path"],
+      "required": ["sourceId", "role", "path", "status"],
       "properties": {
-        "sourceId": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
-          "description": "来源文档跨版本使用的稳定逻辑 ID。"
-        },
-        "role": {
-          "type": "string",
-          "enum": ["PRD", "HLD", "PRIOR_SOW", "SUPPLEMENT"],
-          "description": "来源在本次编译中的唯一语义角色。"
-        },
-        "version": {
-          "type": "string",
-          "minLength": 1,
-          "description": "用户提供的来源版本或日期标识。"
-        },
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "description": "工作请求中的输入文件路径；HTML/TypeScript 原型以 SUPPLEMENT 纯文本输入，PDF、Word 等需要专用解析器的格式不受支持；intake 后不会写入稳定数据。"
-        }
+        "sourceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "role": {"const": "PRD"},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "status": {"const": "APPROVED"}
+      }
+    },
+    "demoSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "role", "path", "status"],
+      "properties": {
+        "sourceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "role": {"const": "DEMO"},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "status": {"enum": ["SELECTED", "NOT_SELECTED"]}
+      }
+    },
+    "designSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "role", "path", "status"],
+      "properties": {
+        "sourceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "role": {"enum": ["HLD", "ADR"]},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "status": {"enum": ["APPROVED", "DRAFT", "REJECTED"]}
+      }
+    },
+    "priorSowSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "role", "path", "status"],
+      "properties": {
+        "sourceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "role": {"const": "PRIOR_SOW"},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "status": {"enum": ["APPLICABLE", "REFERENCE_ONLY"]}
+      }
+    },
+    "supplementSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "role", "path", "status"],
+      "properties": {
+        "sourceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "role": {"const": "SUPPLEMENT"},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "status": {"enum": ["SELECTED", "REFERENCE_ONLY"]}
       }
     },
     "questionnaireAnswer": {
@@ -168,19 +137,9 @@
       "additionalProperties": false,
       "required": ["questionId", "questionSha256", "answer"],
       "properties": {
-        "questionId": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/lowerKebabId",
-          "description": "最小问卷问题的稳定 ID。"
-        },
-        "questionSha256": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/sha256",
-          "description": "回答所绑定完整问题包的 SHA-256。"
-        },
-        "answer": {
-          "type": "string",
-          "minLength": 1,
-          "description": "用户确认且会影响范围、责任或估算的答案。"
-        }
+        "questionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "questionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "answer": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
       }
     },
     "currentStateDelta": {
@@ -188,24 +147,10 @@
       "additionalProperties": false,
       "required": ["status", "summary", "supplementalSourceIds"],
       "properties": {
-        "status": {
-          "type": "string",
-          "enum": ["NO_KNOWN_CHANGES", "CHANGES_DECLARED"],
-          "description": "往期 SOW 生效后是否存在已知范围、架构、集成或部署变化。"
-        },
-        "summary": {
-          "type": "string",
-          "minLength": 1,
-          "description": "无已知变化声明或已知变化清单的简要说明。"
-        },
-        "supplementalSourceIds": {
-          "$ref": "urn:ai-sow:generate:common:1#/$defs/idArray",
-          "description": "直接证明现状增量的补充来源 ID；没有材料时为空。"
-        }
+        "status": {"enum": ["NO_KNOWN_CHANGES", "CHANGES_RECORDED", "UNKNOWN"]},
+        "summary": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "supplementalSourceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
       }
-    },
-    "responsibilityBoundary": {
-      "$ref": "urn:ai-sow:generate:common:1#/$defs/responsibilityBoundary"
     }
   }
 }

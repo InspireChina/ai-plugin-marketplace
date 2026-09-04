@@ -45,26 +45,20 @@ Story 不保存任务类型。前端、后端、数据、集成、测试、迁�
 | 字段 | 含义 | 填写要求 |
 |---|---|---|
 | `taskId` | Task 稳定标识 | 语义未变时保持稳定；实质含义变化时创建新 ID |
-| `storyId` | 所属 Story | 必须引用已通过自动终审的 Story |
-| `taskKind` | Task 类型 | 只使用 `DESIGN` 或 `IMPLEMENTATION` |
+| `storyId` | 所属 Story | 必须引用当前 Stage 2 checkpoint 中的 Story |
 | `name` | 可读名称 | 使用简体中文说明交付对象和单一基础单元实例 |
-| `baseUnit` | 基础单元 | 从本轮模板 `90-估算标准` 的有效目录选择 |
+| `workTypeId` | 工作类型 | 从本轮模板 `TaskStandardTable` 的有效目录选择 |
+| `rowSemanticSha256` | 目录行语义哈希 | 绑定所选工作类型当前完整规则行 |
 | `workMode` | 工作模式 | 只使用 `新建`、`调整`、`接入复用` |
-| `workModeRationale` | 工作模式理由 | 结合当前实例与 Effective Start 说明选择依据 |
-| `workModeEvidence` | 结构化现状证据 | `调整` 或 `接入复用` 时必填；精确引用一个 `effectiveStartItemId` |
+| `actualMeasurementScope` | 实际计量范围 | 说明当前实例的对象、包含范围和排除范围 |
 | `complexity` | 稳定复杂度 | 只使用 `S`、`M`、`L`，并按模板的基础单元专属标准判断 |
-| `complexityRationale` | 复杂度理由 | `S` 或 `L` 时必填并说明偏离 M 档的事实；`M` 时不得填写 |
 | `acceptanceCriterionIds` | AC 引用 | 至少引用一条同 Story 的 AcceptanceCriterion |
 | `designItemIds` | Design Item 引用 | 引用本 Task 实现或补齐的 Design Item；不适用时为空集合 |
 | `integrationIds` | Integration 引用 | 引用本 Task 实现或约束的 Integration；不适用时为空集合 |
 | `nfrIds` | NFR 引用 | 引用本 Task 满足或设计的 NFR；不适用时为空集合 |
-| `rationale` | 单实例边界 | 说明计数对象、包含范围和排除范围 |
+| `policyInstanceIds` | 交付政策引用 | 引用本 Task 实现的 SIT、UAT、上线或迁移政策实例；不适用时为空集合 |
 
 Task 不保存任务族、数量、活动、人天、倍率或公式结果。任务族和计算值由模板投影；稳定业务 JSON 不成为第二套计算权威。
-
-`workModeEvidence` 对 `新建` 禁止，对 `调整` 和 `接入复用` 必填。两种模式都必须包含
-`effectiveStartItemId`；`接入复用` 还必须包含非空 `projectSideWorkTypes` 和
-`projectSideWorkCommitment`，而 `调整` 不得携带这两个接入复用字段。
 
 ## 4. 拆分与判断顺序
 

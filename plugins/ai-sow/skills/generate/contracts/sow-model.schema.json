@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:sow-model:1",
+  "description": "保存可发布且可追溯的唯一 SOW 业务语义真相。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract", "project", "inputItems", "scopeClosure", "epics", "features",
+    "designItems", "integrations", "nfrs", "policyInstances", "scopeAnnotations",
+    "stories", "acceptanceCriteria", "deliveryAnnotations", "tasks", "dependencies",
+    "effectiveStartMatches", "estimationAnnotations", "decisions"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-model-v1"},
+    "project": {"$ref": "#/$defs/project"},
+    "inputItems": {"type": "array", "items": {"$ref": "#/$defs/inputItem"}},
+    "scopeClosure": {"type": "array", "items": {"$ref": "#/$defs/scopeClosureItem"}},
+    "epics": {"type": "array", "items": {"$ref": "#/$defs/epic"}},
+    "features": {"type": "array", "items": {"$ref": "#/$defs/feature"}},
+    "designItems": {"type": "array", "items": {"$ref": "#/$defs/designItem"}},
+    "integrations": {"type": "array", "items": {"$ref": "#/$defs/integration"}},
+    "nfrs": {"type": "array", "items": {"$ref": "#/$defs/nfr"}},
+    "policyInstances": {"type": "array", "items": {"$ref": "#/$defs/policyInstance"}},
+    "scopeAnnotations": {"type": "array", "items": {"$ref": "#/$defs/annotation"}},
+    "stories": {"type": "array", "items": {"$ref": "#/$defs/story"}},
+    "acceptanceCriteria": {"type": "array", "items": {"$ref": "#/$defs/acceptanceCriterion"}},
+    "deliveryAnnotations": {"type": "array", "items": {"$ref": "#/$defs/annotation"}},
+    "tasks": {"type": "array", "items": {"$ref": "#/$defs/task"}},
+    "dependencies": {"type": "array", "items": {"$ref": "#/$defs/dependency"}},
+    "effectiveStartMatches": {"type": "array", "items": {"$ref": "#/$defs/effectiveStartMatch"}},
+    "estimationAnnotations": {"type": "array", "items": {"$ref": "#/$defs/annotation"}},
+    "decisions": {"type": "array", "items": {"$ref": "#/$defs/decision"}}
+  },
+  "$defs": {
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "mode", "inputRevisionSha256", "sourceManifestSha256", "templateSha256", "policyDefinitionSha256", "responsibilityBoundaries"],
+      "properties": {
+        "projectId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "mode": {"enum": ["GREENFIELD", "BROWNFIELD"]},
+        "inputRevisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "sourceManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "templateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "policyDefinitionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "responsibilityBoundaries": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+      }
+    },
+    "sourceRefArray": {
+      "type": "array",
+      "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sourceRef"}
+    },
+    "inputItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputItemId", "kind", "text", "conditions", "thresholds", "prohibitions", "applicableScopes", "sourceRefs"],
+      "properties": {
+        "inputItemId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "kind": {"enum": ["REQUIREMENT", "DESIGN_DECISION", "CONSTRAINT", "RESPONSIBILITY", "EXCLUSION", "CONFLICT_CANDIDATE"]},
+        "text": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "conditions": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
+        "thresholds": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
+        "prohibitions": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
+        "applicableScopes": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
+        "sourceRefs": {"$ref": "#/$defs/sourceRefArray"}
+      }
+    },
+    "scopeClosureItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputItemId", "sourceRefs", "disposition", "targetNodeIds", "preservedQualifiers", "crossFeatureRuleIds", "mechanicalCoverage", "semanticSufficiency", "designCoverageStatus", "deliveryDisposition", "assignedFeatureIds", "requiredQualifierRefs", "crossFeatureTargetIds"],
+      "properties": {
+        "inputItemId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "sourceRefs": {"$ref": "#/$defs/sourceRefArray"},
+        "disposition": {"enum": ["SCOPE_NODE", "PROJECT_GATE", "OUT_OF_SCOPE", "CONFLICT"]},
+        "targetNodeIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "preservedQualifiers": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
+        "crossFeatureRuleIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "mechanicalCoverage": {"enum": ["COMPLETE", "NOT_REQUIRED", "MISSING"]},
+        "semanticSufficiency": {"enum": ["SUFFICIENT", "NOT_REQUIRED", "INSUFFICIENT", "NOT_REVIEWED"]},
+        "designCoverageStatus": {"enum": ["SUFFICIENT", "NOT_REQUIRED", "MISSING", "CONFLICT"]},
+        "deliveryDisposition": {"enum": ["STORY_AC_REQUIRED", "PROJECT_LEVEL_ONLY", "NO_DELIVERY", "BLOCKED"]},
+        "assignedFeatureIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "requiredQualifierRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "crossFeatureTargetIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+      }
+    },
+    "epic": {
+      "type": "object", "additionalProperties": false,
+      "required": ["epicId", "name", "scopeClass", "requirementRefs", "designRefs", "policyRefs", "effortPhase", "activationPhase", "inclusionPolicy"],
+      "properties": {
+        "epicId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "scopeClass": {"enum": ["BUSINESS", "TECHNICAL", "DELIVERY"]},
+        "requirementRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "designRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "policyRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "effortPhase": {"enum": ["DESIGN", "BUILD", "SIT", "UAT", "GO_LIVE", "OPERATE"]},
+        "activationPhase": {"enum": ["BUILD", "SIT", "UAT", "GO_LIVE", "OPERATE"]},
+        "inclusionPolicy": {"enum": ["REQUIRED", "DEFAULT_INCLUDED", "SOURCE_GATED"]}
+      }
+    },
+    "feature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["featureId", "epicId", "name", "scopeDecision", "scopeClass", "requirementRefs", "designRefs", "policyRefs", "effortPhase", "activationPhase", "inclusionPolicy"],
+      "properties": {
+        "featureId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "epicId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "scopeDecision": {"enum": ["IN_SCOPE", "FULLY_COVERED", "OUT_OF_SCOPE"]},
+        "scopeClass": {"enum": ["BUSINESS", "TECHNICAL", "DELIVERY"]},
+        "requirementRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "designRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "policyRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "effortPhase": {"enum": ["DESIGN", "BUILD", "SIT", "UAT", "GO_LIVE", "OPERATE"]},
+        "activationPhase": {"enum": ["BUILD", "SIT", "UAT", "GO_LIVE", "OPERATE"]},
+        "inclusionPolicy": {"enum": ["REQUIRED", "DEFAULT_INCLUDED", "SOURCE_GATED"]}
+      }
+    },
+    "designItem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["designItemId", "name", "featureIds", "sourceRefs", "status"],
+      "properties": {
+        "designItemId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "featureIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "sourceRefs": {"$ref": "#/$defs/sourceRefArray"},
+        "status": {"enum": ["APPROVED", "DESIGN_REQUIRED"]}
+      }
+    },
+    "integration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["integrationId", "name", "featureIds", "sourceRefs", "direction", "trigger", "purpose", "dataCategories", "responsibilityBoundaryIds", "counterpartyBoundary"],
+      "properties": {
+        "integrationId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "featureIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "sourceRefs": {"$ref": "#/$defs/sourceRefArray"},
+        "direction": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "trigger": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "purpose": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "dataCategories": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
+        "responsibilityBoundaryIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "counterpartyBoundary": {"enum": ["INTERNAL", "EXTERNAL"]}
+      }
+    },
+    "nfr": {
+      "type": "object", "additionalProperties": false,
+      "required": ["nfrId", "category", "featureIds", "sourceRefs", "status", "target"],
+      "properties": {
+        "nfrId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "category": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "featureIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "sourceRefs": {"$ref": "#/$defs/sourceRefArray"},
+        "status": {"enum": ["DEFINED", "DESIGN_REQUIRED", "NOT_APPLICABLE"]},
+        "target": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+      }
+    },
+    "policyInstance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policyInstanceId", "policyId", "targetNodeIds", "inclusionPolicy", "sourceRefs"],
+      "properties": {
+        "policyInstanceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "policyId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "targetNodeIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "inclusionPolicy": {"enum": ["REQUIRED", "DEFAULT_INCLUDED", "SOURCE_GATED"]},
+        "sourceRefs": {"$ref": "#/$defs/sourceRefArray"}
+      }
+    },
+    "annotation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["annotationId", "category", "subjectIds", "text"],
+      "properties": {
+        "annotationId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "category": {"enum": ["ASSUMPTION", "RESPONSIBILITY", "EXCLUSION", "DESIGN", "ESTIMATE_BOUNDARY", "CHANGE_TRIGGER", "RISK"]},
+        "subjectIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "text": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+      }
+    },
+    "story": {
+      "type": "object", "additionalProperties": false,
+      "required": ["storyId", "featureId", "name", "coverageSet", "requirementRefs", "designRefs", "policyRefs", "uatApplicable"],
+      "properties": {
+        "storyId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "featureId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "coverageSet": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "requirementRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "designRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "policyRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "uatApplicable": {"type": "boolean"}
+      }
+    },
+    "acceptanceCriterion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["acceptanceCriterionId", "storyId", "text", "coverageSet", "requirementRefs", "designRefs", "policyRefs"],
+      "properties": {
+        "acceptanceCriterionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "storyId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "text": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "coverageSet": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "requirementRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "designRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "policyRefs": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+      }
+    },
+    "task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["taskId", "storyId", "name", "workTypeId", "rowSemanticSha256", "workMode", "actualMeasurementScope", "complexity", "acceptanceCriterionIds", "designItemIds", "integrationIds", "nfrIds", "policyInstanceIds"],
+      "properties": {
+        "taskId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "storyId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "workTypeId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "rowSemanticSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "workMode": {"enum": ["新建", "调整", "接入复用"]},
+        "actualMeasurementScope": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "complexity": {"enum": ["S", "M", "L"]},
+        "acceptanceCriterionIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "designItemIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "integrationIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "nfrIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "policyInstanceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+      }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dependencyId", "fromNodeId", "toNodeId", "kind"],
+      "properties": {
+        "dependencyId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "fromNodeId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "toNodeId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "kind": {"enum": ["REQUIRES", "BLOCKS", "USES"]}
+      }
+    },
+    "effectiveStartMatch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["taskId", "queryKey", "candidateIds", "checkedLocators", "decision"],
+      "properties": {
+        "taskId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "queryKey": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "candidateIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "checkedLocators": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
+        "decision": {"enum": ["MATCHED_ADJUSTMENT", "MATCHED_REUSE", "NO_MATCH_NEW"]}
+      }
+    },
+    "decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["decisionId", "kind", "subjectIds", "decisionSha256"],
+      "properties": {
+        "decisionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "kind": {"enum": ["EXCLUDED_BY_USER", "INPUT_DECISION"]},
+        "subjectIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "decisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+      }
+    }
+  }
+}

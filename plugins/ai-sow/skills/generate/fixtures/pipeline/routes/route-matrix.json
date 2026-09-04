@@ -1,0 +1,166 @@
+{
+  "schemaVersion": "route-matrix-v1",
+  "inputRevisionFixture": "../input-revisions/greenfield.json",
+  "baseState": {
+    "contract": "ai-sow-route-context-v1",
+    "taskCatalogSemanticSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "taskEstimationMethodSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "rendererSha256": "9999999999999999999999999999999999999999999999999999999999999999",
+    "effectivePolicyDecisionSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+    "checkpointSha256s": {
+      "SCOPE_CLOSURE": "3333333333333333333333333333333333333333333333333333333333333333",
+      "STORY_AC": "4444444444444444444444444444444444444444444444444444444444444444",
+      "TASK": "5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    "reviewDecisionSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+    "inputDiagnostics": []
+  },
+  "baseCurrentGeneration": {
+    "contract": "ai-sow-generation-proof-closure-v1",
+    "generationContract": "ai-sow-generation-manifest-v2",
+    "generationId": "generation-000001",
+    "publicationComplete": true,
+    "selfContained": true,
+    "routingBasis": {
+      "semanticInputSha256": "4f7147d3194e208af12788fc776f402a585c52949eca657f893d9b9b26af147d",
+      "templateSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "deliveryPolicySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "executionPolicySha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "taskCatalogSemanticSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "taskEstimationMethodSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "rendererSha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "effectivePolicyDecisionSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "scopeClosureCheckpointSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "storyAcCheckpointSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "taskCheckpointSha256": "5555555555555555555555555555555555555555555555555555555555555555",
+      "reviewDecisionSha256": "6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "proofClosure": {
+      "stageCheckpoints": {
+        "SCOPE_CLOSURE": {
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "decision": "PASS"
+        },
+        "STORY_AC": {
+          "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "decision": "PASS"
+        },
+        "TASK": {
+          "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "decision": "PASS"
+        }
+      },
+      "reviewDecision": {
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+        "decision": "PASS"
+      },
+      "artifactManifest": {
+        "sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+        "verified": true
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "reuse",
+      "mutations": [],
+      "expected": {"route": "REUSE", "lowestRecoveryStage": null, "changed": []}
+    },
+    {
+      "name": "template-only",
+      "mutations": [{"target": "inputRevision.templateSha256", "value": "0000000000000000000000000000000000000000000000000000000000000000"}],
+      "expected": {"route": "RENDER_ONLY", "lowestRecoveryStage": "RENDER", "changed": ["templateSha256"]}
+    },
+    {
+      "name": "renderer-only",
+      "mutations": [{"target": "state.rendererSha256", "value": "0000000000000000000000000000000000000000000000000000000000000000"}],
+      "expected": {"route": "RENDER_ONLY", "lowestRecoveryStage": "RENDER", "changed": ["rendererSha256"]}
+    },
+    {
+      "name": "template-and-renderer",
+      "mutations": [
+        {"target": "inputRevision.templateSha256", "value": "0000000000000000000000000000000000000000000000000000000000000000"},
+        {"target": "state.rendererSha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"}
+      ],
+      "expected": {"route": "RENDER_ONLY", "lowestRecoveryStage": "RENDER", "changed": ["rendererSha256", "templateSha256"]}
+    },
+    {
+      "name": "no-generation",
+      "mutations": [{"target": "currentGeneration", "value": null}],
+      "expected": {"route": "FULL_COMPILE", "lowestRecoveryStage": "STAGE_1", "changed": ["generationProofClosure"]}
+    },
+    {
+      "name": "legacy-generation",
+      "mutations": [{"target": "currentGeneration", "value": {"contract": "ai-sow-generation-manifest-v1", "generationId": "legacy-000001"}}],
+      "expected": {"route": "FULL_COMPILE", "lowestRecoveryStage": "STAGE_1", "changed": ["generationProofClosure"]}
+    },
+    {
+      "name": "semantic-input",
+      "mutations": [{"target": "inputRevision.blocks.0.contentSha256", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_1", "changed": ["semanticInputSha256"]}
+    },
+    {
+      "name": "delivery-policy",
+      "mutations": [{"target": "inputRevision.deliveryPolicySha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_1", "changed": ["deliveryPolicySha256"]}
+    },
+    {
+      "name": "scope-checkpoint",
+      "mutations": [{"target": "state.checkpointSha256s.SCOPE_CLOSURE", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_1", "changed": ["scopeClosureCheckpointSha256"]}
+    },
+    {
+      "name": "effective-policy-decision",
+      "mutations": [{"target": "state.effectivePolicyDecisionSha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_2", "changed": ["effectivePolicyDecisionSha256"]}
+    },
+    {
+      "name": "story-checkpoint",
+      "mutations": [{"target": "state.checkpointSha256s.STORY_AC", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_2", "changed": ["storyAcCheckpointSha256"]}
+    },
+    {
+      "name": "catalog-semantics",
+      "mutations": [{"target": "state.taskCatalogSemanticSha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_3", "changed": ["taskCatalogSemanticSha256"]}
+    },
+    {
+      "name": "estimation-method",
+      "mutations": [{"target": "state.taskEstimationMethodSha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_3", "changed": ["taskEstimationMethodSha256"]}
+    },
+    {
+      "name": "task-checkpoint",
+      "mutations": [{"target": "state.checkpointSha256s.TASK", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_3", "changed": ["taskCheckpointSha256"]}
+    },
+    {
+      "name": "review-decision",
+      "mutations": [{"target": "state.reviewDecisionSha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "REVIEW", "changed": ["reviewDecisionSha256"]}
+    },
+    {
+      "name": "catalog-and-template",
+      "mutations": [
+        {"target": "state.taskCatalogSemanticSha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"},
+        {"target": "inputRevision.templateSha256", "value": "0000000000000000000000000000000000000000000000000000000000000000"}
+      ],
+      "expected": {"route": "DELTA_COMPILE", "lowestRecoveryStage": "STAGE_3", "changed": ["taskCatalogSemanticSha256", "templateSha256"]}
+    },
+    {
+      "name": "execution-policy-drift",
+      "mutations": [{"target": "inputRevision.executionPolicySha256", "value": "1111111111111111111111111111111111111111111111111111111111111111"}],
+      "expected": {"route": "FULL_COMPILE", "lowestRecoveryStage": "STAGE_1", "changed": ["executionPolicySha256"], "diagnosticCode": "ROUTE_HASH_DRIFT_UNSUPPORTED"}
+    },
+    {
+      "name": "input-gap",
+      "mutations": [{"target": "state.inputDiagnostics", "value": [{"code": "HLD_REQUIRED", "message": "缺少批准的 HLD 等价材料。", "path": "/sources", "details": {}}]}],
+      "expected": {"route": "FULL_COMPILE", "lowestRecoveryStage": null, "changed": [], "diagnosticCode": "HLD_REQUIRED"}
+    },
+    {
+      "name": "invalid-proof-closure",
+      "mutations": [{"target": "currentGeneration.selfContained", "value": false}],
+      "expected": {"route": "FULL_COMPILE", "lowestRecoveryStage": "STAGE_1", "changed": ["generationProofClosure"], "diagnosticCode": "GENERATION_PROOF_CLOSURE_INVALID"}
+    }
+  ]
+}

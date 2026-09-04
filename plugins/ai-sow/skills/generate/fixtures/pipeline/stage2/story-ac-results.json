@@ -1,0 +1,211 @@
+{
+  "schemaVersion": "story-ac-results-v1",
+  "replacementSet": {
+    "expectedNodeHashes": {},
+    "upserts": [
+      {
+        "collection": "stories",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-refund", "story-obligation-requirement-input-demo-retry"],
+          "storyId": "story-refund",
+          "featureId": "feature-refund",
+          "name": "用户提交退款并在失败时重试",
+          "coverageSet": ["feature-refund"],
+          "requirementRefs": ["input-refund", "input-demo-retry"],
+          "designRefs": [],
+          "policyRefs": [],
+          "uatApplicable": true
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-refund"],
+          "acceptanceCriterionId": "ac-refund-submit",
+          "storyId": "story-refund",
+          "text": "在退款申请范围内，用户可以提交退款申请并查看处理结果。",
+          "coverageSet": ["feature-refund"],
+          "requirementRefs": ["input-refund"],
+          "designRefs": [],
+          "policyRefs": []
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-demo-retry"],
+          "acceptanceCriterionId": "ac-refund-retry",
+          "storyId": "story-refund",
+          "text": "退款失败时，退款申请页面提供重试并显示可观察结果。",
+          "coverageSet": ["feature-refund"],
+          "requirementRefs": ["input-demo-retry"],
+          "designRefs": [],
+          "policyRefs": []
+        }
+      },
+      {
+        "collection": "stories",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-i18n"],
+          "storyId": "story-i18n",
+          "featureId": "feature-i18n",
+          "name": "用户切换中文和英文界面",
+          "coverageSet": ["feature-i18n"],
+          "requirementRefs": ["input-i18n"],
+          "designRefs": ["design-language"],
+          "policyRefs": [],
+          "uatApplicable": true
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-i18n"],
+          "acceptanceCriterionId": "ac-i18n-switch",
+          "storyId": "story-i18n",
+          "text": "用户界面支持中文和英文切换，并遵循统一语言包规则。",
+          "coverageSet": ["feature-i18n"],
+          "requirementRefs": ["input-i18n"],
+          "designRefs": ["design-language"],
+          "policyRefs": []
+        }
+      },
+      {
+        "collection": "stories",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-shared-pipeline"],
+          "storyId": "story-shared-pipeline",
+          "featureId": "feature-shared-pipeline",
+          "name": "九个服务共用发布流水线",
+          "coverageSet": ["service-01", "service-02", "service-03", "service-04", "service-05", "service-06", "service-07", "service-08", "service-09"],
+          "requirementRefs": ["input-shared-pipeline"],
+          "designRefs": ["design-shared-release"],
+          "policyRefs": [],
+          "uatApplicable": true
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-shared-pipeline"],
+          "acceptanceCriterionId": "ac-shared-pipeline",
+          "storyId": "story-shared-pipeline",
+          "text": "同一责任方的一套流水线配置覆盖九个服务，并为九个服务生成可验收发布证据。",
+          "coverageSet": ["service-01", "service-02", "service-03", "service-04", "service-05", "service-06", "service-07", "service-08", "service-09"],
+          "requirementRefs": ["input-shared-pipeline"],
+          "designRefs": ["design-shared-release"],
+          "policyRefs": []
+        }
+      },
+      {
+        "collection": "stories",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-migration", "story-obligation-policy-policy-instance-migration"],
+          "storyId": "story-data-migration",
+          "featureId": "feature-data-migration",
+          "name": "迁移现有退款记录并校验回滚",
+          "coverageSet": ["feature-data-migration"],
+          "requirementRefs": ["input-migration"],
+          "designRefs": [],
+          "policyRefs": ["policy-instance-migration"],
+          "uatApplicable": true
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-requirement-input-migration", "story-obligation-policy-policy-instance-migration"],
+          "acceptanceCriterionId": "ac-data-migration",
+          "storyId": "story-data-migration",
+          "text": "上线时迁移现有退款记录，并提供校验与回滚结果。",
+          "coverageSet": ["feature-data-migration"],
+          "requirementRefs": ["input-migration"],
+          "designRefs": [],
+          "policyRefs": ["policy-instance-migration"]
+        }
+      },
+      {
+        "collection": "stories",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-policy-policy-instance-sit"],
+          "storyId": "story-sit-automation",
+          "featureId": "feature-shared-pipeline",
+          "name": "交付自动化集成测试代码",
+          "coverageSet": ["feature-refund", "feature-i18n", "feature-shared-pipeline", "feature-data-migration"],
+          "requirementRefs": [],
+          "designRefs": [],
+          "policyRefs": ["policy-instance-sit"],
+          "uatApplicable": false
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-policy-policy-instance-sit"],
+          "acceptanceCriterionId": "ac-sit-automation",
+          "storyId": "story-sit-automation",
+          "text": "自动化集成测试代码或脚本覆盖全部目标 Feature，并产出可观察执行结果。",
+          "coverageSet": ["feature-refund", "feature-i18n", "feature-shared-pipeline", "feature-data-migration"],
+          "requirementRefs": [],
+          "designRefs": [],
+          "policyRefs": ["policy-instance-sit"]
+        }
+      },
+      {
+        "collection": "stories",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-policy-policy-instance-uat"],
+          "storyId": "story-uat-automation",
+          "featureId": "feature-shared-pipeline",
+          "name": "交付自动化端到端验收代码",
+          "coverageSet": ["feature-refund", "feature-i18n", "feature-shared-pipeline", "feature-data-migration"],
+          "requirementRefs": [],
+          "designRefs": [],
+          "policyRefs": ["policy-instance-uat"],
+          "uatApplicable": true
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-policy-policy-instance-uat"],
+          "acceptanceCriterionId": "ac-uat-automation",
+          "storyId": "story-uat-automation",
+          "text": "端到端自动化代码按批准技术基线执行并产出可观察验收结果。",
+          "coverageSet": ["feature-refund", "feature-i18n", "feature-shared-pipeline", "feature-data-migration"],
+          "requirementRefs": [],
+          "designRefs": [],
+          "policyRefs": ["policy-instance-uat"]
+        }
+      },
+      {
+        "collection": "stories",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-policy-policy-instance-go-live"],
+          "storyId": "story-go-live-engineering",
+          "featureId": "feature-shared-pipeline",
+          "name": "交付上线脚本与发布工程化",
+          "coverageSet": ["feature-refund", "feature-i18n", "feature-shared-pipeline", "feature-data-migration"],
+          "requirementRefs": [],
+          "designRefs": ["design-shared-release"],
+          "policyRefs": ["policy-instance-go-live"],
+          "uatApplicable": false
+        }
+      },
+      {
+        "collection": "acceptanceCriteria",
+        "node": {
+          "fixtureObligationIds": ["story-obligation-policy-policy-instance-go-live"],
+          "acceptanceCriterionId": "ac-go-live-engineering",
+          "storyId": "story-go-live-engineering",
+          "text": "上线脚本、配置、部署与发布工程化覆盖全部目标 Feature 并生成发布证据。",
+          "coverageSet": ["feature-refund", "feature-i18n", "feature-shared-pipeline", "feature-data-migration"],
+          "requirementRefs": [],
+          "designRefs": ["design-shared-release"],
+          "policyRefs": ["policy-instance-go-live"]
+        }
+      }
+    ],
+    "deletes": []
+  }
+}

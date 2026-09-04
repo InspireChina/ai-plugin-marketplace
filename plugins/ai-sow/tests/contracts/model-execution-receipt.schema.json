@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:model-execution-receipt:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "receiptId",
+    "sampleId",
+    "scenarioId",
+    "repetition",
+    "cacheMode",
+    "granularity",
+    "runId",
+    "actionId",
+    "stage",
+    "modelProfileId",
+    "model",
+    "reasoningEffort",
+    "bindings",
+    "timing",
+    "usage",
+    "work",
+    "outcome",
+    "signature"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-model-execution-receipt-v1"},
+    "receiptId": {"type": "string", "minLength": 1},
+    "sampleId": {"type": "string", "minLength": 1},
+    "scenarioId": {"type": "string", "minLength": 1},
+    "repetition": {"type": "integer", "minimum": 1},
+    "cacheMode": {"enum": ["COLD", "WARM"]},
+    "granularity": {"enum": ["ACTION", "STAGE", "RUN"]},
+    "runId": {"type": "string", "minLength": 1},
+    "actionId": {"type": ["string", "null"], "minLength": 1},
+    "stage": {
+      "enum": [
+        "CONTROL_PLANE",
+        "STAGE_1",
+        "STAGE_2",
+        "STAGE_3",
+        "R1",
+        "R2",
+        "R3",
+        "REPAIR",
+        "DELTA_REVIEW",
+        "ADJUDICATION",
+        "DRAFT_OFFICE",
+        "RUN"
+      ]
+    },
+    "modelProfileId": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "reasoningEffort": {"type": "string", "minLength": 1},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environmentSha256",
+        "implementationSha256",
+        "inputSha256",
+        "packetSha256",
+        "baseSha256",
+        "cacheProtocolSha256"
+      ],
+      "properties": {
+        "environmentSha256": {"$ref": "#/$defs/sha256"},
+        "implementationSha256": {"$ref": "#/$defs/sha256"},
+        "inputSha256": {"$ref": "#/$defs/sha256"},
+        "packetSha256": {"$ref": "#/$defs/sha256"},
+        "baseSha256": {"$ref": "#/$defs/sha256"},
+        "cacheProtocolSha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queueMilliseconds",
+        "executionMilliseconds",
+        "joinMilliseconds",
+        "totalMilliseconds",
+        "criticalPathMilliseconds"
+      ],
+      "properties": {
+        "queueMilliseconds": {"type": "number", "minimum": 0},
+        "executionMilliseconds": {"type": "number", "minimum": 0},
+        "joinMilliseconds": {"type": "number", "minimum": 0},
+        "totalMilliseconds": {"type": "number", "minimum": 0},
+        "criticalPathMilliseconds": {"type": "number", "minimum": 0}
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountingMode",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "reasoningTokens",
+        "controlPlaneTokens",
+        "toolContextTokens",
+        "tokenizer"
+      ],
+      "properties": {
+        "accountingMode": {"enum": ["PROVIDER_REPORTED", "LOCALLY_ESTIMATED"]},
+        "inputTokens": {"type": "integer", "minimum": 0},
+        "cachedInputTokens": {"type": "integer", "minimum": 0},
+        "outputTokens": {"type": "integer", "minimum": 0},
+        "reasoningTokens": {"type": ["integer", "null"], "minimum": 0},
+        "controlPlaneTokens": {"type": "integer", "minimum": 0},
+        "toolContextTokens": {"type": "integer", "minimum": 0},
+        "tokenizer": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "version"],
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "version": {"type": "string", "minLength": 1}
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"accountingMode": {"const": "LOCALLY_ESTIMATED"}}},
+          "then": {
+            "properties": {
+              "reasoningTokens": {"type": "null"},
+              "tokenizer": {"type": "object"}
+            }
+          }
+        }
+      ]
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hydrationRounds",
+        "toolAttempts",
+        "modelAttempts",
+        "actionAttempts",
+        "repairWaves",
+        "adjudications",
+        "recompiles",
+        "rereviews",
+        "failures",
+        "retries"
+      ],
+      "properties": {
+        "hydrationRounds": {"type": "integer", "minimum": 0},
+        "toolAttempts": {"type": "integer", "minimum": 0},
+        "modelAttempts": {"type": "integer", "minimum": 0},
+        "actionAttempts": {"type": "integer", "minimum": 0},
+        "repairWaves": {"type": "integer", "minimum": 0},
+        "adjudications": {"type": "integer", "minimum": 0},
+        "recompiles": {"type": "integer", "minimum": 0},
+        "rereviews": {"type": "integer", "minimum": 0},
+        "failures": {"type": "integer", "minimum": 0},
+        "retries": {"type": "integer", "minimum": 0}
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semanticCorrectnessPassed",
+        "wallBudgetPassed",
+        "tokenBudgetPassed",
+        "noWasteAmplification",
+        "usable",
+        "code"
+      ],
+      "properties": {
+        "semanticCorrectnessPassed": {"type": "boolean"},
+        "wallBudgetPassed": {"type": "boolean"},
+        "tokenBudgetPassed": {"type": "boolean"},
+        "noWasteAmplification": {"type": "boolean"},
+        "usable": {"type": "boolean"},
+        "code": {"type": ["string", "null"], "minLength": 1}
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "payloadSha256"],
+      "properties": {
+        "algorithm": {"const": "SHA256"},
+        "payloadSha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

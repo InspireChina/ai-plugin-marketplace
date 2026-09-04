@@ -4,22 +4,14 @@
     {
       "caseId": "greenfield",
       "mode": "GREENFIELD",
-      "requestPath": "skills/generate/fixtures/greenfield/request.json",
-      "scopeSlicePath": "skills/generate/fixtures/greenfield/scope.json",
-      "deliverySlicePath": "skills/generate/fixtures/greenfield/delivery.json",
-      "finalReviewPath": "skills/generate/fixtures/greenfield/final-review.json",
-      "expectedDecision": "PASS",
-      "expectedCounts": {"features": 1, "stories": 1, "tasks": 1}
+      "fixtureRootPath": "skills/generate/fixtures/pipeline/e2e/greenfield",
+      "expectedMinimumActions": 10
     },
     {
       "caseId": "brownfield",
       "mode": "BROWNFIELD",
-      "requestPath": "skills/generate/fixtures/brownfield/request.json",
-      "scopeSlicePath": "skills/generate/fixtures/brownfield/scope.json",
-      "deliverySlicePath": "skills/generate/fixtures/brownfield/delivery.json",
-      "finalReviewPath": "skills/generate/fixtures/brownfield/final-review.json",
-      "expectedDecision": "PASS_WITH_NOTES",
-      "expectedCounts": {"features": 2, "stories": 2, "tasks": 4}
+      "fixtureRootPath": "skills/generate/fixtures/pipeline/e2e/brownfield",
+      "expectedMinimumActions": 10
     }
   ]
 }

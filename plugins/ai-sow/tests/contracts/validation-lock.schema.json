@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:validation-lock:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "lockId", "entries"],
+  "properties": {
+    "contract": {"const": "ai-sow-validation-lock-v1"},
+    "lockId": {"type": "string", "minLength": 1},
+    "entries": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "path", "sha256"],
+        "properties": {
+          "category": {
+            "enum": [
+              "businessInputs",
+              "caseManifests",
+              "typedSubmissions",
+              "goldens",
+              "rubrics",
+              "schemas",
+              "templateAuthorities",
+              "driversAndAssertions",
+              "thresholds"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          },
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

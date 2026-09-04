@@ -17,6 +17,11 @@
 安装副本内准备 uv 0.11.7、managed Python 3.12、锁定依赖和隔离 `.venv`。Windows 未启用长路径
 支持时，项目根路径需短于 97 个字符。
 
+Codex 与 Claude Code 只负责安装 Skill 和承载模型 worker。AI SOW 运行时使用同一套 Python
+`NextAction`/文件协议，不调用 `codex`、Claude Code CLI 或其他代理产品命令；Windows 使用
+`bootstrap.ps1` 与 `.venv/Scripts/python.exe`，macOS/Linux 使用 `bootstrap.sh` 与
+`.venv/bin/python`。
+
 ## 安装
 
 ### Codex
@@ -59,7 +64,7 @@ git clone https://github.com/InspireChina/ai-plugin-marketplace.git
 
 - PRD：UTF-8 Markdown（`.md`）；
 - HLD：UTF-8 Markdown（`.md`）；
-- 往期 SOW：仅 Excel（`.xlsx`），Brownfield 至少一份；
+- 往期 SOW：仅 Excel（`.xlsx`）；Brownfield 建议提供，未提供时明确记录 `NOT_PROVIDED` 并建立新基线；
 - 补充材料：UTF-8 纯文本（默认 Markdown）、HTML、TypeScript、TSX 或 `.xlsx`；
 - 项目标识、名称、生效日期，以及客户、供应商和第三方的高层责任边界。
 
@@ -77,17 +82,22 @@ PDF、Word、PowerPoint 和其他需要专用解析器的格式当前不支持�
 使用 ai-sow:generate，根据 PRD、HLD、往期 SOW 和现状变化说明增量更新 SOW。
 ```
 
-工作流会自动完成输入归档、范围编译、交付分解、一次终审、工作簿渲染和发布。资料不足但仍能建立
-固定边界时返回 `PASS_WITH_NOTES`；只有无法形成可信范围或估算时才返回 `BLOCKED`，并一次汇总最少量
-问题。补充答案后再次调用同一 Skill 即可从 pending 输入继续。
+工作流会自动完成不可变输入归档、三阶段 SOW Model 编译、并行独立评审、Theme Join、必要的
+Adjudication、工作簿渲染和 Office 复读。每个模型 action 都使用 `FRESH_NO_HISTORY`：只接收当前
+action 的 prompt、packet、reference 和按需 hydrate 的证据，不继承主对话、兄弟 action 或前序阶段
+历史，因此 E2E 主流程不会持续侵占模型上下文窗口。
+
+资料不足时集中返回 `REQUEST_INPUT`；候选包和 Office 证据都闭合后返回 `REQUEST_APPROVAL`，只有用户
+批准精确 artifact manifest 后才原子发布。补充答案后再次调用同一 Skill，会创建新的不可变 input
+revision 并从安全边界继续；上一份有效 SOW 始终不被覆盖。
 
 每个问题都会逐项说明“问题、为什么要问、答案决定什么、未回答后果”。确认时展示自然语言结论；
 内容较长时同时提供可打开的 Markdown 或 Excel 文件，内部 ID、hash 和阶段 token 不作为确认正文。
 
-当前只支持 XLSX SOW 模板。每轮开始会读取当时的项目模板并立即固定为本轮专用副本；运行期间外部
-模板变化不会改变已开始的本轮。下一轮发现模板与上一份 generation 不同时会重新编译 Delivery 并
-重新终审，不会让旧 Task 沿用新标准。Task 的具体目录、工作方式、复杂度和人天规则只查看模板中的
-`90-估算标准`。
+当前只支持 XLSX SOW 模板。每个 input revision 都保存模板的本轮专用副本；运行期间外部模板变化
+不会改变已开始的本轮。新模板若只改变输出字节语义，可复用已评审 SOW Model 并完整重渲染；若
+`90-估算标准` 的任务目录或语义改变，则从受影响阶段重新编译和评审，旧 Task 不会套用新标准。
+也就是说，估算语义变化会重新编译 Delivery；只有不影响任务目录语义的字节变化才允许只重渲染。
 
 正式工作簿采用四 Sheet 简化模板：`01-需求故事`、`02-任务清单`、`03-工作量汇总`、`90-估算标准`。
 需求故事表固定九列且不暴露内部故事路径；Story 采用自然的角色/对象动作标题、至少两条可验收 AC，
@@ -100,13 +110,14 @@ PDF、Word、PowerPoint 和其他需要专用解析器的格式当前不支持�
 成功输出位于当前 generation：
 
 ```text
-.ai-sow/generations/<revision>/output/sow.xlsx
-.ai-sow/generations/<revision>/output/sow-notes.md
+.ai-sow/generations/<generation>/output/sow.xlsx
+.ai-sow/generations/<generation>/output/sow-notes.md
 ```
 
 `.ai-sow/current.json` 始终指向最近一次成功结果。失败或阻断不会覆盖上一份有效 SOW；输入与模板都
-未变化时直接复用，模板变化后的新一轮重新编译 Delivery、重新终审并完整重渲染，语义输入变化时只
-重算受影响 Feature 闭包并完整重渲染输出。
+未变化时直接复用；仅 renderer 变化时走 `RENDER_ONLY` 且不启动 Reviewer；语义或估算权威变化时走
+`DELTA_COMPILE`，以上一份已发布 SOW Model 为基线重编译并保持未受影响节点原字节不变；合同闭包
+不可信时才走 `FULL_COMPILE`。所有非复用路径都完整重渲染输出。
 
 自动生成结果用于评审和估算，不代表客户已经签署、接受或赋予 SOW 法律效力。
 

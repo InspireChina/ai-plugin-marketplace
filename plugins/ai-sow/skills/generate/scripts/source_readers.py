@@ -1,23 +1,31 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from collections import Counter, defaultdict
+from datetime import date, datetime, time
+from html.parser import HTMLParser
 from pathlib import Path
+import zipfile
 
 import openpyxl
 
 from contracts import canonical_json_bytes
-from models import SourceAnchor
+from models import SourceAnchor, SourceDocument
 
 
-SOURCE_ROLES = frozenset({"PRD", "HLD", "PRIOR_SOW", "SUPPLEMENT"})
+SOURCE_ROLES = frozenset(
+    {"PRD", "DEMO", "HLD", "ADR", "PRIOR_SOW", "SUPPLEMENT"}
+)
 ROLE_SUFFIXES = {
     "PRD": frozenset({".md"}),
     "HLD": frozenset({".md"}),
+    "ADR": frozenset({".md"}),
     "PRIOR_SOW": frozenset({".xlsx"}),
 }
+PROTOTYPE_SUFFIXES = frozenset({".md", ".html", ".htm", ".ts", ".tsx"})
 UNSUPPORTED_PARSED_SUFFIXES = frozenset(
     {
         ".doc",
@@ -57,12 +65,92 @@ PLACEHOLDER_TERMS = frozenset(
         "无",
     }
 )
+MAX_SOURCE_FILE_BYTES = 50 * 1024 * 1024
+MAX_XLSX_ARCHIVE_ENTRIES = 2048
+MAX_XLSX_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
+MAX_XLSX_COMPRESSION_RATIO = 100
+MAX_XLSX_SHEETS = 64
+MAX_XLSX_ROWS_PER_SHEET = 100_000
+MAX_XLSX_COLUMNS_PER_SHEET = 512
+MAX_XLSX_DIMENSION_CELLS = 1_000_000
+MAX_XLSX_TOTAL_CELLS = 2_000_000
+MAX_XLSX_CELL_TEXT_CHARS = 32_767
+MAX_XLSX_TOTAL_TEXT_CHARS = 10_000_000
 
 
 class SourceReadError(ValueError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
+
+
+def _limit(message: str) -> SourceReadError:
+    return SourceReadError("SOURCE_LIMIT_EXCEEDED", message)
+
+
+def _preflight_xlsx(path: Path) -> None:
+    try:
+        snapshot = path.lstat()
+        if snapshot.st_size > MAX_SOURCE_FILE_BYTES:
+            raise _limit("XLSX 压缩文件超过读取上限。")
+        with zipfile.ZipFile(path) as archive:
+            entries = archive.infolist()
+            if len(entries) > MAX_XLSX_ARCHIVE_ENTRIES:
+                raise _limit("XLSX ZIP 条目数超过读取上限。")
+            uncompressed = sum(item.file_size for item in entries)
+            compressed = sum(item.compress_size for item in entries)
+            if uncompressed > MAX_XLSX_UNCOMPRESSED_BYTES:
+                raise _limit("XLSX 解压后体积超过读取上限。")
+            if compressed == 0 and uncompressed > 0:
+                raise _limit("XLSX 压缩比无法安全验证。")
+            if compressed and uncompressed / compressed > MAX_XLSX_COMPRESSION_RATIO:
+                raise _limit("XLSX 压缩比超过安全上限。")
+    except SourceReadError:
+        raise
+    except (OSError, zipfile.BadZipFile) as error:
+        raise SourceReadError("SOURCE_UNREADABLE", "XLSX 无法读取。") from error
+
+
+def _bounded_xlsx_rows(path: Path):
+    _preflight_xlsx(path)
+    workbook = None
+    try:
+        workbook = openpyxl.load_workbook(path, read_only=True, data_only=False)
+        if len(workbook.worksheets) > MAX_XLSX_SHEETS:
+            raise _limit("XLSX Sheet 数量超过读取上限。")
+        total_cells = 0
+        total_text_chars = 0
+        for worksheet in workbook.worksheets:
+            max_row = int(worksheet.max_row or 0)
+            max_column = int(worksheet.max_column or 0)
+            if (
+                max_row > MAX_XLSX_ROWS_PER_SHEET
+                or max_column > MAX_XLSX_COLUMNS_PER_SHEET
+                or max_row * max_column > MAX_XLSX_DIMENSION_CELLS
+            ):
+                raise _limit(f"XLSX Sheet {worksheet.title} 的声明维度超过读取上限。")
+            for row_number, row in enumerate(worksheet.iter_rows(values_only=True), 1):
+                total_cells += len(row)
+                if total_cells > MAX_XLSX_TOTAL_CELLS:
+                    raise _limit("XLSX 单元格总数超过读取上限。")
+                values: list[object] = []
+                for value in row:
+                    scalar = _xlsx_scalar(value)
+                    text = "" if scalar is None else str(scalar)
+                    if len(text) > MAX_XLSX_CELL_TEXT_CHARS:
+                        raise _limit("XLSX 单元格文本超过读取上限。")
+                    total_text_chars += len(text)
+                    if total_text_chars > MAX_XLSX_TOTAL_TEXT_CHARS:
+                        raise _limit("XLSX 文本总量超过读取上限。")
+                    values.append(scalar)
+                yield worksheet.title, row_number, values
+    except SourceReadError:
+        raise
+    except Exception as error:
+        raise SourceReadError("SOURCE_UNREADABLE", "XLSX 无法读取。") from error
+    finally:
+        if workbook is not None:
+            workbook.close()
 
 
 def _normalize(text: object) -> str:
@@ -134,25 +222,24 @@ def _text_anchors(text: str) -> list[tuple[str, str, str]]:
 
 def _xlsx_anchors(path: Path) -> list[tuple[str, str, str]]:
     try:
-        workbook = openpyxl.load_workbook(path, read_only=True, data_only=False)
         anchors: list[tuple[str, str, str]] = []
-        for worksheet in workbook.worksheets:
-            semantic_row = 0
-            for row in worksheet.iter_rows(values_only=True):
-                cells = [_normalize(value) for value in row if value is not None]
-                normalized = " | ".join(cell for cell in cells if cell)
-                if not normalized:
-                    continue
-                semantic_row += 1
-                anchors.append(
-                    (
-                        "SHEET_ROW",
-                        f"sheet:{worksheet.title}/row:{semantic_row:04d}",
-                        normalized,
-                    )
+        semantic_rows: defaultdict[str, int] = defaultdict(int)
+        for sheet_title, _row_number, row in _bounded_xlsx_rows(path):
+            cells = [_normalize(value) for value in row if value is not None]
+            normalized = " | ".join(cell for cell in cells if cell)
+            if not normalized:
+                continue
+            semantic_rows[sheet_title] += 1
+            anchors.append(
+                (
+                    "SHEET_ROW",
+                    f"sheet:{sheet_title}/row:{semantic_rows[sheet_title]:04d}",
+                    normalized,
                 )
-        workbook.close()
+            )
         return anchors
+    except SourceReadError:
+        raise
     except Exception as error:
         raise SourceReadError("SOURCE_UNREADABLE", "XLSX 无法读取。") from error
 
@@ -165,11 +252,366 @@ def _source_kind(path: Path, role: str) -> str:
         if suffix not in ROLE_SUFFIXES[role]:
             raise SourceReadError("SOURCE_FORMAT_UNSUPPORTED", "来源文件格式不受支持。")
         return "MARKDOWN" if suffix == ".md" else "XLSX"
+    if role == "DEMO" and suffix not in PROTOTYPE_SUFFIXES:
+        raise SourceReadError("SOURCE_FORMAT_UNSUPPORTED", "来源文件格式不受支持。")
     if suffix == ".xlsx":
         return "XLSX"
     if suffix in UNSUPPORTED_PARSED_SUFFIXES:
         raise SourceReadError("SOURCE_FORMAT_UNSUPPORTED", "来源文件格式不受支持。")
     return "MARKDOWN" if suffix == ".md" else "TEXT"
+
+
+def inspect_source_header(path: Path, *, source_role: str) -> str:
+    """Run the bounded, non-semantic source check used by the cheap prepare gate."""
+    kind = _source_kind(path, source_role)
+    try:
+        snapshot = path.lstat()
+        if not path.is_file() or path.is_symlink():
+            raise OSError("not a regular file")
+        if snapshot.st_size > MAX_SOURCE_FILE_BYTES:
+            raise _limit("来源文件超过读取上限。")
+        if kind == "XLSX":
+            with path.open("rb") as stream:
+                header = stream.read(4)
+            if snapshot.st_size < 4 or header != b"PK\x03\x04":
+                raise SourceReadError("SOURCE_FORMAT_HEADER_INVALID", "XLSX 文件头无效。")
+            _preflight_xlsx(path)
+        else:
+            with path.open("rb") as stream:
+                prefix = stream.read(4096)
+            prefix.decode("utf-8")
+    except SourceReadError:
+        raise
+    except UnicodeDecodeError as error:
+        raise SourceReadError("SOURCE_FORMAT_HEADER_INVALID", "文本文件头不是 UTF-8。") from error
+    except OSError as error:
+        raise SourceReadError("SOURCE_UNREADABLE", "来源文件无法读取。") from error
+    return kind
+
+
+def _lossless_text(value: str) -> str:
+    return unicodedata.normalize("NFC", value.replace("\r\n", "\n").replace("\r", "\n"))
+
+
+class _BlockBuilder:
+    def __init__(self, role: str, source_id: str) -> None:
+        self.role = role
+        self.source_id = source_id
+        self.blocks: list[dict[str, object]] = []
+
+    def add(
+        self,
+        *,
+        locator: str,
+        raw_content: str,
+        parent_id: str | None,
+        disposition: str = "INCLUDED",
+        dropped: tuple[str, ...] = (),
+        context_ids: tuple[str, ...] | None = None,
+    ) -> str:
+        content = _lossless_text(raw_content)
+        raw_sha256 = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
+        content_sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        identity = hashlib.sha256(
+            canonical_json_bytes(
+                [self.role, locator, raw_sha256, len(self.blocks) + 1]
+            )
+        ).hexdigest()
+        block_id = f"block-{identity[:20]}"
+        contexts = context_ids if context_ids is not None else ((parent_id,) if parent_id else ())
+        self.blocks.append(
+            {
+                "blockId": block_id,
+                "sourceId": self.source_id,
+                "rawSha256": raw_sha256,
+                "contentSha256": content_sha256,
+                "locator": locator,
+                "primaryCoverageBlockId": block_id,
+                "contextBlockIds": list(contexts),
+                "structuralParentId": parent_id,
+                "extractionDisposition": disposition,
+                "droppedContentCategories": list(dropped),
+                "content": content,
+            }
+        )
+        return block_id
+
+
+def _markdown_blocks(text: str, builder: _BlockBuilder) -> None:
+    headings: list[tuple[int, str, str]] = []
+    paragraph: list[str] = []
+    paragraph_index = 0
+    table_index = 0
+    gap_index = 0
+
+    def section() -> str:
+        return "/".join(item[1] for item in headings) if headings else "document"
+
+    def parent_id() -> str | None:
+        return headings[-1][2] if headings else None
+
+    def flush_paragraph() -> None:
+        nonlocal paragraph_index
+        if not paragraph:
+            return
+        paragraph_index += 1
+        builder.add(
+            locator=f"section:{section()}/paragraph:{paragraph_index:04d}",
+            raw_content="\n".join(paragraph),
+            parent_id=parent_id(),
+        )
+        paragraph.clear()
+
+    for line in _lossless_text(text).split("\n"):
+        heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+        if heading:
+            flush_paragraph()
+            level = len(heading.group(1))
+            title = unicodedata.normalize("NFC", heading.group(2).strip())
+            while headings and headings[-1][0] >= level:
+                headings.pop()
+            parent = headings[-1][2] if headings else None
+            block_id = builder.add(
+                locator=f"heading:{'/'.join([*(item[1] for item in headings), title])}",
+                raw_content=line,
+                parent_id=parent,
+            )
+            headings.append((level, title, block_id))
+            continue
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            flush_paragraph()
+            table_index += 1
+            disposition = (
+                "CONTEXT_ONLY"
+                if all(
+                    re.fullmatch(r":?-{3,}:?", cell.strip())
+                    for cell in stripped.strip("|").split("|")
+                )
+                else "INCLUDED"
+            )
+            builder.add(
+                locator=f"section:{section()}/table-row:{table_index:04d}",
+                raw_content=line,
+                parent_id=parent_id(),
+                disposition=disposition,
+            )
+            continue
+        if not stripped:
+            flush_paragraph()
+            gap_index += 1
+            builder.add(
+                locator=f"section:{section()}/gap:{gap_index:04d}",
+                raw_content=line,
+                parent_id=parent_id(),
+                disposition="DROPPED",
+                dropped=("EMPTY",),
+            )
+        else:
+            paragraph.append(line)
+    flush_paragraph()
+
+
+def _text_blocks(text: str, builder: _BlockBuilder) -> None:
+    blocks = re.split(r"(\n\s*\n)", _lossless_text(text))
+    content_index = 0
+    gap_index = 0
+    for block in blocks:
+        if not block:
+            continue
+        if not block.strip():
+            gap_index += 1
+            builder.add(
+                locator=f"gap:{gap_index:04d}",
+                raw_content=block,
+                parent_id=None,
+                disposition="DROPPED",
+                dropped=("EMPTY",),
+            )
+        else:
+            content_index += 1
+            builder.add(
+                locator=f"paragraph:{content_index:04d}",
+                raw_content=block,
+                parent_id=None,
+            )
+
+
+class _LosslessHTMLParser(HTMLParser):
+    def __init__(self, builder: _BlockBuilder) -> None:
+        super().__init__(convert_charrefs=False)
+        self.builder = builder
+        self.stack: list[tuple[str, str, str]] = []
+        self.counts: defaultdict[tuple[str, str], int] = defaultdict(int)
+
+    def _parent(self) -> str | None:
+        return self.stack[-1][1] if self.stack else None
+
+    def _path(self, tag: str) -> str:
+        parent_path = self.stack[-1][2] if self.stack else "html"
+        key = (parent_path, tag)
+        self.counts[key] += 1
+        return f"{parent_path}/{tag}[{self.counts[key]}]"
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        path = self._path(tag)
+        block_id = self.builder.add(
+            locator=f"{path}/start",
+            raw_content=self.get_starttag_text() or f"<{tag}>",
+            parent_id=self._parent(),
+            disposition="CONTEXT_ONLY",
+        )
+        self.stack.append((tag, block_id, path))
+
+    def handle_startendtag(self, tag: str, attrs) -> None:
+        path = self._path(tag)
+        self.builder.add(
+            locator=f"{path}/self",
+            raw_content=self.get_starttag_text() or f"<{tag}/>",
+            parent_id=self._parent(),
+            disposition="CONTEXT_ONLY",
+        )
+
+    def handle_endtag(self, tag: str) -> None:
+        current = self.stack[-1] if self.stack else None
+        self.builder.add(
+            locator=f"{current[2] if current else 'html'}/end:{tag}",
+            raw_content=f"</{tag}>",
+            parent_id=current[1] if current else None,
+            disposition="CONTEXT_ONLY",
+        )
+        if current is not None:
+            self.stack.pop()
+
+    def handle_data(self, data: str) -> None:
+        parent = self.stack[-1] if self.stack else None
+        tag = parent[0].casefold() if parent else ""
+        dropped = ("SCRIPT",) if tag == "script" else (("STYLE",) if tag == "style" else ())
+        if not data.strip() and not dropped:
+            dropped = ("EMPTY",)
+        self.counts[((parent[2] if parent else "html"), "text")] += 1
+        index = self.counts[((parent[2] if parent else "html"), "text")]
+        self.builder.add(
+            locator=f"{parent[2] if parent else 'html'}/text[{index}]",
+            raw_content=data,
+            parent_id=parent[1] if parent else None,
+            disposition="DROPPED" if dropped else "INCLUDED",
+            dropped=dropped,
+        )
+
+    def handle_comment(self, data: str) -> None:
+        self.builder.add(
+            locator=f"{self.stack[-1][2] if self.stack else 'html'}/comment:{len(self.builder.blocks)+1}",
+            raw_content=f"<!--{data}-->",
+            parent_id=self._parent(),
+            disposition="DROPPED",
+            dropped=("COMMENT",),
+        )
+
+    def handle_entityref(self, name: str) -> None:
+        self.handle_data(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self.handle_data(f"&#{name};")
+
+    def handle_decl(self, decl: str) -> None:
+        self.builder.add(
+            locator="html/declaration",
+            raw_content=f"<!{decl}>",
+            parent_id=None,
+            disposition="CONTEXT_ONLY",
+        )
+
+
+def _xlsx_scalar(value: object) -> object:
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _xlsx_blocks(path: Path, builder: _BlockBuilder) -> None:
+    try:
+        sheet_ids: dict[str, str] = {}
+        for sheet_title, row_number, values in _bounded_xlsx_rows(path):
+            if sheet_title not in sheet_ids:
+                sheet_ids[sheet_title] = builder.add(
+                    locator=f"sheet:{sheet_title}",
+                    raw_content=sheet_title,
+                    parent_id=None,
+                    disposition="CONTEXT_ONLY",
+                )
+            sheet_id = sheet_ids[sheet_title]
+            if all(value is None or value == "" for value in values):
+                continue
+            text = " | ".join(str(value) for value in values if value not in {None, ""})
+            builder.add(
+                locator=f"sheet:{sheet_title}/row:{row_number:06d}",
+                raw_content=text,
+                parent_id=sheet_id,
+                dropped=("STYLE",),
+            )
+        # Empty sheets intentionally produce no semantic block and are handled by SOURCE_BLANK.
+    except SourceReadError:
+        raise
+    except Exception as error:
+        raise SourceReadError("SOURCE_UNREADABLE", "XLSX 无法读取。") from error
+
+
+def extract_source_blocks(
+    path: Path,
+    *,
+    source_role: str,
+    parser_version: str,
+) -> SourceDocument:
+    """Extract structure-preserving blocks while binding the untouched source bytes."""
+    kind = inspect_source_header(path, source_role=source_role)
+    raw_payload = path.read_bytes()
+    source_id = re.sub(r"[^A-Za-z0-9._:-]+", "-", path.stem).strip("-") or "source"
+    builder = _BlockBuilder(source_role, source_id)
+    try:
+        if kind == "XLSX":
+            parser_id = "xlsx-rows"
+            _xlsx_blocks(path, builder)
+        else:
+            text = _read_utf8_text(path)
+            suffix = path.suffix.casefold()
+            if suffix in {".html", ".htm"}:
+                parser_id = "html-events"
+                parser = _LosslessHTMLParser(builder)
+                parser.feed(_lossless_text(text))
+                parser.close()
+            elif kind == "MARKDOWN":
+                parser_id = "markdown-blocks"
+                _markdown_blocks(text, builder)
+            else:
+                parser_id = "text-blocks"
+                _text_blocks(text, builder)
+    except SourceReadError:
+        raise
+    except (OSError, UnicodeDecodeError, UnicodeError) as error:
+        raise SourceReadError("SOURCE_UNREADABLE", "来源文件无法读取。") from error
+
+    semantic = [
+        str(block["content"])
+        for block in builder.blocks
+        if block["extractionDisposition"] == "INCLUDED" and str(block["content"]).strip()
+    ]
+    if not semantic:
+        raise SourceReadError("SOURCE_BLANK", "来源文件没有有效内容。")
+    if _is_placeholder_only(semantic):
+        raise SourceReadError("SOURCE_PLACEHOLDER_ONLY", "来源文件只有占位内容。")
+    if _looks_like_unrelated_sample(semantic):
+        raise SourceReadError("SOURCE_IRRELEVANT_SAMPLE", "来源文件是未填写的无关样例。")
+    return SourceDocument(
+        source_id=source_id,
+        role=source_role,
+        raw_sha256=hashlib.sha256(raw_payload).hexdigest(),
+        parser_id=parser_id,
+        parser_version=parser_version,
+        blocks=tuple(builder.blocks),
+    )
 
 
 def source_media_type(path: Path, role: str) -> str:
@@ -213,6 +655,8 @@ def extract_document(
     kind = _source_kind(path, role)
     if not path.is_file():
         raise SourceReadError("SOURCE_UNREADABLE", "来源文件无法读取。")
+    if path.stat().st_size > MAX_SOURCE_FILE_BYTES:
+        raise _limit("来源文件超过读取上限。")
 
     try:
         if kind in {"MARKDOWN", "TEXT"}:

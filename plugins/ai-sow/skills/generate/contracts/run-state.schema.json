@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:run-state:1",
+  "description": "记录单一 active run 的正交路由、阶段、等待、终态、预算与检查点引用。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "runId",
+    "requestSha256",
+    "route",
+    "phase",
+    "wait",
+    "result",
+    "currentInputRevisionSha256",
+    "currentCandidateSha256",
+    "currentCandidatePath",
+    "expectedActionIds",
+    "checkpointRefs",
+    "budget",
+    "resumeFromPhase"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-run-state-v1"},
+    "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+    "requestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "route": {"enum": ["REUSE", "RENDER_ONLY", "FULL_COMPILE", "DELTA_COMPILE"]},
+    "phase": {
+      "enum": [
+        "PREPARE",
+        "EPIC_FEATURE",
+        "STORY_AC",
+        "TASK",
+        "REVIEW",
+        "REPAIR",
+        "DRAFT",
+        "AWAITING_APPROVAL",
+        "PROMOTE",
+        "DONE"
+      ]
+    },
+    "wait": {"enum": ["NONE", "MODEL", "INPUT", "APPROVAL"]},
+    "result": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "enum": [
+            "REUSED",
+            "PUBLISHED",
+            "MANUAL_REVIEW_REQUIRED",
+            "CONTRACT_UNSUPPORTED",
+            "SYSTEM_FAILED",
+            "ABANDONED"
+          ]
+        }
+      ]
+    },
+    "currentInputRevisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "currentCandidateSha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+      ]
+    },
+    "currentCandidatePath": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"}
+      ]
+    },
+    "expectedActionIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+    "checkpointRefs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/checkpointRef"}
+    },
+    "budget": {"$ref": "#/$defs/budget"},
+    "resumeFromPhase": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "enum": [
+            "PREPARE",
+            "EPIC_FEATURE",
+            "STORY_AC",
+            "TASK",
+            "REVIEW",
+            "REPAIR",
+            "DRAFT"
+          ]
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "checkpointRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "sha256"],
+      "properties": {
+        "kind": {"enum": ["SCOPE_CLOSURE", "STORY_AC", "TASK"]},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "sha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executionPolicySha256", "modelActionsStarted", "modelActionsCompleted"],
+      "properties": {
+        "executionPolicySha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "modelActionsStarted": {"type": "integer", "minimum": 0},
+        "modelActionsCompleted": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "phase": {"const": "DONE"},
+            "wait": {"const": "NONE"},
+            "result": {"type": "string"},
+            "expectedActionIds": {"maxItems": 0}
+          }
+        },
+        {
+          "properties": {
+            "phase": {"not": {"const": "DONE"}},
+            "wait": {"const": "MODEL"},
+            "result": {"type": "null"},
+            "expectedActionIds": {"minItems": 1}
+          }
+        },
+        {
+          "properties": {
+            "phase": {"not": {"const": "DONE"}},
+            "wait": {"enum": ["INPUT", "APPROVAL"]},
+            "result": {"type": "null"},
+            "expectedActionIds": {"maxItems": 0}
+          }
+        },
+        {
+          "properties": {
+            "phase": {"not": {"const": "DONE"}},
+            "wait": {"const": "NONE"},
+            "result": {"type": "null"},
+            "expectedActionIds": {"maxItems": 0}
+          }
+        }
+      ]
+    }
+  ]
+}

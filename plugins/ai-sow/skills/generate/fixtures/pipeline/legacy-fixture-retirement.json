@@ -1,0 +1,75 @@
+{
+  "contract": "ai-sow-legacy-fixture-retirement-v1",
+  "entries": [
+    {
+      "legacyPath": "fixtures/greenfield/request.json",
+      "legacySha256": "410e3c77c5193f7deb906aa475f2bbfe395d54470557a674de9b769c0649973e",
+      "replacementPath": "fixtures/pipeline/input-revisions/greenfield.json",
+      "replacementSha256": "01a76c22f9eed1364a354c56cbc4425bafaa29716c492b3f9227c5a42b83b331",
+      "replacementTest": "test_intake.py::test_input_revision_is_immutable_and_atomically_accepted"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/input-manifest.json",
+      "legacySha256": "78db24ef9fd8356e0c61815f60a5e8ecd2cff02230130f86535009f2bc215201",
+      "replacementPath": "fixtures/pipeline/input-revisions/greenfield.json",
+      "replacementSha256": "01a76c22f9eed1364a354c56cbc4425bafaa29716c492b3f9227c5a42b83b331",
+      "replacementTest": "test_contracts.py::test_pipeline_input_revision_fixtures_match_strict_contract"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/scope.json",
+      "legacySha256": "2c141ed50af121a057ca91b63afffbfdcb341fe8699a44f3f6a19131622c1e09",
+      "replacementPath": "fixtures/pipeline/stage1/scope-join-result.json",
+      "replacementSha256": "4548b7d79f04476db3eabe01967e440901ab434c438d59bead6f6027284d5671",
+      "replacementTest": "test_scope_compiler.py::test_scope_join_closes_every_input_item_exactly_once"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/delivery.json",
+      "legacySha256": "c4f4052be1981892e401a4245858243c3e8b037cde5d488615dc94a6bdd273b8",
+      "replacementPath": "fixtures/pipeline/stage2/story-ac-results.json",
+      "replacementSha256": "a775b46f023b2e43641aba688796eb9d6dabae4f6c6f18b158691271b4f47184",
+      "replacementTest": "test_delivery_compiler.py::test_story_join_waits_for_every_sibling_before_single_apply"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/final-review.json",
+      "legacySha256": "8f19ab6fbac32421bb67d7bbde7d7c870be8dca91c1c6f612832864a99d329",
+      "replacementPath": "fixtures/pipeline/stage1/r1-scope-join-result.json",
+      "replacementSha256": "a719639c71dab280b0dc6c7dfb16346f94989f0af925cb0546ff45baf30696df",
+      "replacementTest": "test_layered_review.py::test_layered_review_pass_proof_binds_every_leaf_and_theme_result"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/request.json",
+      "legacySha256": "bd77a9b83a0e5defe2d6ef9f53b3590dc9b495b286a42058e9b6086d92940797",
+      "replacementPath": "fixtures/pipeline/input-revisions/brownfield.json",
+      "replacementSha256": "394ed1c51ac9c41a9d4a01e178dcc942287654dd366a2d2deff569b7a0d48d30",
+      "replacementTest": "test_intake.py::test_brownfield_without_prior_sow_records_not_provided"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/input-manifest.json",
+      "legacySha256": "26ddd03ae50c09f68d38c4202c75b10592ee180a716131f4ba365c4970080e7c",
+      "replacementPath": "fixtures/pipeline/input-revisions/brownfield.json",
+      "replacementSha256": "394ed1c51ac9c41a9d4a01e178dcc942287654dd366a2d2deff569b7a0d48d30",
+      "replacementTest": "test_contracts.py::test_pipeline_input_revision_fixtures_match_strict_contract"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/scope.json",
+      "legacySha256": "0f641eb800f114f368b6be8901f67cf500687fb9eb0aec709dd745da49d0dbcf",
+      "replacementPath": "fixtures/pipeline/stage1/source-scan-results.json",
+      "replacementSha256": "60affb1fda6e2cce05d000d5d50d7c27415c7344171608c1e6c6aed09dc2d16a",
+      "replacementTest": "test_scope_compiler.py::test_input_items_preserve_qualifiers_and_exact_source_refs"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/delivery.json",
+      "legacySha256": "d0e80a21d402850f7d842d65e169c8a99f0cf0b4a6d65b545347e13ca2b9baa2",
+      "replacementPath": "fixtures/pipeline/stage3/task-results.json",
+      "replacementSha256": "5a4ae2e66bfc0b0f241cedfd0bab12aac6fe05900a88b3bc04fd9dfd0687c549",
+      "replacementTest": "test_task_compiler.py::test_task_apply_preserves_story_ac_and_closes_each_story_ac"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/final-review.json",
+      "legacySha256": "fb0c5115da1ca7586854ec523a1e858a1a471ca415bf61a5fd33467209b04be0",
+      "replacementPath": "fixtures/pipeline/stage1/r1-source-audit-results.json",
+      "replacementSha256": "556357fd67395735298737bb4355b4e091598e0c7917f9534d94cc69ab27eba8",
+      "replacementTest": "test_layered_review.py::test_layered_review_pass_proof_binds_every_leaf_and_theme_result"
+    }
+  ]
+}

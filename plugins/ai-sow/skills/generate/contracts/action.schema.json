@@ -1,0 +1,594 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:action:1",
+  "description": "定义 fresh-context 模型动作、严格结果、执行收据和宿主下一动作联合。",
+  "oneOf": [
+    {"$ref": "#/$defs/actionEnvelope"},
+    {"$ref": "#/$defs/stageResult"},
+    {"$ref": "#/$defs/actionRecord"},
+    {"$ref": "#/$defs/nextAction"}
+  ],
+  "$defs": {
+    "actionEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract", "runId", "actionId", "logicalShardId", "kind", "stage", "role",
+        "executionAttempt", "group",
+        "inputRevisionSha256", "baseCandidateSha256", "promptId", "promptPath",
+        "packetPath", "packetSha256", "outputPath", "recordPath", "resultSchema",
+        "resultPayloadSchema", "referencePaths", "instructionManifest",
+        "evidenceAllowlist", "executionPolicy",
+        "hydrateOperation", "submitOperation"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-action-envelope-v1"},
+        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "actionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "logicalShardId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "kind": {"const": "MODEL_ACTION"},
+        "stage": {
+          "enum": [
+            "EPIC_FEATURE", "STORY_AC", "TASK", "SOURCE_AUDIT", "SOURCE_SCOPE",
+            "STORY_DESIGN", "TASK_ESTIMATION", "THEME_JOIN", "ADJUDICATION", "REPAIR"
+          ]
+        },
+        "role": {"enum": ["AUTHOR", "REVIEWER", "THEME_JOIN", "ADJUDICATOR", "REPAIR"]},
+        "executionAttempt": {"type": "integer", "minimum": 1, "maximum": 2},
+        "group": {"$ref": "#/$defs/actionGroup"},
+        "inputRevisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "baseCandidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "promptId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "promptPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "packetPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "packetSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "outputPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "recordPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "resultSchema": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "resultPayloadSchema": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "referencePaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"}
+        },
+        "instructionManifest": {"$ref": "#/$defs/instructionManifest"},
+        "evidenceAllowlist": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidenceBinding"}
+        },
+        "executionPolicy": {"$ref": "#/$defs/actionExecutionPolicy"},
+        "hydrateOperation": {"$ref": "#/$defs/hydrateOperation"},
+        "submitOperation": {"$ref": "#/$defs/submitOperation"}
+      }
+    },
+    "instructionManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executionEnvelope", "prompt", "references"],
+      "properties": {
+        "executionEnvelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {"const": "prompts/fragments/execution-envelope.md"},
+            "sha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+          }
+        },
+        "prompt": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"},
+        "references": {
+          "type": "array",
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"}
+        }
+      }
+    },
+    "actionGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "groupId", "requiredLogicalShardIds", "maxConcurrency",
+        "groupDeadlineMilliseconds", "shardDeadlineMilliseconds"
+      ],
+      "properties": {
+        "groupId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "requiredLogicalShardIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"}
+        },
+        "maxConcurrency": {"type": "integer", "minimum": 1, "maximum": 8},
+        "groupDeadlineMilliseconds": {"type": "integer", "minimum": 1},
+        "shardDeadlineMilliseconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "evidenceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceId", "sha256", "locator"],
+      "properties": {
+        "evidenceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "sha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "locator": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+      }
+    },
+    "actionExecutionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contextPolicy", "inheritConversation", "contextReuseScope", "modelProfileId",
+        "modelConfigSha256", "tokenAccountingRequirement", "maxOutputTokens",
+        "maxHydrationRounds"
+      ],
+      "properties": {
+        "contextPolicy": {"const": "FRESH_NO_HISTORY"},
+        "inheritConversation": {"const": false},
+        "contextReuseScope": {"const": "WITHIN_ACTION_TOOL_LOOP_ONLY"},
+        "modelProfileId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "modelConfigSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "tokenAccountingRequirement": {"const": "LOCAL_ESTIMATE_MINIMUM"},
+        "maxOutputTokens": {"type": "integer", "minimum": 1},
+        "maxHydrationRounds": {"type": "integer", "minimum": 0, "maximum": 2}
+      }
+    },
+    "hydrateOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "actionId"],
+      "properties": {
+        "name": {"const": "hydrate"},
+        "actionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"}
+      }
+    },
+    "submitOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "actionId", "resultPath"],
+      "properties": {
+        "name": {"const": "submit"},
+        "actionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "resultPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"}
+      }
+    },
+    "stageResult": {
+      "oneOf": [
+        {"$ref": "#/$defs/sourceScanPatchResult"},
+        {"$ref": "#/$defs/scopeProposalResult"},
+        {"$ref": "#/$defs/patchResult"},
+        {"$ref": "#/$defs/gapCandidate"},
+        {"$ref": "#/$defs/diagnosticCandidate"}
+      ]
+    },
+    "scopeProposalResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "resultKind", "reviewedEvidenceIds", "inputItemIds", "boundaryCandidates", "crossShardAffinities", "selfCheck"],
+      "properties": {
+        "contract": {"const": "ai-sow-stage-result-v1"},
+        "resultKind": {"const": "SCOPE_PROPOSAL"},
+        "reviewedEvidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "inputItemIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "boundaryCandidates": {"type": "array", "items": {"$ref": "#/$defs/boundaryCandidate"}},
+        "crossShardAffinities": {"type": "array", "items": {"$ref": "#/$defs/crossShardAffinity"}},
+        "selfCheck": {"$ref": "#/$defs/selfCheck"}
+      }
+    },
+    "boundaryCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["boundaryId", "inputItemIds", "boundarySummary", "scopeClass", "affinityKeys", "independentClosureEvidence"],
+      "properties": {
+        "boundaryId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "inputItemIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "boundarySummary": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "scopeClass": {"enum": ["BUSINESS", "TECHNICAL", "DELIVERY"]},
+        "affinityKeys": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "independentClosureEvidence": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}}
+      }
+    },
+    "crossShardAffinity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["affinityKey", "inputItemIds", "rationale"],
+      "properties": {
+        "affinityKey": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "inputItemIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "rationale": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+      }
+    },
+    "sourceScanPatchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "resultKind", "reviewedEvidenceIds", "blockCoverage", "replacementSet", "selfCheck"],
+      "properties": {
+        "contract": {"const": "ai-sow-stage-result-v1"},
+        "resultKind": {"const": "SOURCE_SCAN_PATCH"},
+        "reviewedEvidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "blockCoverage": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {"$ref": "#/$defs/readBlockCoverage"},
+              {"$ref": "#/$defs/parseIssueBlockCoverage"}
+            ]
+          }
+        },
+        "replacementSet": {"$ref": "#/$defs/replacementSet"},
+        "selfCheck": {"$ref": "#/$defs/selfCheck"}
+      }
+    },
+    "readBlockCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockId", "disposition"],
+      "properties": {
+        "blockId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "disposition": {"const": "READ"}
+      }
+    },
+    "parseIssueBlockCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockId", "disposition", "diagnostic"],
+      "properties": {
+        "blockId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "disposition": {"const": "PARSE_ISSUE"},
+        "diagnostic": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/diagnostic"}
+      }
+    },
+    "patchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "resultKind", "reviewedEvidenceIds", "replacementSet", "selfCheck"],
+      "properties": {
+        "contract": {"const": "ai-sow-stage-result-v1"},
+        "resultKind": {"const": "PATCH"},
+        "reviewedEvidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "replacementSet": {"$ref": "#/$defs/replacementSet"},
+        "selfCheck": {"$ref": "#/$defs/selfCheck"}
+      }
+    },
+    "replacementSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedNodeHashes", "upserts", "deletes"],
+      "properties": {
+        "expectedNodeHashes": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^(inputItems|scopeClosure|epics|features|designItems|integrations|nfrs|policyInstances|scopeAnnotations|stories|acceptanceCriteria|deliveryAnnotations|tasks|dependencies|effectiveStartMatches|estimationAnnotations|decisions):[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "additionalProperties": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+        },
+        "upserts": {"type": "array", "items": {"$ref": "#/$defs/nodeUpsert"}},
+        "deletes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(inputItems|scopeClosure|epics|features|designItems|integrations|nfrs|policyInstances|scopeAnnotations|stories|acceptanceCriteria|deliveryAnnotations|tasks|dependencies|effectiveStartMatches|estimationAnnotations|decisions):[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          }
+        }
+      }
+    },
+    "nodeUpsert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collection", "node"],
+      "properties": {
+        "collection": {
+          "enum": [
+            "inputItems", "scopeClosure", "epics", "features", "designItems",
+            "integrations", "nfrs", "policyInstances", "scopeAnnotations",
+            "stories", "acceptanceCriteria", "deliveryAnnotations", "tasks",
+            "dependencies", "effectiveStartMatches", "estimationAnnotations", "decisions"
+          ]
+        },
+        "node": {"type": "object", "minProperties": 1}
+      }
+    },
+    "selfCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completedCheckIds", "unresolvedItems"],
+      "properties": {
+        "completedCheckIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "unresolvedItems": {
+          "type": "array",
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/diagnostic"}
+        }
+      }
+    },
+    "gapCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract", "resultKind", "missingFact", "question", "whyAsked",
+        "answerDetermines", "unansweredConsequence", "checkedEvidenceIds",
+        "affectedNodeIds", "impact", "requiredSourceRole"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-stage-result-v1"},
+        "resultKind": {"const": "GAP_CANDIDATE"},
+        "missingFact": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "question": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "whyAsked": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "answerDetermines": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+        },
+        "unansweredConsequence": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "checkedEvidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "affectedNodeIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "impact": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "requiredSourceRole": {
+          "enum": ["PRD", "DEMO", "APPROVED_DESIGN", "PRIOR_SOW", "SUPPLEMENT", "USER_DECISION"]
+        }
+      }
+    },
+    "diagnosticCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract", "resultKind", "diagnosticCandidateType", "subjectIds",
+        "checkedEvidenceIds", "summary", "suggestedDiagnosticCode"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-stage-result-v1"},
+        "resultKind": {"const": "DIAGNOSTIC_CANDIDATE"},
+        "diagnosticCandidateType": {"const": "CONTRACT_GAP"},
+        "subjectIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "checkedEvidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "summary": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "suggestedDiagnosticCode": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"}
+      }
+    },
+    "actionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract", "runId", "actionId", "logicalShardId", "envelopeSha256",
+        "packetSha256", "inputRevisionSha256", "baseCandidateSha256",
+        "modelProfileId", "modelConfigSha256", "executionAttempt", "status",
+        "timing", "modelAttempts", "toolAttempts", "initialPacket", "hydrationLog",
+        "usage", "controlPlaneTokens", "resultPath", "submissionSha256",
+        "failure", "completedAt"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-action-record-v1"},
+        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "actionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "logicalShardId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "envelopeSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "packetSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "inputRevisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "baseCandidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "modelProfileId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "modelConfigSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "executionAttempt": {"type": "integer", "minimum": 1, "maximum": 2},
+        "status": {"enum": ["SUCCESS", "FAILED", "LATE"]},
+        "timing": {"$ref": "#/$defs/actionTiming"},
+        "modelAttempts": {"type": "integer", "minimum": 1, "maximum": 2},
+        "toolAttempts": {"type": "integer", "minimum": 0},
+        "initialPacket": {"$ref": "#/$defs/payloadMeasure"},
+        "hydrationLog": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {"$ref": "#/$defs/hydrationRecord"}
+        },
+        "usage": {"$ref": "#/$defs/usage"},
+        "controlPlaneTokens": {"type": "integer", "minimum": 0},
+        "resultPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "submissionSha256": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+          ]
+        },
+        "submission": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/stageResult"},
+            {"$ref": "urn:ai-sow:generate:next:review-repair:1#/$defs/reviewResult"}
+          ]
+        },
+        "failure": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/actionFailure"}
+          ]
+        },
+        "completedAt": {"type": "string", "format": "date-time"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "SUCCESS"}}},
+          "then": {
+            "properties": {
+              "submissionSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "failure": {"type": "null"}
+            }
+          },
+          "else": {
+            "properties": {
+              "submissionSha256": {"type": "null"},
+              "submission": {"type": "null"},
+              "failure": {"$ref": "#/$defs/actionFailure"}
+            }
+          }
+        }
+      ]
+    },
+    "actionFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "message": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+      }
+    },
+    "actionTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queueMilliseconds", "executionMilliseconds", "actionMilliseconds"],
+      "properties": {
+        "queueMilliseconds": {"type": "integer", "minimum": 0},
+        "executionMilliseconds": {"type": "integer", "minimum": 0},
+        "actionMilliseconds": {"type": "integer", "minimum": 0}
+      }
+    },
+    "payloadMeasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bytes", "tokens"],
+      "properties": {
+        "bytes": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0}
+      }
+    },
+    "hydrationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "round", "requestedEvidenceIds", "returnedEvidenceIds", "responseSha256",
+        "bytes", "tokens", "wallMilliseconds"
+      ],
+      "properties": {
+        "round": {"type": "integer", "minimum": 1, "maximum": 2},
+        "requestedEvidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "returnedEvidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "responseSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "wallMilliseconds": {"type": "integer", "minimum": 0}
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountingMode", "inputTokens", "cachedInputTokens", "outputTokens",
+        "reasoningTokens", "tokenizerId", "tokenizerVersion"
+      ],
+      "properties": {
+        "accountingMode": {"enum": ["PROVIDER_REPORTED", "LOCALLY_ESTIMATED"]},
+        "inputTokens": {"type": "integer", "minimum": 0},
+        "cachedInputTokens": {"type": "integer", "minimum": 0},
+        "outputTokens": {"type": "integer", "minimum": 0},
+        "reasoningTokens": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "integer", "minimum": 0}
+          ]
+        },
+        "tokenizerId": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"}
+          ]
+        },
+        "tokenizerVersion": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"accountingMode": {"const": "PROVIDER_REPORTED"}}},
+          "then": {
+            "properties": {
+              "tokenizerId": {"type": "null"},
+              "tokenizerVersion": {"type": "null"}
+            }
+          },
+          "else": {
+            "properties": {
+              "reasoningTokens": {"type": "null"},
+              "tokenizerId": {"type": "string", "minLength": 1},
+              "tokenizerVersion": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      ]
+    },
+    "nextAction": {
+      "oneOf": [
+        {"$ref": "#/$defs/modelActionGroup"},
+        {"$ref": "#/$defs/inputNextAction"},
+        {"$ref": "#/$defs/approvalNextAction"},
+        {"$ref": "#/$defs/doneNextAction"}
+      ]
+    },
+    "modelActionGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract", "kind", "groupId", "maxConcurrency",
+        "groupDeadlineMilliseconds", "actions"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-next-action-v1"},
+        "kind": {"const": "MODEL_ACTION_GROUP"},
+        "groupId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "maxConcurrency": {"type": "integer", "minimum": 1, "maximum": 8},
+        "groupDeadlineMilliseconds": {"type": "integer", "minimum": 1},
+        "actions": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/actionEnvelope"}
+        }
+      }
+    },
+    "inputNextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "kind", "questions"],
+      "properties": {
+        "contract": {"const": "ai-sow-next-action-v1"},
+        "kind": {"const": "REQUEST_INPUT"},
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/question"}
+        }
+      }
+    },
+    "approvalNextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "kind", "artifactManifestPath", "artifactManifestSha256"],
+      "properties": {
+        "contract": {"const": "ai-sow-next-action-v1"},
+        "kind": {"const": "REQUEST_APPROVAL"},
+        "artifactManifestPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "artifactManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+      }
+    },
+    "doneNextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "kind", "result", "generationManifestPath"],
+      "properties": {
+        "contract": {"const": "ai-sow-next-action-v1"},
+        "kind": {"const": "DONE"},
+        "result": {
+          "enum": [
+            "REUSED", "PUBLISHED", "MANUAL_REVIEW_REQUIRED", "CONTRACT_UNSUPPORTED",
+            "SYSTEM_FAILED", "ABANDONED"
+          ]
+        },
+        "generationManifestPath": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"}
+          ]
+        }
+      }
+    }
+  }
+}

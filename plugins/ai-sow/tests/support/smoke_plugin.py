@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Exercise the installed AI SOW generate Skill from a standalone copy."""
+"""Exercise the host-neutral NextAction pipeline from a standalone plugin copy."""
 
 from __future__ import annotations
 
 import argparse
-import copy
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -20,89 +22,40 @@ import openpyxl
 
 CASE_MANIFEST_PATH = "tests/fixtures/explicit-architecture/case-manifest.json"
 CASE_SCHEMA_PATH = "tests/contracts/case-manifest.schema.json"
-ORCHESTRATOR_PATH = "skills/generate/scripts/orchestrator.py"
-EXPECTED_GENERATION_FILES = {
-    "data/delivery.json",
-    "data/scope.json",
-    "input/sow-template.xlsx",
-    "manifest.json",
-    "output/sow-notes.md",
-    "output/sow.xlsx",
-}
+E2E_DRIVER_PATH = "skills/generate/tests/test_e2e.py"
+EXPECTED_SHEETS = ["01-需求故事", "02-任务清单", "03-工作量汇总", "90-估算标准"]
 EXPECTED_TABLES = {
     "SOWStoryTable",
     "TaskTable",
     "ProjectSummaryTable",
     "ProjectParameterTable",
-    "BaseUnitCatalogTable",
+    "TaskStandardTable",
 }
-EXPECTED_SHEETS = ["01-需求故事", "02-任务清单", "03-工作量汇总", "90-估算标准"]
-SCOPE_COLLECTIONS = (
-    "epics",
-    "features",
-    "commitments",
-    "effectiveStartItems",
-    "designItems",
-    "designDecisions",
-    "integrations",
-    "nfrs",
-    "assumptions",
-)
-DELIVERY_COLLECTIONS = (
-    "stories",
-    "acceptanceCriteria",
-    "tasks",
-    "dependencies",
-)
-QUESTION_FIELDS = {
-    "questionId",
-    "subjectIds",
-    "question",
-    "reason",
-    "decisionImpact",
-    "unansweredEffect",
+EXPECTED_GENERATION_FILES = {
+    "data/sow-model.json",
+    "input/effective-policy-decision.json",
+    "input/sow-template.xlsx",
+    "manifest.json",
+    "output/sow-notes.md",
+    "output/sow.xlsx",
+    "proof/approval.json",
+    "proof/artifact-manifest.json",
+    "proof/review-decision.json",
+    "proof/scope-closure-checkpoint.json",
+    "proof/story-ac-checkpoint.json",
+    "proof/task-checkpoint.json",
 }
 
 
 def _canonical_json_bytes(value: object) -> bytes:
     return (
-        json.dumps(
-            value,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         + "\n"
     ).encode("utf-8")
 
 
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
-
-
-def _generation_file_digests(root: Path) -> dict[str, str]:
-    return {
-        path.relative_to(root).as_posix(): _sha256(path.read_bytes())
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-    }
-
-
-def _verify_generation_template_path(
-    manifest: Mapping[str, object], generation_root: Path
-) -> None:
-    generation_id = manifest.get("generationId")
-    expected = f".ai-sow/generations/{generation_id}/input/sow-template.xlsx"
-    if (
-        not isinstance(generation_id, str)
-        or generation_root.name != generation_id
-        or manifest.get("templatePath") != expected
-        or not (generation_root / "input/sow-template.xlsx").is_file()
-    ):
-        raise RuntimeError(
-            "generation templatePath must identify its exact immutable "
-            "input/sow-template.xlsx member"
-        )
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -114,35 +67,16 @@ def _load_json(path: Path) -> dict[str, object]:
 
 def _write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(_canonical_json_bytes(value))
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_bytes(_canonical_json_bytes(value))
+    os.replace(temporary, path)
 
 
-def run_command(command: list[str], cwd: Path) -> dict[str, object]:
-    """Run a support command and return its final JSON object when present."""
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        text=True,
-        encoding="utf-8",
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        rendered = " ".join(command)
-        raise RuntimeError(
-            f"command failed ({completed.returncode}): {rendered}\n"
-            f"stdout:\n{completed.stdout}\n"
-            f"stderr:\n{completed.stderr}"
-        )
-    lines = [line for line in completed.stdout.splitlines() if line.strip()]
-    if lines:
-        try:
-            payload = json.loads(lines[-1])
-        except json.JSONDecodeError:
-            payload = None
-        if isinstance(payload, dict):
-            return payload
-    return {"outcome": "OK", "stdout": completed.stdout}
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_bytes(payload)
+    os.replace(temporary, path)
 
 
 def plugin_uv_command(plugin_root: Path) -> str:
@@ -162,12 +96,292 @@ def plugin_python_command(plugin_root: Path) -> str:
     )
 
 
-def _orchestrator_environment(
-    active_plugin: Path,
-    project: Path,
-    audit_root: Path,
-    audit_log: Path,
+def _run_checked(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
+    completed = subprocess.run(command, cwd=cwd, capture_output=True, check=False)
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "subprocess failed: "
+            + command[0]
+            + f" (exit={completed.returncode})"
+        )
+    return completed
+
+
+def _case_manifest(plugin_root: Path) -> dict[str, dict[str, object]]:
+    manifest = _load_json(plugin_root / CASE_MANIFEST_PATH)
+    schema = _load_json(plugin_root / CASE_SCHEMA_PATH)
+    jsonschema.Draft202012Validator(schema).validate(manifest)
+    return {
+        str(case["caseId"]): dict(case)
+        for case in manifest["cases"]
+        if isinstance(case, Mapping)
+    }
+
+
+def _tree_digests(root: Path) -> dict[str, str]:
+    ignored_parts = {".venv", ".ai-sow-tools", ".pytest_cache", "__pycache__"}
+    return {
+        path.relative_to(root).as_posix(): _sha256(path.read_bytes())
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+        and not ignored_parts.intersection(path.relative_to(root).parts)
+        and path.suffix not in {".pyc", ".pyo"}
+    }
+
+
+def _load_e2e_driver(plugin_root: Path):
+    path = plugin_root / E2E_DRIVER_PATH
+    spec = importlib.util.spec_from_file_location(
+        f"ai_sow_copy_e2e_{os.getpid()}", path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load copied NextAction E2E driver")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _generation_files(project: Path, manifest: Mapping[str, object]) -> set[str]:
+    root = project / ".ai-sow/generations" / str(manifest["generationId"])
+    return {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def _generation_file_digests(generations_root: Path) -> dict[str, str]:
+    return {
+        path.relative_to(generations_root).as_posix(): _sha256(path.read_bytes())
+        for path in sorted(generations_root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _verify_generation_template_path(
+    manifest: Mapping[str, object], generation_root: Path
+) -> Path:
+    generation_id = str(manifest["generationId"])
+    if generation_root.name != generation_id:
+        raise RuntimeError("generation root does not match manifest generationId")
+    template = generation_root / "input/sow-template.xlsx"
+    if not template.is_file() or _sha256(template.read_bytes()) != manifest.get(
+        "templateSha256"
+    ):
+        raise RuntimeError("generation template does not match manifest hash")
+    return template
+
+
+def _verify_workbook(path: Path) -> None:
+    workbook = openpyxl.load_workbook(path, data_only=False)
+    try:
+        if workbook.sheetnames != EXPECTED_SHEETS:
+            raise RuntimeError("generated workbook sheet contract changed")
+        tables = {name for sheet in workbook.worksheets for name in sheet.tables}
+        if tables != EXPECTED_TABLES:
+            raise RuntimeError("generated workbook table contract changed")
+        if not any(
+            cell.data_type == "f"
+            for sheet in workbook.worksheets
+            for row in sheet.iter_rows()
+            for cell in row
+        ):
+            raise RuntimeError("generated workbook contains no formulas")
+    finally:
+        workbook.close()
+    calculated = openpyxl.load_workbook(path, data_only=True)
+    try:
+        values = [calculated["03-工作量汇总"][f"B{row}"].value for row in range(5, 9)]
+        if not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in values
+        ):
+            raise RuntimeError("generated workbook lacks calculated summary values")
+    finally:
+        calculated.close()
+
+
+def _verify_generation(project: Path) -> dict[str, object]:
+    current = _load_json(project / ".ai-sow/current.json")
+    manifest_path = project / str(current["generationManifestPath"])
+    manifest_payload = manifest_path.read_bytes()
+    if _sha256(manifest_payload) != current["generationManifestSha256"]:
+        raise RuntimeError("current pointer does not bind generation manifest")
+    manifest = _load_json(manifest_path)
+    if _generation_files(project, manifest) != EXPECTED_GENERATION_FILES:
+        raise RuntimeError("published generation is not self-contained")
+    _verify_generation_template_path(manifest, manifest_path.parent)
+    for path_field, hash_field in (
+        ("sowModelPath", "sowModelSha256"),
+        ("workbookPath", "workbookSha256"),
+        ("notesPath", "notesSha256"),
+    ):
+        target = project / str(manifest[path_field])
+        if _sha256(target.read_bytes()) != manifest[hash_field]:
+            raise RuntimeError(f"generation hash mismatch: {hash_field}")
+    generation_root = manifest_path.parent
+    artifact = _load_json(generation_root / "proof/artifact-manifest.json")
+    verification = artifact.get("workbookVerification")
+    if not isinstance(verification, Mapping) or verification.get("trustState") != "VERIFIED":
+        raise RuntimeError("candidate workbook lacks trusted Office verification")
+    workbook = project / str(manifest["workbookPath"])
+    _verify_workbook(workbook)
+    return {
+        "generationId": manifest["generationId"],
+        "workbookPath": str(workbook.resolve()),
+        "notesPath": str((project / str(manifest["notesPath"])).resolve()),
+        "officeEngine": {
+            "name": verification["engineName"],
+            "version": verification["engineVersion"],
+        },
+    }
+
+
+def _render_only_template(driver, project: Path) -> None:
+    target = project / ".ai-sow/templates/sow-template.xlsx"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(driver.SKILL_ROOT / "assets/sow-template.xlsx", target)
+    with zipfile.ZipFile(target, "a") as archive:
+        archive.comment = b"copy-smoke-render-only-v1"
+
+
+def _approve(driver, project: Path, result: Mapping[str, object]) -> None:
+    approved = driver.orchestrator_module.run_mode(
+        project,
+        "approve",
+        artifact_manifest_sha256=str(result["artifactManifestSha256"]),
+    )
+    if approved.get("outcome") != "PUBLISHED":
+        raise RuntimeError("approval did not publish the verified artifact")
+
+
+def _worker_scenario(plugin_root: Path, project: Path, scenario: str) -> dict[str, object]:
+    driver = _load_e2e_driver(plugin_root)
+    project.mkdir(parents=True, exist_ok=True)
+    if scenario in {"greenfield", "brownfield"}:
+        result, trace = driver.drive_fixture_host(project, scenario)
+    elif scenario == "input-recovery":
+        request_path = driver._prepare_project(project, "greenfield")
+        started = driver.orchestrator_module.run_mode(
+            project, "start", request=request_path
+        )
+        old_run_id = started["state"]["runId"]
+        request = driver._load(project / request_path)
+        request["project"]["name"] = "匿名恢复路径项目"
+        driver._write_json(project / request_path, request)
+        resumed = driver.orchestrator_module.run_mode(
+            project, "resume", request=request_path
+        )
+        if resumed.get("state", {}).get("runId") == old_run_id:
+            raise RuntimeError("input recovery did not create a new immutable run")
+        result, trace = driver.drive_result_host(project, resumed)
+        old_states = [
+            driver._load(path)
+            for path in (
+                project / f".ai-sow/work/runs/{old_run_id}/states"
+            ).glob("state-*.json")
+        ]
+        if not any(
+            state.get("phase") == "DONE"
+            and state.get("result") == "ABANDONED"
+            for state in old_states
+        ):
+            raise RuntimeError("input recovery did not retain the old terminal state")
+    else:
+        raise RuntimeError(f"unknown worker scenario: {scenario}")
+    if result.get("outcome") != "REQUEST_APPROVAL":
+        raise RuntimeError("NextAction host loop did not reach REQUEST_APPROVAL")
+    _approve(driver, project, result)
+    generations = [_verify_generation(project)]
+    report: dict[str, object] = {
+        "scenario": scenario,
+        "outcome": "PUBLISHED",
+        "actionCount": len(trace),
+        "freshContextOnly": all(
+            action["executionPolicy"]["contextPolicy"] == "FRESH_NO_HISTORY"
+            and action["executionPolicy"]["inheritConversation"] is False
+            for action in trace
+        ),
+    }
+    if scenario == "greenfield":
+        before = (project / ".ai-sow/current.json").read_bytes()
+        reused = driver.orchestrator_module.run_mode(
+            project, "start", request="request.json"
+        )
+        if reused.get("outcome") != "REUSED" or (
+            project / ".ai-sow/current.json"
+        ).read_bytes() != before:
+            raise RuntimeError("exact replay was not byte-stable")
+        _render_only_template(driver, project)
+        rendered = driver.orchestrator_module.run_mode(
+            project, "start", request="request.json"
+        )
+        if rendered.get("outcome") != "REQUEST_APPROVAL" or rendered.get(
+            "state", {}
+        ).get("route") != "RENDER_ONLY":
+            raise RuntimeError("template-only change launched semantic compilation")
+        render_run = project / ".ai-sow/work/runs" / str(rendered["state"]["runId"])
+        if (render_run / "actions").exists():
+            raise RuntimeError("render-only route launched a model action")
+        _approve(driver, project, rendered)
+        generations.append(_verify_generation(project))
+        current = driver._load(project / ".ai-sow/current.json")
+        current_manifest = driver._load(project / current["generationManifestPath"])
+        baseline_model = driver._load(project / current_manifest["sowModelPath"])
+        downstream_collections = (
+            "stories",
+            "acceptanceCriteria",
+            "tasks",
+            "dependencies",
+            "effectiveStartMatches",
+        )
+        baseline_downstream = {
+            name: baseline_model[name] for name in downstream_collections
+        }
+        request = driver._load(project / "request.json")
+        request["project"]["name"] = "匿名复制安装增量复核"
+        driver._write_json(project / "request.json", request)
+        incremental = driver.orchestrator_module.run_mode(
+            project, "start", request="request.json"
+        )
+        if incremental.get("state", {}).get("route") != "DELTA_COMPILE":
+            raise RuntimeError("semantic update did not select DELTA_COMPILE")
+        incremental_result, incremental_trace = driver.drive_result_host(
+            project, incremental
+        )
+        incremental_model = driver._load(
+            project / incremental_result["state"]["currentCandidatePath"]
+        )
+        if {
+            name: incremental_model[name] for name in downstream_collections
+        } != baseline_downstream:
+            raise RuntimeError("delta compile changed unaffected downstream nodes")
+        _approve(driver, project, incremental_result)
+        generations.append(_verify_generation(project))
+        report.update(
+            {
+                "reuseOutcome": reused["outcome"],
+                "renderOnlyOutcome": "PUBLISHED",
+                "renderOnlyActionCount": 0,
+                "incrementalOutcome": "PUBLISHED",
+                "incrementalDownstreamPreserved": True,
+                "incrementalFreshContextOnly": all(
+                    action["executionPolicy"]["contextPolicy"]
+                    == "FRESH_NO_HISTORY"
+                    and action["executionPolicy"]["inheritConversation"] is False
+                    for action in incremental_trace
+                ),
+            }
+        )
+    report["generations"] = generations
+    return report
+
+
+def _worker_environment(
+    active_plugin: Path, project: Path, audit_root: Path, audit_log: Path
 ) -> dict[str, str]:
+    temporary_root = project / ".ai-sow/work/smoke-temp"
+    temporary_root.mkdir(parents=True, exist_ok=True)
     return {
         **os.environ,
         "PYTHONPATH": str(audit_root),
@@ -177,587 +391,81 @@ def _orchestrator_environment(
             (str(active_plugin), str(project))
         ),
         "AI_SOW_FORBIDDEN_READ_LOG": str(audit_log),
+        "TMPDIR": str(temporary_root),
+        "TEMP": str(temporary_root),
+        "TMP": str(temporary_root),
     }
 
 
-def _run_orchestrator(
+def _run_worker(
     active_plugin: Path,
     project: Path,
+    scenario: str,
     audit_root: Path,
     audit_log: Path,
-    mode: str,
-    *arguments: str,
-    expected: str,
 ) -> dict[str, object]:
     command = [
         plugin_python_command(active_plugin),
-        str(active_plugin / ORCHESTRATOR_PATH),
+        str(active_plugin / "tests/support/smoke_plugin.py"),
+        "--worker-scenario",
+        scenario,
+        "--plugin-root",
+        str(active_plugin),
         "--project-root",
         str(project),
-        "--mode",
-        mode,
-        *arguments,
     ]
     completed = subprocess.run(
         command,
-        cwd=project,
+        cwd=project.parent,
         capture_output=True,
         check=False,
-        env=_orchestrator_environment(active_plugin, project, audit_root, audit_log),
+        env=_worker_environment(active_plugin, project, audit_root, audit_log),
     )
-    try:
-        stdout = completed.stdout.decode("utf-8")
-        stderr = completed.stderr.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise RuntimeError(f"orchestrator output was not UTF-8: {command}") from error
-    lines = [line for line in stdout.splitlines() if line.strip()]
-    if len(lines) != 1:
+    output_root = project / ".ai-sow/work/smoke-host"
+    _write_bytes(output_root / f"{scenario}.stdout.bin", completed.stdout)
+    _write_bytes(output_root / f"{scenario}.stderr.bin", completed.stderr)
+    if completed.returncode != 0:
         raise RuntimeError(
-            f"orchestrator did not emit exactly one JSON result: {command}\n"
-            f"stdout:\n{stdout}\nstderr:\n{stderr}"
+            f"copy worker failed: {scenario} (exit={completed.returncode})"
         )
     try:
-        payload = json.loads(lines[0])
-    except json.JSONDecodeError as error:
-        raise RuntimeError(f"orchestrator output was not JSON: {stdout}") from error
-    if not isinstance(payload, dict) or payload.get("outcome") != expected:
-        raise RuntimeError(
-            f"orchestrator {mode} expected {expected}, got {payload}\n"
-            f"returncode={completed.returncode}\nstderr:\n{stderr}"
-        )
-    expected_code = 2 if expected == "BLOCKED" else 0
-    if completed.returncode != expected_code:
-        raise RuntimeError(
-            f"orchestrator {mode} returned {completed.returncode}, expected {expected_code}"
-        )
-    return payload
-
-
-def _case_manifest(plugin_root: Path) -> list[dict[str, object]]:
-    manifest = _load_json(plugin_root / CASE_MANIFEST_PATH)
-    schema = _load_json(plugin_root / CASE_SCHEMA_PATH)
-    jsonschema.Draft202012Validator(schema).validate(manifest)
-    cases = manifest["cases"]
-    if not isinstance(cases, list):
-        raise RuntimeError("case manifest cases must be a list")
-    return [dict(case) for case in cases if isinstance(case, Mapping)]
-
-
-def _prepare_request(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-    *,
-    omit_prior_sow: bool = False,
-) -> str:
-    project.mkdir(parents=True, exist_ok=True)
-    request = _load_json(active_plugin / str(case["requestPath"]))
-    sources = request.get("sources")
-    if not isinstance(sources, list):
-        raise RuntimeError("request sources must be a list")
-    prepared_sources: list[dict[str, object]] = []
-    for raw_source in sources:
-        if not isinstance(raw_source, Mapping):
-            continue
-        source = dict(raw_source)
-        role = str(source["role"])
-        if omit_prior_sow and role == "PRIOR_SOW":
-            continue
-        relative = Path(str(source["path"]))
-        target = project / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if role == "PRIOR_SOW":
-            shutil.copy2(
-                active_plugin / "skills/generate/assets/sow-template.xlsx",
-                target,
-            )
-        else:
-            marker = f"SOURCE_ORIGINAL_{case['caseId']}_{role}"
-            target.write_text(
-                f"# {role}\n\n{marker}\n\n退款申请、审核、结果通知、异常处理与交付边界。\n",
-                encoding="utf-8",
-            )
-        prepared_sources.append(source)
-    request["sources"] = prepared_sources
-    request_path = project / "request.json"
-    _write_json(request_path, request)
-    return request_path.name
-
-
-def _scope_candidate(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-    prepared: Mapping[str, object],
-) -> None:
-    if not isinstance(prepared.get("runPlan"), Mapping):
-        raise RuntimeError("prepare result lacks runPlan")
-    bundle = _load_json(active_plugin / str(case["scopeSlicePath"]))
-    anchors_value = json.loads(
-        (project / ".ai-sow/inputs/pending/anchors.json").read_text(encoding="utf-8")
-    )
-    if not isinstance(anchors_value, list):
-        raise RuntimeError("pending anchors must be a list")
-    first_anchor: dict[str, Mapping[str, object]] = {}
-    for anchor in anchors_value:
-        if isinstance(anchor, Mapping) and isinstance(anchor.get("sourceId"), str):
-            first_anchor.setdefault(str(anchor["sourceId"]), anchor)
-    for collection in SCOPE_COLLECTIONS:
-        values = bundle.get(collection, [])
-        if not isinstance(values, list):
-            raise RuntimeError(f"invalid Scope fixture collection: {collection}")
-        for item in values:
-            if not isinstance(item, dict):
-                continue
-            refs = item.get("sourceRefs", [])
-            item["sourceRefs"] = [
-                {
-                    "sourceId": first_anchor[str(ref["sourceId"])]["sourceId"],
-                    "anchorId": first_anchor[str(ref["sourceId"])]["anchorId"],
-                    "locator": first_anchor[str(ref["sourceId"])]["locator"],
-                    "sha256": first_anchor[str(ref["sourceId"])]["sha256"],
-                }
-                for ref in refs
-                if isinstance(ref, Mapping)
-            ]
-    candidate_path = project / ".ai-sow/work/scope-slice.candidate.json"
-    candidate = _load_json(candidate_path)
-    for name in SCOPE_COLLECTIONS:
-        candidate[name] = copy.deepcopy(bundle[name])
-    _write_json(candidate_path, candidate)
-
-
-def _delivery_candidate(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-) -> None:
-    bundle = _load_json(active_plugin / str(case["deliverySlicePath"]))
-    candidate_path = project / ".ai-sow/work/delivery-slice.candidate.json"
-    candidate = _load_json(candidate_path)
-    for name in DELIVERY_COLLECTIONS:
-        candidate[name] = copy.deepcopy(bundle[name])
-    _write_json(candidate_path, candidate)
-
-
-def _review_candidate(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-    packet: Mapping[str, object],
-) -> str:
-    plan = _load_json(project / ".ai-sow/work/run-plan.json")
-    review = _load_json(active_plugin / str(case["finalReviewPath"]))
-    review.update(
-        {
-            "runId": plan["runId"],
-            "inputRevisionId": plan["targetRevisionId"],
-            "scopeSha256": _sha256(
-                (project / ".ai-sow/work/scope.candidate.json").read_bytes()
-            ),
-            "deliverySha256": _sha256(
-                (project / ".ai-sow/work/delivery.candidate.json").read_bytes()
-            ),
-            "packetSha256": packet["packetSha256"],
-        }
-    )
-    review_name = "final-review.json"
-    _write_json(project / review_name, review)
-    return review_name
-
-
-def _blocked_review_candidate(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-    packet: Mapping[str, object],
-) -> str:
-    review_name = _review_candidate(active_plugin, project, case, packet)
-    review = _load_json(project / review_name)
-    delivery = _load_json(project / ".ai-sow/work/delivery.candidate.json")
-    stories = delivery.get("stories")
-    if not isinstance(stories, list) or not stories or not isinstance(stories[0], Mapping):
-        raise RuntimeError("blocked review smoke requires one Story")
-    review.update(
-        {
-            "decision": "BLOCKED",
-            "notes": [],
-            "questions": [
-                {
-                    "questionId": "question-smoke-review-boundary",
-                    "subjectIds": [stories[0]["storyId"]],
-                    "question": "是否确认该故事的验收边界包含异常处理结果？",
-                    "reason": "当前终审材料无法确认异常处理结果是否属于本次可验收范围。",
-                    "decisionImpact": "确认包含会保留对应 AC 与 Task；确认不包含会重新编译相关 Delivery 切片。",
-                    "unansweredEffect": "未回答时无法固定验收和估算边界，本轮保持 BLOCKED 且不发布工作簿。",
-                }
-            ],
-        }
-    )
-    _write_json(project / review_name, review)
-    return review_name
-
-
-def _verify_transparent_questions(result: Mapping[str, object]) -> None:
-    questions = result.get("questions")
-    if not isinstance(questions, list) or not questions:
-        raise RuntimeError(f"BLOCKED result omitted user questions: {result}")
-    for question in questions:
-        if not isinstance(question, Mapping) or set(question) != QUESTION_FIELDS:
-            raise RuntimeError(f"BLOCKED question is not self-contained: {question}")
-        if any(not question[field] for field in QUESTION_FIELDS):
-            raise RuntimeError(f"BLOCKED question contains an empty field: {question}")
-
-
-def _verify_review_material(project: Path, packet: Mapping[str, object]) -> None:
-    relative = packet.get("reviewMaterialPath")
-    if not isinstance(relative, str) or not relative:
-        raise RuntimeError(f"review result omitted readable material: {packet}")
-    text = (project / relative).read_text(encoding="utf-8")
-    first_line = text.partition("\n")[0]
-    if (
-        not first_line.startswith("# ")
-        or not first_line.endswith("终审材料")
-        or "## 下一步" not in text
-    ):
-        raise RuntimeError(f"review material lacks natural-language summary: {relative}")
-    packet_hash = packet.get("packetSha256")
-    if isinstance(packet_hash, str) and packet_hash in text:
-        raise RuntimeError("review material exposed the internal packet hash")
-
-
-def _verify_manifest_hashes(project: Path, manifest: Mapping[str, object]) -> None:
-    pairs = (
-        ("inputManifestPath", "inputManifestSha256"),
-        ("scopePath", "scopeSha256"),
-        ("deliveryPath", "deliverySha256"),
-        ("templatePath", "templateSha256"),
-        ("workbookPath", "workbookSha256"),
-        ("notesPath", "notesSha256"),
-    )
-    for path_key, hash_key in pairs:
-        target = project / str(manifest[path_key])
-        if _sha256(target.read_bytes()) != manifest[hash_key]:
-            raise RuntimeError(f"generation hash mismatch: {path_key}")
-    if _sha256(_canonical_json_bytes(manifest["finalReview"])) != manifest["finalReviewSha256"]:
-        raise RuntimeError("generation final review hash mismatch")
-
-
-def _verify_workbook(path: Path) -> None:
-    workbook = openpyxl.load_workbook(path, data_only=False)
-    try:
-        if workbook.sheetnames != EXPECTED_SHEETS:
-            raise RuntimeError(f"generated workbook sheets changed: {workbook.sheetnames}")
-        tables = {name for sheet in workbook.worksheets for name in sheet.tables}
-        if tables != EXPECTED_TABLES:
-            raise RuntimeError(f"generated workbook tables incomplete: {tables}")
-        formulas = [
-            cell.value
-            for sheet in workbook.worksheets
-            for row in sheet.iter_rows()
-            for cell in row
-            if cell.data_type == "f"
+        lines = [
+            line
+            for line in completed.stdout.decode("utf-8").splitlines()
+            if line.strip()
         ]
-        if not formulas:
-            raise RuntimeError("generated workbook contains no formulas")
-    finally:
-        workbook.close()
-    calculated = openpyxl.load_workbook(path, data_only=True)
-    try:
-        values = [calculated["03-工作量汇总"][f"B{row}"].value for row in range(5, 9)]
-        if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
-            raise RuntimeError(f"generated workbook lacks calculated summary: {values}")
-    finally:
-        calculated.close()
+    except UnicodeDecodeError as error:
+        raise RuntimeError("copy worker output was not UTF-8") from error
+    if len(lines) != 1:
+        raise RuntimeError("copy worker did not emit exactly one JSON result")
+    value = json.loads(lines[0])
+    if not isinstance(value, dict):
+        raise RuntimeError("copy worker result was not a JSON object")
+    return value
 
 
-def _verify_generation(
-    project: Path,
-    case: Mapping[str, object],
-    result: Mapping[str, object],
-) -> dict[str, object]:
-    expected = case["expectedCounts"]
-    if not isinstance(expected, Mapping):
-        raise RuntimeError("case expectedCounts must be an object")
-    if result.get("decision") != case["expectedDecision"]:
-        raise RuntimeError(f"unexpected review decision: {result}")
-    change_counts = result.get("changeCounts")
-    if not isinstance(change_counts, Mapping):
-        raise RuntimeError(f"missing change counts: {result}")
-    feature_counts = change_counts.get("features")
-    story_counts = change_counts.get("stories")
-    task_counts = change_counts.get("tasks")
-    if not isinstance(feature_counts, Mapping) or feature_counts.get("recomputed") != expected["features"]:
-        raise RuntimeError(f"unexpected Feature counts: {result}")
-    if not isinstance(story_counts, Mapping) or story_counts.get("recomputed") != expected["stories"]:
-        raise RuntimeError(f"unexpected Story counts: {result}")
-    if not isinstance(task_counts, Mapping) or task_counts.get("recomputed") != expected["tasks"]:
-        raise RuntimeError(f"unexpected Task counts: {result}")
-
-    current = _load_json(project / ".ai-sow/current.json")
-    generation_root = project / ".ai-sow/generations" / str(current["generationId"])
-    files = {
-        path.relative_to(generation_root).as_posix()
-        for path in generation_root.rglob("*")
-        if path.is_file()
-    }
-    if files != EXPECTED_GENERATION_FILES:
-        raise RuntimeError(f"generation leaked or omitted files: {files}")
-    manifest = _load_json(generation_root / "manifest.json")
-    verification = manifest.get("workbookVerification")
-    if not isinstance(verification, Mapping) or verification.get("trustState") != "VERIFIED":
-        raise RuntimeError(f"generation workbook is not verified: {verification}")
-    engine = verification.get("engine")
-    if (
-        not isinstance(engine, Mapping)
-        or not isinstance(engine.get("name"), str)
-        or not engine["name"]
-        or not isinstance(engine.get("version"), str)
-        or not engine["version"]
-    ):
-        raise RuntimeError(f"generation lacks a real Office engine record: {verification}")
-    _verify_generation_template_path(manifest, generation_root)
-    _verify_manifest_hashes(project, manifest)
-    workbook_path = project / str(manifest["workbookPath"])
-    notes_path = project / str(manifest["notesPath"])
-    _verify_workbook(workbook_path)
-    notes = notes_path.read_text(encoding="utf-8")
-    final_review = manifest["finalReview"]
-    if not isinstance(final_review, Mapping):
-        raise RuntimeError("manifest final review must be an object")
-    for note in final_review.get("notes", []):
-        if isinstance(note, Mapping) and notes.count(str(note["sowNotesText"])) != 1:
-            raise RuntimeError(f"review note was not rendered exactly once: {note}")
-    generated_bytes = b"\n".join(
-        path.read_bytes() for path in generation_root.rglob("*") if path.is_file()
-    )
-    if b"SOURCE_ORIGINAL_" in generated_bytes:
-        raise RuntimeError("source original content leaked into generation output")
-    for hash_key in ("expectedWorkbookSha256", "expectedNotesSha256"):
-        if hash_key in case:
-            actual = manifest[
-                "workbookSha256" if hash_key == "expectedWorkbookSha256" else "notesSha256"
-            ]
-            if actual != case[hash_key]:
-                raise RuntimeError(f"fixed output hash mismatch: {hash_key}")
-    return {
-        "workbookPath": str(workbook_path.resolve()),
-        "templateSha256": manifest["templateSha256"],
-        "officeEngine": {"name": engine["name"], "version": engine["version"]},
-    }
-
-
-def _complete_prepared_case(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-    prepared: Mapping[str, object],
-    audit_root: Path,
-    audit_log: Path,
-) -> tuple[dict[str, object], dict[str, object]]:
-    plan = prepared.get("runPlan")
-    if not isinstance(plan, Mapping):
-        raise RuntimeError(f"prepare result lacks a run plan: {prepared}")
-    snapshot = project / str(plan["templateSnapshotPath"])
-    if _sha256(snapshot.read_bytes()) != plan["templateSha256"]:
-        raise RuntimeError("run template snapshot hash does not close")
-
-    _scope_candidate(active_plugin, project, case, prepared)
-    _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-scope",
-        expected="READY_FOR_DELIVERY",
-    )
-    _delivery_candidate(active_plugin, project, case)
-    _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-story-ac",
-        expected="READY_FOR_TASK",
-    )
-    _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-delivery",
-        expected="REVIEW_REQUIRED",
-    )
-    packet = _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "prepare-review",
-        expected="REVIEW_REQUIRED",
-    )
-    _verify_review_material(project, packet)
-    review_name = _review_candidate(active_plugin, project, case, packet)
-    _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-review",
-        "--review",
-        review_name,
-        expected="READY_TO_RENDER",
-    )
-    published = _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "publish",
-        expected="PUBLISHED",
-    )
-    verified = _verify_generation(project, case, published)
-    if verified["templateSha256"] != plan["templateSha256"]:
-        raise RuntimeError("published generation did not retain the run template")
-    return published, verified
-
-
-def _run_case(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-    audit_root: Path,
-    audit_log: Path,
-) -> tuple[dict[str, object], dict[str, object]]:
-    request_name = _prepare_request(active_plugin, project, case)
-    prepared = _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "prepare",
-        "--request",
-        request_name,
-        expected="READY_FOR_SCOPE",
-    )
-    return _complete_prepared_case(
-        active_plugin, project, case, prepared, audit_root, audit_log
-    )
-
-
-def _mutate_project_template(path: Path) -> None:
-    workbook = openpyxl.load_workbook(path)
-    try:
-        sheet = workbook["90-估算标准"]
-        table = sheet.tables["BaseUnitCatalogTable"]
-        min_col, min_row, max_col, _ = openpyxl.utils.range_boundaries(table.ref)
-        headers = {
-            str(sheet.cell(min_row, column).value): column
-            for column in range(min_col, max_col + 1)
-        }
-        effort_column = headers["新建M档人天"]
-        value = sheet.cell(min_row + 1, effort_column).value
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise RuntimeError("template smoke could not find a numeric effort cell")
-        sheet.cell(min_row + 1, effort_column).value = value + 0.25
-        workbook.save(path)
-    finally:
-        workbook.close()
-
-
-def _run_blocked_review_case(
-    active_plugin: Path,
-    project: Path,
-    case: Mapping[str, object],
-    audit_root: Path,
-    audit_log: Path,
-) -> dict[str, object]:
-    request_name = _prepare_request(active_plugin, project, case)
-    prepared = _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "prepare",
-        "--request",
-        request_name,
-        expected="READY_FOR_SCOPE",
-    )
-    _scope_candidate(active_plugin, project, case, prepared)
-    _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-scope",
-        expected="READY_FOR_DELIVERY",
-    )
-    _delivery_candidate(active_plugin, project, case)
-    _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-story-ac",
-        expected="READY_FOR_TASK",
-    )
-    _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-delivery",
-        expected="REVIEW_REQUIRED",
-    )
-    packet = _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "prepare-review",
-        expected="REVIEW_REQUIRED",
-    )
-    _verify_review_material(project, packet)
-    review_name = _blocked_review_candidate(active_plugin, project, case, packet)
-    result = _run_orchestrator(
-        active_plugin,
-        project,
-        audit_root,
-        audit_log,
-        "accept-review",
-        "--review",
-        review_name,
-        expected="BLOCKED",
-    )
-    _verify_transparent_questions(result)
-    if (project / ".ai-sow/current.json").exists():
-        raise RuntimeError("BLOCKED review replaced last-known-good state")
-    return result
-
-
-def run_smoke(
+def _run_smoke(
     plugin_root: Path,
     work_dir: Path,
     copy_plugin: bool,
 ) -> dict[str, object]:
     source_plugin = plugin_root.resolve(strict=True)
-    work_dir = work_dir.resolve()
-    work_dir.mkdir(parents=True, exist_ok=True)
     if copy_plugin:
-        active_plugin = work_dir / "installed" / "ai-sow"
+        active_plugin = work_dir / "installed/ai-sow"
         active_plugin.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(
             source_plugin,
             active_plugin,
-            ignore=shutil.ignore_patterns(".venv", ".ai-sow-tools", ".pytest_cache", "__pycache__", "*.pyc"),
+            ignore=shutil.ignore_patterns(
+                ".venv", ".ai-sow-tools", ".pytest_cache", "__pycache__", "*.pyc"
+            ),
         )
     else:
         active_plugin = source_plugin
-
     manifest = _load_json(active_plugin / ".codex-plugin/plugin.json")
     if manifest.get("name") != "ai-sow":
-        raise RuntimeError(f"unexpected plugin manifest: {manifest}")
-    sync = run_command(
+        raise RuntimeError("copied plugin manifest name mismatch")
+    _run_checked(
         [
             plugin_uv_command(source_plugin),
             "sync",
@@ -765,217 +473,128 @@ def run_smoke(
             str(active_plugin),
             "--locked",
         ],
-        cwd=work_dir,
+        work_dir,
     )
-    if sync.get("outcome") != "OK":
-        raise RuntimeError(f"plugin environment sync failed: {sync}")
-
-    cases = {str(case["caseId"]): case for case in _case_manifest(active_plugin)}
-    greenfield_case = cases["greenfield"]
-    brownfield_case = cases["brownfield"]
+    cases = _case_manifest(active_plugin)
+    plugin_before = _tree_digests(active_plugin)
     projects_root = work_dir / "customer-projects"
-    greenfield = projects_root / "greenfield"
-    brownfield = projects_root / "brownfield"
-    blocked_resume = projects_root / "blocked-resume"
-    blocked_review = projects_root / "blocked-review"
+    projects_root.mkdir(parents=True, exist_ok=True)
     audit_root = active_plugin / "tests/support/read_guard"
     audit_log = work_dir / "forbidden-reads.log"
-
-    greenfield_result, greenfield_verification = _run_case(
-        active_plugin, greenfield, greenfield_case, audit_root, audit_log
-    )
-    brownfield_result, brownfield_verification = _run_case(
-        active_plugin, brownfield, brownfield_case, audit_root, audit_log
-    )
-
-    blocked_review_result = _run_blocked_review_case(
-        active_plugin, blocked_review, greenfield_case, audit_root, audit_log
-    )
-
-    incomplete_request = _prepare_request(
-        active_plugin,
-        blocked_resume,
-        brownfield_case,
-        omit_prior_sow=True,
-    )
-    blocked = _run_orchestrator(
-        active_plugin,
-        blocked_resume,
-        audit_root,
-        audit_log,
-        "prepare",
-        "--request",
-        incomplete_request,
-        expected="BLOCKED",
-    )
-    if not any(
-        diagnostic.get("code") in {
-            "REQUEST_BROWNFIELD_PRIOR_SOW_REQUIRED",
-            "BROWNFIELD_PRIOR_SOW_REQUIRED",
-        }
-        for diagnostic in blocked.get("diagnostics", [])
-        if isinstance(diagnostic, Mapping)
-    ):
-        raise RuntimeError(f"missing-prior-SOW did not return the expected diagnostic: {blocked}")
-    blocked_resume_result, blocked_resume_verification = _run_case(
-        active_plugin, blocked_resume, brownfield_case, audit_root, audit_log
-    )
-
-    reuse = _run_orchestrator(
-        active_plugin,
-        greenfield,
-        audit_root,
-        audit_log,
-        "prepare",
-        "--request",
-        "request.json",
-        expected="REUSED",
-    )
-    generations = sorted((greenfield / ".ai-sow/generations").iterdir())
-    revisions = sorted((greenfield / ".ai-sow/inputs/revisions").iterdir())
-    if len(generations) != 1 or len(revisions) != 1:
-        raise RuntimeError("identical replay created a new immutable artifact")
-
-    first_generation = _load_json(greenfield / ".ai-sow/current.json")
-    first_generation_root = (
-        greenfield / ".ai-sow/generations" / str(first_generation["generationId"])
-    )
-    first_template = first_generation_root / "input/sow-template.xlsx"
-    _mutate_project_template(greenfield / ".ai-sow/templates/sow-template.xlsx")
-    template_recompile = _run_orchestrator(
-        active_plugin,
-        greenfield,
-        audit_root,
-        audit_log,
-        "prepare",
-        "--request",
-        "request.json",
-        expected="READY_FOR_SCOPE",
-    )
-    recompile_plan = template_recompile.get("runPlan")
-    if (
-        not isinstance(recompile_plan, Mapping)
-        or recompile_plan.get("action") != "FULL_COMPILE"
-        or "TEMPLATE_CHANGED"
-        not in recompile_plan.get("impact", {}).get("reasonCodes", [])
-    ):
-        raise RuntimeError(
-            f"changed template did not force full Delivery compilation: {template_recompile}"
-        )
-    frozen_template = greenfield / str(recompile_plan["templateSnapshotPath"])
-    frozen_template_bytes = frozen_template.read_bytes()
-    _mutate_project_template(greenfield / ".ai-sow/templates/sow-template.xlsx")
-    if frozen_template.read_bytes() != frozen_template_bytes:
-        raise RuntimeError("live template change altered the active run snapshot")
-    template_recompile_result, template_recompile_verification = (
-        _complete_prepared_case(
+    reports = {
+        scenario: _run_worker(
             active_plugin,
-            greenfield,
-            greenfield_case,
-            template_recompile,
+            projects_root / scenario,
+            scenario,
             audit_root,
             audit_log,
         )
-    )
-    if template_recompile_verification["templateSha256"] != _sha256(
-        frozen_template_bytes
-    ):
-        raise RuntimeError("template recompile published a drifting template")
-    if _sha256(first_template.read_bytes()) == template_recompile_verification["templateSha256"]:
-        raise RuntimeError("template recompile reused the previous generation template")
-    if len(list((greenfield / ".ai-sow/generations").iterdir())) != 2:
-        raise RuntimeError("template recompile did not create exactly one new generation")
-
-    brownfield_current = (brownfield / ".ai-sow/current.json").read_bytes()
-    brownfield_generations_root = brownfield / ".ai-sow/generations"
-    brownfield_generation_files = _generation_file_digests(
-        brownfield_generations_root
-    )
-    incomplete_after_success = _prepare_request(
-        active_plugin,
-        brownfield,
-        brownfield_case,
-        omit_prior_sow=True,
-    )
-    blocked_after_success = _run_orchestrator(
-        active_plugin,
-        brownfield,
-        audit_root,
-        audit_log,
-        "prepare",
-        "--request",
-        incomplete_after_success,
-        expected="BLOCKED",
-    )
-    if (brownfield / ".ai-sow/current.json").read_bytes() != brownfield_current:
-        raise RuntimeError("BLOCKED update replaced current.json")
-    after_blocked_files = _generation_file_digests(brownfield_generations_root)
-    if after_blocked_files != brownfield_generation_files:
-        changed = sorted(
-            path
-            for path in set(brownfield_generation_files) | set(after_blocked_files)
-            if brownfield_generation_files.get(path) != after_blocked_files.get(path)
-        )
-        raise RuntimeError(
-            f"BLOCKED update changed last-known-good generation files: {changed}"
-        )
-
+        for scenario in ("greenfield", "brownfield", "input-recovery")
+    }
+    for case_id, case in cases.items():
+        report = reports[case_id]
+        if report["actionCount"] < case["expectedMinimumActions"]:
+            raise RuntimeError(f"copy smoke action coverage too small: {case_id}")
+    if not all(report["freshContextOnly"] for report in reports.values()):
+        raise RuntimeError("copy smoke observed inherited conversational context")
+    if not reports["greenfield"]["incrementalFreshContextOnly"]:
+        raise RuntimeError("delta compile observed inherited conversational context")
+    if _tree_digests(active_plugin) != plugin_before:
+        raise RuntimeError("runtime modified the installed plugin copy")
     forbidden_reads = (
         audit_log.read_text(encoding="utf-8").splitlines()
         if audit_log.is_file()
         else []
     )
+    if forbidden_reads:
+        raise RuntimeError("runtime read outside copied plugin and customer project")
+    generations = [
+        generation
+        for report in reports.values()
+        for generation in report["generations"]
+    ]
     return {
+        "contract": "ai-sow-copy-smoke-report-v2",
         "pluginName": manifest["name"],
         "pluginVersion": manifest.get("version"),
-        "pluginRoot": str(active_plugin),
-        "workDir": str(work_dir),
+        "pluginRoot": str(active_plugin.resolve()),
+        "workDir": str(work_dir.resolve()),
         "publicSkills": ["generate"],
-        "greenfieldOutcome": greenfield_result["outcome"],
-        "brownfieldOutcome": brownfield_result["outcome"],
-        "blockedResumeOutcome": blocked_resume_result["outcome"],
-        "blockedReviewOutcome": blocked_review_result["outcome"],
-        "blockedAfterSuccessOutcome": blocked_after_success["outcome"],
-        "reuseOutcome": reuse["outcome"],
-        "templateRecompileOutcome": template_recompile_result["outcome"],
-        "templateRecompileAction": recompile_plan["action"],
-        "runTemplateStable": True,
-        "lastKnownGoodPreserved": True,
-        "lastKnownGoodFileCount": len(brownfield_generation_files),
-        "marketplaceReadCount": len(forbidden_reads),
+        "hostInterface": "PYTHON_API_NEXT_ACTION",
+        "greenfieldOutcome": reports["greenfield"]["outcome"],
+        "brownfieldOutcome": reports["brownfield"]["outcome"],
+        "blockedResumeOutcome": reports["input-recovery"]["outcome"],
+        "reuseOutcome": reports["greenfield"]["reuseOutcome"],
+        "renderOnlyOutcome": reports["greenfield"]["renderOnlyOutcome"],
+        "renderOnlyActionCount": reports["greenfield"]["renderOnlyActionCount"],
+        "incrementalOutcome": reports["greenfield"]["incrementalOutcome"],
+        "incrementalDownstreamPreserved": reports["greenfield"][
+            "incrementalDownstreamPreserved"
+        ],
+        "incrementalFreshContextOnly": reports["greenfield"][
+            "incrementalFreshContextOnly"
+        ],
+        "freshContextOnly": True,
+        "marketplaceReadCount": 0,
         "projectRoots": [
-            str(greenfield),
-            str(brownfield),
-            str(blocked_resume),
-            str(blocked_review),
+            str((projects_root / scenario).resolve()) for scenario in reports
         ],
-        "workbookPaths": [
-            greenfield_verification["workbookPath"],
-            template_recompile_verification["workbookPath"],
-            brownfield_verification["workbookPath"],
-            blocked_resume_verification["workbookPath"],
-        ],
-        "officeEngines": [
-            greenfield_verification["officeEngine"],
-            template_recompile_verification["officeEngine"],
-            brownfield_verification["officeEngine"],
-            blocked_resume_verification["officeEngine"],
-        ],
+        "workbookPaths": [item["workbookPath"] for item in generations],
+        "officeEngines": [item["officeEngine"] for item in generations],
     }
+
+
+def run_smoke(
+    plugin_root: Path,
+    work_dir: Path,
+    copy_plugin: bool,
+) -> dict[str, object]:
+    work_dir = work_dir.resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        report = _run_smoke(plugin_root, work_dir, copy_plugin)
+    except Exception as error:
+        receipt = {
+            "contract": "ai-sow-copy-smoke-failure-v1",
+            "status": "FAILED",
+            "errorType": type(error).__name__,
+            "summary": str(error),
+            "workDir": str(work_dir),
+        }
+        _write_json(work_dir / "failure-receipt.json", receipt)
+        raise
+    _write_json(work_dir / "smoke-report.json", report)
+    return report
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--plugin-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
+        "--plugin-root", type=Path, default=Path(__file__).resolve().parents[2]
     )
     parser.add_argument("--work-dir", type=Path)
     parser.add_argument("--copy-plugin", action="store_true")
+    parser.add_argument("--worker-scenario")
+    parser.add_argument("--project-root", type=Path)
     args = parser.parse_args(argv)
+    if args.worker_scenario:
+        if args.project_root is None:
+            parser.error("--worker-scenario requires --project-root")
+        report = _worker_scenario(
+            args.plugin_root.resolve(),
+            args.project_root.resolve(),
+            args.worker_scenario,
+        )
+        print(json.dumps(report, ensure_ascii=False))
+        return 0
     work_dir = args.work_dir or Path(tempfile.mkdtemp(prefix="ai-sow-smoke-"))
-    report = run_smoke(args.plugin_root, work_dir, args.copy_plugin)
+    try:
+        report = run_smoke(args.plugin_root, work_dir, args.copy_plugin)
+    except Exception:
+        receipt_path = work_dir.resolve() / "failure-receipt.json"
+        if receipt_path.is_file():
+            print(receipt_path.read_text(encoding="utf-8").strip(), file=sys.stderr)
+        return 1
     print(json.dumps(report, ensure_ascii=False))
     return 0
 

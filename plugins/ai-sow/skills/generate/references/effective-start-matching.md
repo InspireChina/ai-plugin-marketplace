@@ -20,4 +20,4 @@
 
 ## 合同附录：内部 token
 
-稳定数据和运行时验证使用合同字段与 machine token（包括 `effectiveStartItemId` 及其对象层级）保持原值。本页正文不用这些 token 向用户提问；具体字段、引用和校验以[Delivery 编译合同](delivery-compilation.md)及当前 Schema 为准。
+稳定数据和运行时验证使用合同字段与 machine token（包括 `effectiveStartItemId` 及其对象层级）保持原值。本页正文不用这些 token 向用户提问；具体字段、引用和校验以当前 Schema 与 [Task 编写规则](task-authoring.md)为准。

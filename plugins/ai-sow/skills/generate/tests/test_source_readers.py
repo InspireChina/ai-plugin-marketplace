@@ -12,7 +12,12 @@ SCRIPTS = SKILL_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from source_readers import SourceReadError, extract_document  # noqa: E402
+from source_readers import (  # noqa: E402
+    SourceReadError,
+    extract_document,
+    extract_source_blocks,
+)
+import source_readers as source_readers_module  # noqa: E402
 
 
 def synthetic_source(tmp_path: Path, suffix: str) -> Path:
@@ -164,3 +169,95 @@ def test_invalid_text_sources_return_stable_codes(
     with pytest.raises(SourceReadError) as captured:
         extract_document(source, source_id="source-main", role=role)
     assert captured.value.code == expected_code
+
+
+def test_source_blocks_preserve_lossless_locators_structure_and_dropped_categories(
+    tmp_path: Path,
+) -> None:
+    markdown = tmp_path / "design.md"
+    markdown.write_text(
+        "# 系统上下文\r\n\r\n订单由门户提交。\r\n\r\n"
+        "## Integration\r\n\r\n| 来源 | 目标 |\r\n|---|---|\r\n| 门户 | 订单服务 |\r\n",
+        encoding="utf-8",
+        newline="",
+    )
+
+    document = extract_source_blocks(
+        markdown,
+        source_role="HLD",
+        parser_version="1",
+    )
+
+    assert document.parser_id == "markdown-blocks"
+    assert document.parser_version == "1"
+    assert document.raw_sha256 == __import__("hashlib").sha256(
+        markdown.read_bytes()
+    ).hexdigest()
+    assert document.blocks
+    assert all("locator" in block and "content" in block for block in document.blocks)
+    assert all("\r" not in str(block["content"]) for block in document.blocks)
+    assert any(block["structuralParentId"] is not None for block in document.blocks)
+    assert all(block["primaryCoverageBlockId"] for block in document.blocks)
+    assert all("contextBlockIds" in block for block in document.blocks)
+    assert all("droppedContentCategories" in block for block in document.blocks)
+
+    prototype = tmp_path / "demo.html"
+    prototype.write_text(
+        "<main><button>提交</button><script>secret()</script><!-- note --></main>",
+        encoding="utf-8",
+    )
+    demo = extract_source_blocks(
+        prototype,
+        source_role="DEMO",
+        parser_version="1",
+    )
+    assert any(
+        block["extractionDisposition"] == "DROPPED"
+        and "SCRIPT" in block["droppedContentCategories"]
+        for block in demo.blocks
+    )
+    assert any(
+        block["extractionDisposition"] == "DROPPED"
+        and "COMMENT" in block["droppedContentCategories"]
+        for block in demo.blocks
+    )
+
+
+def test_xlsx_zip_expansion_limit_has_stable_failure_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = synthetic_source(tmp_path, ".xlsx")
+    monkeypatch.setattr(source_readers_module, "MAX_XLSX_UNCOMPRESSED_BYTES", 100)
+
+    with pytest.raises(SourceReadError) as captured:
+        extract_source_blocks(source, source_role="PRIOR_SOW", parser_version="1")
+
+    assert captured.value.code == "SOURCE_LIMIT_EXCEEDED"
+
+
+def test_xlsx_declared_dimension_and_cell_text_limits_are_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    huge_dimension = tmp_path / "huge-dimension.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet["A1"] = "有效内容"
+    sheet.cell(
+        row=source_readers_module.MAX_XLSX_ROWS_PER_SHEET + 1,
+        column=1,
+        value="越界",
+    )
+    workbook.save(huge_dimension)
+    with pytest.raises(SourceReadError) as captured:
+        extract_document(
+            huge_dimension, source_id="prior-sow", role="PRIOR_SOW"
+        )
+    assert captured.value.code == "SOURCE_LIMIT_EXCEEDED"
+
+    long_cell = synthetic_source(tmp_path, ".xlsx")
+    monkeypatch.setattr(source_readers_module, "MAX_XLSX_CELL_TEXT_CHARS", 5)
+    with pytest.raises(SourceReadError) as captured:
+        extract_source_blocks(long_cell, source_role="PRIOR_SOW", parser_version="1")
+    assert captured.value.code == "SOURCE_LIMIT_EXCEEDED"

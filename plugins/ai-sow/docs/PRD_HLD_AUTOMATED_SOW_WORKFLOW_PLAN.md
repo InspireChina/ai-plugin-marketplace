@@ -1,11 +1,15 @@
 # 基于 PRD、HLD 的自动化 SOW 工作流最终方案
 
-- 状态：已实现
+- 状态：已取代（历史方案，仅用于追溯）
 - 执行日期：2026-09-02
 - 实现基准：`d6738ee25cace4eb97db1cd204f769c6c63b7128`
 - 适用范围：`plugins/ai-sow/`
-- 方案性质：已落地的目标合同；实现由当前正式合同与测试共同约束
+- 方案性质：历史目标合同；其中与当前合同冲突的内容不得作为实现或操作依据
 - 当前运行合同：[AI_SOW_PLUGIN_DESIGN.md](AI_SOW_PLUGIN_DESIGN.md)
+
+> 本文件已被当前运行合同、`ai-sow:generate` 的 `SKILL.md` 与测试取代。尤其是 Brownfield 往期
+> SOW 现为建议输入：未提供时记录 `priorSowState = NOT_PROVIDED` 并建立新基线。下文保留的强制
+> 输入、旧状态或旧验收表述只记录当时设计，不代表当前行为。
 
 ## 1. 决策摘要
 

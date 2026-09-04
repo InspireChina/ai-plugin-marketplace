@@ -2,10 +2,15 @@
     [Parameter(Mandatory = $true)]
     [string]$ProjectRoot,
     [Parameter(Mandatory = $true)]
-    [ValidateSet("prepare", "accept-scope", "accept-story-ac", "accept-delivery", "prepare-review", "accept-review", "publish", "status")]
+    [ValidateSet("start", "submit", "hydrate", "resume", "approve", "abandon", "status")]
     [string]$Mode,
     [string]$Request,
-    [string]$Review
+    [string]$ActionId,
+    [string]$Result,
+    [string]$Execution,
+    [string[]]$EvidenceId = @(),
+    [string]$ArtifactManifestSha256,
+    [string]$Decision
 )
 
 $ErrorActionPreference = "Stop"
@@ -146,7 +151,16 @@ if ($SafeProjectRoot.Length -ge 97 -and -not (Test-LongPathsEnabled)) {
 
 $OrchestratorArgs = @($Orchestrator, "--project-root", $SafeProjectRoot, "--mode", $Mode)
 if (-not [string]::IsNullOrWhiteSpace($Request)) { $OrchestratorArgs += @("--request", $Request) }
-if (-not [string]::IsNullOrWhiteSpace($Review)) { $OrchestratorArgs += @("--review", $Review) }
+if (-not [string]::IsNullOrWhiteSpace($ActionId)) { $OrchestratorArgs += @("--action-id", $ActionId) }
+if (-not [string]::IsNullOrWhiteSpace($Result)) { $OrchestratorArgs += @("--result", $Result) }
+if (-not [string]::IsNullOrWhiteSpace($Execution)) { $OrchestratorArgs += @("--execution", $Execution) }
+foreach ($Evidence in $EvidenceId) {
+    if (-not [string]::IsNullOrWhiteSpace($Evidence)) { $OrchestratorArgs += @("--evidence-id", $Evidence) }
+}
+if (-not [string]::IsNullOrWhiteSpace($ArtifactManifestSha256)) {
+    $OrchestratorArgs += @("--artifact-manifest-sha256", $ArtifactManifestSha256)
+}
+if (-not [string]::IsNullOrWhiteSpace($Decision)) { $OrchestratorArgs += @("--decision", $Decision) }
 
 & $PythonBin @OrchestratorArgs
 exit $LASTEXITCODE

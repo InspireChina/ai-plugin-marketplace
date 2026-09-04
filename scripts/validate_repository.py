@@ -55,31 +55,45 @@ RENDERER_FINGERPRINT_FILES = (
     "scripts/story_notes.py",
 )
 AI_SOW_GENERATE_SUPPORT_FILES = (
-    "skills/generate/contracts/question.schema.json",
+    "skills/generate/contracts/action.schema.json",
+    "skills/generate/contracts/artifact-approval.schema.json",
+    "skills/generate/contracts/common.schema.json",
+    "skills/generate/contracts/current.schema.json",
+    "skills/generate/contracts/generation-manifest.schema.json",
+    "skills/generate/contracts/input-revision.schema.json",
+    "skills/generate/contracts/request.schema.json",
+    "skills/generate/contracts/review-repair.schema.json",
+    "skills/generate/contracts/run-state.schema.json",
+    "skills/generate/contracts/sow-model.schema.json",
+    "skills/generate/contracts/stage-checkpoint.schema.json",
     "skills/generate/references/acceptance-criteria.md",
-    "skills/generate/references/delivery-authoring.md",
     "skills/generate/references/delivery-decomposition.md",
-    "skills/generate/references/delivery-examples.md",
+    "skills/generate/references/delivery-lifecycle-policy.md",
     "skills/generate/references/delivery-work-classification.md",
     "skills/generate/references/effective-start-matching.md",
     "skills/generate/references/epic-authoring.md",
     "skills/generate/references/feature-authoring.md",
-    "skills/generate/references/question-authoring.md",
+    "skills/generate/references/layered-review.md",
+    "skills/generate/references/source-authority.md",
     "skills/generate/references/story-authoring.md",
     "skills/generate/references/task-authoring.md",
     "skills/generate/references/technical-work-classification.md",
 )
-LOWER_KEBAB_ID_REF = "urn:ai-sow:generate:common:1#/$defs/lowerKebabId"
-NON_EMPTY_ID_ARRAY_REF = "urn:ai-sow:generate:common:1#/$defs/nonEmptyIdArray"
-PROJECT_RELATIVE_PATH_REF = "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"
-SHA256_REF = "urn:ai-sow:generate:common:1#/$defs/sha256"
-QUESTION_PROPERTIES = {
-    "questionId": {"$ref": LOWER_KEBAB_ID_REF},
-    "subjectIds": {"$ref": NON_EMPTY_ID_ARRAY_REF},
-    "question": {"type": "string", "minLength": 1},
-    "reason": {"type": "string", "minLength": 1},
-    "decisionImpact": {"type": "string", "minLength": 1},
-    "unansweredEffect": {"type": "string", "minLength": 1},
+AI_SOW_SCHEMA_IDS = {
+    name: f"urn:ai-sow:generate:next:{name.removesuffix('.schema.json')}:1"
+    for name in (
+        "action.schema.json",
+        "artifact-approval.schema.json",
+        "common.schema.json",
+        "current.schema.json",
+        "generation-manifest.schema.json",
+        "input-revision.schema.json",
+        "request.schema.json",
+        "review-repair.schema.json",
+        "run-state.schema.json",
+        "sow-model.schema.json",
+        "stage-checkpoint.schema.json",
+    )
 }
 
 
@@ -497,12 +511,16 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
         errors.append("AI SOW smoke implementation must be plugin-scoped")
 
     contract_root = plugin_root / "skills/generate/contracts"
-    schemas: dict[str, dict[str, object]] = {}
-    for name in (
-        "question.schema.json",
-        "run-plan.schema.json",
-        "generation-manifest.schema.json",
-    ):
+    actual_schema_names = {
+        path.name for path in contract_root.glob("*.schema.json")
+    }
+    expected_schema_names = set(AI_SOW_SCHEMA_IDS)
+    if actual_schema_names != expected_schema_names:
+        errors.append(
+            "AI SOW contract set must be the eleven cutover schemas, "
+            f"found {sorted(actual_schema_names)}"
+        )
+    for name, expected_id in AI_SOW_SCHEMA_IDS.items():
         path = contract_root / name
         if not path.is_file():
             continue
@@ -511,96 +529,34 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             errors.append(f"invalid AI SOW contract {name}: {exc}")
             continue
-        if not isinstance(value, dict):
-            errors.append(f"invalid AI SOW contract {name}: expected a JSON object")
-            continue
-        schemas[name] = value
+        if not isinstance(value, dict) or value.get("$id") != expected_id:
+            errors.append(f"AI SOW contract {name} must use $id {expected_id}")
 
-    question_schema = schemas.get("question.schema.json")
-    if question_schema is not None and (
-        question_schema.get("$id") != "urn:ai-sow:generate:question:1"
-        or question_schema.get("type") != "object"
-        or question_schema.get("additionalProperties") is not False
-        or not isinstance(question_schema.get("required"), list)
-        or set(question_schema["required"]) != set(QUESTION_PROPERTIES)
-        or question_schema.get("properties") != QUESTION_PROPERTIES
-    ):
-        errors.append(
-            "question schema must match the self-contained user question contract"
+    generation_schema_path = contract_root / "generation-manifest.schema.json"
+    if generation_schema_path.is_file():
+        generation_schema = load_json(generation_schema_path)
+        required_fields = (
+            generation_schema.get("required")
+            if isinstance(generation_schema, dict)
+            else None
         )
-
-    run_plan_schema = schemas.get("run-plan.schema.json")
-    if run_plan_schema is not None:
-        required_fields = run_plan_schema.get("required")
-        if (
-            not isinstance(required_fields, list)
-            or not {"templateSnapshotPath", "templateSha256"}.issubset(
-                set(required_fields)
-            )
+        proof_fields = {
+            "sowModelSha256",
+            "stageCheckpointSha256s",
+            "reviewDecisionSha256",
+            "artifactManifestSha256",
+            "approvalSha256",
+            "templateSha256",
+            "effectivePolicyDecisionSha256",
+            "workbookSha256",
+            "notesSha256",
+        }
+        if not isinstance(required_fields, list) or not proof_fields <= set(
+            required_fields
         ):
             errors.append(
-                "run plan must require templateSnapshotPath and templateSha256"
+                "generation manifest must require the v2 self-contained proof closure"
             )
-        properties = run_plan_schema.get("properties")
-        snapshot = (
-            properties.get("templateSnapshotPath")
-            if isinstance(properties, dict)
-            else None
-        )
-        if not isinstance(snapshot, dict) or snapshot.get("const") != (
-            ".ai-sow/work/run-template.xlsx"
-        ):
-            errors.append(
-                "run plan templateSnapshotPath must be .ai-sow/work/run-template.xlsx"
-            )
-        template_sha256 = (
-            properties.get("templateSha256")
-            if isinstance(properties, dict)
-            else None
-        )
-        if template_sha256 != {"$ref": SHA256_REF}:
-            errors.append(
-                "run plan templateSha256 must use the 64-hex SHA-256 contract"
-            )
-
-    generation_schema = schemas.get("generation-manifest.schema.json")
-    if generation_schema is not None:
-        required_fields = generation_schema.get("required")
-        if (
-            not isinstance(required_fields, list)
-            or not {"templatePath", "templateSha256"}.issubset(set(required_fields))
-        ):
-            errors.append(
-                "generation manifest must require templatePath and templateSha256"
-            )
-        properties = generation_schema.get("properties")
-        template_path = (
-            properties.get("templatePath")
-            if isinstance(properties, dict)
-            else None
-        )
-        if template_path != {"$ref": PROJECT_RELATIVE_PATH_REF}:
-            errors.append(
-                "generation manifest templatePath must use the project-relative path contract"
-            )
-        template_sha256 = (
-            properties.get("templateSha256")
-            if isinstance(properties, dict)
-            else None
-        )
-        if template_sha256 != {"$ref": SHA256_REF}:
-            errors.append(
-                "generation manifest templateSha256 must use the 64-hex SHA-256 contract"
-            )
-
-    generation_store = plugin_root / "skills/generate/scripts/generation_store.py"
-    if generation_store.is_file() and not generation_store_binds_immutable_template(
-        generation_store
-    ):
-        errors.append(
-            "generation store must bind templatePath to the immutable generation "
-            "input/sow-template.xlsx"
-        )
 
     public_skills = sorted(
         path.parent.name for path in (plugin_root / "skills").glob("*/SKILL.md")
@@ -682,26 +638,6 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
                 f"AI SOW marketplace description in {relative} must match the "
                 "automatic generate flow"
             )
-
-    for mode in ("greenfield", "brownfield"):
-        request_path = plugin_root / f"skills/generate/fixtures/{mode}/request.json"
-        try:
-            request = load_json(request_path)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            errors.append(f"invalid AI SOW {mode} fixture request: {exc}")
-            continue
-        project = request.get("project") if isinstance(request, dict) else None
-        project_id = project.get("projectId") if isinstance(project, dict) else None
-        project_name = project.get("name") if isinstance(project, dict) else None
-        if (
-            not isinstance(project_id, str)
-            or not project_id.strip()
-            or not isinstance(project_name, str)
-            or not project_name.strip()
-        ):
-            errors.append(f"{mode} fixture projectId and name must be non-empty")
-        if not isinstance(request, dict) or request.get("mode") != mode.upper():
-            errors.append(f"{mode} fixture mode must be {mode.upper()}")
 
     pyproject_path = plugin_root / "pyproject.toml"
     try:
@@ -823,6 +759,140 @@ def validate_renderer_contract_consistency(
     return errors
 
 
+def _canonical_json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+
+
+def _model_efficiency_policy_sha256(policy: dict[str, object]) -> str:
+    normalized = json.loads(json.dumps(policy))
+    gate = normalized.get("pairedBenchmarkGate")
+    if not isinstance(gate, dict):
+        return ""
+    gate.update(
+        {
+            "status": "REQUIRED_NOT_SATISFIED",
+            "claimStatus": "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS",
+            "baselineManifest": None,
+            "candidateManifest": None,
+            "comparisonReceipt": None,
+        }
+    )
+    return hashlib.sha256(_canonical_json_bytes(normalized)).hexdigest()
+
+
+def validate_model_efficiency_gate(plugin_root: Path) -> list[str]:
+    """Require SATISFIED claims to be derived from exact recomputed evidence."""
+
+    policy_path = plugin_root / "tests/benchmarks/model-efficiency-policy-v1.json"
+    runner_path = plugin_root / "tests/support/run_pipeline_benchmark.py"
+    try:
+        policy = load_json(policy_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"invalid model efficiency policy: {exc}"]
+    if not isinstance(policy, dict):
+        return ["model efficiency policy must be a JSON object"]
+    gate = policy.get("pairedBenchmarkGate")
+    if not isinstance(gate, dict):
+        return ["model efficiency policy must declare pairedBenchmarkGate"]
+    if gate.get("status") != "SATISFIED":
+        if (
+            gate.get("status") != "REQUIRED_NOT_SATISFIED"
+            or gate.get("claimStatus") != "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS"
+            or any(
+                gate.get(field) is not None
+                for field in (
+                    "baselineManifest",
+                    "candidateManifest",
+                    "comparisonReceipt",
+                )
+            )
+        ):
+            return ["unsatisfied model efficiency gate has inconsistent claim state"]
+        return []
+
+    errors: list[str] = []
+    evidence_paths: dict[str, Path] = {}
+    for field in ("baselineManifest", "candidateManifest"):
+        relative = gate.get(field)
+        if not isinstance(relative, str) or not relative or not _inside(
+            plugin_root / relative, plugin_root
+        ):
+            errors.append(f"model efficiency {field} path is invalid")
+            continue
+        path = plugin_root / relative
+        if not path.is_file():
+            errors.append(f"model efficiency {field} evidence is missing")
+            continue
+        evidence_paths[field] = path
+    comparison = gate.get("comparisonReceipt")
+    if not isinstance(comparison, dict):
+        errors.append("model efficiency comparisonReceipt binding is invalid")
+    else:
+        relative = comparison.get("path")
+        expected_sha256 = comparison.get("sha256")
+        if not isinstance(relative, str) or not relative or not _inside(
+            plugin_root / relative, plugin_root
+        ):
+            errors.append("model efficiency comparisonReceipt path is invalid")
+        else:
+            comparison_path = plugin_root / relative
+            if not comparison_path.is_file():
+                errors.append("model efficiency comparisonReceipt evidence is missing")
+            else:
+                actual_sha256 = hashlib.sha256(comparison_path.read_bytes()).hexdigest()
+                if actual_sha256 != expected_sha256:
+                    errors.append("model efficiency comparisonReceipt hash mismatch")
+                else:
+                    evidence_paths["comparisonReceipt"] = comparison_path
+    if errors:
+        return errors
+
+    try:
+        receipt = load_json(evidence_paths["comparisonReceipt"])
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"invalid model efficiency comparisonReceipt: {exc}"]
+    if not isinstance(receipt, dict):
+        return ["model efficiency comparisonReceipt must be a JSON object"]
+    checks = receipt.get("checks")
+    if (
+        receipt.get("verdict") != "PASS"
+        or not isinstance(checks, dict)
+        or not checks
+        or not all(value is True for value in checks.values())
+        or receipt.get("failureCodes") != []
+        or receipt.get("policySha256") != _model_efficiency_policy_sha256(policy)
+        or receipt.get("baselineManifestSha256")
+        != hashlib.sha256(evidence_paths["baselineManifest"].read_bytes()).hexdigest()
+        or receipt.get("candidateManifestSha256")
+        != hashlib.sha256(evidence_paths["candidateManifest"].read_bytes()).hexdigest()
+    ):
+        return ["model efficiency SATISFIED evidence binding is invalid"]
+    if not runner_path.is_file():
+        return ["model efficiency evidence validator is missing"]
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(runner_path),
+                "validate-policy",
+                "--policy",
+                str(policy_path),
+            ],
+            cwd=plugin_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return ["model efficiency evidence validator could not run"]
+    if completed.returncode != 0:
+        return ["model efficiency SATISFIED evidence failed mechanical reevaluation"]
+    return []
+
+
 def _marketplace_plugin_paths(repo_root: Path) -> list[tuple[str, Path]]:
     """Return valid local marketplace plugin names and paths for manifest checks."""
     try:
@@ -906,6 +976,7 @@ def validate_repository(repo_root: Path) -> list[str]:
         )
     errors.extend(validate_ai_sow_release(repo_root, plugin_root))
     errors.extend(validate_renderer_contract_consistency(repo_root, plugin_root))
+    errors.extend(validate_model_efficiency_gate(plugin_root))
     errors.extend(validate_publisher_identity(repo_root, plugin_root))
     errors.extend(validate_public_tree(repo_root))
     return errors

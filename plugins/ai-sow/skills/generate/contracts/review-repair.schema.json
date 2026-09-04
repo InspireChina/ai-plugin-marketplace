@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:review-repair:1",
+  "description": "定义独立评审计划、角色化评审结果与最小影响返修波次。",
+  "oneOf": [
+    {"$ref": "#/$defs/reviewPlan"},
+    {"$ref": "#/$defs/reviewResult"},
+    {"$ref": "#/$defs/repairPlan"}
+  ],
+  "$defs": {
+    "reviewPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "reviewSetId", "runId", "candidateSha256", "mode", "shards"],
+      "properties": {
+        "contract": {"const": "ai-sow-review-plan-v1"},
+        "reviewSetId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "candidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "mode": {"enum": ["FULL", "DELTA"]},
+        "shards": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reviewShard"}
+        }
+      }
+    },
+    "reviewShard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewShardId", "kind", "logicalThemeId", "physicalShardIndex", "subjectIds"],
+      "properties": {
+        "reviewShardId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "kind": {"enum": ["SOURCE_AUDIT", "SOURCE_SCOPE", "STORY_DESIGN", "TASK_ESTIMATION"]},
+        "logicalThemeId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "physicalShardIndex": {"type": "integer", "minimum": 0, "maximum": 7},
+        "subjectIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+      }
+    },
+    "reviewResult": {
+      "oneOf": [
+        {"$ref": "#/$defs/sourceReviewResult"},
+        {"$ref": "#/$defs/leafReviewResult"},
+        {"$ref": "#/$defs/themeJoinResult"},
+        {"$ref": "#/$defs/adjudicationResult"}
+      ]
+    },
+    "reviewResultBase": {
+      "type": "object",
+      "required": [
+        "contract", "reviewResultId", "reviewSetId", "runId", "kind",
+        "reviewPlanSha256", "candidateProjectionSha256", "coverageSha256",
+        "completedCheckIds", "decision", "findings"
+      ],
+      "properties": {
+        "contract": {"const": "ai-sow-review-result-v1"},
+        "reviewResultId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "reviewSetId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "kind": {
+          "enum": [
+            "SOURCE_AUDIT", "SOURCE_SCOPE", "STORY_DESIGN", "TASK_ESTIMATION",
+            "THEME_JOIN", "ADJUDICATION"
+          ]
+        },
+        "reviewPlanSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "candidateProjectionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "coverageSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "completedCheckIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "decision": {"enum": ["PASS", "OWNER_FIX_REQUIRED", "INPUT_REQUIRED", "CONTRACT_GAP"]},
+        "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingId", "type", "owner", "subjectIds", "evidenceIds", "summary"],
+      "properties": {
+        "findingId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "type": {"enum": ["OWNER_FIX_REQUIRED", "INPUT_REQUIRED", "CONTRACT_GAP"]},
+        "owner": {"enum": ["STAGE_1", "STAGE_2", "STAGE_3", "REVIEW", "INPUT"]},
+        "subjectIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "evidenceIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "summary": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+      }
+    },
+    "sourceReviewResult": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/reviewResultBase"},
+        {
+          "required": ["sourceAuditCoverageUnion"],
+          "properties": {
+            "kind": {"enum": ["SOURCE_AUDIT", "SOURCE_SCOPE"]},
+            "sourceAuditCoverageUnion": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+          }
+        }
+      ]
+    },
+    "leafReviewResult": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/reviewResultBase"},
+        {"properties": {"kind": {"enum": ["STORY_DESIGN", "TASK_ESTIMATION"]}}}
+      ]
+    },
+    "themeJoinResult": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/reviewResultBase"},
+        {
+          "required": ["leafReviewResultSha256s"],
+          "properties": {
+            "kind": {"const": "THEME_JOIN"},
+            "leafReviewResultSha256s": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256Array"}
+          }
+        }
+      ]
+    },
+    "adjudicationResult": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/reviewResultBase"},
+        {
+          "required": ["propositionId", "selectedFindingIds"],
+          "properties": {
+            "kind": {"const": "ADJUDICATION"},
+            "propositionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+            "selectedFindingIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+          }
+        }
+      ]
+    },
+    "repairPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "repairPlanId", "runId", "baseCandidateSha256", "earliestOwner", "waves"],
+      "properties": {
+        "contract": {"const": "ai-sow-repair-plan-v1"},
+        "repairPlanId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "baseCandidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "earliestOwner": {"enum": ["STAGE_1", "STAGE_2", "STAGE_3"]},
+        "waves": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/repairWave"}
+        }
+      }
+    },
+    "repairWave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repairWaveId", "findingIds", "editableNodeIds", "contextNodeIds",
+        "lockedNodeIds", "resumePhase"
+      ],
+      "properties": {
+        "repairWaveId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "findingIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "editableNodeIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "contextNodeIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "lockedNodeIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "resumePhase": {"enum": ["EPIC_FEATURE", "STORY_AC", "TASK"]}
+      }
+    }
+  }
+}

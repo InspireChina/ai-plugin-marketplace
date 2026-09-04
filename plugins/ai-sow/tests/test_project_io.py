@@ -66,6 +66,29 @@ def test_publish_new_creates_reuses_and_rejects_conflicting_content(tmp_path: Pa
     assert files.read_bytes(".ai-sow/data/value.json") == b"same"
 
 
+def test_create_exclusive_never_reuses_or_overwrites_existing_content(
+    tmp_path: Path,
+) -> None:
+    files = ProjectFiles.open(tmp_path)
+    marker = ".ai-sow/work/active-run.json"
+    assert files.create_exclusive(marker, b"first") is True
+    assert files.create_exclusive(marker, b"first") is False
+    assert files.create_exclusive(marker, b"different") is False
+    assert files.read_bytes(marker) == b"first"
+
+
+def test_unlink_exact_only_removes_the_expected_marker_bytes(tmp_path: Path) -> None:
+    files = ProjectFiles.open(tmp_path)
+    marker = ".ai-sow/work/active-run.json"
+    files.write_atomic(marker, b"active")
+    with pytest.raises(ProjectIOError) as conflict:
+        files.unlink_exact(marker, expected_payload=b"stale")
+    assert conflict.value.code == "PROJECT_CONTENT_CONFLICT"
+    assert files.read_bytes(marker) == b"active"
+    assert files.unlink_exact(marker, expected_payload=b"active") is True
+    assert files.unlink_exact(marker, expected_payload=b"active") is False
+
+
 @pytest.mark.parametrize(
     "relative",
     ("", ".", "../outside", ".ai-sow/../outside", "/absolute", r".ai-sow\data"),

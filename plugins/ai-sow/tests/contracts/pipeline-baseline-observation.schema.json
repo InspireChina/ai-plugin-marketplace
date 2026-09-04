@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:pipeline-baseline-observation:1",
+  "description": "记录无法形成完整逐样本收据的历史部分基线，只允许用于根因定位和修复排序，不得替代完整配对 benchmark。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "baselineCommit",
+    "evidenceStatus",
+    "evidenceSource",
+    "privacy",
+    "sampleAccounting",
+    "aggregateObservation",
+    "outcomeCounts",
+    "excludedObservation",
+    "defectClusters",
+    "comparisonEligibility"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-pipeline-baseline-observation-v1"},
+    "baselineCommit": {"const": "75970b2cadd6c298443b1d6016f99b34c8e3b25a"},
+    "evidenceStatus": {"const": "PARTIAL_BASELINE_CHECKPOINT"},
+    "evidenceSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storageMode", "rawReceiptsRetained", "sourceContentRetained", "machinePathsRetained"],
+      "properties": {
+        "storageMode": {"const": "AGGREGATE_ONLY"},
+        "rawReceiptsRetained": {"const": false},
+        "sourceContentRetained": {"const": false},
+        "machinePathsRetained": {"const": false}
+      }
+    },
+    "sampleAccounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completedSamples", "excludedSamples", "usableComparisonSamples"],
+      "properties": {
+        "completedSamples": {"const": 12},
+        "excludedSamples": {"const": 1},
+        "usableComparisonSamples": {"const": 0}
+      }
+    },
+    "aggregateObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wallMilliseconds",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "reasoningTokens",
+        "toolAttempts",
+        "failures",
+        "repairWaves",
+        "rereviews"
+      ],
+      "properties": {
+        "wallMilliseconds": {"type": "integer", "minimum": 0},
+        "inputTokens": {"type": "integer", "minimum": 0},
+        "cachedInputTokens": {"type": "integer", "minimum": 0},
+        "outputTokens": {"type": "integer", "minimum": 0},
+        "reasoningTokens": {"type": "integer", "minimum": 0},
+        "toolAttempts": {"type": "integer", "minimum": 0},
+        "failures": {"type": "integer", "minimum": 0},
+        "repairWaves": {"type": "integer", "minimum": 0},
+        "rereviews": {"type": "integer", "minimum": 0}
+      }
+    },
+    "outcomeCounts": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "count"],
+        "properties": {
+          "code": {
+            "enum": [
+              "FINAL_REVIEW_CONFLICT",
+              "STORY_AC_RECEIPT_MISSING",
+              "MODEL_EFFICIENCY_FAILED"
+            ]
+          },
+          "count": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "excludedObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "code", "providerCompletionReceiptRetained"],
+      "properties": {
+        "count": {"const": 1},
+        "code": {"const": "FRESH_REVIEWER_NOT_CREATED"},
+        "providerCompletionReceiptRetained": {"const": false}
+      }
+    },
+    "defectClusters": {
+      "type": "array",
+      "prefixItems": [
+        {"const": "D1"},
+        {"const": "D2"},
+        {"const": "D3"},
+        {"const": "D4"},
+        {"const": "D5"}
+      ],
+      "items": false
+    },
+    "comparisonEligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowedUse",
+        "pairedNumericConclusionAllowed",
+        "relativeImprovementClaimAllowed",
+        "missingEvidence"
+      ],
+      "properties": {
+        "allowedUse": {"const": "ROOT_CAUSE_AND_REPAIR_PRIORITIZATION_ONLY"},
+        "pairedNumericConclusionAllowed": {"const": false},
+        "relativeImprovementClaimAllowed": {"const": false},
+        "missingEvidence": {
+          "type": "array",
+          "minItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "RAW_SAMPLE_RECEIPTS",
+              "COMPLETE_MODEL_PROFILE",
+              "COMPLETE_TOOL_VERSIONS",
+              "OFFICE_BINARY_IDENTITY",
+              "COLD_WARM_PAIRING",
+              "FIVE_REPETITIONS_PER_SUCCESS_SCENARIO"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "contract": "ai-sow-benchmark-case-v1",
+  "scenarioId": "small-greenfield",
+  "class": "SUCCESS",
+  "privacy": "ANONYMOUS_SYNTHETIC",
+  "mode": "GREENFIELD",
+  "title": "内部设备借用登记",
+  "objective": "为单一办公室提供可审计的设备借用申请、审批、归还和逾期提醒。",
+  "sources": [
+    {
+      "sourceId": "PRD-001",
+      "type": "PRD",
+      "status": "APPROVED",
+      "content": "员工选择可用设备并提交借用日期；直属经理批准或拒绝；管理员登记领用和归还；到期前一天提醒员工，逾期每天提醒员工和管理员；所有状态变化保留操作者、时间与原因。"
+    },
+    {
+      "sourceId": "HLD-001",
+      "type": "HLD",
+      "status": "APPROVED",
+      "content": "浏览器应用使用公司单点登录；借用服务持有设备和申请状态；通知通过内部邮件网关异步发送；审计事件保存一年；上线采用单环境蓝绿切换并提供数据库回滚脚本。"
+    }
+  ],
+  "expected": {
+    "terminal": "PUBLISHED",
+    "successProbe": "PUBLISHED_OFFICE_VERIFIED",
+    "minimumFeatures": 2,
+    "requiredCoverageRoots": ["申请与审批", "领用与归还", "逾期提醒", "审计"]
+  },
+  "scaleExpectations": {
+    "requiresModelSharding": false,
+    "minimumLogicalThemes": 1
+  }
+}

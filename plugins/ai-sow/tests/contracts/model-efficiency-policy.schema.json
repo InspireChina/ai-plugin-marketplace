@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:model-efficiency-policy:1",
+  "description": "约束模型 action、阶段预算、成本迁移检查和完整配对 benchmark 的效率政策。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "policyVersion",
+    "baselineObservationSha256",
+    "contextAllocation",
+    "globalTargets",
+    "stageBudgets",
+    "actionBudget",
+    "hardLimits",
+    "costShiftGuards",
+    "allocationProof",
+    "pairedBenchmarkGate"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-model-efficiency-policy-v1"},
+    "policyVersion": {"const": "1"},
+    "baselineObservationSha256": {"$ref": "#/$defs/sha256"},
+    "contextAllocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialPacketRatio", "hydrationRatio", "outputRatio", "safetyMarginRatio"],
+      "properties": {
+        "initialPacketRatio": {"const": 0.6},
+        "hydrationRatio": {"const": 0.15},
+        "outputRatio": {"const": 0.2},
+        "safetyMarginRatio": {"const": 0.05}
+      }
+    },
+    "globalTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fullCompileTokenRatio",
+        "fullCompileP50WallRatio",
+        "postReviewP50WallRatio",
+        "reviewTokenRatioMaximum"
+      ],
+      "properties": {
+        "fullCompileTokenRatio": {"const": 0.7},
+        "fullCompileP50WallRatio": {"const": 0.7},
+        "postReviewP50WallRatio": {"const": 0.7},
+        "reviewTokenRatioMaximum": {"const": 1.4}
+      }
+    },
+    "stageBudgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "STAGE_1",
+        "STAGE_2",
+        "STAGE_3",
+        "R1",
+        "R2",
+        "R3",
+        "REPAIR",
+        "DELTA_REVIEW",
+        "ADJUDICATION",
+        "DRAFT_OFFICE",
+        "CONTROL_PLANE"
+      ],
+      "properties": {
+        "STAGE_1": {"$ref": "#/$defs/budget"},
+        "STAGE_2": {"$ref": "#/$defs/budget"},
+        "STAGE_3": {"$ref": "#/$defs/budget"},
+        "R1": {"$ref": "#/$defs/budget"},
+        "R2": {"$ref": "#/$defs/budget"},
+        "R3": {"$ref": "#/$defs/budget"},
+        "REPAIR": {"$ref": "#/$defs/budget"},
+        "DELTA_REVIEW": {"$ref": "#/$defs/budget"},
+        "ADJUDICATION": {"$ref": "#/$defs/budget"},
+        "DRAFT_OFFICE": {"$ref": "#/$defs/budget"},
+        "CONTROL_PLANE": {"$ref": "#/$defs/budget"}
+      }
+    },
+    "actionBudget": {"$ref": "#/$defs/budget"},
+    "hardLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxHydrationRoundsPerAction",
+        "maxExecutionAttemptsPerShard",
+        "maxSemanticRepairRoundsPerProposition",
+        "maxAdjudicationsPerProposition",
+        "maxReviewReshardDepth",
+        "maxPhysicalShardsPerLogicalTheme"
+      ],
+      "properties": {
+        "maxHydrationRoundsPerAction": {"type": "integer", "minimum": 0},
+        "maxExecutionAttemptsPerShard": {"type": "integer", "minimum": 1},
+        "maxSemanticRepairRoundsPerProposition": {"type": "integer", "minimum": 0},
+        "maxAdjudicationsPerProposition": {"type": "integer", "minimum": 0},
+        "maxReviewReshardDepth": {"type": "integer", "minimum": 0},
+        "maxPhysicalShardsPerLogicalTheme": {"type": "integer", "minimum": 1}
+      }
+    },
+    "costShiftGuards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage1", "downstreamReview", "office", "promote", "controlPlane", "retryRework"],
+      "properties": {
+        "stage1": {"const": true},
+        "downstreamReview": {"const": true},
+        "office": {"const": true},
+        "promote": {"const": true},
+        "controlPlane": {"const": true},
+        "retryRework": {"const": true}
+      }
+    },
+    "allocationProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetCriticalPathRatio", "targetTokenRatio", "status"],
+      "properties": {
+        "targetCriticalPathRatio": {"const": 0.7},
+        "targetTokenRatio": {"const": 0.7},
+        "status": {"const": "REQUIRES_PAIRED_BENCHMARK"}
+      }
+    },
+    "pairedBenchmarkGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "claimStatus",
+        "manifestSchema",
+        "baselineManifest",
+        "candidateManifest",
+        "comparisonReceipt",
+        "minimumSamplesPerManifest",
+        "minimumRepetitionsPerSuccessScenario",
+        "cacheModes",
+        "requiredSuccessScenarios",
+        "requiredBlockedScenarios",
+        "requiredReceiptGranularities",
+        "sameExecutionProfileRequired",
+        "comparisonInterval"
+      ],
+      "properties": {
+        "status": {"enum": ["REQUIRED_NOT_SATISFIED", "SATISFIED"]},
+        "claimStatus": {
+          "enum": [
+            "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS",
+            "ALLOWED_AFTER_TARGET_EVALUATION"
+          ]
+        },
+        "manifestSchema": {"const": "tests/contracts/pipeline-benchmark.schema.json"},
+        "baselineManifest": {"type": ["string", "null"], "minLength": 1},
+        "candidateManifest": {"type": ["string", "null"], "minLength": 1},
+        "comparisonReceipt": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/hashPath"}
+          ]
+        },
+        "minimumSamplesPerManifest": {"const": 32},
+        "minimumRepetitionsPerSuccessScenario": {"const": 5},
+        "cacheModes": {
+          "type": "array",
+          "prefixItems": [{"const": "COLD"}, {"const": "WARM"}],
+          "items": false
+        },
+        "requiredSuccessScenarios": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "small-greenfield"},
+            {"const": "medium-demo"},
+            {"const": "large-brownfield"}
+          ],
+          "items": false
+        },
+        "requiredBlockedScenarios": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "blocked-missing-design"},
+            {"const": "blocked-source-conflict"}
+          ],
+          "items": false
+        },
+        "requiredReceiptGranularities": {
+          "type": "array",
+          "prefixItems": [{"const": "ACTION"}, {"const": "STAGE"}, {"const": "RUN"}],
+          "items": false
+        },
+        "sameExecutionProfileRequired": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "modelProfileId"},
+            {"const": "model"},
+            {"const": "reasoningEffort"},
+            {"const": "environmentSha256"},
+            {"const": "toolVersions"},
+            {"const": "office"},
+            {"const": "accountingMode"},
+            {"const": "cacheProtocol"}
+          ],
+          "items": false
+        },
+        "comparisonInterval": {"$ref": "#/$defs/comparisonInterval"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "REQUIRED_NOT_SATISFIED"}}},
+          "then": {
+            "properties": {
+              "claimStatus": {"const": "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS"},
+              "baselineManifest": {"const": null},
+              "candidateManifest": {"const": null},
+              "comparisonReceipt": {"const": null}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "SATISFIED"}}},
+          "then": {
+            "properties": {
+              "claimStatus": {"const": "ALLOWED_AFTER_TARGET_EVALUATION"},
+              "baselineManifest": {"$ref": "#/$defs/path"},
+              "candidateManifest": {"$ref": "#/$defs/path"},
+              "comparisonReceipt": {"$ref": "#/$defs/hashPath"}
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+    "hashPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxWallMilliseconds", "maxTotalTokens"],
+      "properties": {
+        "maxWallMilliseconds": {"type": "integer", "minimum": 1},
+        "maxTotalTokens": {"type": "integer", "minimum": 1}
+      }
+    },
+    "comparisonInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startProbe",
+        "baselineEndProbe",
+        "candidateEndProbe",
+        "includedBaselinePublishSegments",
+        "excludedAfterApprovalSegments"
+      ],
+      "properties": {
+        "startProbe": {"const": "INPUT_REVISION_ACCEPTED"},
+        "baselineEndProbe": {"const": "PUBLISHED_OFFICE_VERIFIED"},
+        "candidateEndProbe": {"const": "AWAITING_APPROVAL"},
+        "includedBaselinePublishSegments": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "RENDER"},
+            {"const": "OFFICE_RECALCULATION"},
+            {"const": "OFFICE_REREAD"}
+          ],
+          "items": false
+        },
+        "excludedAfterApprovalSegments": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "USER_WAIT"},
+            {"const": "ATOMIC_PROMOTE"},
+            {"const": "CURRENT_SWAP"}
+          ],
+          "items": false
+        }
+      }
+    }
+  }
+}

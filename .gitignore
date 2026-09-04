@@ -51,6 +51,7 @@ outputs/
 # ignores test-fixture runtime only; see the plugin README before choosing what a
 # user project should version.
 .ai-sow/runtime/
+.ai-sow-test-runs/
 
 # Local spreadsheet comparison candidates and diagnostics
 /SOW估算与生成模板_v1.3_Table版.xlsx

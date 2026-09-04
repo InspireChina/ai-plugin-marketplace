@@ -1,15 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:generate:current:1",
+  "$id": "urn:ai-sow:generate:next:current:1",
+  "description": "以最小原子指针指向最后一个完整且不可变的 generation manifest。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contract", "generationId", "revisionId", "decision", "generationManifestPath", "generationManifestSha256"],
+  "required": ["contract", "generationId", "generationManifestPath", "generationManifestSha256"],
   "properties": {
-    "contract": {"const": "ai-sow-current-v1"},
-    "generationId": {"type": "string", "pattern": "^[0-9]{6}$"},
-    "revisionId": {"type": "string", "pattern": "^[0-9]{6}$"},
-    "decision": {"type": "string", "enum": ["PASS", "PASS_WITH_NOTES"]},
-    "generationManifestPath": {"$ref": "urn:ai-sow:generate:common:1#/$defs/projectRelativePath"},
-    "generationManifestSha256": {"$ref": "urn:ai-sow:generate:common:1#/$defs/sha256"}
+    "contract": {"const": "ai-sow-current-v2"},
+    "generationId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+    "generationManifestPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+    "generationManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
   }
 }

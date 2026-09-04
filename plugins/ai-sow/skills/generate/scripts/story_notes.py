@@ -4,6 +4,8 @@ import re
 import unicodedata
 from collections.abc import Mapping
 
+from models import TaskStandardCatalog
+
 
 def _mappings(value: object) -> list[Mapping[str, object]]:
     return [item for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
@@ -84,3 +86,137 @@ def story_note_projection(
         "projected": projected,
         "suppressedProjectLevelAssumptionIds": sorted(suppressed),
     }
+
+
+def model_story_note_projection(
+    model: Mapping[str, object],
+) -> tuple[dict[str, str], dict[str, object]]:
+    """Project model annotations once without inventing scope decisions."""
+    stories = _mappings(model.get("stories"))
+    first_story_by_feature: dict[str, str] = {}
+    for story in stories:
+        feature_id = story.get("featureId")
+        story_id = story.get("storyId")
+        if isinstance(feature_id, str) and isinstance(story_id, str):
+            first_story_by_feature.setdefault(feature_id, story_id)
+    known_story_ids = {
+        str(story["storyId"])
+        for story in stories
+        if isinstance(story.get("storyId"), str)
+    }
+    by_story: dict[str, list[str]] = {}
+    projected: list[dict[str, object]] = []
+    suppressed: list[str] = []
+    for annotation in (
+        _mappings(model.get("scopeAnnotations"))
+        + _mappings(model.get("deliveryAnnotations"))
+        + _mappings(model.get("estimationAnnotations"))
+    ):
+        annotation_id = annotation.get("annotationId")
+        text = annotation.get("text")
+        subject_ids = _ids(annotation.get("subjectIds"))
+        if not isinstance(annotation_id, str) or not isinstance(text, str):
+            continue
+        target_story_ids = sorted(
+            {
+                subject_id
+                for subject_id in subject_ids
+                if subject_id in known_story_ids
+            }
+            | {
+                first_story_by_feature[subject_id]
+                for subject_id in subject_ids
+                if subject_id in first_story_by_feature
+            }
+        )
+        if not target_story_ids:
+            suppressed.append(annotation_id)
+            continue
+        target_story_id = target_story_ids[0]
+        by_story.setdefault(target_story_id, []).append(text)
+        projected.append(
+            {
+                "annotationId": annotation_id,
+                "storyId": target_story_id,
+            }
+        )
+    return (
+        {
+            story_id: "\n".join(values)
+            for story_id, values in sorted(by_story.items())
+        },
+        {
+            "projected": projected,
+            "suppressedProjectLevelAnnotationIds": sorted(suppressed),
+        },
+    )
+
+
+def _lines(values: list[str]) -> list[str]:
+    return [f"- {value}" for value in values] or ["- 无"]
+
+
+def render_model_notes(
+    model: Mapping[str, object],
+    review_decision: Mapping[str, object],
+    task_catalog: TaskStandardCatalog,
+) -> str:
+    """Render concentrated, auditable defaults and exclusions for approval."""
+    policy_instances = _mappings(model.get("policyInstances"))
+    default_policies = [
+        f"{item['policyInstanceId']} / {item['policyId']}"
+        for item in policy_instances
+        if item.get("inclusionPolicy") == "DEFAULT_INCLUDED"
+    ]
+    decisions = _mappings(model.get("decisions"))
+    excluded = [
+        f"{item['decisionId']} / {', '.join(_ids(item.get('subjectIds')))}"
+        for item in decisions
+        if item.get("kind") == "EXCLUDED_BY_USER"
+    ]
+    tasks = _mappings(model.get("tasks"))
+    defaults = [
+        f"默认新建：{item['taskId']}"
+        for item in tasks
+        if item.get("workMode") == "新建"
+    ] + [
+        f"M 档：{item['taskId']}"
+        for item in tasks
+        if item.get("complexity") == "M"
+    ]
+    boundaries = [
+        f"{item['taskId']}：{item['actualMeasurementScope']}"
+        for item in tasks
+        if isinstance(item.get("actualMeasurementScope"), str)
+    ]
+    annotations = [
+        f"{item['category']} / {item['annotationId']}：{item['text']}"
+        for collection in (
+            "scopeAnnotations",
+            "deliveryAnnotations",
+            "estimationAnnotations",
+        )
+        for item in _mappings(model.get(collection))
+    ]
+    project = model.get("project")
+    project_id = project.get("projectId") if isinstance(project, Mapping) else None
+    sections = [
+        (
+            "生成与评审",
+            [
+                f"项目：{project_id}",
+                "renderer：generation-renderer-v8",
+                f"终审：{review_decision.get('decision')}",
+                f"Task Standard：{task_catalog.semantic_sha256}",
+            ],
+        ),
+        ("默认纳入的自动化与上线工程", default_policies),
+        ("用户排除与输入决定", excluded),
+        ("默认工作方式与复杂度", defaults),
+        ("实际计量与责任边界", boundaries),
+        ("假设、排除、风险与变化触发", annotations),
+    ]
+    lines = ["# SOW 生成说明", ""]
+    for heading, values in sections:
+        lines.extend([f"## {heading}", "", *_lines(values), ""])
+    return "\n".join(lines).rstrip() + "\n"

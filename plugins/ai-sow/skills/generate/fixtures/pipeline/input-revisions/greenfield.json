@@ -1,0 +1,58 @@
+{
+  "contract": "ai-sow-input-revision-v1",
+  "revisionId": "revision-greenfield",
+  "requestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "templateSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "deliveryPolicySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "executionPolicySha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "priorSowState": "NOT_PROVIDED",
+  "priorSowSha256s": [],
+  "sources": [
+    {
+      "sourceId": "prd-main",
+      "role": "PRD",
+      "status": "APPROVED",
+      "path": ".ai-sow/inputs/revisions/revision-greenfield/sources/prd-main/source.md",
+      "rawSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "parserId": "markdown-blocks",
+      "parserVersion": "1",
+      "blockIds": ["block-prd-main"]
+    },
+    {
+      "sourceId": "hld-main",
+      "role": "HLD",
+      "status": "APPROVED",
+      "path": ".ai-sow/inputs/revisions/revision-greenfield/sources/hld-main/source.md",
+      "rawSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "parserId": "markdown-blocks",
+      "parserVersion": "1",
+      "blockIds": ["block-hld-main"]
+    }
+  ],
+  "blocks": [
+    {
+      "blockId": "block-prd-main",
+      "sourceId": "prd-main",
+      "rawSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "contentSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "locator": "heading:退款范围",
+      "primaryCoverageBlockId": "block-prd-main",
+      "contextBlockIds": [],
+      "structuralParentId": null,
+      "extractionDisposition": "INCLUDED",
+      "droppedContentCategories": []
+    },
+    {
+      "blockId": "block-hld-main",
+      "sourceId": "hld-main",
+      "rawSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "contentSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "locator": "heading:目标架构",
+      "primaryCoverageBlockId": "block-hld-main",
+      "contextBlockIds": [],
+      "structuralParentId": null,
+      "extractionDisposition": "INCLUDED",
+      "droppedContentCategories": []
+    }
+  ]
+}

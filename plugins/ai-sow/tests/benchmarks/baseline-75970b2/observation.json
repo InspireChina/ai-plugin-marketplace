@@ -1,0 +1,55 @@
+{
+  "contract": "ai-sow-pipeline-baseline-observation-v1",
+  "baselineCommit": "75970b2cadd6c298443b1d6016f99b34c8e3b25a",
+  "evidenceStatus": "PARTIAL_BASELINE_CHECKPOINT",
+  "evidenceSource": {
+    "path": "tests/benchmarks/baseline-75970b2/defect-harvest.md",
+    "sha256": "62fa15842980f196ad81d58beac71d2ce69deb61fc9b4edb6d84290f313971b5"
+  },
+  "privacy": {
+    "storageMode": "AGGREGATE_ONLY",
+    "rawReceiptsRetained": false,
+    "sourceContentRetained": false,
+    "machinePathsRetained": false
+  },
+  "sampleAccounting": {
+    "completedSamples": 12,
+    "excludedSamples": 1,
+    "usableComparisonSamples": 0
+  },
+  "aggregateObservation": {
+    "wallMilliseconds": 19606627,
+    "inputTokens": 90864877,
+    "cachedInputTokens": 88910720,
+    "outputTokens": 720700,
+    "reasoningTokens": 144264,
+    "toolAttempts": 1042,
+    "failures": 59,
+    "repairWaves": 23,
+    "rereviews": 21
+  },
+  "outcomeCounts": [
+    {"code": "FINAL_REVIEW_CONFLICT", "count": 5},
+    {"code": "STORY_AC_RECEIPT_MISSING", "count": 2},
+    {"code": "MODEL_EFFICIENCY_FAILED", "count": 5}
+  ],
+  "excludedObservation": {
+    "count": 1,
+    "code": "FRESH_REVIEWER_NOT_CREATED",
+    "providerCompletionReceiptRetained": false
+  },
+  "defectClusters": ["D1", "D2", "D3", "D4", "D5"],
+  "comparisonEligibility": {
+    "allowedUse": "ROOT_CAUSE_AND_REPAIR_PRIORITIZATION_ONLY",
+    "pairedNumericConclusionAllowed": false,
+    "relativeImprovementClaimAllowed": false,
+    "missingEvidence": [
+      "RAW_SAMPLE_RECEIPTS",
+      "COMPLETE_MODEL_PROFILE",
+      "COMPLETE_TOOL_VERSIONS",
+      "OFFICE_BINARY_IDENTITY",
+      "COLD_WARM_PAIRING",
+      "FIVE_REPETITIONS_PER_SUCCESS_SCENARIO"
+    ]
+  }
+}

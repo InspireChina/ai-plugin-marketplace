@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:input-revision:1",
+  "description": "绑定不可变输入 revision、政策与模板哈希，以及无损来源 block 清单。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "revisionId",
+    "requestSha256",
+    "templateSha256",
+    "deliveryPolicySha256",
+    "executionPolicySha256",
+    "priorSowState",
+    "priorSowSha256s",
+    "sources",
+    "blocks"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-input-revision-v1"},
+    "revisionId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+    "requestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "templateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "deliveryPolicySha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "executionPolicySha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "priorSowState": {"enum": ["PROVIDED", "NOT_PROVIDED"]},
+    "priorSowSha256s": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256Array"},
+    "sources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source"}
+    },
+    "blocks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/block"}
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "role", "status", "path", "rawSha256", "parserId", "parserVersion", "blockIds"],
+      "properties": {
+        "sourceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "role": {"enum": ["PRD", "DEMO", "HLD", "ADR", "PRIOR_SOW", "SUPPLEMENT", "QUESTION_ANSWER"]},
+        "status": {"enum": ["APPROVED", "SELECTED", "APPLICABLE", "REFERENCE_ONLY", "BOUND"]},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "rawSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "parserId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "parserVersion": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "blockIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId",
+        "sourceId",
+        "rawSha256",
+        "contentSha256",
+        "locator",
+        "primaryCoverageBlockId",
+        "contextBlockIds",
+        "structuralParentId",
+        "extractionDisposition",
+        "droppedContentCategories"
+      ],
+      "properties": {
+        "blockId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "sourceId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "rawSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "contentSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+        "locator": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "primaryCoverageBlockId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+        "contextBlockIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+        "structuralParentId": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"}
+          ]
+        },
+        "extractionDisposition": {"enum": ["INCLUDED", "CONTEXT_ONLY", "DROPPED"]},
+        "droppedContentCategories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["STYLE", "SCRIPT", "BINARY", "COMMENT", "EMPTY", "UNSUPPORTED"]}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "scope-closure-checkpoint-fixture-v1",
+  "checkpoint": {
+    "contract": "ai-sow-stage-checkpoint-v1",
+    "kind": "SCOPE_CLOSURE",
+    "runId": "run-r1-scope",
+    "stage": "EPIC_FEATURE",
+    "candidateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceManifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "ownerProjectionSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "coverageSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "policyDefinitionSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "actionRecordSha256s": ["1111111111111111111111111111111111111111111111111111111111111111"],
+    "reviewResultSha256s": ["2222222222222222222222222222222222222222222222222222222222222222"],
+    "upstreamCheckpointSha256s": [],
+    "validatorContractSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "completedCheckIds": [
+      "SOURCE_SCAN_COMPLETE",
+      "R1_SOURCE_PASS",
+      "SCOPE_CLOSURE_COMPLETE",
+      "DESIGN_COVERAGE_SUFFICIENT",
+      "R1_SCOPE_PASS",
+      "POLICY_DEFINITION_BOUND"
+    ],
+    "decision": "PASS"
+  }
+}
