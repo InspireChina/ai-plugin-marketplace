@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+TEST_LAYER = "integration"
+
 from pathlib import Path
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+import pytest
 
 
 SKILL_ROOT = Path(__file__).parents[1]
@@ -21,6 +31,80 @@ PUBLIC_OPERATIONS = (
     "abandon",
     "status",
 )
+
+
+def test_new_material_requires_new_run_cli_rejects_resume_request(tmp_path):
+    from test_orchestrator import managed_snapshot, write_budget_policy, write_run_store_request
+    import orchestrator
+    request = write_run_store_request(tmp_path)
+    orchestrator.run_mode(tmp_path, "start", request=request, budget_policy=write_budget_policy(tmp_path))
+    before = managed_snapshot(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(SKILL_ROOT / "scripts/orchestrator.py"),
+         "--project-root", str(tmp_path), "--mode", "resume", "--request", request],
+        capture_output=True, check=False,
+    )
+    assert result.returncode != 0
+    assert json.loads(result.stdout)["diagnostics"][0]["code"] == "CLI_ARGUMENTS_INVALID"
+    assert managed_snapshot(tmp_path) == before
+
+
+def test_public_budget_policy_seam_cli_accepts_explicit_policy(tmp_path):
+    if str(SKILL_ROOT / "tests") not in sys.path:
+        sys.path.insert(0, str(SKILL_ROOT / "tests"))
+    from test_orchestrator import write_budget_policy, write_run_store_request
+
+    request = write_run_store_request(tmp_path)
+    budget = write_budget_policy(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(SKILL_ROOT / "scripts/orchestrator.py"),
+         "--project-root", str(tmp_path), "--mode", "start", "--request", request,
+         "--budget-policy", budget],
+        capture_output=True, check=False,
+    )
+    body = json.loads(result.stdout)
+    assert result.returncode == 0, body
+    assert body["nextAction"]["budgetPolicySha256"]
+
+
+@pytest.mark.parametrize("platform", ["posix", "powershell"])
+def test_public_budget_policy_seam_bootstrap_forwards_explicit_policy(platform):
+    if os.name != "posix":
+        pytest.skip("此隔离复制运行时用例验证 POSIX 主机上的两种参数转发。")
+    pwsh = shutil.which("pwsh")
+    if platform == "powershell" and pwsh is None:
+        pytest.skip("需要显式提供 portable pwsh 以执行参数行为验证。")
+    if str(SKILL_ROOT / "tests") not in sys.path:
+        sys.path.insert(0, str(SKILL_ROOT / "tests"))
+    from test_orchestrator import write_budget_policy, write_run_store_request
+
+    with tempfile.TemporaryDirectory(prefix="sow-cli-", dir="/tmp") as directory:
+        root = Path(directory)
+        plugin = root / "plugin"
+        project = root / "project"
+        project.mkdir()
+        shutil.copytree(PLUGIN_ROOT, plugin, symlinks=True,
+                        ignore=shutil.ignore_patterns(".ai-sow-tools", "__pycache__", ".pytest_cache"))
+        request = write_run_store_request(project)
+        budget = write_budget_policy(project)
+        scripts = plugin / "skills/generate/scripts"
+        environment = {**os.environ, "POWERSHELL_TELEMETRY_OPTOUT": "1",
+                       "XDG_CACHE_HOME": str(root / "cache"), "XDG_CONFIG_HOME": str(root / "config")}
+        if platform == "posix":
+            command = ["sh", str(scripts / "bootstrap.sh"), "--project-root", str(project),
+                       "--mode", "start", "--request", request, "--budget-policy", budget]
+        else:
+            windows_layout = plugin / ".venv/Scripts"
+            windows_layout.mkdir(exist_ok=True)
+            (windows_layout / "python.exe").symlink_to("../bin/python")
+            command = [pwsh, "-NoProfile", "-File", str(scripts / "bootstrap.ps1"),
+                       "-ProjectRoot", str(project), "-Mode", "start", "-Request", request,
+                       "-BudgetPolicy", budget]
+        result = subprocess.run(command, capture_output=True, check=False, env=environment)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        body = json.loads(result.stdout)
+        assert body["outcome"] == "ACTIVE"
+        assert body["nextAction"]["budgetPolicySha256"]
 
 
 def test_generate_is_the_only_public_entry() -> None:

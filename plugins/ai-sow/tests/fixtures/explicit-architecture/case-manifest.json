@@ -5,13 +5,33 @@
       "caseId": "greenfield",
       "mode": "GREENFIELD",
       "fixtureRootPath": "skills/generate/fixtures/pipeline/e2e/greenfield",
-      "expectedMinimumActions": 10
+      "requiredActionContracts": [
+        "SOURCE_SCAN-v1",
+        "SOURCE_AUDIT-v1",
+        "SCOPE_SYNTHESIS-v1",
+        "SOURCE_SCOPE-v1",
+        "STORY_AC-v1",
+        "STORY_DESIGN-v1",
+        "TASK-v1",
+        "TASK_ESTIMATION-v1",
+        "ARTIFACT_VISUAL_REVIEW-v1"
+      ]
     },
     {
       "caseId": "brownfield",
       "mode": "BROWNFIELD",
       "fixtureRootPath": "skills/generate/fixtures/pipeline/e2e/brownfield",
-      "expectedMinimumActions": 10
+      "requiredActionContracts": [
+        "SOURCE_SCAN-v1",
+        "SOURCE_AUDIT-v1",
+        "SCOPE_SYNTHESIS-v1",
+        "SOURCE_SCOPE-v1",
+        "STORY_AC-v1",
+        "STORY_DESIGN-v1",
+        "TASK-v1",
+        "TASK_ESTIMATION-v1",
+        "ARTIFACT_VISUAL_REVIEW-v1"
+      ]
     }
   ]
 }

@@ -1,0 +1,1 @@
+[{"coverageRootId":"block-a","disposition":"FACT","facts":[{"evidenceIds":["block-a"],"factKind":"REQUIREMENT","localKey":"fact-a","qualifiers":["仅管理员","七日内"],"statement":"管理员可查询订单。"}]}]

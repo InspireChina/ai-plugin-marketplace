@@ -23,19 +23,34 @@ STRUCTURED_REFERENCE = re.compile(
     r"(?<![A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_.]*)\[([^\]]+)\]"
 )
 
-SCHEMA_SHA256 = {
-    "skills/generate/contracts/action.schema.json": "cb4bb918061b58cb15a38b9fdf6842d2e21b70a8fd28b98bc959438d7d5c26eb",
-    "skills/generate/contracts/artifact-approval.schema.json": "63c38348a71cba40e8f2e430cdfbddb16b795fabf6a9e1db67c932dd80f04c4f",
-    "skills/generate/contracts/common.schema.json": "9c78d6cf27c89f89ab3303f5554bb7de43b64ba3d40ff69fad59afe6b2fe1717",
-    "skills/generate/contracts/current.schema.json": "da99fc8149bbcf1a979e268ec96e6318911e012d05d104cb03f893a5b40b51c6",
-    "skills/generate/contracts/generation-manifest.schema.json": "fdb046b50a8f0b03c491e81fd393a5ae1c0c9a4970ce741a76fad057fbdb4ae6",
-    "skills/generate/contracts/input-revision.schema.json": "d8cd2b79619669425c1b5b37081ddc52648057889e8ed96074dc7bb82e97d332",
-    "skills/generate/contracts/request.schema.json": "07c5005203ea13b04ffa648eaa2a9512a3afbdbfc76e54f4c2ba323098f97784",
-    "skills/generate/contracts/review-repair.schema.json": "925a9923949ca6893f9908d605a4573d4319e99c5b2c1465aa647e9d12595f12",
-    "skills/generate/contracts/run-state.schema.json": "97fd2084058ce2029572121a6d590418b2c5b88c86fefdd7730a77f7820046e7",
-    "skills/generate/contracts/sow-model.schema.json": "bfcf7b8ed06518aebb0ad8dec5b6648529f88dce568bbf0740feba865f57bb31",
-    "skills/generate/contracts/stage-checkpoint.schema.json": "f14438641d7238e20df7c1a0295705fb7b5e69efc0e28b46dd0e63b662828aca",
-}
+SCHEMA_SHA256 = {'skills/generate/contracts/owner-repair-authorization.schema.json': '033ecf245658d933f0b4c198953161ccdd8901ac1122083bbfe993d332667b49',
+ 'skills/generate/contracts/owner-clarification.schema.json': '51247b08e83cf91f21be247931294c449ff29282aa3268a5e066cb6908eb5a7d',
+ 'skills/generate/contracts/artifact-repair-authorization.schema.json': 'f6aca2a4aff6a1d990a31e71600bbf6ec16f5bfecb8504dc41fcb277828de097',
+ 'skills/generate/contracts/action.schema.json': '9e7dd279bef316b62aa512a66978dc09a31bef9cdf94f64a47256908913ba681',
+ 'skills/generate/contracts/artifact-approval.schema.json': 'a80474084401424a4a2b1b1abe7dac7c6e6b3c3e56ddcc3f01553d0ab9fc608f',
+ 'skills/generate/contracts/change-graph.schema.json': '25d523f2463ce1c5e0c13ce90f97bfb5a2b29b382e7f701964960d9a1f140135',
+ 'skills/generate/contracts/common.schema.json': 'b62ae2a501ee4994e04f7bcd7478070e5dd66b622892a4bc09611158a9555eec',
+ 'skills/generate/contracts/current.schema.json': 'da99fc8149bbcf1a979e268ec96e6318911e012d05d104cb03f893a5b40b51c6',
+ 'skills/generate/contracts/fact-decision.schema.json': '5f73b8a23f94e828c2fd1296b3d7ec67664d38dbb7296e4907c1f1f37302aef6',
+ 'skills/generate/contracts/generation-manifest.schema.json': '40ac3785d49b2034ed680750ccc36303a76d9dcdbdbd959c9df524d3b03bcc1b',
+ 'skills/generate/contracts/input-revision.schema.json': '3cfc0e81657c504d2b85d5d2256048f0a56d33c8604774111f1cfe46e6a9ec5f',
+ 'skills/generate/contracts/prior-state-decision.schema.json': 'f0cbda366dc259ddc88837f0c813308f811735383f7f0fd8832561d846816eb0',
+ 'skills/generate/contracts/prior-state-snapshot.schema.json': 'c13c4656ab77ccfcc8dba760cc4d3000df7fa72fc33247d7cfa2fa7eb92e16da',
+ 'skills/generate/contracts/prototype-observation.schema.json': '98670c3563c9da6dc20e93ed5e300e77c7a13a3c28964911223d9538dab5d4f2',
+ 'skills/generate/contracts/prototype-scenario.schema.json': '780c9c849db47559c96680aab807034c815284456cfb7d68a78e98165b2aa5db',
+ 'skills/generate/contracts/prototype-trace.schema.json': '9a5e028bafceeb8e86c4bad7273ebec7057e75686a1786b1b12ca9b434fb3a76',
+ 'skills/generate/contracts/request.schema.json': 'e4bcfb46195b61ab58019cf35202d89801537ce4ada20458392b9462f985e70c',
+ 'skills/generate/contracts/review-repair.schema.json': 'ee67f60e7d8ebfc4762594ce8cbe8379aaab9a496c3c9b5dc9799f0dc7979261',
+ 'skills/generate/contracts/run-budget-policy.schema.json': '47c741750c86b250ec0c36f1552adcd691b85ea19357dfbb75254092329256f9',
+ 'skills/generate/contracts/run-event.schema.json': '37c6d13414cc529abfd93e33c92bbe637965287c4fd93f2710f11b28cd359086',
+ 'skills/generate/contracts/run-state.schema.json': 'cfebacda7f41b74c01f2da8bff30e3cc88393f11bae264c06488c7c987e74cb0',
+ 'skills/generate/contracts/scope-decision.schema.json': '1c36b0122adfe9d0028dd91f4c8eeb411080c7320e82c9800748d8bca37edac3',
+ 'skills/generate/contracts/source-audit.schema.json': 'f4e45423699b811ac94846f1da9bddf7e551a4b1a4ba06c1b5ce56c88b3adbf6',
+ 'skills/generate/contracts/sow-model.schema.json': 'f79193fa2732367f10e13e51f721663a3b44d76ea73699add8e93f08fa6b5c46',
+ 'skills/generate/contracts/stage-checkpoint.schema.json': 'a15bb4180f0dfe45f5e5fd659592cc35a275eadf40670449957a56f5c5ef5164',
+ 'skills/generate/contracts/story-ac-decision.schema.json': 'fa84302bc817b02f0849ec9e45a2c598ea4c2e145cf98b91eafb569b79e7a949',
+ 'skills/generate/contracts/task-decision.schema.json': 'c0ba6de7e14648c58ac648b9b33728946e11f4e3c38bc97f97d0d10944fe4046',
+ 'skills/generate/contracts/visual-review.schema.json': '37d0c43f37252793cdbf65439cfbe1e773b252c24320b470bb07acec8ebd6983'}
 
 TEMPLATE_SHA256 = "43058a761a3d5ea2e71e779b1600aa159258f732b1cb5c60d491051540454041"
 
@@ -129,7 +144,6 @@ class RepositoryLayoutTests(unittest.TestCase):
             for relative in ("pyproject.toml", "uv.lock")
         ).lower()
         for dependency in (
-            "pypdf",
             "pdfplumber",
             "python-docx",
             "python-pptx",
@@ -228,8 +242,8 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_manifest_identity_and_contract_version_match(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
-        release_version = "0.1.0-beta.1"
-        runtime_version = "0.1.0b1"
+        release_version = "0.1.0-beta.2"
+        runtime_version = "0.1.0b2"
         manifest = json.loads(
             (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
         )
@@ -246,7 +260,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertEqual(package_schema["$id"], "urn:ai-sow:generate:next:generation-manifest:1")
         self.assertEqual(
             request_schema["properties"]["contract"]["const"],
-            "ai-sow-generate-request-v2",
+            "ai-sow-generate-request-v3",
         )
         self.assertRegex(
             pyproject_text,
@@ -689,9 +703,9 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_public_docs_explain_template_runs_and_transparent_questions(self) -> None:
         required_by_document = {
-            "README.md": ("本轮专用副本", "重新编译 Delivery", "为什么要问"),
+            "README.md": ("本轮专用副本", "完整编译", "为什么要问"),
             "plugins/ai-sow/README.md": ("当前只支持 XLSX 模板", "本轮专用副本", "未回答后果"),
-            "plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md": ("当前只支持 XLSX 模板", "重新编译 Delivery", "可读文件"),
+            "plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md": ("当前只支持 XLSX 模板", "完整编译", "可读文件"),
             "plugins/ai-sow/docs/CONTEXT.md": ("本轮专用副本", "问题、为什么要问、答案决定什么和未回答后果"),
             "plugins/ai-sow/docs/PRD_HLD_AUTOMATED_SOW_WORKFLOW_PLAN.md": ("重新编译 Delivery", "自然语言结论", "可打开的 Markdown 或 Excel 文件"),
         }
@@ -739,7 +753,7 @@ class RepositoryLayoutTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             generation_root = Path(temp_dir) / ".ai-sow/generations/000123"
-            for relative in module.EXPECTED_GENERATION_FILES:
+            for relative in ('input/sow-template.xlsx', 'output/sow-notes.md', 'proof/artifact/renders/page.pdf'):
                 target = generation_root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(relative.encode())
@@ -793,7 +807,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             ai_sow_entries[0],
             {
                 "name": "ai-sow",
-                "description": "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿，并用 LibreOffice 回算后发布。",
+                "description": "每次仅根据明确提供的 PRD、HLD 和适用往期 SOW，完整编译并逐阶段评审可追溯的 SOW 工作簿，经 LibreOffice 双复读和全部可见 Sheet 视觉评审后请求批准发布。",
                 "source": {
                     "source": "local",
                     "path": "./plugins/ai-sow",

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:owner-clarification:1",
+  "description": "用户批准的既有技术目标内实施澄清；不更改冻结业务来源或上游写集合。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "const": "ai-sow-owner-clarification-v1"
+    },
+    "stageKind": {
+      "const": "TASK"
+    },
+    "candidateSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "reviewDecisionSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "scope": {
+      "const": "IMPLEMENTATION_WITHIN_APPROVED_TARGETS"
+    },
+    "technicalTargetKeys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "decision": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "provenance": {
+      "enum": [
+        "USER",
+        "SIMULATED_USER"
+      ]
+    },
+    "authorization": {
+      "type": "string",
+      "pattern": "\\S"
+    }
+  },
+  "required": [
+    "contract",
+    "stageKind",
+    "candidateSha256",
+    "reviewDecisionSha256",
+    "scope",
+    "technicalTargetKeys",
+    "decision",
+    "provenance",
+    "authorization"
+  ]
+}

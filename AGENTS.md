@@ -39,21 +39,21 @@
 ai-sow:generate
   -> intake
   -> scope_compiler
-  -> R1 Source Audit / Scope Join
-  -> delivery_compiler
-  -> task_compiler
+  -> 完整校验 / fresh Review / ScopeCheckpoint
+  -> delivery_compiler / 完整校验 / fresh Review / StoryAcCheckpoint
+  -> task_compiler / 完整校验 / fresh Review / TaskCheckpoint
   -> final_review
   -> package_renderer
   -> generation_store
 ```
 
-- `orchestrator` 只维护公开 NextAction 状态机、全量/增量/复用/仅渲染路由、action 发放和可恢复事务，
+- `orchestrator` 只维护公开 NextAction 状态机、本轮 FULL_COMPILE 与 checkpoint 恢复、action 发放和可恢复事务，
   不拥有业务规则。
 - 唯一稳定业务真相是 `ai-sow-model-v1`。`scope_compiler` 独占 Stage 1 写集合，`delivery_compiler`
   独占 Stage 2 Story/AC 写集合，`task_compiler` 独占 Stage 3 Task/Estimation 写集合；各阶段以不可变
   checkpoint 关闭，后续 Owner 不得反向修改上游写集合。
-- `intake` 独占不可变 input revision；`final_review` 独占 R1、R2/R3 leaf、Theme Join、Adjudication 与
-  repair plan；`package_renderer` 只投影 reviewed SOW Model；`generation_store` 独占 artifact 批准绑定、
+- `intake` 独占不可变 input revision；`final_review` 独占 fresh Review、条件 Owner IR Repair 与
+  StageCheckpoint 证明；`package_renderer` 只投影 reviewed SOW Model；`generation_store` 独占 artifact 批准绑定、
   不可变 generation 和原子 `current.json` 切换。后二者都不拥有新的范围事实。
 - PRD/HLD 只接受 UTF-8 Markdown，往期 SOW 只接受 `.xlsx`；补充材料接受 UTF-8 纯文本、HTML、
   TypeScript、TSX 或 `.xlsx`。不得引入 PDF、Word、PowerPoint 等专用解析路径。
@@ -61,12 +61,11 @@ ai-sow:generate
   时可用 Playwright 或 Computer Use 核验，结论必须追溯到原型来源。
 - Greenfield 不要求往期 SOW；Brownfield 建议提供适用往期 SOW，未提供时记录
   `priorSowState = NOT_PROVIDED` 并建立新基线，不虚构历史承诺。
-- 评审 decision 只允许 `PASS / OWNER_FIX_REQUIRED / INPUT_REQUIRED / CONTRACT_GAP`；跨 leaf 冲突必须
-  经过 Theme Join 和必要的 Adjudication，不能以后写覆盖先写。公开安全终态使用
-  `MANUAL_REVIEW_REQUIRED / CONTRACT_UNSUPPORTED / SYSTEM_FAILED / ABANDONED`，不存在
-  `PASS_WITH_NOTES / BLOCKED`。
-- 输入变化按 Owner 引用闭包和固定影响后缀重算，不做未校验字段 patch。语义不变时保留 ID，含义变化
-  时创建新 ID。
+- 评审 decision 只允许 `PASS / REPAIRABLE_SEMANTIC / INPUT_REQUIRED / CONTRACT_GAP / OWNER_BUG`；
+  Repairable finding 指定 roots 可定向替换、合并或拆分；同 Owner 引用影响闭包可同步调整，其余结果保留。普通自动修复最多两个语义 revisions；Task 的精确用户实施澄清可追加一次；达到自动上限后，明确人工裁定可逐次授权一个字段修复候选，原终态、累计次数、完整证明与 fresh Review 必须保留。
+  阶段 PASS 自动继续。完整合同见 `skills/generate/references/stage-seal.md`（相对插件根）。
+- 新 run 不从旧 generation/隐藏缓存恢复业务内容；业务输入变化 abandon/start，同一 run 只消费自己的
+  冻结计划、Attempt 和 checkpoint。身份由 stable_ids 的受控表生成。
 - input revision 与 generation 发布后不可变；候选和输出全部验证后最后切换 `current.json`。失败或阻断
   不得覆盖 last-known-good。
 
@@ -80,10 +79,10 @@ ai-sow:generate
 - 权威模板是 `plugins/ai-sow/skills/generate/assets/sow-template.xlsx`；项目副本位于
   `.ai-sow/templates/sow-template.xlsx`。
 - 模板独占任务目录、基础人天、复杂度、SIT、UAT、公式和取整。Python/JSON 不复制计算口径，
-  也不执行 Excel 公式。
+  也不执行 Excel 公式。共享 Task 仅由 renderer 投影 Story 的任务列表与覆盖校验公式；全部计价、汇总与取整公式保持模板原值。
 - renderer 保留命名 Table、公式原型、样式、行高、自动筛选、数据验证、保护和跨 Sheet 引用，并
   在发布前复读。
-- 修改确定性输出语义时更新当前 `generation-renderer-v8` 及
+- 修改确定性输出语义时更新当前 `generation-renderer-v12` 及
   `contracts/renderer-fingerprint-baseline.json`，不得只刷新 hash 掩盖合同变化。
 - `@oai/artifact-tool` 和 `.mjs` 只用于视觉检查或一次性修复；一次任务只保留一个临时 `.mjs`，完成后
   删除。可复用生成能力使用 Python。
@@ -98,20 +97,26 @@ ai-sow:generate
 
 ## 测试与验证
 
-先运行与修改范围最接近的测试。涉及插件行为、合同、模板、renderer 或发布面时，在交付、提交、推送
-或发布前运行完整检查：
+每个 Task 只验收本次变更：新增/修复行为测试、直接受影响的契约与调用边界局部集成。
+按实际风险选择测试 node ID 或过滤表达式；不把历史整文件列表、整插件/全仓或完整端到端当作每 Task
+默认门禁。发现具体跨模块失败才扩大定位，并说明理由。
+
+测试层级分别运行（可附加路径或 `-k` 选择当前改动）：
 
 ```text
-uv sync --project plugins/ai-sow --locked
-uv run --project plugins/ai-sow --locked python -m unittest discover -s tests -v
-uv run --project plugins/ai-sow --locked python scripts/validate_repository.py
-uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow/skills -q
-uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
+uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow -m unit -q
+uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow -m integration -q
+uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow -m e2e -q
 ```
 
-- 纯文档修改至少运行根测试、仓库验证器和 `git diff --check`；命令、路径、版本、合同或安装流程变化时
-  运行完整检查。
-- 工作簿变更同时验证结构、公式、引用和关键样式；可见布局变化增加全 Sheet 渲染或 Excel 视觉检查。
+unit 不得通过共享 fixture 或 helper 导入执行完整生成、Office/浏览器或批准发布流程。
+保留关键失败/边界/缺陷回归；实际合并重复测试时记录行为由何处承接，禁止全局 skip/xfail 掩盖问题。
+完整分层定义见 `plugins/ai-sow/tests/README.md`。
+
+最终集成/交付验证仍执行锁定依赖同步、根 unittest、仓库验证器、插件全量 pytest、独立复制 smoke，
+以及原计划规定的真实 Office/浏览器、严格顺序 Greenfield→Brownfield 和工作簿复读门禁。
+这些最终门禁不自动前移至每个 Task；未运行项不得报告为通过。文档修改只验证实际受影响的链接/规则，
+日常检查 `git diff --check`。工作簿可见布局修改仍需相应视觉验证。
 
 ## 文档与发布同步
 
@@ -126,7 +131,7 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 - **独立安装：** 标记任何运行时读取插件目录之外实现文件的代码。
 - **数据所有权：** 标记 Owner 越过 Stage 写集合、下游修改上游 checkpoint、复制业务 Schema，或让
   orchestrator 拥有业务判断的实现。
-- **评审门禁：** 标记绕过 R1、R2/R3、Theme Join、必要 Adjudication、artifact hash 批准或 Office
+- **评审门禁：** 标记绕过阶段完整验证、fresh Review/PASS、artifact hash 批准或 Office
   复读而发布 SOW Model/Package 的流程。
 - **不可变发布：** 标记回写 revision/generation、先切 current 指针或失败时破坏 last-known-good 的实现。
 - **计算权威：** 标记在 Python/JSON 中硬编码基础人天、倍率、公式或取整规则的实现。
@@ -137,3 +142,11 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 
 变更只有在范围行为已验证、文档与合同同步、临时产物清理、工作区没有意外文件，并且交付说明准确
 列出修改和验证结果后才算完成。
+
+Scope 独占 PriorStateSnapshot 与 ChangeGraph；三个 Owner 不跨写。
+内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
+pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，
+只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
+都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
+
+`pypdf` 仅用于读取本流程生成的 Office PDF renders，不接受用户 PDF 业务输入。

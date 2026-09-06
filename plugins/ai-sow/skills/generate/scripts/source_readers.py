@@ -9,8 +9,12 @@ from datetime import date, datetime, time
 from html.parser import HTMLParser
 from pathlib import Path
 import zipfile
+from io import BytesIO
+import posixpath
+from xml.etree import ElementTree as ET
 
 import openpyxl
+from openpyxl.worksheet.formula import ArrayFormula, DataTableFormula
 
 from contracts import canonical_json_bytes
 from models import SourceAnchor, SourceDocument
@@ -25,7 +29,8 @@ ROLE_SUFFIXES = {
     "ADR": frozenset({".md"}),
     "PRIOR_SOW": frozenset({".xlsx"}),
 }
-PROTOTYPE_SUFFIXES = frozenset({".md", ".html", ".htm", ".ts", ".tsx"})
+PROTOTYPE_BINARY_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"})
+PROTOTYPE_SUFFIXES = frozenset({".html", ".htm", ".js", ".css", ".json", ".svg"}) | PROTOTYPE_BINARY_SUFFIXES
 UNSUPPORTED_PARSED_SUFFIXES = frozenset(
     {
         ".doc",
@@ -84,6 +89,41 @@ class SourceReadError(ValueError):
         self.code = code
 
 
+def html_elements(text: str) -> list[dict[str, object]]:
+    """Read element attributes and inline source without execution or URL access."""
+    class Elements(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.elements = []
+            self.stack = []
+            self.counts = defaultdict(int)
+
+        def handle_starttag(self, tag, attrs):
+            parent = self.stack[-1][1] if self.stack else ""
+            self.counts[(parent, tag)] += 1
+            selector = f"{tag}:nth-of-type({self.counts[(parent, tag)]})"
+            if parent:
+                selector = parent + " > " + selector
+            self.elements.append({"tag": tag, "attributes": dict(attrs), "line": self.getpos()[0], "selector": selector, "content": ""})
+            if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}:
+                self.stack.append((tag, selector, self.elements[-1]))
+
+        def handle_data(self, data):
+            if self.stack and self.stack[-1][0] in {"script", "style"}:
+                self.stack[-1][2]["content"] += data
+
+        def handle_endtag(self, tag):
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] == tag:
+                    del self.stack[index:]
+                    break
+
+    parser = Elements()
+    parser.feed(text)
+    parser.close()
+    return parser.elements
+
+
 def _limit(message: str) -> SourceReadError:
     return SourceReadError("SOURCE_LIMIT_EXCEEDED", message)
 
@@ -111,11 +151,11 @@ def _preflight_xlsx(path: Path) -> None:
         raise SourceReadError("SOURCE_UNREADABLE", "XLSX 无法读取。") from error
 
 
-def _bounded_xlsx_rows(path: Path):
+def _bounded_xlsx_rows(path: Path, *, data_only: bool = False, temporal_types: bool = False):
     _preflight_xlsx(path)
     workbook = None
     try:
-        workbook = openpyxl.load_workbook(path, read_only=True, data_only=False)
+        workbook = openpyxl.load_workbook(path, read_only=True, data_only=data_only)
         if len(workbook.worksheets) > MAX_XLSX_SHEETS:
             raise _limit("XLSX Sheet 数量超过读取上限。")
         total_cells = 0
@@ -129,20 +169,33 @@ def _bounded_xlsx_rows(path: Path):
                 or max_row * max_column > MAX_XLSX_DIMENSION_CELLS
             ):
                 raise _limit(f"XLSX Sheet {worksheet.title} 的声明维度超过读取上限。")
-            for row_number, row in enumerate(worksheet.iter_rows(values_only=True), 1):
+            for row_number, row in enumerate(worksheet.iter_rows(values_only=False), 1):
                 total_cells += len(row)
                 if total_cells > MAX_XLSX_TOTAL_CELLS:
                     raise _limit("XLSX 单元格总数超过读取上限。")
                 values: list[object] = []
-                for value in row:
+                for cell in row:
+                    value = cell.value
                     scalar = _xlsx_scalar(value)
+                    temporal_type = None
+                    if temporal_types and isinstance(value, (datetime, date, time)):
+                        temporal_type = openpyxl.styles.numbers.is_datetime(cell.number_format)
+                        if isinstance(value, datetime):
+                            if temporal_type == "date":
+                                scalar = value.date().isoformat()
+                            elif temporal_type == "time":
+                                scalar = value.time().isoformat()
+                            else:
+                                temporal_type = "datetime"
+                        else:
+                            temporal_type = "time" if isinstance(value, time) else "date"
                     text = "" if scalar is None else str(scalar)
                     if len(text) > MAX_XLSX_CELL_TEXT_CHARS:
                         raise _limit("XLSX 单元格文本超过读取上限。")
                     total_text_chars += len(text)
                     if total_text_chars > MAX_XLSX_TOTAL_TEXT_CHARS:
                         raise _limit("XLSX 文本总量超过读取上限。")
-                    values.append(scalar)
+                    values.append((scalar, temporal_type) if temporal_types else scalar)
                 yield worksheet.title, row_number, values
     except SourceReadError:
         raise
@@ -155,6 +208,114 @@ def _bounded_xlsx_rows(path: Path):
 
 def _normalize(text: object) -> str:
     return " ".join(unicodedata.normalize("NFC", str(text)).split())
+
+
+def inventory_xlsx(path: Path) -> dict[str, object]:
+    """Read bounded OOXML metadata and typed cells without an Office save operation."""
+    inspect_source_header(path, source_role="PRIOR_SOW")
+    payload = path.read_bytes()
+    # The bounded reader interprets the workbook's epoch and number formats;
+    # data_only reads stored caches, never evaluates formulas.
+    temporal_cells, formula_cells = {}, {}
+    for data_only in (False, True):
+        for sheet, row_number, values in _bounded_xlsx_rows(path, data_only=data_only, temporal_types=True):
+            for column, (value, temporal_type) in enumerate(values, 1):
+                address = f"${openpyxl.utils.get_column_letter(column)}${row_number}"
+                if not data_only and isinstance(value, str) and value.startswith("="):
+                    # The read-only parser expands shared references without calculation.
+                    formula_cells[(sheet, address)] = value[1:]
+                if temporal_type is not None:
+                    temporal_cells[(data_only, sheet, address)] = (value, temporal_type)
+    ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    from openpyxl.utils.cell import absolute_coordinate
+
+    def part_target(base, target):
+        resolved = posixpath.normpath(target.lstrip("/") if target.startswith("/") else posixpath.join(posixpath.dirname(base), target))
+        if resolved.startswith("../"):
+            raise SourceReadError("SOURCE_UNREADABLE", "XLSX relationship 越界。")
+        return resolved
+
+    with zipfile.ZipFile(BytesIO(payload)) as archive:
+        names = set(archive.namelist())
+        shared = []
+        if "xl/sharedStrings.xml" in names:
+            shared = ["".join(node.itertext()) for node in ET.fromstring(archive.read("xl/sharedStrings.xml")).findall("s:si", ns)]
+
+        def relationships(base):
+            relpath = posixpath.join(posixpath.dirname(base), "_rels", posixpath.basename(base) + ".rels")
+            if relpath not in names:
+                return {}
+            return {item.attrib["Id"]: part_target(base, item.attrib["Target"]) for item in ET.fromstring(archive.read(relpath)) if item.attrib.get("TargetMode") != "External"}
+
+        def scalar(node, kind):
+            if node is None or node.text is None:
+                return None
+            if kind == "s":
+                return shared[int(node.text)]
+            if kind == "b":
+                return node.text == "1"
+            if kind == "n":
+                number = float(node.text)
+                if not __import__("math").isfinite(number):
+                    raise SourceReadError("SOURCE_UNREADABLE", "XLSX 数值必须有限。")
+                return int(number) if number.is_integer() else number
+            return node.text
+
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        sheet_targets = relationships("xl/workbook.xml")
+        sheets = []
+        for sheet in workbook.findall("s:sheets/s:sheet", ns):
+            part = sheet_targets[sheet.attrib[f"{{{rel_ns}}}id"]]
+            root = ET.fromstring(archive.read(part))
+            cells = []
+            for cell in root.findall("s:sheetData/s:row/s:c", ns):
+                kind = cell.attrib.get("t", "n")
+                value = scalar(cell.find("s:v", ns), kind)
+                if kind == "inlineStr":
+                    value = "".join(t.text or "" for t in cell.findall("s:is//s:t", ns))
+                formula = cell.find("s:f", ns)
+                if value is None and formula is None:
+                    continue
+                address = absolute_coordinate(cell.attrib["r"])
+                record = {"address": address, "cellType": kind, "value": value if formula is None else None, "formula": None if formula is None else formula.text, "cachedValue": value if formula is not None else None}
+                if formula is not None and formula.attrib.get("t") == "shared":
+                    record["formula"] = formula_cells[(sheet.attrib["name"], address)]
+                temporal = temporal_cells.get((formula is not None, sheet.attrib["name"], address))
+                if temporal is not None:
+                    record["cachedValue" if formula is not None else "value"], record["temporalType"] = temporal
+                cells.append(record)
+            targets = relationships(part)
+            tables = []
+            for table_ref in root.findall("s:tableParts/s:tablePart", ns):
+                table = ET.fromstring(archive.read(targets[table_ref.attrib[f"{{{rel_ns}}}id"]]))
+                tables.append({"name": table.attrib["displayName"], "range": absolute_coordinate(table.attrib["ref"])})
+            dimension = root.find("s:dimension", ns)
+            sheets.append({"sheet": sheet.attrib["name"], "state": sheet.attrib.get("state", "visible"), "usedRange": absolute_coordinate(dimension.attrib["ref"] if dimension is not None else "A1"), "cells": cells,
+                           "merges": sorted(absolute_coordinate(item.attrib["ref"]) for item in root.findall("s:mergeCells/s:mergeCell", ns)),
+                           "tables": sorted(tables, key=lambda item: item["name"]),
+                           "hiddenRows": [int(item.attrib["r"]) for item in root.findall("s:sheetData/s:row", ns) if item.attrib.get("hidden") == "1"],
+                           "hiddenColumns": [{"min": int(item.attrib["min"]), "max": int(item.attrib["max"])} for item in root.findall("s:cols/s:col", ns) if item.attrib.get("hidden") == "1"]})
+    if path.read_bytes() != payload:
+        raise SourceReadError("SOURCE_CHANGED", "读取期间来源发生变化。")
+    surfaces = []
+    for name in sorted(names):
+        kind = None
+        if "vbaproject" in name.lower():
+            kind = "MACRO"
+        elif name.endswith(".vml"):
+            kind = "VML"
+        elif name.startswith("xl/drawings/") and not "/_rels/" in name:
+            kind = "DRAWING"
+        elif name.startswith("xl/media/"):
+            kind = "IMAGE"
+        elif name.startswith("xl/embeddings/"):
+            kind = "EMBEDDED_OBJECT"
+        elif name.startswith(("xl/charts/", "xl/externalLinks/")) and not "/_rels/" in name:
+            kind = "UNSUPPORTED"
+        if kind is not None:
+            surfaces.append({"part": name, "kind": kind, "coverage": "UNSUPPORTED"})
+    return {"workbookSha256": hashlib.sha256(payload).hexdigest(), "sizeBytes": len(payload), "sheets": sheets, "unsupportedSurfaces": surfaces}
 
 
 def _markdown_anchors(text: str) -> list[tuple[str, str, str]]:
@@ -203,6 +364,8 @@ def _markdown_anchors(text: str) -> list[tuple[str, str, str]]:
         if not stripped:
             flush_paragraph()
         else:
+            if re.match(r"^ {0,3}\d+[.)]\s+", line):
+                flush_paragraph()
             paragraph.append(stripped)
     flush_paragraph()
     return anchors
@@ -254,6 +417,8 @@ def _source_kind(path: Path, role: str) -> str:
         return "MARKDOWN" if suffix == ".md" else "XLSX"
     if role == "DEMO" and suffix not in PROTOTYPE_SUFFIXES:
         raise SourceReadError("SOURCE_FORMAT_UNSUPPORTED", "来源文件格式不受支持。")
+    if role == "DEMO" and suffix in PROTOTYPE_BINARY_SUFFIXES:
+        return "BINARY"
     if suffix == ".xlsx":
         return "XLSX"
     if suffix in UNSUPPORTED_PARSED_SUFFIXES:
@@ -276,7 +441,7 @@ def inspect_source_header(path: Path, *, source_role: str) -> str:
             if snapshot.st_size < 4 or header != b"PK\x03\x04":
                 raise SourceReadError("SOURCE_FORMAT_HEADER_INVALID", "XLSX 文件头无效。")
             _preflight_xlsx(path)
-        else:
+        elif kind != "BINARY":
             with path.open("rb") as stream:
                 prefix = stream.read(4096)
             prefix.decode("utf-8")
@@ -379,6 +544,8 @@ def _markdown_blocks(text: str, builder: _BlockBuilder) -> None:
             headings.append((level, title, block_id))
             continue
         stripped = line.strip()
+        if re.match(r"^ {0,3}\d+[.)]\s+", line):
+            flush_paragraph()
         if stripped.startswith("|") and stripped.endswith("|"):
             flush_paragraph()
             table_index += 1
@@ -524,6 +691,12 @@ class _LosslessHTMLParser(HTMLParser):
 
 
 def _xlsx_scalar(value: object) -> object:
+    if isinstance(value, DataTableFormula):
+        raise SourceReadError("SOURCE_UNREADABLE", "XLSX 数据表公式没有可读取的原始公式文本。")
+    if isinstance(value, ArrayFormula):
+        if not isinstance(value.text, str) or not value.text.startswith("="):
+            raise SourceReadError("SOURCE_UNREADABLE", "XLSX 数组公式缺少可读取的原始公式。")
+        return value.text
     if isinstance(value, (datetime, date, time)):
         return value.isoformat()
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -570,6 +743,10 @@ def extract_source_blocks(
     raw_payload = path.read_bytes()
     source_id = re.sub(r"[^A-Za-z0-9._:-]+", "-", path.stem).strip("-") or "source"
     builder = _BlockBuilder(source_role, source_id)
+    if kind == "BINARY":
+        return SourceDocument(source_id=source_id, role=source_role,
+                              raw_sha256=hashlib.sha256(raw_payload).hexdigest(),
+                              parser_id="opaque-binary", parser_version=parser_version, blocks=())
     try:
         if kind == "XLSX":
             parser_id = "xlsx-rows"

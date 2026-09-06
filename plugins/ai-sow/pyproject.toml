@@ -1,11 +1,12 @@
 [project]
 name = "ai-sow-plugin-runtime"
-version = "0.1.0b1"
+version = "0.1.0b2"
 description = "Locked runtime dependencies for the AI SOW plugin"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "jsonschema==4.26.0",
   "openpyxl==3.1.5",
+  "pypdf==6.0.0",
 ]
 
 [dependency-groups]
@@ -18,3 +19,9 @@ package = false
 testpaths = ["skills", "tests"]
 python_files = ["test_*.py"]
 addopts = ["--import-mode=importlib"]
+
+markers = [
+  "unit: isolated contract or module behavior; no full host/Office/browser flow",
+  "integration: local Owner or public API boundary, without full product flow",
+  "e2e: full product, real Office/browser, publication or copy-plugin flow",
+]

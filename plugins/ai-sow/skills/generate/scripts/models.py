@@ -1,7 +1,106 @@
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal, Mapping
+
+
+RunEventType = Literal[
+    "RUN_BUDGET_POLICY_PUBLISHED",
+    "ACTION_ISSUED",
+    "INPUT_REVISION_CREATED",
+    "WAITING_INPUT_ENTERED",
+    "WAITING_INPUT_EXITED",
+    "DETERMINISTIC_STEP_FINISHED",
+    "RUN_STATE_CHANGED",
+]
+
+
+@dataclass(frozen=True)
+class RunEvent:
+    run_id: str
+    sequence: int
+    type: RunEventType
+    occurred_at_utc: str
+    payload: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class Usage:
+    provenance: Literal["PROVIDER_REPORTED", "LOCALLY_ESTIMATED"]
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    reasoning_tokens: int | None
+
+    @property
+    def charged_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
+@dataclass(frozen=True)
+class AttemptTiming:
+    started_at_utc: str | None
+    ended_at_utc: str
+
+    @property
+    def active_seconds(self) -> float:
+        if self.started_at_utc is None:
+            return 0
+        return (
+            datetime.fromisoformat(self.ended_at_utc)
+            - datetime.fromisoformat(self.started_at_utc)
+        ).total_seconds()
+
+
+FailureKind = Literal[
+    "EXECUTION",
+    "INVALID_JSON",
+    "INVALID_IR",
+    "INPUT_REQUIRED",
+    "CONTRACT_GAP",
+    "OWNER_BUG",
+    "SYSTEM",
+]
+
+
+@dataclass(frozen=True)
+class AttemptDiagnostic:
+    code: str
+    path: str
+    subject_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ContextRefDescriptor:
+    ref_id: str
+    canonical_content: bytes
+
+
+@dataclass(frozen=True)
+class AttemptCompletion:
+    raw_output: bytes | None
+    failure_kind: FailureKind | None
+    diagnostic: AttemptDiagnostic | None
+    usage: Usage
+    timing: AttemptTiming
+
+
+@dataclass(frozen=True)
+class AttemptRecord:
+    logical_work_id: str
+    revision: int
+    attempt: int
+    envelope_sha256: str
+    outcome: Literal["SUCCEEDED", "FAILED", "SUPERSEDED"]
+    failure_kind: FailureKind | None
+    diagnostic: AttemptDiagnostic | None
+    raw_sha256: str | None
+    normalized_result_sha256: str | None
+    usage: Usage
+    timing: AttemptTiming
 
 
 ReviewDecision = Literal["PASS", "PASS_WITH_NOTES", "BLOCKED"]
@@ -71,28 +170,8 @@ class ActionEnvelope:
 
 
 @dataclass(frozen=True)
-class ActionRecord:
-    value: Mapping[str, object]
-    path: str
-    sha256: str
-
-
-@dataclass(frozen=True)
 class RunState:
     value: Mapping[str, object]
-
-
-@dataclass(frozen=True)
-class RouteDecision:
-    route: Literal["REUSE", "RENDER_ONLY", "FULL_COMPILE", "DELTA_COMPILE"]
-    lowest_recovery_stage: Literal[
-        "STAGE_1", "STAGE_2", "STAGE_3", "REVIEW", "RENDER"
-    ] | None
-    changed: tuple[str, ...]
-    reused: tuple[str, ...]
-    invalidated: tuple[str, ...]
-    diagnostics: tuple[Diagnostic, ...]
-    proof_sha256: str
 
 
 @dataclass(frozen=True)
@@ -243,3 +322,15 @@ class RenderedPackage:
     notes_sha256: str
     files: tuple[str, ...]
     workbook_audit: WorkbookAudit
+
+
+def canonical_json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")

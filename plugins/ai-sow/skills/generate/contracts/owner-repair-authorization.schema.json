@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:owner-repair-authorization:1",
+  "description": "人工裁定后仅继续一个候选；绑定原终态、评审、既有 Owner roots 和允许修改的字段。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "const": "ai-sow-owner-repair-authorization-v1"
+    },
+    "stageKind": {
+      "enum": [
+        "SCOPE",
+        "STORY_AC",
+        "TASK"
+      ]
+    },
+    "candidateSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "reviewDecisionSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "decision": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "provenance": {
+      "enum": [
+        "USER",
+        "SIMULATED_USER"
+      ]
+    },
+    "authorization": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^run-[0-9a-f]{12}$"
+    },
+    "terminalStateSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rootKeys": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "allowedFields": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9]*$",
+        "not": {
+          "const": "localKey"
+        }
+      }
+    },
+    "additionalRevisions": {
+      "const": 1
+    }
+  },
+  "required": [
+    "contract",
+    "stageKind",
+    "candidateSha256",
+    "reviewDecisionSha256",
+    "decision",
+    "provenance",
+    "authorization",
+    "runId",
+    "terminalStateSha256",
+    "rootKeys",
+    "allowedFields",
+    "additionalRevisions"
+  ]
+}

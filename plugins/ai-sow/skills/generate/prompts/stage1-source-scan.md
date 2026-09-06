@@ -1,9 +1,8 @@
-# Stage 1 Source Scan
+# SOURCE_SCAN v1
 
-遵守 `prompts/fragments/roles/author.md`、`prompts/fragments/outputs/author-result.md` 和 `references/source-authority.md`。
+只读 packet.workItems 的 SourceBlock、来源角色和紧凑目录；不继承任何 Author 历史。
+返回 FactDecisionIR 数组，每个 coverageRootId 恰好一条；FACT 必须含带证据事实，NO_RELEVANT_FACT 必须空 facts 并解释理由。
+事实只写 localKey、factKind、statement、evidenceIds、qualifiers。localKey 在该 root 内唯一；evidenceIds 只能选该 work item 授权的证据。
+保留阈值、否定、排除、例外、角色、时间条件及其语义顺序。不能写最终实体、ID、SourceRef、hash、checkpoint 或旧 replacementSet。
 
-只读取 packet 分配的 `sourceBlockIds`，逐项提取原子 requirement、design decision、constraint、responsibility、exclusion 和 conflict candidate。保留精确 SourceRef、条件、阈值、禁止项与适用范围。
-
-不要摘要成章节结论，不要合并尚不能证明等价的要点，不要生成 Epic、Feature、Story、AC 或 Task，也不要决定最终范围处置。
-
-返回 `SOURCE_SCAN_PATCH` 和完整 `blockCoverage`：每个分配 block 必须恰好标记一次 `READ`，或以带结构化诊断的 `PARSE_ISSUE` 标记。`replacementSet` 只可写 `inputItems`。
+客户或第三方负责提供、且不由本供应商交付的已有服务、环境、资源或访问条件，标为 ASSUMPTION 项目前提；不能仅因句式为“提供”就标成供应商 REQUIREMENT。供应商需实现的对接行为使用其独立来源事实保留为 REQUIREMENT/CONSTRAINT，不把外部系统本体采购进来。

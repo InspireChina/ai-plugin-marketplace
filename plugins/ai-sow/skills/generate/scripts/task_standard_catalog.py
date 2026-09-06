@@ -366,6 +366,23 @@ def compact_index(source: TaskStandardCatalog) -> tuple[Mapping[str, object], ..
     return tuple(compact)
 
 
+def decision_catalog(source: TaskStandardCatalog) -> tuple[Mapping[str, object], ...]:
+    """Project this revision's selection rules, never calculation parameters."""
+    return tuple({
+        'workTypeId': row['工作类型ID'], 'name': row['工作类型名称'],
+        'category': row['分类'], 'unit': row['计量单位'],
+        'deliverable': row['标准交付物'], 'includes': row['包含内容'],
+        'excludes': row['不包含内容'], 'measurement': row['主要计量维度'],
+        'modes': [mode for mode, applicable, _, _ in MODE_COLUMNS if row[applicable]],
+        'modeRules': {mode: row[completion] for mode, applicable, _, completion in MODE_COLUMNS if row[applicable]},
+        'complexityRules': {key: row[key+'标准'] for key in ('S', 'M', 'L')},
+        'splitRule': row['X/拆分条件'], 'modeSelection': row['模式适用说明'],
+        'neighbors': list(row['相邻工作类型IDs']), 'neighborRule': row['相邻类型选择规则'],
+        'noTaskRule': row['不建Task条件'], 'sitEligibility': row['SIT支持资格'],
+        'rowSemanticSha256': row['rowSemanticSha256'],
+    } for row in sorted(source.rows, key=lambda row: row['序号']))
+
+
 def _tokenize(value: str) -> tuple[str, ...]:
     normalized = _normalize_string(value).casefold()
     tokens = set(_ASCII_TOKEN.findall(normalized))

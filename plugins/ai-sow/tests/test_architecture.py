@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "integration"
+
 import ast
 import hashlib
 import json
@@ -12,25 +14,31 @@ SKILL_ROOT = PLUGIN_ROOT / "skills/generate"
 RUNTIME = PLUGIN_ROOT / "runtime"
 SCRIPTS = SKILL_ROOT / "scripts"
 EXPECTED_RUNTIME = {"__init__.py", "diagnostics.py", "project_io.py"}
-REQUIRED_PYTHON_MODULES = {
-    "contracts.py",
-    "delivery_compiler.py",
-    "final_review.py",
-    "generation_store.py",
-    "intake.py",
-    "models.py",
-    "office_engine.py",
-    "orchestrator.py",
-    "package_renderer.py",
-    "questions.py",
-    "scope_compiler.py",
-    "sow_model.py",
-    "source_readers.py",
-    "story_notes.py",
-    "task_compiler.py",
-    "task_standard_catalog.py",
-    "workbook.py",
-}
+REQUIRED_PYTHON_MODULES = {'action_ledger.py',
+ 'change_graph.py',
+ 'contracts.py',
+ 'delivery_compiler.py',
+ 'final_review.py',
+ 'generation_store.py',
+ 'intake.py',
+ 'models.py',
+ 'office_engine.py',
+ 'orchestrator.py',
+ 'package_renderer.py',
+ 'prior_state.py',
+ 'prototype_analysis.py',
+ 'provider_adapter.py',
+ 'questions.py',
+ 'run_events.py',
+ 'scope_compiler.py',
+ 'source_readers.py',
+ 'sow_model.py',
+ 'stable_ids.py',
+ 'stage_planner.py',
+ 'story_notes.py',
+ 'task_compiler.py',
+ 'task_standard_catalog.py',
+ 'workbook.py'}
 LEGACY_PROTOCOL_TOKENS = (
     "ai-sow-owner-v1",
     "publish-approved",
@@ -223,7 +231,7 @@ def test_renderer_fingerprint_binds_all_current_renderer_sources() -> None:
             encoding="utf-8"
         )
     )
-    assert baseline["rendererContract"] == "generation-renderer-v8"
+    assert baseline["rendererContract"] == "generation-renderer-v12"
     assert set(baseline["files"]) == {
         "scripts/package_renderer.py",
         "scripts/workbook.py",

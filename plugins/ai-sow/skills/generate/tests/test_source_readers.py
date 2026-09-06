@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "unit"
+
 import sys
 from pathlib import Path
 
@@ -18,6 +20,27 @@ from source_readers import (  # noqa: E402
     extract_source_blocks,
 )
 import source_readers as source_readers_module  # noqa: E402
+
+
+def test_numbered_scope_items_keep_distinct_evidence_and_continuation(tmp_path):
+    source = tmp_path / 'scope.md'
+    source.write_text('# Scope\n\nApproved.\n\n1. Deliver upload.\n   At most 100 rows.\n2. Customer provides storage.\n3. Exclude migration.\n')
+    document = extract_source_blocks(source, source_role='PRD', parser_version='2')
+    items = [row for row in document.blocks if '/paragraph:' in row['locator']]
+    assert [row['content'] for row in items] == ['Approved.', '1. Deliver upload.\n   At most 100 rows.', '2. Customer provides storage.', '3. Exclude migration.']
+    assert len({row['locator'] for row in items}) == 4
+    anchors = extract_document(source, source_id='prd', role='PRD')
+    assert len([row for row in anchors if row.kind == 'PARAGRAPH']) == 4
+
+
+def test_html_elements_exposes_inline_dependencies_without_executing_them():
+    html = '<script type="module">import "./app.js";</script><style>p{background:url("pixel.png")}</style><p style="background:url(other.png)"><img srcset="one.png 1x, two.png 2x"></p>'
+    elements = source_readers_module.html_elements(html)
+    assert [(item["tag"], item.get("content")) for item in elements[:2]] == [
+        ("script", 'import "./app.js";'), ("style", 'p{background:url("pixel.png")}')]
+    assert elements[2]["attributes"]["style"] == "background:url(other.png)"
+    assert elements[3]["attributes"]["srcset"] == "one.png 1x, two.png 2x"
+    assert elements[2]["selector"] == "p:nth-of-type(1)"
 
 
 def synthetic_source(tmp_path: Path, suffix: str) -> Path:
@@ -261,3 +284,43 @@ def test_xlsx_declared_dimension_and_cell_text_limits_are_bounded(
     with pytest.raises(SourceReadError) as captured:
         extract_source_blocks(long_cell, source_role="PRIOR_SOW", parser_version="1")
     assert captured.value.code == "SOURCE_LIMIT_EXCEEDED"
+
+
+def test_array_formula_source_blocks_preserve_formula_and_repeat_exactly(tmp_path):
+    from openpyxl.worksheet.formula import ArrayFormula
+    from contracts import canonical_json_bytes
+    source=tmp_path/'prior-array.xlsx'
+    workbook=openpyxl.Workbook();sheet=workbook.active;sheet.title='Stories'
+    sheet.append(['Story','Formula']);sheet.append(['STORY-1',None])
+    formula='=IF(A2="","",SUM(C2:D2))'
+    sheet['B2']=ArrayFormula(ref='B2',text=formula)
+    workbook.save(source);workbook.close()
+    original=source.read_bytes()
+    first=extract_source_blocks(source,source_role='PRIOR_SOW',parser_version='2')
+    second=extract_source_blocks(source,source_role='PRIOR_SOW',parser_version='2')
+    row=next(block for block in first.blocks if block['locator'].endswith('/row:000002'))
+    assert row['content']=='STORY-1 | '+formula
+    assert canonical_json_bytes(first.blocks)==canonical_json_bytes(second.blocks)
+    assert source.read_bytes()==original
+    inventory=source_readers_module.inventory_xlsx(source)
+    cell=next(cell for cell in inventory['sheets'][0]['cells'] if cell['address']=='$B$2')
+    assert cell['formula']==formula[1:]
+
+
+def test_unreadable_array_formula_never_becomes_python_object_repr():
+    from openpyxl.worksheet.formula import ArrayFormula
+    with pytest.raises(SourceReadError,match='公式'):
+        source_readers_module._xlsx_scalar(ArrayFormula(ref='B2',text=None))
+
+
+def test_data_table_formula_source_rejects_unreadable_formula_without_object_repr(tmp_path):
+    from openpyxl.worksheet.formula import DataTableFormula
+    source=tmp_path/'prior-data-table.xlsx'
+    workbook=openpyxl.Workbook();sheet=workbook.active
+    sheet['A1']=1;sheet['B1']=DataTableFormula(ref='B1:C2',r1='A1')
+    workbook.save(source);workbook.close()
+    original=source.read_bytes()
+    with pytest.raises(SourceReadError,match='公式') as error:
+        extract_source_blocks(source,source_role='PRIOR_SOW',parser_version='2')
+    assert error.value.code=='SOURCE_UNREADABLE'
+    assert source.read_bytes()==original

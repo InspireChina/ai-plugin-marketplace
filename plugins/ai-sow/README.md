@@ -1,31 +1,29 @@
 # AI SOW
 
-AI SOW `0.1.0-beta.1` 通过唯一公开 Skill `ai-sow:generate`，把 PRD、HLD、适用的往期 SOW 与补充材料
+AI SOW `0.1.0-beta.2` 通过唯一公开 Skill `ai-sow:generate`，把 PRD、HLD、适用的往期 SOW 与补充材料
 自动编译为可追溯的 `sow.xlsx` 和 `sow-notes.md`。当前 SOW 标准 1.3。
 
 ## 一次调用完成什么
 
 ```text
-不可变 Input Revision
-  -> Stage 1：InputItem / Scope Closure / Epic / Feature / Design
-  -> R1 Source Audit + Scope Join
-  -> Stage 2：Story / AC
-  -> Stage 3：Task / Dependency / Effective Start / Estimation
-  -> R2/R3 并行独立评审 + Theme Join + 必要的 Adjudication
-  -> 工作簿与说明渲染 + Office 真实回算复读
-  -> REQUEST_APPROVAL
-  -> 用户批准后不可变发布
+不可变 Input Revision 与原型预处理
+  → Scope StagePlan → 物化/验证/fresh Review → checkpoint
+  → Story/AC StagePlan → 物化/验证/fresh Review → checkpoint
+  → Task StagePlan → 物化/验证/fresh Review → checkpoint
+  → 工作簿与发布后缀
 ```
+
+当前未发布重构已贯通三阶段自动封存；Office 与完整输出发布仍须最终集成验收。阶段控制与证据合同见[阶段自动封存](skills/generate/references/stage-seal.md)。
 
 用户不需要依次运行内部模块，也不需要批准中间 hash。宿主按公开 `NextAction` 协议推进：
 
-- `MODEL_ACTION_GROUP`：运行一个或多个 hash-bound 模型 action；
-- `REQUEST_INPUT`：集中询问会改变范围、责任或估算的最少问题；
+- `ai-sow-action-v3` / `MODEL_ACTION_GROUP`：运行一个或多个 hash-bound Action；
+- `WAITING_INPUT`：集中询问会改变范围、责任或估算的最少问题；
 - `REQUEST_APPROVAL`：展示已通过评审和 Office 验证的不可变候选包；
-- `DONE`：报告 `PUBLISHED`、`REUSED` 或安全终态并停止。
+- `DONE`：报告 `PUBLISHED` 或安全终态并停止。
 
-用户补充资料后以新 request 调用 `resume`，系统先校验新输入，再关闭旧 run、创建新的不可变 revision，
-并从最低安全阶段继续。无效的新 request 不会破坏 active run；上一份有效 SOW 也不会被覆盖。
+业务输入变化时先明确 abandon 当前 run，再以完整新 request start，创建新的不可变 revision 并完整编译。
+同一 run 的 resume 只恢复已冻结的计划与执行事实，上一份有效 SOW 不会被覆盖。
 
 每个模型 action 都强制 `FRESH_NO_HISTORY`，只接收本 action 的 prompt、packet、reference 和按需
 hydrate 的证据。同一 action 的工具往返可复用自身上下文，但主对话、兄弟 action、前序阶段和后续
@@ -42,6 +40,7 @@ hydrate 的证据。同一 action 的工具往返可复用自身上下文，但�
 | PRD | UTF-8 `.md` | 所有项目必需 |
 | HLD | UTF-8 `.md` | 所有项目必需 |
 | 往期 SOW | `.xlsx` | Brownfield 建议提供；未提供时记录 `NOT_PROVIDED` 并建立新基线 |
+| Demo | 静态 HTML/CSS/JavaScript bundle | 显式列出入口和全部文件，无需安装或构建 |
 | 补充材料 | UTF-8 纯文本、`.md`、`.html`、`.htm`、`.ts`、`.tsx`、`.xlsx` | 默认按 Markdown 语义处理文本 |
 
 PDF、Word、PowerPoint 和其他需要专用解析器的文件暂不支持。文档标题可以不同，但必须表达最低业务
@@ -59,7 +58,8 @@ Brownfield 还必须说明自往期 SOW 生效后是否存在已知的范围、�
 
 ## 原型 Demo
 
-HTML、TypeScript 和 TSX 原型作为 `SUPPLEMENT` 输入时，不只做附件归档。Scope 编译会识别：
+可执行 Demo 使用静态 HTML/CSS/JavaScript bundle。HTML、TypeScript 和 TSX 也可作为 `SUPPLEMENT`
+提供静态来源，但可执行 Demo 必须显式声明 `demo.entrypoint` 与全部 `demo.files`。Scope 编译会识别：
 
 - 页面、路由和入口；
 - 用户角色、动作与触发条件；
@@ -67,8 +67,8 @@ HTML、TypeScript 和 TSX 原型作为 `SUPPLEMENT` 输入时，不只做附件�
 - 空白、加载、成功和异常路径；
 - 可观察的业务结果及其与 PRD/HLD 的关系。
 
-源码不足且 Demo 可以运行时，宿主可以本地启动它，并按需使用 Playwright 或 Computer Use 核验实际
-交互。核验结论必须追溯到原型来源；原型与 PRD/HLD 冲突时不能静默覆盖，而是形成边界说明或在确实
+声明 Demo 后，宿主按冻结的场景执行真实浏览器、typed trace 和有界重放，再由 Analyze 封存观察。
+核验结论必须追溯到原型来源；原型与 PRD/HLD 冲突时不能静默覆盖，而是形成边界说明或在确实
 影响范围和估算时阻断。
 
 ## Greenfield 与 Brownfield
@@ -76,23 +76,20 @@ HTML、TypeScript 和 TSX 原型作为 `SUPPLEMENT` 输入时，不只做附件�
 Greenfield 以“本期新建、不继承既有合同能力”为默认 Effective Start，只使用 PRD、HLD 和最小问卷，
 不会强制开展完整现状调查。
 
-Brownfield 在提供往期 SOW 时用它建立合同 As-Is、历史承诺与 Effective Start，但往期合同不自动证明
-当前生产状态。未提供适用往期 SOW 时以 `priorSowState = NOT_PROVIDED` 建立新基线，不虚构历史承诺；
+Brownfield 由 Scope 一次解释明确提供的往期 SOW，按本期计划生效日建立合同推定的生产 As-Is、
+历史承诺与 Effective Start。重复来源保留审计，只投影 canonical 实体；已生效 FULL 替代排除前项。
+未提供适用往期 SOW 时以 `priorSowState = NOT_PROVIDED` 建立新基线，不虚构历史承诺；
 若缺口会实质改变范围、责任或估算，则通过 `REQUEST_INPUT` 或安全终态显式处理。
 
-## 增量更新
+## 输入更新与恢复
 
-后续仍调用 `ai-sow:generate`。工作流把新 request 对应的不可变 input revision 与最近一次成功
-generation 的证明闭包比较：
+后续仍调用 `ai-sow:generate`。每个新 run 完整编译当前输入；往期 SOW 必须作为显式输入，经过 Prior
+核对形成授权 snapshot。旧 generation 不作为隐藏业务缓存。业务输入变化采用 abandon/start；同一
+run 的 resume 沿用完整冻结 StagePlan、原始 Envelope、Attempt 与 checkpoint，不重复转换已封存 revision。
+`declaredChangeContext` 进入本轮冻结的 Scope 上下文，不从旧 generation 注入。
+预算替换须严格增加至少一项 token、active-time、未来请求的上下文容量或 Demo 限额；正文相同、限额降低或其它配置变化均拒绝。
+合法替换发布不可变 policy 与 RunEvent，不创建业务 revision，也不改写已冻结计划和执行记录。
 
-- 全部语义与 renderer 指纹未变化：`REUSE`，不创建模型 action；
-- 只有 renderer 或非语义模板字节变化：`RENDER_ONLY`，复用 SOW Model、检查点和评审决定，不启动 Reviewer；
-- 语义输入、Delivery Policy、任务目录或阶段检查点变化：`DELTA_COMPILE`，以上一份 SOW Model 为基线重编译；
-- 首次生成、缺少可信闭包或核心合同变化：`FULL_COMPILE`。
-
-模型提交 typed replacement set，并绑定被修改节点的 expected hash；编译器在组内结果全部封存后一次
-应用，不做未校验字段 patch。未受影响对象保持规范 JSON 原字节和 ID；语义变化的对象使用新 ID；
-共享 Design、Integration、NFR、Policy 或 Task 会扩大影响闭包。所有非复用路线都完整重渲染 Package。
 
 ## 输出与可追溯性
 
@@ -122,8 +119,7 @@ revision 与 generation 发布后不可变。候选、分阶段 checkpoint、独
 renderer 指纹、输出 hash，以及真实办公软件回算后的工作簿验证证据。
 
 `sow-notes.md` 固定披露输入版本、As-Is 证据边界、关键推断、估算假设、待设计事项、各方责任、排除
-范围、冲突处置、未决 NFR、风险和变更触发条件；这些事项不能只留在内部日志。成功摘要报告发布或
-复用结果、generation manifest 以及两个输出路径。自动生成不代表客户已经签署、接受或赋予 SOW
+范围、冲突处置、未决 NFR、风险和变更触发条件；这些事项不能只留在内部日志。成功摘要报告发布结果、generation manifest 以及两个输出路径。自动生成不代表客户已经签署、接受或赋予 SOW
 法律效力。
 
 ## 工作簿规则
@@ -136,16 +132,11 @@ Table、全部输入行、公式缓存、校验结果、参数/目录、汇总�
 
 当前只支持 XLSX 模板。intake 在创建 input revision 时把项目模板保存为 revision 内的
 `sow-template.xlsx` 本轮专用副本；Task 编译、评审、渲染和复读只使用该副本。运行期间改动项目模板
-不影响当前轮次。下一轮会区分非语义 renderer 变化与任务目录语义变化：前者 `RENDER_ONLY`，后者
-重新编译 Delivery 并重新评审。generation manifest 同时绑定 `templateSha256` 与 `rendererSha256`。
+不影响当前轮次。下一轮使用新的模板快照完整编译并重新评审。generation manifest 同时绑定 `templateSha256` 与 `rendererSha256`。
 
 Epic 和 Feature 使用稳定领域能力的名词或名词短语，并以共同投入理由维持同质边界，不能用“平台”“闭环”“保障”等抽象词把无关主题装入同一层级。Story 使用自然的
 `[模块/接口] 角色或对象＋动作` 标题，只归属一个 Feature、至少包含两条 AC 且最多包含四个 Task。
-Stage 1 先建立 InputItem、Scope Closure、Epic/Feature 和 Design/NFR/Policy；R1 对来源覆盖与全局
-Scope 做独立复核，发现问题时只允许一次 hash-bound Stage 1 repair，并在进入 Stage 2 前再次独立
-复核。Stage 2 只形成 Story/AC checkpoint，Stage 3 才读取模板目录拆分 Task；下游不得反向补造上游
-范围。每个阶段都写入同一受管 SOW Model candidate，静态字段、ID、checkpoint 和 expected node hash
-由固定实现维护，模型只提交 Schema 约束的 typed replacement set。
+每个 Owner 的完整 StagePlan 全部成功后才物化候选，独立完成机械验证和 fresh Review 后封存。模型只返回窄 IR，稳定 ID、SourceRef 和跨节点引用由程序注入。下游只消费 sealed checkpoint；有条件语义 Repair 时保留旧候选，完整验证新 revision 并重新 Review。
 来源中的每个原子目标、指标、阈值或控制先逐项进入全部适用具体 Story 的来源可追溯 AC，同一语义义务可
 以不同 AC ID 出现在多个 Story；项目级且没有 Story 特定行为的义务留在 NFR、DoD 或质量门禁。Story 必须
 命名一个可独立移交并关闭的具体结果，并共同具备具体交付物或能力、责任方或消费者、独立验收、独立关闭
@@ -156,9 +147,7 @@ Scope 做独立复核，发现问题时只允许一次 hash-bound Stage 1 repair
 只在提交、审批、查询等已有业务触发执行，先写入每个受影响业务 Story 的 AC；规则跨切面不形成共享控制
 Story。来源规定的阈值必须保留在每个适用 AC 或项目级质量/NFR 门禁，报表或仪表盘只能交付显示/测量，
 不能关闭阈值满足义务。
-Stage 2 与 Stage 3 后分别运行多 shard 的 `STORY_DESIGN` 和 `TASK_ESTIMATION` 独立评审。一个主题
-跨多个物理 shard 时必须由 Theme Join 绑定所有 leaf result hash 并保留全部 finding；同一 subject 的
-冲突 finding 必须交给新的 `FRESH_NO_HISTORY` Adjudicator 明确选择，不能由编排器静默覆盖。
+Scope、Story/AC 与 Task 均使用 fresh singleton Review。PASS 自动进入下一阶段；不存在中间阶段批准或多层 Theme Join/Adjudication。
 Story 稳定数据不保存描述；九列需求故事表不再保存内部故事路径，Task 直接引用唯一 Story 名称。每条
 AC 以 `• ` 开头并独占一行，任务列表逐行显示 `[任务类型/工作方式/复杂度] 任务名称`。备注只显示对象
 特有的特殊情况、不确定性、风险、例外、依赖或评审边界；跨 Feature 的项目级通用事项只进入
@@ -208,7 +197,21 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 ```
 
 copy smoke 在独立复制的插件和临时项目中直接通过 Python API 运行，不要求安装 Codex 或 Claude Code
-CLI。它覆盖 Greenfield、Brownfield、输入恢复、无变化复用、无 Reviewer 的 `RENDER_ONLY`、保留未受
-影响节点的 `DELTA_COMPILE`，并验证 `FRESH_NO_HISTORY`、输出文件、manifest hash 闭包、工作簿 Table/
+CLI。最终集成需覆盖 Greenfield、Brownfield、新输入完整编译和同 run 恢复，并验证 `FRESH_NO_HISTORY`、输出文件、manifest hash 闭包、工作簿 Table/
 公式、项目边界和 marketplace 零读取。worker 的 stdout/stderr、临时文件及失败收据都保留在项目或
 精确 smoke work-dir 内，失败现场不会被测试清理掉。
+
+工作簿验证使用 `generation-renderer-v12`：现有汇总 Sheet 显示实体 ID 与公开 SourceRef；全部可见 Sheet 的 Office PDF renders 经一次独立视觉评审通过后，才向用户请求批准。每一步实际生成、Office 与复读都受 active-time 预算约束；预算增加后的恢复保留已完成输出。
+
+内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
+pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，
+只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
+都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
+
+生成后的 Scope、Story/AC 和 Task 优先按 findings 及影响范围局部修复，保留正确结果；普通 Repair 可调整、合并或拆分授权对象；共享测试资产保留独立 Story/AC，只计量一次，工作簿展示覆盖与费用归属。自动停止后，`resume --decision` 可绑定原终态与失败 Review，按明确用户裁定仅修允许字段、追加一个候选并 fresh Review，完整保留累计次数与消耗。具体合同见 [阶段自动封存](skills/generate/references/stage-seal.md)。
+
+往期 Excel 大表按完整证据行分组，保留全部单元格、位置、哈希与表头，避免整张 Sheet 超出单次请求容量。阶段尚未发行计划工作便因容量等待时，修复分组后可从原 run 恢复，复用已完成的原型观察和检查点，不提高模型容量或重置消耗。
+
+往期资料的失败重试可通过无损表表示减少请求体，完整资料和原失败结果保持可复原；尚未发行的重试重新满足原容量后继续。网络中断保留原调用证据并按执行重试接续，未知 provider 用量单独披露。放弃决定在中断后可恢复为终态；工件取证从最终检查点恢复，不依赖可变当前候选。完整边界见[阶段自动封存](skills/generate/references/stage-seal.md)。
+
+恢复会保留真实 Office PDF：导出原字节先持久暂存，再记录成功完成事件，避免中断后重复导出的字体差异；已完成结果和 renderer 不变。XLSX 数组公式按原公式文本取证，无原公式文本的数据表公式明确拒绝，读取不执行公式。

@@ -8,7 +8,7 @@
 
 | 插件 | 版本 | 用途 |
 |---|---|---|
-| [AI SOW](plugins/ai-sow/README.md) | 0.1.0-beta.1 | 一次生成、增量更新或恢复 SOW，并保留不可变输入与输出历史。 |
+| [AI SOW](plugins/ai-sow/README.md) | 0.1.0-beta.2 | 按显式输入完整编译或恢复本轮 SOW，并保留不可变输入与输出历史。 |
 
 ## 支持平台
 
@@ -82,22 +82,20 @@ PDF、Word、PowerPoint 和其他需要专用解析器的格式当前不支持�
 使用 ai-sow:generate，根据 PRD、HLD、往期 SOW 和现状变化说明增量更新 SOW。
 ```
 
-工作流会自动完成不可变输入归档、三阶段 SOW Model 编译、并行独立评审、Theme Join、必要的
-Adjudication、工作簿渲染和 Office 复读。每个模型 action 都使用 `FRESH_NO_HISTORY`：只接收当前
+工作流会自动完成不可变输入归档、三阶段 SOW Model 编译、每阶段完整验证、fresh 独立评审、条件语义 Repair、工作簿渲染和 Office 复读。每个模型 action 都使用 `FRESH_NO_HISTORY`：只接收当前
 action 的 prompt、packet、reference 和按需 hydrate 的证据，不继承主对话、兄弟 action 或前序阶段
 历史，因此 E2E 主流程不会持续侵占模型上下文窗口。
 
-资料不足时集中返回 `REQUEST_INPUT`；候选包和 Office 证据都闭合后返回 `REQUEST_APPROVAL`，只有用户
-批准精确 artifact manifest 后才原子发布。补充答案后再次调用同一 Skill，会创建新的不可变 input
-revision 并从安全边界继续；上一份有效 SOW 始终不被覆盖。
+资料不足时集中返回 `REQUEST_INPUT`；候选包、Office 双复读和全部可见 Sheet 的一次视觉评审都闭合后返回 `REQUEST_APPROVAL`，只有用户
+批准精确 artifact manifest 后才原子发布。补充答案或修改范围时，先 abandon 当前 run，再用完整新
+request start，创建新 run 并完整编译；上一份有效 SOW 始终不被覆盖。
 
 每个问题都会逐项说明“问题、为什么要问、答案决定什么、未回答后果”。确认时展示自然语言结论；
 内容较长时同时提供可打开的 Markdown 或 Excel 文件，内部 ID、hash 和阶段 token 不作为确认正文。
 
 当前只支持 XLSX SOW 模板。每个 input revision 都保存模板的本轮专用副本；运行期间外部模板变化
-不会改变已开始的本轮。新模板若只改变输出字节语义，可复用已评审 SOW Model 并完整重渲染；若
-`90-估算标准` 的任务目录或语义改变，则从受影响阶段重新编译和评审，旧 Task 不会套用新标准。
-也就是说，估算语义变化会重新编译 Delivery；只有不影响任务目录语义的字节变化才允许只重渲染。
+不会改变已开始的本轮。相同输入、模板字节变化或业务变化都通过新 run 完整编译，并重新执行逐阶段评审。
+同一未完成 run 的 resume 只恢复本轮冻结计划、Attempt 和 checkpoint。
 
 正式工作簿采用四 Sheet 简化模板：`01-需求故事`、`02-任务清单`、`03-工作量汇总`、`90-估算标准`。
 需求故事表固定九列且不暴露内部故事路径；Story 采用自然的角色/对象动作标题、至少两条可验收 AC，
@@ -114,10 +112,13 @@ revision 并从安全边界继续；上一份有效 SOW 始终不被覆盖。
 .ai-sow/generations/<generation>/output/sow-notes.md
 ```
 
-`.ai-sow/current.json` 始终指向最近一次成功结果。失败或阻断不会覆盖上一份有效 SOW；输入与模板都
-未变化时直接复用；仅 renderer 变化时走 `RENDER_ONLY` 且不启动 Reviewer；语义或估算权威变化时走
-`DELTA_COMPILE`，以上一份已发布 SOW Model 为基线重编译并保持未受影响节点原字节不变；合同闭包
-不可信时才走 `FULL_COMPILE`。所有非复用路径都完整重渲染输出。
+`.ai-sow/current.json` 始终指向最近一次成功结果。每个新 run 都是 `FULL_COMPILE`，只读取本次完整
+request 明列的来源与政策；旧 generation 和隐藏 work 不参与业务输入。Brownfield 的往期 SOW 必须显式
+列为 `PRIOR_SOW`，本次 `declaredChangeContext` 只约束本轮。
+
+同 run 唯一允许的输入更新是 `resume --budget-policy ...`：至少增加一项 planned token、active-time 或
+Demo 限额，其余配置保持原值。正文相同、限额降低、model/estimator/reserves/concurrency 变化均拒绝；
+政策替换不创建业务 input revision，也不改写旧计划、Attempt 或 checkpoint。
 
 自动生成结果用于评审和估算，不代表客户已经签署、接受或赋予 SOW 法律效力。
 
@@ -193,3 +194,14 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 
 本项目使用 [Apache License 2.0](LICENSE)。项目自行编写的模板、示例和文档采用同一许可证；
 依赖项仍适用各自许可证。详见 [NOTICE](NOTICE)。
+
+工作簿验证使用 `generation-renderer-v12`：现有汇总 Sheet 显示实体 ID 与公开 SourceRef；全部可见 Sheet 的 Office PDF renders 经一次独立视觉评审通过后，才向用户请求批准。每一步实际生成、Office 与复读都受 active-time 预算约束；预算增加后的恢复保留已完成输出。
+
+内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
+pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，
+只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
+都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
+
+生成后的 Scope、Story/AC 和 Task 优先按 findings 及影响范围局部修复，保留正确结果；普通 Repair 可调整、合并或拆分授权对象；共享测试资产保留独立 Story/AC，只计量一次，工作簿展示覆盖与费用归属。自动停止后，`resume --decision` 可绑定原终态与失败 Review，按明确用户裁定仅修允许字段、追加一个候选并 fresh Review，完整保留累计次数与消耗。具体合同见 [阶段自动封存](plugins/ai-sow/skills/generate/references/stage-seal.md)。
+
+往期 Excel 大表按完整证据行分组，保留全部单元格、位置、哈希与表头，避免整张 Sheet 超出单次请求容量。阶段尚未发行计划工作便因容量等待时，修复分组后可从原 run 恢复，复用已完成的原型观察和检查点，不提高模型容量或重置消耗。

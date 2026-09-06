@@ -35,7 +35,7 @@ AC 不直接重抄原始来源引用。脚本以通过的 Scope checkpoint 为�
 
 ## 与相邻层关系
 
-AC 只属于一个 Story，构成该 Story 的 obligation 闭包；一个 AC 可由该 Story 的多个 Task 覆盖，一个 Task 也可覆盖多条 AC。同一跨切面义务可分别写入多个适用 Story 的 AC，但 AC 不反向创建 Task，也不跨 Story 借用覆盖。自动化、性能、安全或合规测试可以落实既有 Story/AC；当 effective delivery policy 本身要求交付自动化代码或工程化产物时，该政策 obligation 必须形成自己的可交付 Story/AC。
+AC 只属于一个 Story，构成该 Story 的 obligation 闭包；一个 AC 可由该 Story 的多个 Task 覆盖，一个 Task 也可覆盖多条 AC。同一跨切面义务可分别写入多个适用 Story 的 AC，但 AC 不反向创建 Task，也不以另一 Story 的 AC 代替自身义务。授权 Task Repair 可让一个共享资产同时覆盖多个既有 Story 的各自 AC，保留所有 AC，只计量一次。自动化、性能、安全或合规测试可以落实既有 Story/AC；当 effective delivery policy 本身要求交付自动化代码或工程化产物时，该政策 obligation 必须形成自己的可交付 Story/AC。
 
 ## 正例
 

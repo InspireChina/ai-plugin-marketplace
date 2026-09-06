@@ -8,6 +8,9 @@ Codex 与 Claude Code 只负责安装 Skill 和承载模型 worker。生成运�
 因此独立复制 smoke 不要求安装任何代理 CLI，Windows 也只需要 PowerShell bootstrap 与插件自己的
 `.venv/Scripts/python.exe`。
 
+锁定的 `pypdf` 仅拆分 Office 导出的逐 Sheet PDF render，并复核中文字符未丢失，不解析业务输入或计算 Excel 公式。
+macOS headless PDF 导出在未显式指定 `FONTCONFIG_FILE` 时，为本次临时目录生成 fontconfig，读取已安装系统字体并将缓存保存在隔离目录内；不会修改用户或系统字体配置。中文字符丢失时阻止 Visual Review。
+
 Python bootstrap 不包含电子表格计算引擎。发布正式 `sow.xlsx` 时必须存在可执行的 LibreOffice：优先
 使用 `AI_SOW_OFFICE_BIN` 指定路径，否则从 PATH 查找 `soffice` 或 `libreoffice`。引擎在隔离 profile
 中无界面回算；缺失、超时或失败均返回稳定阻断，不发布仅含公式但没有可信缓存结果的候选件。

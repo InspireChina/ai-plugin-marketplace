@@ -1,198 +1,111 @@
-from __future__ import annotations
-
+"""Publication boundaries consume a real verified artifact, without re-rendering."""
+import json
+import shutil
 import sys
 from pathlib import Path
-
 import pytest
 
-
-SKILL_ROOT = Path(__file__).parents[1]
-PLUGIN_ROOT = SKILL_ROOT.parents[1]
-SCRIPTS = SKILL_ROOT / "scripts"
-TESTS = SKILL_ROOT / "tests"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
-if str(PLUGIN_ROOT) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_ROOT))
-if str(TESTS) not in sys.path:
-    sys.path.insert(0, str(TESTS))
-
-import generation_store  # noqa: E402
-from generation_store import promote  # noqa: E402
-from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
+TEST_LAYER='e2e'
+ROOT=Path(__file__).parents[1]
+for path in (ROOT/'scripts',ROOT/'tests',ROOT.parents[1]):sys.path.insert(0,str(path))
+from test_artifact_lifecycle import verified_artifact
+from contracts import canonical_json_bytes, sha256_bytes
+from runtime.project_io import ProjectFiles
+import generation_store
+import orchestrator
 
 
-def staged_v8_artifact(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from test_orchestrator import (  # noqa: PLC0415
-        fixture_renderer,
-        reviewed_artifact_state,
-    )
-    import orchestrator as orchestrator_module  # noqa: PLC0415
-
-    project = tmp_path / "v8-project"
-    project.mkdir()
-    files = ProjectFiles.open(project)
-    state = reviewed_artifact_state()
-    monkeypatch.setattr(orchestrator_module, "prepare_draft", fixture_renderer(tmp_path))
-    prepared = orchestrator_module.prepare_artifact(
-        state,
-        files,
-        template_path=SKILL_ROOT / "assets/sow-template.xlsx",
-    )
-    manifest = files.read_json(prepared["artifactManifestPath"])
-    approval = {
-        "contract": "ai-sow-approval-v1",
-        "runId": manifest["runId"],
-        "artifactManifestSha256": prepared["artifactManifestSha256"],
-        "reviewDecisionSha256": manifest["reviewDecisionSha256"],
-        "candidateSha256": manifest["candidateSha256"],
-        "sourceManifestSha256": manifest["sourceManifestSha256"],
-        "templateSha256": manifest["templateSha256"],
-        "effectivePolicyDecisionSha256": manifest[
-            "effectivePolicyDecisionSha256"
-        ],
-        "decision": "APPROVE",
-        "approvedAt": "2026-09-04T00:00:00Z",
-    }
-    return files, prepared, manifest, approval
+def copied_artifact(verified_artifact,tmp_path):
+    project,result,_=verified_artifact
+    target=tmp_path/'project';shutil.copytree(project,target)
+    return target,result,ProjectFiles.open(target)
 
 
-def test_promote_is_byte_identical_and_self_contained_after_run_work_removed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    files, prepared, _manifest, approval = staged_v8_artifact(tmp_path, monkeypatch)
-    draft_workbook = files.read_bytes(prepared["workbookPath"])
-    draft_notes = files.read_bytes(prepared["notesPath"])
-
-    result = promote(
-        prepared["artifactManifestSha256"], approval, files=files
-    )
-
-    assert result.outcome == "PUBLISHED"
-    assert files.read_bytes(result.workbook_path) == draft_workbook
-    assert files.read_bytes(result.notes_path) == draft_notes
-    current = files.read_json(".ai-sow/current.json")
-    generation = files.read_json(current["generationManifestPath"])
-    assert generation["rendererContract"] == "generation-renderer-v8"
-    generation_root = Path(current["generationManifestPath"]).parent.as_posix()
-    for relative in (
-        "data/sow-model.json",
-        "input/sow-template.xlsx",
-        "input/effective-policy-decision.json",
-        "proof/review-decision.json",
-        "proof/scope-closure-checkpoint.json",
-        "proof/story-ac-checkpoint.json",
-        "proof/task-checkpoint.json",
-        "proof/artifact-manifest.json",
-        "proof/approval.json",
-    ):
-        files.resolve(f"{generation_root}/{relative}")
-    files.remove_managed_tree(
-        ".ai-sow/work", allowed_roots=(".ai-sow/work",)
-    )
-    assert files.read_json(current["generationManifestPath"])[
-        "artifactManifestSha256"
-    ] == prepared["artifactManifestSha256"]
+def test_artifact_promotion_gate_is_byte_identical_self_contained_and_never_recalculates(verified_artifact,tmp_path,monkeypatch):
+    import package_renderer
+    project,result,files=copied_artifact(verified_artifact,tmp_path)
+    raw=files.read_bytes(result['workbookPath'])
+    def forbidden(*args,**kwargs):raise AssertionError('publication must never calculate/render')
+    monkeypatch.setattr(package_renderer,'project_artifact',forbidden)
+    monkeypatch.setattr(package_renderer,'calculate_artifact',forbidden)
+    monkeypatch.setattr(package_renderer,'render_artifact',forbidden)
+    published=orchestrator.approve(project,result['artifactManifestSha256'])
+    assert published['outcome']=='PUBLISHED',published
+    assert files.read_bytes(published['workbookPath'])==raw
+    current=files.read_bytes('.ai-sow/current.json')
+    assert orchestrator.approve(project,result['artifactManifestSha256'])['outcome']=='REUSED'
+    assert files.read_bytes('.ai-sow/current.json')==current
+    shutil.rmtree(project/'.ai-sow/work')
+    shutil.rmtree(project/'.ai-sow/inputs')
+    loaded=generation_store.load_current(files)
+    assert files.read_bytes(loaded.workbook_path)==raw
 
 
-def test_promote_rejects_stale_approval_and_preserves_current(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    files, prepared, _manifest, approval = staged_v8_artifact(tmp_path, monkeypatch)
-    stale = {**approval, "candidateSha256": "0" * 64}
-
-    with pytest.raises(ProjectIOError) as caught:
-        promote(prepared["artifactManifestSha256"], stale, files=files)
-
-    assert caught.value.code == "APPROVAL_BINDING_MISMATCH"
-    assert not (files.root / ".ai-sow/current.json").exists()
+def test_artifact_promotion_gate_rejects_stale_approval_and_preserves_current(verified_artifact,tmp_path):
+    project,result,files=copied_artifact(verified_artifact,tmp_path)
+    published=orchestrator.approve(project,result['artifactManifestSha256'])
+    assert published['outcome']=='PUBLISHED'
+    current=files.read_bytes('.ai-sow/current.json')
+    approval=files.read_json(published['approvalPath']);approval['candidateSha256']='0'*64
+    with pytest.raises(Exception):generation_store.promote(result['artifactManifestSha256'],approval,files=files)
+    assert files.read_bytes('.ai-sow/current.json')==current
 
 
-def test_v8_promote_never_calls_renderer_or_office(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    files, prepared, _manifest, approval = staged_v8_artifact(tmp_path, monkeypatch)
-
-    assert not hasattr(generation_store, "prepare_draft")
-    assert not hasattr(generation_store, "require_office_engine")
-
-    result = promote(
-        prepared["artifactManifestSha256"], approval, files=files
-    )
-
-    assert result.outcome == "PUBLISHED"
+def test_artifact_promotion_gate_crash_before_current_swap_keeps_last_known_good(verified_artifact,tmp_path,monkeypatch):
+    project,result,files=copied_artifact(verified_artifact,tmp_path)
+    first=orchestrator.approve(project,result['artifactManifestSha256']);assert first['outcome']=='PUBLISHED'
+    current=files.read_bytes('.ai-sow/current.json')
+    approval=files.read_json(first['approvalPath']);approval['approvedAt']='2026-10-02T00:00:00Z'
+    def crash(*args):raise RuntimeError('before current swap')
+    monkeypatch.setattr(generation_store,'replace_current',crash)
+    with pytest.raises(RuntimeError):generation_store.promote(result['artifactManifestSha256'],approval,files=files)
+    assert files.read_bytes('.ai-sow/current.json')==current
+    assert generation_store.load_current(files).generation_id==first['generationId']
 
 
-def test_generation_staging_never_uses_external_mkdtemp(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import tempfile  # noqa: PLC0415
-
-    files, prepared, _manifest, approval = staged_v8_artifact(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        tempfile,
-        "mkdtemp",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("external mkdtemp used")
-        ),
-    )
-
-    result = promote(prepared["artifactManifestSha256"], approval, files=files)
-
-    assert result.outcome == "PUBLISHED"
-    assert not any((tmp_path / "v8-project/.ai-sow").glob(".generation-stage-*"))
+def test_generation_repeated_bindings_must_match_portable_artifact(verified_artifact,tmp_path):
+    project,result,files=copied_artifact(verified_artifact,tmp_path)
+    assert orchestrator.approve(project,result['artifactManifestSha256'])['outcome']=='PUBLISHED'
+    current=files.read_json('.ai-sow/current.json')
+    path=current['generationManifestPath']; original=files.read_bytes(path)
+    manifest=json.loads(original)
+    # Rehash the mutable pointer so rejection must come from the deep cross-binding.
+    for field in ('rendererSha256','runId','inputRevisionSha256'):
+        bad={**manifest,field:('run-forged' if field=='runId' else '0'*64)}
+        raw=canonical_json_bytes(bad)
+        (project/path).write_bytes(raw)
+        files.write_atomic('.ai-sow/current.json',canonical_json_bytes({**current,'generationManifestSha256':sha256_bytes(raw)}))
+        with pytest.raises(Exception,match='generation.*artifact'):
+            generation_store.load_current(files)
+    (project/path).write_bytes(original)
+    files.write_atomic('.ai-sow/current.json',canonical_json_bytes(current))
+    assert generation_store.load_current(files) is not None
 
 
-def test_v8_crash_before_current_swap_preserves_last_known_good(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from test_orchestrator import (  # noqa: PLC0415
-        fixture_renderer,
-        reviewed_artifact_state,
-    )
-    import orchestrator as orchestrator_module  # noqa: PLC0415
-
-    files, first, _manifest, first_approval = staged_v8_artifact(tmp_path, monkeypatch)
-    promote(first["artifactManifestSha256"], first_approval, files=files)
-    current_before = files.read_bytes(".ai-sow/current.json")
-    monkeypatch.setattr(
-        orchestrator_module,
-        "prepare_draft",
-        fixture_renderer(tmp_path / "second-render"),
-    )
-    second = orchestrator_module.prepare_artifact(
-        reviewed_artifact_state(),
-        files,
-        template_path=SKILL_ROOT / "assets/sow-template.xlsx",
-    )
-    second_manifest = files.read_json(second["artifactManifestPath"])
-    second_approval = {
-        **first_approval,
-        "artifactManifestSha256": second["artifactManifestSha256"],
-        "reviewDecisionSha256": second_manifest["reviewDecisionSha256"],
-        "candidateSha256": second_manifest["candidateSha256"],
-        "sourceManifestSha256": second_manifest["sourceManifestSha256"],
-        "templateSha256": second_manifest["templateSha256"],
-        "effectivePolicyDecisionSha256": second_manifest[
-            "effectivePolicyDecisionSha256"
-        ],
-    }
-
-    def fail_swap(*_args, **_kwargs):
-        raise ProjectIOError(
-            "POINTER_SWAP_FAILED", ".ai-sow/current.json", "failed"
-        )
-
-    monkeypatch.setattr(generation_store, "replace_current", fail_swap)
-    with pytest.raises(ProjectIOError):
-        promote(second["artifactManifestSha256"], second_approval, files=files)
-
-    assert files.read_bytes(".ai-sow/current.json") == current_before
+def test_pair_publication_recovers_generation_before_current_swap(verified_artifact, tmp_path, monkeypatch):
+    project, result, files = copied_artifact(verified_artifact, tmp_path)
+    manifest = files.read_json(result['artifactManifestPath'])
+    approval = {key: manifest[key] for key in ('runId', 'candidateSha256', 'sourceManifestSha256',
+        'reviewDecisionSha256', 'templateSha256', 'effectivePolicyDecisionSha256')}
+    approval.update(contract='ai-sow-approval-v1', decision='APPROVE', approvedAt='2026-09-06T00:00:00Z',
+        artifactManifestSha256=result['artifactManifestSha256'], pairDecisionSha256='a' * 64)
+    def crash(*args): raise RuntimeError('pair current swap crash')
+    with monkeypatch.context() as patch:
+        patch.setattr(generation_store, 'replace_current', crash)
+        with pytest.raises(RuntimeError, match='pair current swap'):
+            generation_store.promote(result['artifactManifestSha256'], approval, files=files)
+    assert len(list((project / '.ai-sow/generations').iterdir())) == 1
+    # The decision/artifact identity, not a caller's regenerated timestamp, is the key.
+    approval['approvedAt'] = '2026-09-07T00:00:00Z'
+    published = generation_store.promote(result['artifactManifestSha256'], approval, files=files)
+    assert published.outcome == 'REUSED'
+    assert len(list((project / '.ai-sow/generations').iterdir())) == 1
+    current = generation_store.load_current(files)
+    generated = files.read_json(current.manifest_path)
+    assert generated['pairDecisionSha256'] == 'a' * 64
+    raw = canonical_json_bytes({**generated, 'pairDecisionSha256': 'b' * 64})
+    (project / current.manifest_path).write_bytes(raw)
+    pointer = files.read_json('.ai-sow/current.json'); pointer['generationManifestSha256'] = sha256_bytes(raw)
+    files.write_atomic('.ai-sow/current.json', canonical_json_bytes(pointer))
+    with pytest.raises(ValueError, match='pair decision'):
+        generation_store.load_current(files)

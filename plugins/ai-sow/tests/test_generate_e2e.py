@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "integration"
+
 import json
 import subprocess
 import sys
@@ -45,7 +47,8 @@ def smoke_report(tmp_path_factory: pytest.TempPathFactory) -> dict[str, object]:
     )
 
 
-def test_copy_smoke_runs_both_project_modes_and_incremental_reuse(
+@pytest.mark.e2e
+def test_copy_smoke_runs_both_project_modes_and_fresh_full_compiles(
     smoke_report: dict[str, object],
 ) -> None:
     assert smoke_report["pluginName"] == "ai-sow"
@@ -53,17 +56,13 @@ def test_copy_smoke_runs_both_project_modes_and_incremental_reuse(
     assert smoke_report["greenfieldOutcome"] == "PUBLISHED"
     assert smoke_report["brownfieldOutcome"] == "PUBLISHED"
     assert smoke_report["blockedResumeOutcome"] == "PUBLISHED"
-    assert smoke_report["reuseOutcome"] == "REUSED"
-    assert smoke_report["renderOnlyOutcome"] == "PUBLISHED"
-    assert smoke_report["renderOnlyActionCount"] == 0
-    assert smoke_report["incrementalOutcome"] == "PUBLISHED"
-    assert smoke_report["incrementalDownstreamPreserved"] is True
-    assert smoke_report["incrementalFreshContextOnly"] is True
+    assert {run["change"] for run in smoke_report["freshRuns"]} == {"same-input", "template-bytes", "business-input"}
+    assert all(run["route"] == "FULL_COMPILE" and run["outcome"] == "PUBLISHED" and run["actionCount"] > 0 for run in smoke_report["freshRuns"])
     assert smoke_report["hostInterface"] == "PYTHON_API_NEXT_ACTION"
     assert smoke_report["freshContextOnly"] is True
-    assert smoke_report["marketplaceReadCount"] == 0
 
 
+@pytest.mark.e2e
 def test_copy_plugin_never_reads_marketplace_or_writes_outside_project_and_plugin(
     smoke_report: dict[str, object],
 ) -> None:
@@ -124,6 +123,7 @@ def test_copy_worker_temp_and_failure_outputs_are_project_local(
     assert (output_root / "greenfield.stderr.bin").read_bytes() == b"worker-error"
 
 
+@pytest.mark.e2e
 def test_copy_smoke_outputs_remain_in_customer_projects(
     smoke_report: dict[str, object],
 ) -> None:

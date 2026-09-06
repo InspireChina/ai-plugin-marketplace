@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:pair-result:1",
+  "description": "成对发布或否决重跑的可恢复执行状态。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "status",
+    "pairReviewManifestSha256",
+    "pairDecisionSha256",
+    "greenGeneration",
+    "brownGeneration",
+    "rerun",
+    "nextPairManifestPath"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-pair-result-v1"
+    },
+    "status": {
+      "enum": [
+        "READY_FOR_REVIEW",
+        "PUBLISHING",
+        "PUBLISHED",
+        "SUPERSEDED"
+      ]
+    },
+    "pairReviewManifestSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "pairDecisionSha256": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "greenGeneration": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "generationId",
+            "manifestPath",
+            "manifestSha256",
+            "workbookPath",
+            "workbookSha256"
+          ],
+          "properties": {
+            "generationId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "manifestPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "manifestSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "workbookPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workbookSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      ]
+    },
+    "brownGeneration": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "generationId",
+            "manifestPath",
+            "manifestSha256",
+            "workbookPath",
+            "workbookSha256"
+          ],
+          "properties": {
+            "generationId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "manifestPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "manifestSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "workbookPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workbookSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      ]
+    },
+    "rerun": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "side",
+            "projectRoot",
+            "requestPath",
+            "budgetPolicyPath"
+          ],
+          "properties": {
+            "side": {
+              "enum": [
+                "GREENFIELD",
+                "BROWNFIELD"
+              ]
+            },
+            "projectRoot": {
+              "type": "string",
+              "minLength": 1
+            },
+            "requestPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "budgetPolicyPath": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "nextPairManifestPath": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PUBLISHED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "greenGeneration": {
+            "type": "object"
+          },
+          "brownGeneration": {
+            "type": "object"
+          },
+          "pairDecisionSha256": {
+            "type": "string"
+          },
+          "rerun": {
+            "type": "null"
+          },
+          "nextPairManifestPath": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PUBLISHING"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "pairDecisionSha256": {
+            "type": "string"
+          },
+          "rerun": {
+            "type": "null"
+          },
+          "nextPairManifestPath": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "READY_FOR_REVIEW"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "pairDecisionSha256": {
+            "type": "null"
+          },
+          "greenGeneration": {
+            "type": "null"
+          },
+          "brownGeneration": {
+            "type": "null"
+          },
+          "rerun": {
+            "type": "null"
+          },
+          "nextPairManifestPath": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 # AI SOW 插件方案
 
 - 状态：当前正式合同
-- 插件版本：`0.1.0-beta.1`
+- 插件版本：`0.1.0-beta.2`
 - SOW 标准：`1.3`
 - 适用宿主：Codex、Claude Code、CI 与自定义本机宿主
 - 公开入口：`ai-sow:generate`
@@ -11,7 +11,7 @@
 
 ## 1. 设计目标
 
-AI SOW 用一个公开 Skill 完成首次生成、增量更新、输入恢复、候选批准与不可变发布。用户只提供项目
+AI SOW 用一个公开 Skill 完成首次生成、输入更新、执行恢复、候选批准与不可变发布。用户只提供项目
 资料和必要决策；内部阶段、action group、checkpoint、hash 和 reviewer shard 都是可测试 seam，不是
 额外用户命令。
 
@@ -57,15 +57,15 @@ renderer、fixture 和测试。运行时不得读取插件目录之外的实现�
 | Module | 所有权与边界 |
 |---|---|
 | `intake` | cheap gate、格式校验、来源 block、不可变 input revision 与模板快照 |
-| `scope_compiler` | Stage 1 的 InputItem、Scope Closure、Epic/Feature、Design/Integration/NFR/Policy 与返修 |
+| `scope_compiler` | Stage 1 的 InputItem、Scope Closure、Epic/Feature、Design/Integration/NFR/Policy、PriorStateSnapshot、ChangeGraph 与返修 |
 | `delivery_compiler` | Stage 2 的 Story/AC，不能反向改变 Stage 1 |
 | `task_compiler` | Stage 3 的 Task、Dependency、Effective Start Match 与 Estimation Annotation |
-| `final_review` | R1、R2/R3 leaf review、Theme Join、Adjudication 和 repair plan |
+| `final_review` | fresh Review/条件 Repair、定向 root 修复与 StageCheckpoint 证明 |
 | `sow_model` | 唯一模型的结构、引用、Owner 写集合与 checkpoint 闭包 |
 | `package_renderer` | 从 reviewed SOW Model 与 revision 模板确定性渲染 Package |
 | `generation_store` | 独立复核暂存件、批准绑定、不可变 generation 与原子 current 切换 |
 
-`orchestrator` 只维护公开状态机、路由、action 发放和事务，不拥有业务判断。
+`orchestrator` 只维护公开状态机、FULL_COMPILE 与本轮恢复、action 发放和事务，不拥有业务判断。
 
 ## 3. 宿主中立 NextAction 协议
 
@@ -76,14 +76,14 @@ Python 环境并调用同一个 orchestrator；运行时不调用 Codex CLI、Cl
 
 1. `MODEL_ACTION_GROUP`：在 `maxConcurrency` 内运行一个或多个 action。每个 worker 只读取 envelope
    指定的 `promptPath`、`packetPath`、`referencePaths` 与本 action hydrate 返回的证据；
-2. worker 把唯一 typed result 写入锁定的 `outputPath`。宿主另写 execution JSON，记录 provider/model、
+2. worker 把唯一 typed result 写入锁定的 `resultPath`。宿主另写 execution JSON，记录 provider/model、
    工具、耗时、尝试次数和真实 token usage；无法取得 usage 时必须显式标记本地估算；
 3. `submit` 校验 result、execution、packet 与 action hash，并封存不可变 record。只有整组必需 shard
    全部完成，`resume` 才一次应用，绝不部分推进；
-4. `REQUEST_INPUT` 集中展示最少问题。新 request 先通过 cheap gate，再关闭旧 run、创建新 revision；
+4. `WAITING_INPUT` 集中展示最少问题。业务输入变化先 abandon，再以完整新 request start；
 5. `REQUEST_APPROVAL` 展示不可变候选包与可读文件。用户批准精确
    `artifactManifestSha256` 后才允许发布；
-6. `DONE` 报告 `PUBLISHED`、`REUSED` 或安全终态并停止。
+6. `DONE` 报告 `PUBLISHED` 或安全终态并停止。
 
 同一 worker 只在单个 action 的工具往返中复用上下文。action record 不复制 submission、证据正文或
 完整工具输出，只保存项目相对结果路径和 SHA-256；需要重建时从不可变文件复读并验 hash。
@@ -95,8 +95,9 @@ PRD、DEMO、HLD、ADR、PRIOR_SOW、SUPPLEMENT 和 QUESTION_ANSWER 都进入统
 | 输入角色 | 支持格式与规则 |
 |---|---|
 | PRD/HLD/ADR | UTF-8 Markdown |
-| DEMO/SUPPLEMENT | UTF-8 文本、Markdown、HTML、TypeScript/TSX 或 XLSX |
-| PRIOR_SOW | XLSX；提供时作为合同起点，不自动证明当前生产状态 |
+| DEMO | 无需构建的静态 HTML/CSS/JavaScript bundle，入口与所有文件均显式声明 |
+| SUPPLEMENT | UTF-8 文本、Markdown、HTML、TypeScript/TSX 或 XLSX |
+| PRIOR_SOW | XLSX；由 Scope 按计划生效日形成合同推定的生产 As-Is |
 | QUESTION_ANSWER | 绑定当前完整问题包 hash 的精确用户答案 |
 
 Greenfield 不继承历史合同能力。Brownfield 可以提供适用往期 SOW；未提供时记录
@@ -128,56 +129,28 @@ manifest 绑定 request、模板、Delivery Policy、Execution Policy、prior SO
 阶段顺序和写集合固定：
 
 ```text
-Stage 1 Scope
-  -> R1 Source Audit
-  -> R1 Scope Join
-  -> ScopeClosureCheckpoint
-Stage 2 Story/AC
-  -> StoryAcCheckpoint
-Stage 3 Task/Estimation
-  -> TaskCheckpoint
-Layered Review
-  -> Artifact + Office verification
-  -> User approval
-  -> Publication
+Scope StagePlan → materialize → validate → fresh Review → ScopeCheckpoint
+Story/AC StagePlan → materialize → validate → fresh Review → StoryAcCheckpoint
+Task StagePlan → materialize → validate → fresh Review → TaskCheckpoint
 ```
 
-模型提交 replacement set，并为所有已存在的 upsert/delete 节点提供 expected hash。Owner 编译器只允许
-修改本阶段写集合；兄弟 shard 完成前不应用；跨阶段引用、SourceRef、Policy、Task catalog row semantic
-hash 和 checkpoint 都由固定实现验证。
+各 Owner 只接收窄 IR，由程序注入稳定 ID 和节点引用；全部 sibling 工作成功后才整体物化。Review 需要语义修复时最多增加一个 Owner IR revision，并重新完整验证和 fresh Review。三个 checkpoint 关闭后交给工作簿与发布后缀；完整生成的 Office、批准发布验收独立进行。
 
-Story 必须是 Feature 下单一、可独立移交、验收和关闭的具体结果。每个 Story 至少两条可观察 AC、最多
+Story 必须是 Feature 下单一、可独立移交、验收和关闭的具体结果。每个 Story 至少一条完整关闭义务的可观察 AC（不按固定数量凑数）、最多
 四个 Task。Task 一行只对应模板目录中的一个计数对象、一种工作模式和一个 S/M/L 复杂度；模板语义不
 允许由 Python 或模型复制计算。
 
-## 6. 分层独立评审与返修
+## 6. 阶段自动封存与返修
 
-R1 先对每个来源 shard 做独立 Source Audit，再对完整 audit union 和 Stage 1 projection 做 Scope Join。
-R1 finding 只允许一次最小 Stage 1 repair；repair 必须绑定 finding、editable/locked node 和 expected
-hash，完成后必须再运行新的 R1 Scope Recheck，之后才允许进入 Stage 2。
+每个 Owner 的完整 StagePlan 全部成功后，只物化一次当前 sealed IR，并执行完整机械验证，再发行独立 fresh Review。Review 只读候选、证据、root localKey 索引和 obligations；只有 REPAIRABLE_SEMANTIC 触发同一 Owner 窄 IR 的完整 root replacement。第二版重新物化、验证和 Review；后继 PASS 关闭前一版全部 findings，非 PASS 不关闭。不存在通用 PATCH、Theme Join 或 Adjudication 路由。
 
-R2 `STORY_DESIGN` 与 R3 `TASK_ESTIMATION` 按逻辑主题拆成最多八个物理 shard。多 shard 主题必须经过
-Theme Join：join 绑定全部 leaf result hash，且不得丢弃任一 finding。不同评审对同一 subject 给出不同
-结论时，必须发出新的 `FRESH_NO_HISTORY` Adjudicator action，显式选择保留的 finding；编排器不能按
-顺序覆盖或自行猜测。
+完整字段、精确控制身份、Prior/CODE_ONLY 审查义务、实际容量与恢复证明见[阶段自动封存](../skills/generate/references/stage-seal.md)。StageCheckpoint 绑定 plan、实际 Attempt chain、候选、validator、fresh Review packet/PASS 及上游 checkpoint；Scope 有 Prior 时另绑定 snapshot。PASS 自动继续，无阶段批准。
 
-`INPUT_REQUIRED` 回到用户输入，`CONTRACT_GAP` 安全终止，Owner finding 生成最小影响 repair plan。
-所有通过的 review decision 绑定 SOW Model、三个 checkpoint 和每个 leaf/join/adjudication result hash。
+## 7. 新 run 与恢复
 
-## 7. 重用、渲染与增量路由
+公开 start 只执行 FULL_COMPILE，不读取旧 generation 决定业务内容。同一未完成 run 从自己的不可变 StagePlan、Attempt 和 checkpoint 恢复；已完成的物化/校验不重做。业务输入变化先 abandon，再以完整新 request 启动。政策只允许至少一项 token、active-time、未来请求的上下文容量或 Demo 限额严格增加，其余值保持原值；正文相同也拒绝。替换只发布 content-addressed policy 和 RunEvent，不创建业务 revision 或重排冻结计划。Brownfield 只消费本次明列的 PRIOR_SOW 与 declaredChangeContext。
 
-路由只由完整 hash proof closure 决定：
-
-| Route | 条件与行为 |
-|---|---|
-| `REUSE` | 路由基础全部相同；直接复用 current generation，不创建 action |
-| `RENDER_ONLY` | 变化仅限 `templateSha256`/`rendererSha256` 且任务目录语义未变；复用 SOW Model、checkpoint 和 review decision，不启动 Reviewer |
-| `DELTA_COMPILE` | 语义输入、Policy、任务目录或阶段证明变化；克隆已发布 SOW Model 为基线，重编译并保留未受影响节点原字节 |
-| `FULL_COMPILE` | 首次生成、执行政策变化、旧合同或 generation proof closure 无效；从 Stage 1 开始 |
-
-`lowestRecoveryStage` 由变化 hash 的最早 Owner 决定。任何局部恢复都必须证明上游 checkpoint 可复用；
-无法证明时扩大到更早阶段。模板任务目录或估算语义变化会重新编译 Delivery 并重新评审，不能只把旧
-Task 套入新标准；纯输出字节变化才允许 `RENDER_ONLY`。
+只保留 FULL_COMPILE 与同 run 恢复。
 
 ## 8. 项目事务与不可变发布
 
@@ -195,7 +168,7 @@ Task 套入新标准；纯输出字节变化才允许 `RENDER_ONLY`。
 ```
 
 一个项目同一时间只有一个 active run。request、input revision、run state、candidate、action、result、
-execution、record、group plan、checkpoint、review decision 和 artifact manifest 都用项目相对路径与 hash
+execution、record、完整 StagePlan、checkpoint、review decision 和 artifact manifest 都用项目相对路径与 hash
 闭合。crash 后 `status/resume` 从这些文件恢复，不依赖聊天上下文。
 
 artifact 先在 work 中渲染并由 Office 回算复读；用户批准后，`generation_store` 再独立验证 SOW Model、
@@ -210,7 +183,11 @@ artifact 先在 work 中渲染并由 Office 回算复读；用户批准后，`ge
 
 Python 只投影业务文本与关系并保留公式、Table 计算列、样式、行高、筛选、验证、保护和打印设置。
 LibreOffice 在项目内隔离临时目录真实回算；随后分别复读公式与缓存值，并核对全部输入行、目录、参数、
-公式错误和汇总恒等关系。只有 `workbookVerification.trustState = VERIFIED` 才能请求批准和发布。
+公式错误和汇总恒等关系。`generation-renderer-v12` 在现有汇总 Sheet 追加可见实体 ID 与公开 SourceRef 追溯区，并经真实只读 Prior adapter 验证往返。
+
+Office identity 只保存 executable basename、可执行文件 SHA-256、完整 version、platform、无路径的 normalizedArguments 和零 exit code。所有可见 Sheet 按工作簿顺序由真实 LibreOffice 导出 PDF；隐藏 Sheet 不要求 render。单个 `ARTIFACT_VISUAL_REVIEW` 使用模型 REVIEW Attempt，窄 IR 仅包含逐 Sheet checks/decision/findings 与 overallDecision；Sheet 和 render 顺序保留，不作为集合排序。
+
+`ai-sow-artifact-manifest-v2` 深绑定唯一 SOW Model、三个 StageCheckpoint 及完整 Attempt/packet/result/实际步骤事件证明、可选 Prior、模板/renderer、Office、公式/结构复读、全部 renders 和最终 XLSX。visualReview 只保存成功 AttemptRecord hash。最终 XLSX 通过 `publish_new` 冻结后只读；所有验证与视觉 PASS 完成后才进入 `AWAITING_FINAL_REVIEW`。generation 携带完整离线证明闭包，批准和复读均不需要原 run 或输入目录。
 
 普通文本以 `= / + / - / @` 开头时仍按文本写入。`sow-notes.md` 必须披露输入边界、关键解释、假设、
 责任、排除项、待设计事项、风险和变更触发条件；不能只存在于执行日志。
@@ -230,7 +207,7 @@ LibreOffice 在项目内隔离临时目录真实回算；随后分别复读公�
 action record 不保存凭据、私有源码、完整工具输出或本机绝对路径。项目 I/O 拒绝绝对路径、上跳、
 符号链接穿越和插件外写入。插件不执行 Git 网络、历史改写、提交、推送或发布。
 
-## 11. 验证与非目标
+## 11. 历史 benchmark（已取代）与验证边界
 
 验证覆盖合同/Owner 单测、公共 NextAction E2E、锁定输入的 fail-fast validation campaign、性能/Token
 benchmark，以及独立复制插件 smoke。配对 benchmark 只有在 `compare` 机械验证精确 32 样本矩阵、
@@ -239,7 +216,7 @@ benchmark，以及独立复制插件 smoke。配对 benchmark 只有在 `compare
 comparison receipt 后，才允许声明数值改善；仓库验证器
 会按 receipt 绑定的 policy 与两份 manifest 重新求值，不能仅靠路径或 hash 字符串把门禁改成
 `SATISFIED`。copy smoke 直接使用 Python API，覆盖 Greenfield、Brownfield、
-输入恢复、`REUSE`、无 Reviewer 的 `RENDER_ONLY` 和保留未受影响下游节点的 `DELTA_COMPILE`；读取守卫
+同 run 恢复、新输入完整编译与逐阶段 fresh Review；读取守卫
 证明 marketplace 零读取，失败收据与 worker stdout/stderr 在清理前保留。
 
 历史提交 `75970b2` 只保留了聚合指标和匿名缺陷分类，没有逐样本收据、完整执行配置或可靠冷热配对，
@@ -252,3 +229,44 @@ manifest 至少 32 个样本，三种成功规模分别执行五次 `COLD` 和�
 本版本明确不提供：Codex/Claude CLI 运行时依赖、旧命令兼容、旧业务数据迁移、字段级未校验 patch、
 Python 公式执行、PDF/Word/PPT 解析、自动 Git 操作或客户签署判断。CI 的 Linux/macOS/Windows 矩阵
 证明协议与路径实现可移植，不等同于物理设备或 Excel Desktop 的实机认证。
+
+内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
+pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，
+只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
+都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
+
+Scope 独占 PriorStateSnapshot 与 ChangeGraph，唯一 stable_ids 实现受控身份。snapshot 绑定显式 revision 原字节；
+无 Prior 时 checkpoint 省略 priorStateSha256，有 Prior 时 Story/Task 只消费该 hash，不能重新解析工作簿。
+相同 workbook 的不同 sourceId 保留分别的 audit evidence；DUPLICATE 组件只取 canonical source 进入 effective view。
+visiblePriorId 必须是源单元格中的精确完整 ID，且语义唯一、不变、一对一匹配经 Scope fresh Review 验证；
+重复引用同一实体可以保留，歧义、split/merge 不继承。Brownfield 仅从转交 XLSX 恢复这些事实。
+
+当前来源合同：DEMO 是无需构建的静态 HTML/CSS/JavaScript bundle。HOST_BROWSER 报告实际 browserProfile，
+同 run 所有 trace 精确匹配；关键 scenario 两次，实际不稳定结果必须一次 bounded replay。预算跨全部 rounds/replays 累计。
+Scope 消费所有轮次的 ObservationIR。采用的 CODE_ONLY candidate、source evidence 和 round/Attempt 绑定进入唯一 Scope Review packet；
+ReviewDecisionIR 的 PASS 显式确认完整 intent obligations，缺项或 stale/unrelated proof 不能封 checkpoint。
+
+宿主读取 read_provider_request 的 canonical messages/maxOutputTokens。host-canonical-messages-v1 与 utf8-bytes-v1
+只定义规划表示和 UTF-8 byte-count；它们不证明真实 tokenizer、模型容量或 provider 用量。宿主必须验证实际 fresh invocation、
+最终请求与输出上限；实际 benchmark 用量来自 completion。不能把估算、fixture usage、线程多调用合计当作单次 provider 事实。
+packet 只有 workItems/contextRefs；基础 context 是 refId/canonicalContent/contentSha256，dependency context 是
+refId/canonicalContent，其正文为 kind=DEPENDENCY_RESULT、logicalWorkId、attemptRecordSha256、normalizedResult。
+规划只计已知 bytes，发放前再次验证包含全部 dependency/repair 的实际请求容量；不足时等待，不修改冻结计划。
+MATERIALIZE、VALIDATE、OFFICE 和复读独立检查 active-time，并记录实际完成区间；等待不计时，重叠区间只算一次。
+
+上述历史 32 样本比较器仅分析历史收据，不是当前执行入口；当前真实配对验收的 B.a–B.p、oracle、浏览器、
+严格顺序双 workbook 和逐项硬门槛必须另行完成。当前仓库 fixture 通过不代表这些实际验收已完成。
+
+生成后的 Scope、Story/AC 和 Task 优先按 findings 及影响范围局部修复，保留正确结果；普通 Repair 可调整、合并或拆分授权对象；共享测试资产保留独立 Story/AC，只计量一次，工作簿展示覆盖与费用归属。自动停止后，`resume --decision` 可绑定原终态与失败 Review，按明确用户裁定仅修允许字段、追加一个候选并 fresh Review，完整保留累计次数与消耗。具体合同见 [阶段自动封存](../skills/generate/references/stage-seal.md)。
+
+往期 Excel 大表按完整证据行分组，保留全部单元格、位置、哈希与表头，避免整张 Sheet 超出单次请求容量。阶段尚未发行计划工作便因容量等待时，修复分组后可从原 run 恢复，复用已完成的原型观察和检查点，不提高模型容量或重置消耗。
+
+Prior 实体跨同 packet、同 source/Sheet 的已授权行分区引用时保留所属 namespace anchor。Attempt repair 可使用可逆表传输，解码后 packet hash 完全一致；尚未发行的 retry 重新满足原容量后由 `FITTING_UNISSUED_RETRY` 接续。具体权限、完整字节绑定及中断恢复见[阶段自动封存](../skills/generate/references/stage-seal.md)。
+
+ABANDON 恢复完成后立即结束恢复后缀，避免再次读取已移除的 active marker。artifact 取证从最终 Task checkpoint 及预览修复授权事件恢复不可变候选绑定，离线读取不依赖当前候选指针。
+
+Task Repair 的 AC 重分配限于本轮受影响 roots 已有的覆盖；历史授权不能扩张后续无关修复。公开 submit 在成功 Attempt 封存前拒绝越界为 INVALID_IR，物化与 proof 回放使用相同 Task-local 校验。
+
+ARTIFACT RENDER 的真实导出在成功事件前持久暂存；恢复只复用该事件精确 hash 绑定的原字节，复核篡改并记录恢复 I/O 时间。没有成功事件的孤儿暂存不授权复用；旧运行缺少暂存时仍重算并匹配原 hash。此规则不改变 renderer、工作簿或已批准预览。
+
+XLSX 数组公式按原始公式文本提取证据，不使用带进程地址的对象字符串；缺少公式文本和无原公式文本的数据表公式明确拒绝。已冻结输入保持原字节，后续新 Prepare 使用确定性结果。

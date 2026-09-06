@@ -31,20 +31,7 @@ EXPECTED_TABLES = {
     "ProjectParameterTable",
     "TaskStandardTable",
 }
-EXPECTED_GENERATION_FILES = {
-    "data/sow-model.json",
-    "input/effective-policy-decision.json",
-    "input/sow-template.xlsx",
-    "manifest.json",
-    "output/sow-notes.md",
-    "output/sow.xlsx",
-    "proof/approval.json",
-    "proof/artifact-manifest.json",
-    "proof/review-decision.json",
-    "proof/scope-closure-checkpoint.json",
-    "proof/story-ac-checkpoint.json",
-    "proof/task-checkpoint.json",
-}
+
 
 
 def _canonical_json_bytes(value: object) -> bytes:
@@ -208,8 +195,11 @@ def _verify_generation(project: Path) -> dict[str, object]:
     if _sha256(manifest_payload) != current["generationManifestSha256"]:
         raise RuntimeError("current pointer does not bind generation manifest")
     manifest = _load_json(manifest_path)
-    if _generation_files(project, manifest) != EXPECTED_GENERATION_FILES:
-        raise RuntimeError("published generation is not self-contained")
+    from generation_store import load_current
+    from runtime.project_io import ProjectFiles
+    loaded = load_current(ProjectFiles.open(project))
+    if loaded is None or loaded.generation_id != manifest['generationId']:
+        raise RuntimeError("published generation proof closure is invalid")
     _verify_generation_template_path(manifest, manifest_path.parent)
     for path_field, hash_field in (
         ("sowModelPath", "sowModelSha256"),
@@ -237,12 +227,12 @@ def _verify_generation(project: Path) -> dict[str, object]:
     }
 
 
-def _render_only_template(driver, project: Path) -> None:
+def _change_template_bytes(driver, project: Path) -> None:
     target = project / ".ai-sow/templates/sow-template.xlsx"
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(driver.SKILL_ROOT / "assets/sow-template.xlsx", target)
     with zipfile.ZipFile(target, "a") as archive:
-        archive.comment = b"copy-smoke-render-only-v1"
+        archive.comment = b"copy-smoke-template-change-v1"
 
 
 def _approve(driver, project: Path, result: Mapping[str, object]) -> None:
@@ -257,24 +247,45 @@ def _approve(driver, project: Path, result: Mapping[str, object]) -> None:
 
 def _worker_scenario(plugin_root: Path, project: Path, scenario: str) -> dict[str, object]:
     driver = _load_e2e_driver(plugin_root)
+    invocations = []
+    def fresh_submission(action, packet):
+        request_bytes = driver.orchestrator_module.read_provider_request(project, action['actionId'])
+        request = json.loads(request_bytes)
+        completed = subprocess.run(
+            [sys.executable, str(plugin_root / 'tests/support/fresh_fixture_worker.py')],
+            input=_canonical_json_bytes({'request': request, 'kind': action['actionContractId'][:-3]}),
+            cwd=project, capture_output=True, check=False,
+        )
+        if completed.returncode:
+            raise RuntimeError('fresh fixture worker failed: ' + completed.stderr.decode('utf-8'))
+        response = json.loads(completed.stdout)
+        facts = response['invocation']
+        if (facts['pid'] == os.getpid() or facts['contextMode'] != 'FRESH_NO_HISTORY'
+                or facts['requestSha256'] != _sha256(request_bytes)
+                or facts['maxOutputTokens'] != action['executionLimits']['maxOutputTokens']
+                or facts['actualProviderVerified'] is not False):
+            raise RuntimeError('fresh fixture invocation binding mismatch')
+        invocations.append(facts)
+        return response['result']
     project.mkdir(parents=True, exist_ok=True)
     if scenario in {"greenfield", "brownfield"}:
-        result, trace = driver.drive_fixture_host(project, scenario)
+        result, trace = driver.drive_fixture_host(project, scenario, fresh_submission)
     elif scenario == "input-recovery":
         request_path = driver._prepare_project(project, "greenfield")
         started = driver.orchestrator_module.run_mode(
-            project, "start", request=request_path
+            project, "start", request=request_path, budget_policy="budget.json"
         )
         old_run_id = started["state"]["runId"]
+        driver.orchestrator_module.run_mode(project, "abandon")
         request = driver._load(project / request_path)
         request["project"]["name"] = "匿名恢复路径项目"
         driver._write_json(project / request_path, request)
         resumed = driver.orchestrator_module.run_mode(
-            project, "resume", request=request_path
+            project, "start", request=request_path, budget_policy="budget.json"
         )
         if resumed.get("state", {}).get("runId") == old_run_id:
             raise RuntimeError("input recovery did not create a new immutable run")
-        result, trace = driver.drive_result_host(project, resumed)
+        result, trace = driver.drive_result_host(project, resumed, fresh_submission)
         old_states = [
             driver._load(path)
             for path in (
@@ -297,82 +308,42 @@ def _worker_scenario(plugin_root: Path, project: Path, scenario: str) -> dict[st
         "scenario": scenario,
         "outcome": "PUBLISHED",
         "actionCount": len(trace),
-        "freshContextOnly": all(
-            action["executionPolicy"]["contextPolicy"] == "FRESH_NO_HISTORY"
-            and action["executionPolicy"]["inheritConversation"] is False
-            for action in trace
-        ),
+        "actionContracts": sorted({action["actionContractId"] for action in trace}),
+        "freshContextOnly": len(invocations) == len(trace) and bool(invocations),
+        "fixtureProcessIsolation": "ONE_PROCESS_PER_ACTION",
+        "actualProviderVerified": False,
     }
     if scenario == "greenfield":
-        before = (project / ".ai-sow/current.json").read_bytes()
-        reused = driver.orchestrator_module.run_mode(
-            project, "start", request="request.json"
-        )
-        if reused.get("outcome") != "REUSED" or (
-            project / ".ai-sow/current.json"
-        ).read_bytes() != before:
-            raise RuntimeError("exact replay was not byte-stable")
-        _render_only_template(driver, project)
-        rendered = driver.orchestrator_module.run_mode(
-            project, "start", request="request.json"
-        )
-        if rendered.get("outcome") != "REQUEST_APPROVAL" or rendered.get(
-            "state", {}
-        ).get("route") != "RENDER_ONLY":
-            raise RuntimeError("template-only change launched semantic compilation")
-        render_run = project / ".ai-sow/work/runs" / str(rendered["state"]["runId"])
-        if (render_run / "actions").exists():
-            raise RuntimeError("render-only route launched a model action")
-        _approve(driver, project, rendered)
-        generations.append(_verify_generation(project))
-        current = driver._load(project / ".ai-sow/current.json")
-        current_manifest = driver._load(project / current["generationManifestPath"])
-        baseline_model = driver._load(project / current_manifest["sowModelPath"])
-        downstream_collections = (
-            "stories",
-            "acceptanceCriteria",
-            "tasks",
-            "dependencies",
-            "effectiveStartMatches",
-        )
-        baseline_downstream = {
-            name: baseline_model[name] for name in downstream_collections
-        }
-        request = driver._load(project / "request.json")
-        request["project"]["name"] = "匿名复制安装增量复核"
-        driver._write_json(project / "request.json", request)
-        incremental = driver.orchestrator_module.run_mode(
-            project, "start", request="request.json"
-        )
-        if incremental.get("state", {}).get("route") != "DELTA_COMPILE":
-            raise RuntimeError("semantic update did not select DELTA_COMPILE")
-        incremental_result, incremental_trace = driver.drive_result_host(
-            project, incremental
-        )
-        incremental_model = driver._load(
-            project / incremental_result["state"]["currentCandidatePath"]
-        )
-        if {
-            name: incremental_model[name] for name in downstream_collections
-        } != baseline_downstream:
-            raise RuntimeError("delta compile changed unaffected downstream nodes")
-        _approve(driver, project, incremental_result)
-        generations.append(_verify_generation(project))
-        report.update(
-            {
-                "reuseOutcome": reused["outcome"],
-                "renderOnlyOutcome": "PUBLISHED",
-                "renderOnlyActionCount": 0,
-                "incrementalOutcome": "PUBLISHED",
-                "incrementalDownstreamPreserved": True,
-                "incrementalFreshContextOnly": all(
-                    action["executionPolicy"]["contextPolicy"]
-                    == "FRESH_NO_HISTORY"
-                    and action["executionPolicy"]["inheritConversation"] is False
-                    for action in incremental_trace
-                ),
-            }
-        )
+        fresh_runs = []
+        previous_run_ids = {str(result["state"]["runId"])}
+        for change in ("same-input", "template-bytes", "business-input"):
+            if change == "template-bytes":
+                _change_template_bytes(driver, project)
+            elif change == "business-input":
+                request = driver._load(project / "request.json")
+                request["project"]["name"] = "匿名复制安装完整重编译"
+                driver._write_json(project / "request.json", request)
+            current_before = (project / ".ai-sow/current.json").read_bytes()
+            started = driver.orchestrator_module.run_mode(
+                project, "start", request="request.json", budget_policy="budget.json"
+            )
+            state = started.get("state", {})
+            if state.get("route") != "FULL_COMPILE" or state.get("runId") in previous_run_ids:
+                raise RuntimeError("new explicit request must start a fresh FULL_COMPILE run")
+            if (project / ".ai-sow/current.json").read_bytes() != current_before:
+                raise RuntimeError("new compilation changed last-known-good before approval")
+            previous_run_ids.add(state["runId"])
+            prepared, fresh_trace = driver.drive_result_host(project, started, fresh_submission)
+            required = {"SOURCE_SCOPE-v1", "STORY_DESIGN-v1", "TASK_ESTIMATION-v1"}
+            if not required <= {action["actionContractId"] for action in fresh_trace}:
+                raise RuntimeError("fresh run did not independently review all three stages")
+            if len(invocations) != len(trace) + sum(item['actionCount'] for item in fresh_runs) + len(fresh_trace):
+                raise RuntimeError('every action must have its own fresh fixture process')
+            _approve(driver, project, prepared)
+            generations.append(_verify_generation(project))
+            fresh_runs.append({"change": change, "route": state["route"],
+                               "outcome": "PUBLISHED", "actionCount": len(fresh_trace)})
+        report["freshRuns"] = fresh_runs
     report["generations"] = generations
     return report
 
@@ -493,12 +464,10 @@ def _run_smoke(
     }
     for case_id, case in cases.items():
         report = reports[case_id]
-        if report["actionCount"] < case["expectedMinimumActions"]:
-            raise RuntimeError(f"copy smoke action coverage too small: {case_id}")
+        if not set(case["requiredActionContracts"]) <= set(report["actionContracts"]):
+            raise RuntimeError(f"copy smoke mandatory Action coverage missing: {case_id}")
     if not all(report["freshContextOnly"] for report in reports.values()):
         raise RuntimeError("copy smoke observed inherited conversational context")
-    if not reports["greenfield"]["incrementalFreshContextOnly"]:
-        raise RuntimeError("delta compile observed inherited conversational context")
     if _tree_digests(active_plugin) != plugin_before:
         raise RuntimeError("runtime modified the installed plugin copy")
     forbidden_reads = (
@@ -524,17 +493,10 @@ def _run_smoke(
         "greenfieldOutcome": reports["greenfield"]["outcome"],
         "brownfieldOutcome": reports["brownfield"]["outcome"],
         "blockedResumeOutcome": reports["input-recovery"]["outcome"],
-        "reuseOutcome": reports["greenfield"]["reuseOutcome"],
-        "renderOnlyOutcome": reports["greenfield"]["renderOnlyOutcome"],
-        "renderOnlyActionCount": reports["greenfield"]["renderOnlyActionCount"],
-        "incrementalOutcome": reports["greenfield"]["incrementalOutcome"],
-        "incrementalDownstreamPreserved": reports["greenfield"][
-            "incrementalDownstreamPreserved"
-        ],
-        "incrementalFreshContextOnly": reports["greenfield"][
-            "incrementalFreshContextOnly"
-        ],
-        "freshContextOnly": True,
+        "freshRuns": reports["greenfield"]["freshRuns"],
+        "freshContextOnly": all(report['freshContextOnly'] for report in reports.values()),
+        "fixtureProcessIsolation": "ONE_PROCESS_PER_ACTION",
+        "actualProviderVerified": False,
         "marketplaceReadCount": 0,
         "projectRoots": [
             str((projects_root / scenario).resolve()) for scenario in reports

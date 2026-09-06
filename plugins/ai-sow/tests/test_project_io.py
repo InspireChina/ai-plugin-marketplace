@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "integration"
+
 import json
 import sys
 import tempfile

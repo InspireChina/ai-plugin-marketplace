@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "unit"
+
 import hashlib
 import json
 import re
@@ -792,7 +794,7 @@ def test_migration_approval_binds_final_template_all_88_rows_source_hashes_and_r
 
 def test_renderer_fingerprint_binds_projection_and_office_implementation() -> None:
     baseline = json.loads(RENDERER_BASELINE.read_text(encoding="utf-8"))
-    assert baseline["rendererContract"] == "generation-renderer-v8"
+    assert baseline["rendererContract"] == "generation-renderer-v12"
     assert baseline["files"] == {
         name: hashlib.sha256((SKILL_ROOT / name).read_bytes()).hexdigest()
         for name in (

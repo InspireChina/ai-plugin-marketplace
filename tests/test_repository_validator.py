@@ -25,10 +25,7 @@ from scripts.validate_repository import (
 )
 
 
-AI_SOW_DESCRIPTION = (
-    "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿，"
-    "并用 LibreOffice 回算后发布。"
-)
+AI_SOW_DESCRIPTION = '每次仅根据明确提供的 PRD、HLD 和适用往期 SOW，完整编译并逐阶段评审可追溯的 SOW 工作簿，经 LibreOffice 双复读和全部可见 Sheet 视觉评审后请求批准发布。'
 
 AI_SOW_ENTRY = {
     "name": "ai-sow",
@@ -63,22 +60,34 @@ AI_SOW_GENERATE_SUPPORT_FILES = (
     "skills/generate/references/task-authoring.md",
     "skills/generate/references/technical-work-classification.md",
 )
-AI_SOW_SCHEMA_IDS = {
-    name: f"urn:ai-sow:generate:next:{name.removesuffix('.schema.json')}:1"
-    for name in (
-        "action.schema.json",
-        "artifact-approval.schema.json",
-        "common.schema.json",
-        "current.schema.json",
-        "generation-manifest.schema.json",
-        "input-revision.schema.json",
-        "request.schema.json",
-        "review-repair.schema.json",
-        "run-state.schema.json",
-        "sow-model.schema.json",
-        "stage-checkpoint.schema.json",
-    )
-}
+AI_SOW_SCHEMA_IDS = {'owner-repair-authorization.schema.json': 'urn:ai-sow:generate:next:owner-repair-authorization:1',
+ 'owner-clarification.schema.json': 'urn:ai-sow:generate:next:owner-clarification:1',
+ 'artifact-repair-authorization.schema.json': 'urn:ai-sow:generate:next:artifact-repair-authorization:1',
+ 'action.schema.json': 'urn:ai-sow:generate:next:action:1',
+ 'artifact-approval.schema.json': 'urn:ai-sow:generate:next:artifact-approval:1',
+ 'change-graph.schema.json': 'urn:ai-sow:generate:next:change-graph:1',
+ 'common.schema.json': 'urn:ai-sow:generate:next:common:1',
+ 'current.schema.json': 'urn:ai-sow:generate:next:current:1',
+ 'fact-decision.schema.json': 'urn:ai-sow:generate:next:fact-decision:1',
+ 'generation-manifest.schema.json': 'urn:ai-sow:generate:next:generation-manifest:1',
+ 'input-revision.schema.json': 'urn:ai-sow:generate:next:input-revision:1',
+ 'prior-state-decision.schema.json': 'urn:ai-sow:generate:next:prior-state-decision:1',
+ 'prior-state-snapshot.schema.json': 'urn:ai-sow:generate:next:prior-state-snapshot:1',
+ 'prototype-observation.schema.json': 'urn:ai-sow:generate:next:prototype-observation:1',
+ 'prototype-scenario.schema.json': 'urn:ai-sow:generate:next:prototype-scenario:1',
+ 'prototype-trace.schema.json': 'urn:ai-sow:generate:next:prototype-trace:1',
+ 'request.schema.json': 'urn:ai-sow:generate:next:request:1',
+ 'review-repair.schema.json': 'urn:ai-sow:generate:next:review-repair:1',
+ 'run-budget-policy.schema.json': 'urn:ai-sow:generate:next:run-budget-policy:1',
+ 'run-event.schema.json': 'urn:ai-sow:generate:next:run-event:1',
+ 'run-state.schema.json': 'urn:ai-sow:generate:next:run-state:1',
+ 'scope-decision.schema.json': 'urn:ai-sow:generate:next:scope-decision:1',
+ 'source-audit.schema.json': 'urn:ai-sow:generate:next:source-audit:1',
+ 'sow-model.schema.json': 'urn:ai-sow:generate:next:sow-model:1',
+ 'stage-checkpoint.schema.json': 'urn:ai-sow:generate:next:stage-checkpoint:1',
+ 'story-ac-decision.schema.json': 'urn:ai-sow:generate:next:story-ac-decision:1',
+ 'task-decision.schema.json': 'urn:ai-sow:generate:next:task-decision:1',
+ 'visual-review.schema.json': 'urn:ai-sow:generate:visual-review:1'}
 
 
 def claude_entry(entry: dict[str, object]) -> dict[str, object]:
@@ -116,7 +125,7 @@ def write_plugin(root: Path, name: str, version: str) -> Path:
 
 
 def write_valid_ai_sow_release(root: Path) -> Path:
-    plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.1")
+    plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.2")
     codex_manifest = json.loads(
         (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
     )
@@ -154,12 +163,12 @@ def write_valid_ai_sow_release(root: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
     (plugin_root / "pyproject.toml").write_text(
-        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
+        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b2"\n',
         encoding="utf-8",
     )
     (plugin_root / "uv.lock").write_text(
         'version = 1\nrevision = 3\n\n[[package]]\n'
-        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
+        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b2"\n',
         encoding="utf-8",
     )
     write_json(
@@ -481,7 +490,7 @@ class RepositoryValidatorTests(unittest.TestCase):
 
             self.assertEqual(validate_plugin_manifest(root, plugin_root), [])
             self.assertIn(
-                "AI SOW plugin version in .codex-plugin/plugin.json must be 0.1.0-beta.1",
+                "AI SOW plugin version in .codex-plugin/plugin.json must be 0.1.0-beta.2",
                 validate_ai_sow_release(root, plugin_root),
             )
 

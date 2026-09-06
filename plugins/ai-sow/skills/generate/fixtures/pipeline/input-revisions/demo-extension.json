@@ -5,6 +5,7 @@
   "templateSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "deliveryPolicySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "executionPolicySha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "project": {"projectId": "project-refund", "name": "退款项目", "plannedEffectiveDate": "2026-10-01"},
   "priorSowState": "NOT_PROVIDED",
   "priorSowSha256s": [],
   "sources": [

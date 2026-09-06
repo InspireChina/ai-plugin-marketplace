@@ -11,6 +11,7 @@ _ALLOWED = tuple(
     if item
 )
 _LOG = Path(os.environ["AI_SOW_FORBIDDEN_READ_LOG"])
+_OFFICE = Path(os.environ['AI_SOW_OFFICE_BIN']).resolve() if os.environ.get('AI_SOW_OFFICE_BIN') else None
 
 
 def _within(path: Path, root: Path) -> bool:
@@ -31,7 +32,7 @@ def _guarded_open(
 ):
     if mode.startswith("r"):
         resolved = self.resolve()
-        if not any(_within(resolved, root) for root in _ALLOWED):
+        if resolved != _OFFICE and not any(_within(resolved, root) for root in _ALLOWED):
             with open(_LOG, "a", encoding="utf-8") as stream:
                 stream.write(str(resolved) + "\n")
             raise RuntimeError(

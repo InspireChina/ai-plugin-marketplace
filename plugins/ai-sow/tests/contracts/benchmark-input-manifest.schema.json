@@ -1,0 +1,398 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:benchmark:input-manifest:1",
+  "description": "冻结八份来源、机械迁移请求、静态 Demo 映射与共同显式预算的输入清单。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "pairRunId",
+    "baselineFiles",
+    "frozenSources",
+    "requests",
+    "bundles",
+    "policySource",
+    "expectationManifest",
+    "brownfieldMaximumBatchRows",
+    "historicalCorrections"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-benchmark-input-v1"
+    },
+    "pairRunId": {
+      "type": "string",
+      "pattern": "^pair-[a-f0-9]{64}$"
+    },
+    "baselineFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relativePath",
+          "sha256"
+        ],
+        "properties": {
+          "relativePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "minItems": 8,
+      "maxItems": 8
+    },
+    "frozenSources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "side",
+          "role",
+          "sourceId",
+          "baselinePath",
+          "frozenPath",
+          "sha256",
+          "locators"
+        ],
+        "properties": {
+          "side": {
+            "enum": [
+              "greenfield",
+              "brownfield"
+            ]
+          },
+          "role": {
+            "enum": [
+              "PRD",
+              "HLD",
+              "DEMO"
+            ]
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baselinePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "frozenPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "locators": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        }
+      },
+      "minItems": 6,
+      "maxItems": 6
+    },
+    "requests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "greenfield",
+        "brownfieldTemplate"
+      ],
+      "properties": {
+        "greenfield": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "brownfieldTemplate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "bundles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "greenfield",
+        "brownfield"
+      ],
+      "properties": {
+        "greenfield": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entrypoint",
+            "files",
+            "reverseMappings"
+          ],
+          "properties": {
+            "entrypoint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sourceId",
+                  "path",
+                  "sha256"
+                ],
+                "properties": {
+                  "sourceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "reverseMappings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "subject",
+                  "disposition",
+                  "sourceLocators"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "DOM",
+                      "SOURCE",
+                      "SCENARIO"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "disposition": {
+                    "enum": [
+                      "SOURCE_MAPPED",
+                      "NON_SCOPE_PRESENTATION"
+                    ]
+                  },
+                  "sourceLocators": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "uniqueItems": true
+                  }
+                }
+              },
+              "minItems": 1
+            }
+          }
+        },
+        "brownfield": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entrypoint",
+            "files",
+            "reverseMappings"
+          ],
+          "properties": {
+            "entrypoint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sourceId",
+                  "path",
+                  "sha256"
+                ],
+                "properties": {
+                  "sourceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "reverseMappings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "subject",
+                  "disposition",
+                  "sourceLocators"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "DOM",
+                      "SOURCE",
+                      "SCENARIO"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "disposition": {
+                    "enum": [
+                      "SOURCE_MAPPED",
+                      "NON_SCOPE_PRESENTATION"
+                    ]
+                  },
+                  "sourceLocators": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "uniqueItems": true
+                  }
+                }
+              },
+              "minItems": 1
+            }
+          }
+        }
+      }
+    },
+    "policySource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "expectationManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "brownfieldMaximumBatchRows": {
+      "const": 100
+    },
+    "historicalCorrections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "obsoleteMaximumBatchRows",
+          "currentMaximumBatchRows",
+          "reason"
+        ],
+        "properties": {
+          "obsoleteMaximumBatchRows": {
+            "const": 500
+          },
+          "currentMaximumBatchRows": {
+            "const": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "minItems": 1,
+      "maxItems": 1
+    }
+  }
+}

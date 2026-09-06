@@ -1,2613 +1,1023 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from copy import deepcopy
 import json
 from pathlib import Path
 
-from contracts import (
-    canonical_json_bytes,
-    load_registry,
-    sha256_bytes,
-    validate_contract,
-)
-from models import (
-    CompilerProgress,
-    CompilerResult,
-    Diagnostic,
-)
-from sow_model import (
-    NODE_COLLECTIONS,
-    apply_replacement,
-    owner_projection_sha256,
-    validate as validate_sow_model,
-)
+from contracts import InvalidActionResult, canonical_json_bytes, load_registry, sha256_bytes, validate_contract
+from sow_model import NODE_COLLECTIONS, validate as validate_sow_model
+from models import ContextRefDescriptor
+from stage_planner import AtomicWorkItemDescriptor, PlannedWorkDescriptor, RunBudgetPolicy, make_planned_work
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-NEXT_SCHEMA_REGISTRY = load_registry(SKILL_ROOT / "contracts")
-SOURCE_SCAN_REQUIRED_CHECK_IDS = (
-    "SOURCE_BLOCK_COVERAGE",
-    "SOURCE_ATOMICITY",
-    "QUALIFIER_PRESERVATION",
-    "SOURCE_CONFLICT",
-)
-SOURCE_SCAN_INPUT_ITEM_FIELDS = {
-    "inputItemId",
-    "kind",
-    "text",
-    "conditions",
-    "thresholds",
-    "prohibitions",
-    "applicableScopes",
-    "sourceRefs",
-}
-SOURCE_SCAN_INPUT_KINDS = {
-    "REQUIREMENT",
-    "DESIGN_DECISION",
-    "CONSTRAINT",
-    "RESPONSIBILITY",
-    "EXCLUSION",
-    "CONFLICT_CANDIDATE",
-}
-SCOPE_PROPOSAL_REQUIRED_CHECK_IDS = (
-    "GLOBAL_INVENTORY_REVIEW",
-    "BOUNDARY_PROPOSAL",
-    "CROSS_SHARD_AFFINITY",
-    "NO_FINAL_OWNERSHIP",
-)
-SCOPE_JOIN_REQUIRED_CHECK_IDS = (
-    "GLOBAL_SCOPE_CLOSURE",
-    "SOURCE_AUTHORITY",
-    "DESIGN_AUTHORITY",
-    "DELIVERY_POLICY",
-    "WORK_CLASS_SOURCE_ORTHOGONAL",
-)
-STAGE_1_JOIN_COLLECTIONS = {
-    "inputItems",
-    "scopeClosure",
-    "epics",
-    "features",
-    "designItems",
-    "integrations",
-    "nfrs",
-    "policyInstances",
-    "scopeAnnotations",
-}
 APPROVED_DESIGN_ROLES = {"HLD", "ADR"}
 REQUIRED_POLICY_INCLUSIONS = {
     "policy-sit-automation": "DEFAULT_INCLUDED",
     "policy-uat-automation": "DEFAULT_INCLUDED",
     "policy-go-live": "REQUIRED",
 }
-STAGE_1_REPAIR_CHECK_IDS = (
-    "FINDING_ADDRESS",
-    "OWNER_WRITE_SCOPE",
-    "LOCKED_NODE_PRESERVATION",
-    "R1_RECHECK_REQUIRED",
-)
 
 
-def _mappings(value: object) -> list[Mapping[str, object]]:
-    return (
-        [item for item in value if isinstance(item, Mapping)]
-        if isinstance(value, list)
-        else []
-    )
+def _verify_scan_bindings(packet, result):
+    roots = {item["payload"]["coverageRootId"]: item["payload"] for item in packet["workItems"]}
+    actual = [item["coverageRootId"] for item in result]
+    if len(roots) != len(packet["workItems"]) or len(actual) != len(set(actual)) or set(actual) != roots.keys():
+        raise InvalidActionResult("每个已授权 coverage root 必须恰好有事实或显式无关理由。")
+    for decision in result:
+        keys = [fact["localKey"] for fact in decision["facts"]]
+        if len(keys) != len(set(keys)):
+            raise InvalidActionResult("fact localKey 在同一 coverage root 内必须唯一。")
+        allowed = set(roots[decision["coverageRootId"]]["evidenceIds"])
+        for fact in decision["facts"]:
+            if not set(fact["evidenceIds"]) <= allowed:
+                raise InvalidActionResult("事实证据不属于当前 coverage root。")
 
 
-def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
-    return Diagnostic(code=code, message=message, path=path, details={})
+def verify_source_scan(packet, result):
+    if validate_contract(result, "fact-decision.schema.json", load_registry(SKILL_ROOT / "contracts")):
+        raise InvalidActionResult("FactDecisionIR schema 无效。")
+    _verify_scan_bindings(packet, result)
 
 
-def _sort_diagnostics(values: Sequence[Diagnostic]) -> tuple[Diagnostic, ...]:
-    return tuple(sorted(values, key=lambda item: (item.path, item.code, item.message)))
+class ScopeInputRequired(ValueError):
+    wait = "WAITING_INPUT"
+    code = "SCOPE_INPUT_REQUIRED"
 
 
-def _diagnostic_value(
-    value: Diagnostic,
-    *,
-    category: str = "CONTRACT_UNSUPPORTED",
-) -> dict[str, object]:
-    return {
-        "code": value.code,
-        "category": category,
-        "owner": "STAGE_1",
-        "retryable": False,
-        "message": value.message,
-        "subjectIds": list(value.details.get("subjectIds", ())),
-    }
+AUDIT_CATEGORIES = {"THRESHOLD", "NEGATION", "EXCLUSION", "EXCEPTION", "ROLE", "TIME"}
 
 
-def _estimated_tokens(value: object) -> int:
-    return max(1, (len(canonical_json_bytes(value)) + 3) // 4)
+def _prototype_observation_key(round_number, attempt_hash, local_key):
+    return "observation-" + sha256_bytes(canonical_json_bytes([round_number, attempt_hash, local_key]))
 
 
-def _instruction_binding(relative_path: str) -> dict[str, str]:
-    path = SKILL_ROOT / relative_path
-    return {
-        "path": relative_path,
-        "sha256": sha256_bytes(path.read_bytes()),
-    }
+def prepare_scope_prototype_contexts(inventory, prototype_ledger, ledger):
+    """Resolve every sealed round against the actual immutable Attempt chain."""
+    from stage_planner import _effective_success
+    from prototype_analysis import verify_prototype_trace, verify_prototype_observations
+
+    if prototype_ledger["bundleSha256"] != inventory["bundleSha256"]:
+        raise ValueError("Prototype ledger 不属于当前 bundle。")
+    if prototype_ledger["sealed"] is not True:
+        raise ScopeInputRequired("Prototype discovery 尚未封存。")
+    rounds = prototype_ledger["rounds"]
+    if not rounds or [item["round"] for item in rounds] != list(range(1, len(rounds) + 1)):
+        raise ValueError("Prototype rounds 必须完整且连续。")
+    contexts, dispositions, all_attempts, bindings = [], {}, set(), set()
+    for round_value in rounds:
+        attempt_hashes = round_value["attemptRecordSha256s"]
+        if not attempt_hashes or len(set(attempt_hashes)) != len(attempt_hashes) or all_attempts.intersection(attempt_hashes):
+            raise ValueError("Prototype round Attempt 引用重复或缺失。")
+        all_attempts.update(attempt_hashes)
+        success = {}
+        works = set()
+        for digest in attempt_hashes:
+            record = ledger.attempt_records[digest]
+            envelope = ledger.envelopes_by_sha256[record.envelope_sha256]
+            kind = envelope.value["actionContractId"].removesuffix("-v1")
+            if kind not in {"PROTOTYPE_SCENARIO", "PROTOTYPE_BROWSER", "PROTOTYPE_ANALYZE"}:
+                raise ValueError("Prototype round 引用了其他业务 Attempt。")
+            bindings.add((envelope.value["runId"], envelope.value["inputRevisionSha256"]))
+            works.add(record.logical_work_id)
+            if record.outcome == "SUCCEEDED":
+                if kind in success or _effective_success(ledger, record.logical_work_id)[0] != digest:
+                    raise ValueError("Prototype round 引用了过期或重复成功结果。")
+                success[kind] = (digest, record, json.loads(ledger.normalized_results[record.normalized_result_sha256]))
+        expected_attempts = {digest for digest, record in ledger.attempt_records.items() if record.logical_work_id in works}
+        if set(attempt_hashes) != expected_attempts or len(success) != 3:
+            raise ScopeInputRequired("Prototype round 的实际 Attempt 链不完整。")
+        scenario = success["PROTOTYPE_SCENARIO"][2]
+        trace = success["PROTOTYPE_BROWSER"][2]
+        digest, record, result = success["PROTOTYPE_ANALYZE"]
+        if scenario["round"] != round_value["round"]:
+            raise ValueError("Prototype round 身份漂移。")
+        trace_evidence = verify_prototype_trace(inventory, scenario, trace)
+        if trace_evidence["unresolvedDiscoveryCount"]:
+            raise ScopeInputRequired("Prototype 存在尚未解决的发现。")
+        verify_prototype_observations(inventory, scenario, trace, result)
+        expected_refs = [{"localKey": item["localKey"], "attemptRecordSha256": digest,
+            "normalizedResultSha256": record.normalized_result_sha256, "pointer": f"/observations/{index}"}
+            for index, item in enumerate(result["observations"])]
+        if expected_refs != round_value["observationRefs"]:
+            raise ValueError("Prototype observation refs 与实际结果不一致。")
+        round_dispositions = {item["interactionId"]: item["disposition"] for item in trace_evidence["interactionDispositions"]}
+        for observation in result["observations"]:
+            for interaction in observation["interactionIds"]:
+                if observation["scopeRelation"] == "NON_SCOPE":
+                    round_dispositions[interaction] = "EXCLUDED"
+                elif observation["runtimeStatus"] == "CODE_ONLY":
+                    round_dispositions.setdefault(interaction, "NOT_EXERCISED")
+                elif observation["runtimeStatus"] in {"BROKEN", "NOT_EXERCISED"}:
+                    round_dispositions[interaction] = observation["runtimeStatus"]
+        expected_dispositions = [{"interactionId": key, "disposition": value} for key, value in sorted(round_dispositions.items())]
+        if expected_dispositions != round_value["interactionDispositions"]:
+            raise ValueError("Prototype round disposition 与实际证据不一致。")
+        dispositions.update(round_dispositions)
+        value = {"kind": "PROTOTYPE_OBSERVATION_REF", "round": round_value["round"],
+                 "attemptRecordSha256": digest, "normalizedResultSha256": record.normalized_result_sha256,
+                 "observationKeys": sorted(_prototype_observation_key(round_value["round"], digest, item["localKey"]) for item in result["observations"]),
+                 "evidenceIds": sorted({eid for item in result["observations"] for eid in item["evidenceIds"]})}
+        contexts.append(ContextRefDescriptor("prototype-round-" + str(round_value["round"]), canonical_json_bytes(value)))
+    if len(bindings) != 1 or set(dispositions) != {item["interactionId"] for item in inventory["interactions"]}:
+        raise ScopeInputRequired("Prototype bundle 的输入绑定或交互覆盖不完整。")
+    if prototype_ledger["interactionDispositions"] != [{"interactionId": key, "disposition": value} for key, value in sorted(dispositions.items())]:
+        raise ValueError("Prototype final disposition 漂移。")
+    value = {"kind": "PROTOTYPE_LEDGER", "ledger": prototype_ledger, "inputRevisionSha256": next(iter(bindings))[1]}
+    return (ContextRefDescriptor("prototype-ledger", canonical_json_bytes(value)), *contexts)
 
 
-def _source_scan_error(
-    code: str,
-    message: str,
-    path: str,
-) -> dict[str, object]:
-    diagnostic = _diagnostic(code, message, path)
-    return {
-        "outcome": "CONTRACT_UNSUPPORTED",
-        "actionKind": "SOURCE_SCAN",
-        "coverageRootIds": [],
-        "inventorySha256": None,
-        "specs": [],
-        "estimatedInitialPacketTokens": [],
-        "diagnostics": [_diagnostic_value(diagnostic)],
-    }
+def _validate_scope_prototype_refs(contexts):
+    ledgers = [value for value in contexts if value.get("kind") == "PROTOTYPE_LEDGER"]
+    rounds = [value for value in contexts if value.get("kind") == "PROTOTYPE_OBSERVATION_REF"]
+    if not ledgers and not rounds:
+        return
+    if len(ledgers) != 1 or ledgers[0]["ledger"]["sealed"] is not True:
+        raise ScopeInputRequired("Scope 需要唯一完整 Prototype ledger。")
+    declared = ledgers[0]["ledger"]["rounds"]
+    if sorted(item["round"] for item in rounds) != [item["round"] for item in declared]:
+        raise ValueError("Scope 必须消费全部 Prototype rounds。")
+    for round_value in declared:
+        reference = next(item for item in rounds if item["round"] == round_value["round"])
+        expected = sorted(_prototype_observation_key(round_value["round"], item["attemptRecordSha256"], item["localKey"]) for item in round_value["observationRefs"])
+        if reference["observationKeys"] != expected or reference["attemptRecordSha256"] not in round_value["attemptRecordSha256s"]:
+            raise ValueError("Scope Prototype observation refs 不完整。")
+        if any(item["attemptRecordSha256"] != reference["attemptRecordSha256"] or item["normalizedResultSha256"] != reference["normalizedResultSha256"] for item in round_value["observationRefs"]):
+            raise ValueError("Scope Prototype observation result 绑定漂移。")
 
 
-def _source_scan_material(
-    state: Mapping[str, object],
-) -> tuple[
-    Mapping[str, object],
-    Mapping[str, str],
-    list[Mapping[str, object]],
-    list[str],
-    list[dict[str, object]],
-    list[dict[str, object]],
-]:
-    input_revision = state.get("inputRevision")
-    source_contents = state.get("sourceContents")
-    base_candidate = state.get("baseCandidate")
-    if not (
-        state.get("contract") == "ai-sow-scope-compiler-state-v1"
-        and isinstance(input_revision, Mapping)
-        and isinstance(source_contents, Mapping)
-        and isinstance(base_candidate, Mapping)
-        and state.get("baseCandidateSha256")
-        == sha256_bytes(canonical_json_bytes(base_candidate))
-    ):
-        raise ValueError("scope compiler state 绑定无效")
-    revision_diagnostics = validate_contract(
-        input_revision,
-        "input-revision.schema.json",
-        NEXT_SCHEMA_REGISTRY,
-    )
-    if revision_diagnostics:
-        raise ValueError("input revision 合同无效")
-    if not all(
-        isinstance(block_id, str) and isinstance(content, str)
-        for block_id, content in source_contents.items()
-    ):
-        raise ValueError("source content 映射无效")
-    blocks = _mappings(input_revision.get("blocks"))
-    sources = _mappings(input_revision.get("sources"))
-    block_by_id = {
-        str(block["blockId"]): block
-        for block in blocks
-        if isinstance(block.get("blockId"), str)
-    }
-    role_by_source = {
-        str(source["sourceId"]): str(source["role"])
-        for source in sources
-        if isinstance(source.get("sourceId"), str)
-        and isinstance(source.get("role"), str)
-    }
-    coverage_roots: list[str] = []
-    for block in blocks:
-        if block.get("extractionDisposition") == "DROPPED":
-            continue
-        root_id = block.get("primaryCoverageBlockId")
-        if not isinstance(root_id, str) or root_id not in block_by_id:
-            raise ValueError("coverage root 不存在")
-        if root_id not in coverage_roots:
-            coverage_roots.append(root_id)
-    inventory = [
-        {
-            "blockId": block.get("blockId"),
-            "sourceId": block.get("sourceId"),
-            "sourceRole": role_by_source.get(str(block.get("sourceId"))),
-            "primaryCoverageBlockId": block.get("primaryCoverageBlockId"),
-            "contextBlockIds": list(block.get("contextBlockIds", [])),
-            "structuralParentId": block.get("structuralParentId"),
-            "extractionDisposition": block.get("extractionDisposition"),
-            "locator": block.get("locator"),
-        }
-        for block in blocks
-    ]
-    structure_counts = []
-    for source in sources:
-        source_id = str(source.get("sourceId"))
-        source_blocks = [
-            block for block in blocks if block.get("sourceId") == source_id
-        ]
-        root_ids = {
-            str(block.get("primaryCoverageBlockId"))
-            for block in source_blocks
-            if block.get("extractionDisposition") != "DROPPED"
-        }
-        structure_counts.append(
-            {
-                "sourceId": source_id,
-                "sourceRole": source.get("role"),
-                "blockCount": len(source_blocks),
-                "coverageRootCount": len(root_ids),
-                "contextOnlyCount": sum(
-                    block.get("extractionDisposition") == "CONTEXT_ONLY"
-                    for block in source_blocks
-                ),
-                "droppedCount": sum(
-                    block.get("extractionDisposition") == "DROPPED"
-                    for block in source_blocks
-                ),
-            }
-        )
-    normalized_contents = {
-        str(block_id): str(content) for block_id, content in source_contents.items()
-    }
-    for root_id in coverage_roots:
-        block = block_by_id[root_id]
-        content = normalized_contents.get(root_id)
-        if (
-            content is None
-            or sha256_bytes(content.encode("utf-8")) != block.get("contentSha256")
-        ):
-            raise ValueError("coverage root 内容或 hash 无效")
-    return (
-        input_revision,
-        normalized_contents,
-        blocks,
-        coverage_roots,
-        inventory,
-        structure_counts,
-    )
+def _prior_sheet_payloads(source_id, sheet, evidence):
+    """Keep small legacy packets stable; partition large sheets by complete rows.
+
+    Cell bytes live once in each evidence row. Repeated headings are read-only
+    context and do not expand the partition's evidence authority.
+    """
+    import re
+
+    def row(item):
+        return int(re.search(r'\d+', item['absoluteA1Range']).group())
+
+    original = {'sourceId':source_id, 'evidenceIds':sorted(item['priorEvidenceId'] for item in evidence),
+        'evidence':sorted(evidence, key=lambda item:item['priorEvidenceId']), 'sheet':sheet}
+    limit = 64000
+    if len(canonical_json_bytes(original)) <= limit:
+        return [original]
+    ordered = sorted(evidence, key=lambda item:(row(item), item['priorEvidenceId']))
+    header_rows = {int(re.search(r'\d+', table['range']).group()) for table in sheet['tables']}
+    first_header = min(header_rows, default=row(ordered[0]))
+    header_rows.update(row(item) for item in ordered if row(item) <= first_header)
+    headers = [item for item in ordered if row(item) in header_rows]
+    metadata = {key:value for key,value in sheet.items() if key!='cells'}
+
+    def payload(rows):
+        return {'priorInputLayout':'ai-sow-prior-row-partition-v1', 'sourceId':source_id,
+            'evidenceIds':sorted(item['priorEvidenceId'] for item in rows), 'evidence':rows,
+            'sheet':metadata, 'headerEvidence':headers}
+
+    chunks, current = [], []
+    for item in ordered:
+        if current and len(canonical_json_bytes(payload([*current,item]))) > limit:
+            chunks.append(payload(current)); current=[]
+        current.append(item)
+    if current: chunks.append(payload(current))
+    return chunks
 
 
-def _source_scan_spec(
-    *,
-    state: Mapping[str, object],
-    input_revision: Mapping[str, object],
-    source_contents: Mapping[str, str],
-    block_by_id: Mapping[str, Mapping[str, object]],
-    coverage_roots: Sequence[str],
-    inventory: Sequence[Mapping[str, object]],
-    structure_counts: Sequence[Mapping[str, object]],
-    assigned_root_ids: Sequence[str],
-    sequence: int,
-) -> dict[str, object]:
-    logical_shard_id = f"source-scan-{sequence:03d}"
-    input_revision_sha256 = sha256_bytes(canonical_json_bytes(input_revision))
-    instruction_bindings = [
-        _instruction_binding("prompts/fragments/roles/author.md"),
-        _instruction_binding("prompts/fragments/outputs/author-result.md"),
-        _instruction_binding("prompts/stage1-source-scan.md"),
-        _instruction_binding("references/source-authority.md"),
-    ]
-    packet = {
-        "contract": "ai-sow-source-scan-packet-v1",
-        "actionKind": "SOURCE_SCAN",
-        "inputRevisionSha256": input_revision_sha256,
-        "baseCandidateSha256": state["baseCandidateSha256"],
-        "sourceBlockIds": list(assigned_root_ids),
-        "coverageRootIds": list(assigned_root_ids),
-        "allCoverageRootIds": list(coverage_roots),
-        "fullBlockInventory": [dict(item) for item in inventory],
-        "sourceStructureCounts": [dict(item) for item in structure_counts],
-        "requiredCheckIds": list(SOURCE_SCAN_REQUIRED_CHECK_IDS),
-        "allowedWriteCollections": ["inputItems"],
-        "instructionBindings": instruction_bindings,
-    }
-    evidence = []
-    for root_id in assigned_root_ids:
-        block = block_by_id[root_id]
-        evidence.append(
-            {
-                "evidenceId": root_id,
-                "locator": block["locator"],
-                "content": source_contents[root_id],
-                "sha256": block["contentSha256"],
-            }
-        )
-    return {
-        "logicalShardId": logical_shard_id,
-        "stage": "EPIC_FEATURE",
-        "role": "AUTHOR",
-        "promptId": "stage1-source-scan-v1",
-        "promptPath": "prompts/stage1-source-scan.md",
-        "resultPayloadSchema": "contracts/action.schema.json",
-        "referencePaths": [
-            "prompts/fragments/roles/author.md",
-            "prompts/fragments/outputs/author-result.md",
-            "references/source-authority.md",
-        ],
-        "evidenceCatalog": evidence,
-        "packet": packet,
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-        "maxOutputTokens": state["maxOutputTokens"],
-    }
+def prepare_scope_inputs(input_revision_bytes, source_contents, *, request, prior_inventories=(), prototype_context_refs=()):
+    """Derive atomic identities from the immutable revision, never caller labels."""
+    from contracts import load_schema_registry
+    from prior_state import build_project_effective_start_context
+
+    revision = json.loads(input_revision_bytes)
+    if canonical_json_bytes(revision) != input_revision_bytes or validate_contract(revision, "input-revision.schema.json", load_schema_registry(SKILL_ROOT)):
+        raise ValueError("Scope 需要完整 canonical InputRevision。")
+    if sha256_bytes(canonical_json_bytes(request)) != revision["requestSha256"]:
+        raise ValueError("Scope request 与 InputRevision 不匹配。")
+    policy_bytes = (SKILL_ROOT / "contracts/delivery-policy-v1.json").read_bytes()
+    if sha256_bytes(policy_bytes) != revision["deliveryPolicySha256"]:
+        raise ValueError("Scope policy 与 InputRevision 不匹配。")
+    sources = {source["sourceId"]: source for source in revision["sources"]}
+    blocks = {block["blockId"]: block for block in revision["blocks"]}
+    if len(sources) != len(revision["sources"]) or len(blocks) != len(revision["blocks"]):
+        raise ValueError("Scope 来源或 block 身份重复。")
+    items, contexts = [], []
+    roots = {block["primaryCoverageBlockId"] for block in blocks.values()
+             if block["extractionDisposition"] != "DROPPED" and sources[block["sourceId"]]["role"] not in {"PRIOR_SOW", "DEMO"}}
+    for root in sorted(roots):
+        block = blocks[root]
+        source = sources[block["sourceId"]]
+        selected = [root] + [key for key in block["contextBlockIds"] if key != root]
+        evidence_blocks = []
+        for key in selected:
+            content = source_contents[key]
+            if sha256_bytes(content.encode("utf-8")) != blocks[key]["contentSha256"]:
+                raise ValueError("Scope source content hash 漂移。")
+            evidence_blocks.append({**blocks[key], "content": content})
+        payload = {"coverageRootId": root, "sourceRole": source["role"], "evidenceIds": selected,
+                   "sourceBlock": evidence_blocks[0], "contextBlocks": evidence_blocks[1:]}
+        item_id = "item-" + sha256_bytes(canonical_json_bytes({"scopeWorkItemVersion": "1", "payload": payload}))
+        item = AtomicWorkItemDescriptor(item_id, "SOURCE_SCAN", source["role"], source["rawSha256"], source["blockIds"].index(root), payload)
+        items.append(item)
+        contexts.append(ContextRefDescriptor("source-" + item_id, canonical_json_bytes({"kind": "SOURCE_BLOCK", **payload})))
+    prior_sources = [source for source in sources.values() if source["role"] == "PRIOR_SOW"]
+    inventories = {inventory["workbookSha256"]: inventory for inventory in prior_inventories}
+    if len(inventories) != len(prior_inventories) or set(inventories) != {source["rawSha256"] for source in prior_sources}:
+        raise ValueError("Prior inventories 必须恰好覆盖已授权来源。")
+    if request["mode"] == "GREENFIELD" and prior_sources:
+        raise ValueError("Greenfield 不接受 Prior。")
+    for source in sorted(prior_sources, key=lambda source: source["sourceId"]):
+        inventory = inventories[source["rawSha256"]]
+        if not inventory["evidence"]:
+            raise ScopeInputRequired("已授权往期工作簿没有可分析合同区域：" + source["sourceId"])
+        ordinal = 0
+        for sheet in inventory["sheets"]:
+            evidence = [item for item in inventory["evidence"] if item["sheet"] == sheet["sheet"]]
+            if not evidence:
+                ordinal += 1
+                continue
+            for payload in _prior_sheet_payloads(source['sourceId'], sheet, evidence):
+                item_id = "item-" + sha256_bytes(canonical_json_bytes({"scopeWorkItemVersion": "1", "payload": payload}))
+                items.append(AtomicWorkItemDescriptor(item_id, "PRIOR_ANALYZE", "PRIOR_SOW", source["rawSha256"], ordinal, payload))
+                ordinal += 1
+    if prior_sources:
+        if not any(item.action_kind == "PRIOR_ANALYZE" for item in items):
+            raise ScopeInputRequired("往期工作簿没有可分析的合同区域。")
+        contexts.append(build_project_effective_start_context(input_revision_bytes))
+    scope_context = {"kind": "SCOPE_CONTEXT", "inputRevisionSha256": sha256_bytes(input_revision_bytes),
+                     "project": request["project"], "mode": request["mode"],
+                     "responsibilityBoundaries": request["responsibilityBoundaries"], "deliveryPolicy": json.loads(policy_bytes),
+                     "sourceDirectory": [{"sourceId": source["sourceId"], "role": source["role"], "status": source["status"], "blockIds": source["blockIds"]}
+                                         for source in sorted(sources.values(), key=lambda source: source["sourceId"])]}
+    if request.get("declaredChangeContext") is not None:
+        scope_context["declaredChangeContext"] = request["declaredChangeContext"]
+    contexts.append(ContextRefDescriptor("scope-context", canonical_json_bytes(scope_context)))
+    contexts.extend(prototype_context_refs)
+    return tuple(items), tuple(contexts)
 
 
-def _action_error(
-    action_kind: str,
-    outcome: str,
-    code: str,
-    message: str,
-    path: str,
-    *,
-    category: str = "CONTRACT_UNSUPPORTED",
-) -> dict[str, object]:
-    diagnostic = _diagnostic(code, message, path)
-    return {
-        "outcome": outcome,
-        "actionKind": action_kind,
-        "specs": [],
-        "estimatedInitialPacketTokens": [],
-        "diagnostics": [_diagnostic_value(diagnostic, category=category)],
-    }
+def build_scope_work_descriptors(
+    work_items: Sequence[AtomicWorkItemDescriptor],
+    context_refs: Sequence[ContextRefDescriptor],
+    budget_policy: RunBudgetPolicy,
+) -> tuple[PlannedWorkDescriptor, ...]:
+    from stage_planner import estimate_work_input_tokens, StagePlanningBlocked, run_budget_policy_value
+    from contracts import usable_action_input_tokens
 
+    if len({item.work_item_id for item in work_items}) != len(work_items) or len({ref.ref_id for ref in context_refs}) != len(context_refs):
+        raise ValueError("Scope item/context 不得重复。")
+    if any(item.action_kind not in {"SOURCE_SCAN", "PRIOR_ANALYZE"} for item in work_items):
+        raise ValueError("Scope 原子项只允许 Source Scan 或 Prior Analyze。")
+    contexts = {ref.ref_id: json.loads(ref.canonical_content) for ref in context_refs}
+    _validate_scope_prototype_refs(list(contexts.values()))
+    originals = [ref for ref in context_refs if contexts[ref.ref_id].get("kind") == "SOURCE_BLOCK"]
+    date = [ref for ref in context_refs if contexts[ref.ref_id].get("kind") == "PROJECT_EFFECTIVE_START"]
+    global_context = [ref for ref in context_refs if contexts[ref.ref_id].get("kind") not in {"SOURCE_BLOCK", "PROJECT_EFFECTIVE_START"}]
+    source_items = [item for item in work_items if item.action_kind == "SOURCE_SCAN"]
+    prior_items = [item for item in work_items if item.action_kind == "PRIOR_ANALYZE"]
+    roots = [item.work_item_payload["coverageRootId"] for item in source_items]
+    original_roots = [contexts[ref.ref_id]["coverageRootId"] for ref in originals]
+    if len(roots) != len(set(roots)) or sorted(roots) != sorted(original_roots):
+        raise ValueError("Scope 每个原始覆盖根必须有一个精确 Audit context。")
+    for item in source_items:
+        matches = [contexts[ref.ref_id] for ref in originals if contexts[ref.ref_id]["coverageRootId"] == item.work_item_payload["coverageRootId"]]
+        if len(matches) != 1 or {k: v for k, v in matches[0].items() if k != "kind"} != item.work_item_payload:
+            raise ValueError("Audit 原始 SourceBlock 与 Scan payload 不一致。")
+    if (bool(prior_items) and len(date) != 1) or (not prior_items and date):
+        raise ValueError("每个 Prior packet 必须绑定唯一日期；零 Prior 不生成日期替代输入。")
+    usable = usable_action_input_tokens(run_budget_policy_value(budget_policy))
+    width = usable // (budget_policy.output_reserve_tokens + budget_policy.reference_overhead_tokens)
+    works = []
 
-def _scope_material(
-    state: Mapping[str, object],
-) -> tuple[
-    Mapping[str, object],
-    Mapping[str, object],
-    list[Mapping[str, object]],
-    dict[str, str],
-    dict[str, str],
-]:
-    input_revision = state.get("inputRevision")
-    base_candidate = state.get("baseCandidate")
-    if not (
-        state.get("contract") == "ai-sow-scope-compiler-state-v1"
-        and isinstance(input_revision, Mapping)
-        and isinstance(base_candidate, Mapping)
-        and state.get("baseCandidateSha256")
-        == sha256_bytes(canonical_json_bytes(base_candidate))
-    ):
-        raise ValueError("scope compiler state 绑定无效")
-    if validate_contract(
-        input_revision,
-        "input-revision.schema.json",
-        NEXT_SCHEMA_REGISTRY,
-    ):
-        raise ValueError("input revision 合同无效")
-    if validate_contract(
-        base_candidate,
-        "sow-model.schema.json",
-        NEXT_SCHEMA_REGISTRY,
-    ):
-        raise ValueError("base candidate 合同无效")
-    input_items = _mappings(base_candidate.get("inputItems"))
-    if not input_items:
-        raise ValueError("scope proposal 缺少 input items")
-    item_ids = [item.get("inputItemId") for item in input_items]
-    if not all(isinstance(item_id, str) for item_id in item_ids) or len(
-        item_ids
-    ) != len(set(item_ids)):
-        raise ValueError("input item inventory 无效")
-    source_role_by_id = {
-        str(source["sourceId"]): str(source["role"])
-        for source in _mappings(input_revision.get("sources"))
-    }
-    source_status_by_id = {
-        str(source["sourceId"]): str(source["status"])
-        for source in _mappings(input_revision.get("sources"))
-    }
-    return (
-        input_revision,
-        base_candidate,
-        input_items,
-        source_role_by_id,
-        source_status_by_id,
-    )
+    def fits(kind, items, refs):
+        return estimate_work_input_tokens(kind, items, refs, budget_policy) <= usable
 
+    def add(kind, items, refs, dependencies):
+        if not fits(kind, items, refs):
+            raise StagePlanningBlocked("BUDGET_EXHAUSTED")
+        descriptor = make_planned_work(kind, items, refs, [item.work_key for item in dependencies])
+        works.append(descriptor)
+        return descriptor
 
-def _scope_proposal_spec(
-    *,
-    state: Mapping[str, object],
-    input_revision: Mapping[str, object],
-    input_items: Sequence[Mapping[str, object]],
-    source_role_by_id: Mapping[str, str],
-    assigned_item_ids: Sequence[str],
-    sequence: int,
-) -> dict[str, object]:
-    item_by_id = {str(item["inputItemId"]): item for item in input_items}
-    all_ids = [str(item["inputItemId"]) for item in input_items]
-    logical_shard_id = f"scope-proposal-{sequence:03d}"
-    instruction_bindings = [
-        _instruction_binding("prompts/fragments/roles/author.md"),
-        _instruction_binding("prompts/fragments/outputs/author-result.md"),
-        _instruction_binding("prompts/stage1-scope-proposal.md"),
-        _instruction_binding("references/source-authority.md"),
-        _instruction_binding("references/epic-authoring.md"),
-        _instruction_binding("references/feature-authoring.md"),
-        _instruction_binding("references/technical-work-classification.md"),
-        _instruction_binding("references/delivery-lifecycle-policy.md"),
-    ]
-    boundary_summaries = [
-        {
-            "inputItemId": str(item["inputItemId"]),
-            "kind": item["kind"],
-            "applicableScopes": list(item["applicableScopes"]),
-        }
-        for item in input_items
-    ]
-    packet = {
-        "contract": "ai-sow-scope-proposal-packet-v1",
-        "actionKind": "SCOPE_PROPOSAL",
-        "inputRevisionSha256": sha256_bytes(
-            canonical_json_bytes(input_revision)
-        ),
-        "baseCandidateSha256": state["baseCandidateSha256"],
-        "inputItemIdInventory": all_ids,
-        "assignedInputItemIds": list(assigned_item_ids),
-        "localInputItems": [
-            deepcopy(dict(item_by_id[item_id])) for item_id in assigned_item_ids
-        ],
-        "boundarySummaries": boundary_summaries,
-        "sourceRoleById": dict(source_role_by_id),
-        "requiredCheckIds": list(SCOPE_PROPOSAL_REQUIRED_CHECK_IDS),
-        "allowedWriteCollections": [],
-        "mayFinalizeFeatureOwnership": False,
-        "instructionBindings": instruction_bindings,
-    }
-    evidence = [
-        {
-            "evidenceId": item_id,
-            "locator": item_by_id[item_id]["sourceRefs"][0]["locator"],
-            "content": item_by_id[item_id]["text"],
-            "sha256": sha256_bytes(str(item_by_id[item_id]["text"]).encode("utf-8")),
-        }
-        for item_id in assigned_item_ids
-    ]
-    return {
-        "logicalShardId": logical_shard_id,
-        "stage": "EPIC_FEATURE",
-        "role": "AUTHOR",
-        "promptId": "stage1-scope-proposal-v1",
-        "promptPath": "prompts/stage1-scope-proposal.md",
-        "resultPayloadSchema": "contracts/action.schema.json",
-        "referencePaths": [
-            "prompts/fragments/roles/author.md",
-            "prompts/fragments/outputs/author-result.md",
-            "references/source-authority.md",
-            "references/epic-authoring.md",
-            "references/feature-authoring.md",
-            "references/technical-work-classification.md",
-            "references/delivery-lifecycle-policy.md",
-        ],
-        "evidenceCatalog": evidence,
-        "packet": packet,
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-        "maxOutputTokens": state["maxOutputTokens"],
-    }
+    def source_refs(items):
+        selected = {item.work_item_payload["coverageRootId"] for item in items}
+        return [ref for ref in originals if contexts[ref.ref_id]["coverageRootId"] in selected]
 
+    def pack(kind, items, refs):
+        ordered = sorted(items, key=lambda item: (item.action_kind, item.source_role, item.source_sha256, item.block_ordinal, item.work_item_id))
+        chunks, current = [], []
+        for item in ordered:
+            proposed = current + [item]
+            acceptable = fits(kind, proposed, refs)
+            if kind == "SOURCE_SCAN":
+                acceptable = acceptable and fits("SOURCE_AUDIT", [], source_refs(proposed))
+            if current and not acceptable:
+                chunks.append(current)
+                current = []
+            current.append(item)
+            if not fits(kind, current, refs) or (kind == "SOURCE_SCAN" and not fits("SOURCE_AUDIT", [], source_refs(current))):
+                actual_kind, actual_items, actual_refs = kind, current, refs
+                if fits(kind, current, refs):
+                    actual_kind, actual_items, actual_refs = 'SOURCE_AUDIT', [], source_refs(current)
+                raise StagePlanningBlocked("BUDGET_EXHAUSTED", {
+                    'actionKind':actual_kind, 'unissued':True,
+                    'workItemIds':[value.work_item_id for value in current],
+                    'estimatedInputTokens':estimate_work_input_tokens(actual_kind, actual_items, actual_refs, budget_policy),
+                    'usableInputTokens':usable})
+        if current:
+            chunks.append(current)
+        return chunks
 
-def _prepare_scope_proposal(
-    state: Mapping[str, object],
-) -> Mapping[str, object]:
-    try:
-        (
-            input_revision,
-            _base_candidate,
-            input_items,
-            source_role_by_id,
-            _source_status_by_id,
-        ) = _scope_material(state)
-    except (KeyError, TypeError, ValueError):
-        return _action_error(
-            "SCOPE_PROPOSAL",
-            "CONTRACT_UNSUPPORTED",
-            "SCOPE_PROPOSAL_STATE_INVALID",
-            "Scope Proposal 输入、candidate 或来源角色绑定无效。",
-            "/state",
-        )
-    token_budget = state.get("maxInitialPacketTokens")
-    if not isinstance(token_budget, int) or isinstance(token_budget, bool) or token_budget < 1:
-        return _action_error(
-            "SCOPE_PROPOSAL",
-            "CONTRACT_UNSUPPORTED",
-            "SCOPE_PROPOSAL_STATE_INVALID",
-            "Scope Proposal 初始 packet token 预算无效。",
-            "/maxInitialPacketTokens",
-        )
-    input_ids = [str(item["inputItemId"]) for item in input_items]
-    global_material = {
-        "inputItemIdInventory": input_ids,
-        "boundarySummaries": [
-            {
-                "inputItemId": item["inputItemId"],
-                "kind": item["kind"],
-                "applicableScopes": item["applicableScopes"],
-            }
-            for item in input_items
-        ],
-    }
-    if _estimated_tokens(global_material) >= token_budget:
-        return _action_error(
-            "SCOPE_PROPOSAL",
-            "CONTRACT_UNSUPPORTED",
-            "GLOBAL_SCOPE_CAPACITY_EXCEEDED",
-            "最小全量 InputItem inventory 与边界摘要超过安全上下文预算。",
-            "/baseCandidate/inputItems",
-        )
-    shard_ids: list[list[str]] = []
-    current: list[str] = []
-    for input_id in input_ids:
-        candidate_ids = [*current, input_id]
-        candidate_spec = _scope_proposal_spec(
-            state=state,
-            input_revision=input_revision,
-            input_items=input_items,
-            source_role_by_id=source_role_by_id,
-            assigned_item_ids=candidate_ids,
-            sequence=len(shard_ids) + 1,
-        )
-        measured = _estimated_tokens(
-            {
-                "logicalShardId": candidate_spec["logicalShardId"],
-                "payload": candidate_spec["packet"],
-                "evidenceCatalog": candidate_spec["evidenceCatalog"],
-            }
-        )
-        if current and (measured > token_budget or len(candidate_ids) > 3):
-            shard_ids.append(current)
-            current = [input_id]
-        else:
-            current = candidate_ids
-    if current:
-        shard_ids.append(current)
-    specs = [
-        _scope_proposal_spec(
-            state=state,
-            input_revision=input_revision,
-            input_items=input_items,
-            source_role_by_id=source_role_by_id,
-            assigned_item_ids=item_ids,
-            sequence=index,
-        )
-        for index, item_ids in enumerate(shard_ids, 1)
-    ]
-    estimates = [
-        _estimated_tokens(
-            {
-                "logicalShardId": spec["logicalShardId"],
-                "payload": spec["packet"],
-                "evidenceCatalog": spec["evidenceCatalog"],
-            }
-        )
-        for spec in specs
-    ]
-    if len(specs) > 8 or any(value > token_budget for value in estimates):
-        return _action_error(
-            "SCOPE_PROPOSAL",
-            "CONTRACT_UNSUPPORTED",
-            "GLOBAL_SCOPE_CAPACITY_EXCEEDED",
-            "Scope Proposal 无法在物理 shard 上限内容纳全量 inventory。",
-            "/baseCandidate/inputItems",
-        )
-    return {
-        "outcome": "ACTION_REQUIRED",
-        "actionKind": "SCOPE_PROPOSAL",
-        "inputItemIds": input_ids,
-        "inventorySha256": sha256_bytes(canonical_json_bytes(global_material)),
-        "specs": specs,
-        "estimatedInitialPacketTokens": estimates,
-        "diagnostics": [],
-    }
+    def join(kind, leaves, refs):
+        while len(leaves) > 1:
+            if width < 2:
+                raise StagePlanningBlocked("BUDGET_EXHAUSTED")
+            next_level = []
+            for offset in range(0, len(leaves), width):
+                chunk = leaves[offset:offset + width]
+                next_level.append(chunk[0] if len(chunk) == 1 else add(kind, [], refs, chunk))
+            leaves = next_level
+        return leaves
 
-
-def prepare_action(
-    state: Mapping[str, object],
-    action_kind: str,
-) -> Mapping[str, object]:
-    if action_kind == "SCOPE_PROPOSAL":
-        return _prepare_scope_proposal(state)
-    if action_kind == "SCOPE_JOIN":
-        return _prepare_scope_join(state)
-    if action_kind != "SOURCE_SCAN":
-        return _source_scan_error(
-            "COMPILER_ACTION_KIND_UNSUPPORTED",
-            "当前 Scope Compiler 尚不支持该 action kind。",
-            "/actionKind",
-        )
-    try:
-        (
-            input_revision,
-            source_contents,
-            blocks,
-            coverage_roots,
-            inventory,
-            structure_counts,
-        ) = _source_scan_material(state)
-    except (KeyError, TypeError, ValueError):
-        return _source_scan_error(
-            "SOURCE_SCAN_STATE_INVALID",
-            "Source Scan 输入、candidate 或来源内容绑定无效。",
-            "/state",
-        )
-    token_budget = state.get("maxInitialPacketTokens")
-    if (
-        not isinstance(token_budget, int)
-        or isinstance(token_budget, bool)
-        or token_budget < 1
-    ):
-        return _source_scan_error(
-            "SOURCE_SCAN_STATE_INVALID",
-            "Source Scan 初始 packet token 预算无效。",
-            "/maxInitialPacketTokens",
-        )
-    block_by_id = {str(block["blockId"]): block for block in blocks}
-    common_inventory = {
-        "coverageRootIds": coverage_roots,
-        "fullBlockInventory": inventory,
-        "sourceStructureCounts": structure_counts,
-    }
-    if _estimated_tokens(common_inventory) >= token_budget:
-        return _source_scan_error(
-            "GLOBAL_SCOPE_CAPACITY_EXCEEDED",
-            "最小全量 source block inventory 与结构计数超过安全上下文预算。",
-            "/inputRevision/blocks",
-        )
-
-    shard_root_ids: list[list[str]] = []
-    current: list[str] = []
-    for root_id in coverage_roots:
-        candidate_roots = [*current, root_id]
-        candidate_spec = _source_scan_spec(
-            state=state,
-            input_revision=input_revision,
-            source_contents=source_contents,
-            block_by_id=block_by_id,
-            coverage_roots=coverage_roots,
-            inventory=inventory,
-            structure_counts=structure_counts,
-            assigned_root_ids=candidate_roots,
-            sequence=len(shard_root_ids) + 1,
-        )
-        packet_measure = {
-            "logicalShardId": candidate_spec["logicalShardId"],
-            "payload": candidate_spec["packet"],
-            "evidenceCatalog": candidate_spec["evidenceCatalog"],
-        }
-        if current and _estimated_tokens(packet_measure) > token_budget:
-            shard_root_ids.append(current)
-            current = [root_id]
-        else:
-            current = candidate_roots
-    if current:
-        shard_root_ids.append(current)
-    specs = [
-        _source_scan_spec(
-            state=state,
-            input_revision=input_revision,
-            source_contents=source_contents,
-            block_by_id=block_by_id,
-            coverage_roots=coverage_roots,
-            inventory=inventory,
-            structure_counts=structure_counts,
-            assigned_root_ids=assigned,
-            sequence=index,
-        )
-        for index, assigned in enumerate(shard_root_ids, 1)
-    ]
-    estimates = [
-        _estimated_tokens(
-            {
-                "logicalShardId": spec["logicalShardId"],
-                "payload": spec["packet"],
-                "evidenceCatalog": spec["evidenceCatalog"],
-            }
-        )
-        for spec in specs
-    ]
-    if len(specs) > 8 or any(value > token_budget for value in estimates):
-        return _source_scan_error(
-            "GLOBAL_SCOPE_CAPACITY_EXCEEDED",
-            "Source Scan 无法在物理 shard 上限内容纳全量 inventory 与分配 block。",
-            "/inputRevision/blocks",
-        )
-    return {
-        "outcome": "ACTION_REQUIRED",
-        "actionKind": "SOURCE_SCAN",
-        "coverageRootIds": list(coverage_roots),
-        "inventorySha256": sha256_bytes(canonical_json_bytes(common_inventory)),
-        "specs": specs,
-        "estimatedInitialPacketTokens": estimates,
-        "diagnostics": [],
-    }
-
-
-def _source_scan_packet_sha256(spec: Mapping[str, object]) -> str:
-    return sha256_bytes(
-        canonical_json_bytes(
-            {
-                "logicalShardId": spec["logicalShardId"],
-                "payload": spec["packet"],
-                "evidenceCatalog": spec["evidenceCatalog"],
-            }
-        )
-    )
-
-
-def _validate_source_scan_record(
-    state: Mapping[str, object],
-    prepared: Mapping[str, object],
-    record: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(
-        validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY)
-    )
-    specs = {
-        str(spec["logicalShardId"]): spec
-        for spec in _mappings(prepared.get("specs"))
-    }
-    logical_shard_id = record.get("logicalShardId")
-    spec = specs.get(str(logical_shard_id))
-    if spec is None:
-        diagnostics.append(
-            _diagnostic(
-                "SOURCE_SCAN_SHARD_UNKNOWN",
-                "Source Scan record 不属于当前冻结 action group。",
-                "/logicalShardId",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    input_revision = state["inputRevision"]
-    expected_bindings = {
-        "runId": state["runId"],
-        "packetSha256": _source_scan_packet_sha256(spec),
-        "inputRevisionSha256": sha256_bytes(canonical_json_bytes(input_revision)),
-        "baseCandidateSha256": state["baseCandidateSha256"],
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-    }
-    for field, expected in expected_bindings.items():
-        if record.get(field) != expected:
-            diagnostics.append(
-                _diagnostic(
-                    "SOURCE_SCAN_RECORD_BINDING_MISMATCH",
-                    "Source Scan record 与当前 revision、candidate、packet 或模型配置不匹配。",
-                    f"/{field}",
-                )
-            )
-    if record.get("status") != "SUCCESS":
-        diagnostics.append(
-            _diagnostic(
-                "SOURCE_SCAN_RECORD_NOT_SUCCESSFUL",
-                "Source Scan 只接受已成功封存的 ActionRecord。",
-                "/status",
-            )
-        )
-    submission = record.get("submission")
-    if not isinstance(submission, Mapping) or submission.get("resultKind") != (
-        "SOURCE_SCAN_PATCH"
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "SOURCE_SCAN_RESULT_KIND_INVALID",
-                "Source Scan 必须返回 SOURCE_SCAN_PATCH。",
-                "/submission/resultKind",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    assigned = tuple(spec["packet"]["coverageRootIds"])
-    coverage = _mappings(submission.get("blockCoverage"))
-    covered_ids = [str(item.get("blockId")) for item in coverage]
-    if len(covered_ids) != len(set(covered_ids)) or set(covered_ids) != set(
-        assigned
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "SOURCE_BLOCK_COVERAGE_INCOMPLETE",
-                "每个分配的 source coverage root 必须恰好有一个 READ 或 PARSE_ISSUE 处置。",
-                "/submission/blockCoverage",
-            )
-        )
-    reviewed = submission.get("reviewedEvidenceIds")
-    if not isinstance(reviewed, list) or set(reviewed) != set(assigned):
-        diagnostics.append(
-            _diagnostic(
-                "SOURCE_REVIEWED_EVIDENCE_MISMATCH",
-                "reviewedEvidenceIds 必须精确覆盖当前 shard 分配的 source blocks。",
-                "/submission/reviewedEvidenceIds",
-            )
-        )
-    self_check = submission.get("selfCheck")
-    completed = self_check.get("completedCheckIds") if isinstance(self_check, Mapping) else None
-    if completed != list(SOURCE_SCAN_REQUIRED_CHECK_IDS):
-        diagnostics.append(
-            _diagnostic(
-                "SOURCE_SCAN_SELF_CHECK_INCOMPLETE",
-                "Source Scan 必须完成全部冻结检查项。",
-                "/submission/selfCheck/completedCheckIds",
-            )
-        )
-    replacement = submission.get("replacementSet")
-    if not isinstance(replacement, Mapping):
-        return _sort_diagnostics(diagnostics)
-    expected_hashes = replacement.get("expectedNodeHashes")
-    deletes = replacement.get("deletes")
-    upserts = replacement.get("upserts")
-    if not (
-        isinstance(expected_hashes, Mapping)
-        and all(str(key).startswith("inputItems:") for key in expected_hashes)
-        and isinstance(deletes, list)
-        and all(
-            isinstance(key, str) and key.startswith("inputItems:")
-            for key in deletes
-        )
-        and isinstance(upserts, list)
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "OWNER_WRITE_SCOPE_VIOLATION",
-                "Source Scan replacement 只允许写 inputItems。",
-                "/submission/replacementSet",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    block_index = {
-        str(block["blockId"]): block
-        for block in _mappings(input_revision.get("blocks"))
-    }
-    for position, wrapper in enumerate(upserts):
-        if not isinstance(wrapper, Mapping) or wrapper.get("collection") != (
-            "inputItems"
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "OWNER_WRITE_SCOPE_VIOLATION",
-                    "Source Scan 不得写 Epic、Feature、Story、Task 或其他集合。",
-                    f"/submission/replacementSet/upserts/{position}",
-                )
-            )
-            continue
-        node = wrapper.get("node")
-        if not (
-            isinstance(node, Mapping)
-            and set(node) == SOURCE_SCAN_INPUT_ITEM_FIELDS
-            and node.get("kind") in SOURCE_SCAN_INPUT_KINDS
-            and isinstance(node.get("inputItemId"), str)
-            and isinstance(node.get("text"), str)
-            and node.get("text")
-            and all(
-                isinstance(node.get(field), list)
-                and all(isinstance(item, str) and item for item in node[field])
-                for field in (
-                    "conditions",
-                    "thresholds",
-                    "prohibitions",
-                    "applicableScopes",
-                )
-            )
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "SOURCE_INPUT_ITEM_INVALID",
-                    "Source Scan InputItem 字段、kind 或限定词无效。",
-                    f"/submission/replacementSet/upserts/{position}/node",
-                )
-            )
-            continue
-        source_refs = _mappings(node.get("sourceRefs"))
-        if not source_refs:
-            diagnostics.append(
-                _diagnostic(
-                    "SOURCE_REF_BINDING_INVALID",
-                    "InputItem 必须保留至少一个精确 SourceRef。",
-                    f"/submission/replacementSet/upserts/{position}/node/sourceRefs",
-                )
-            )
-            continue
-        for ref in source_refs:
-            block_id = ref.get("blockId")
-            block = block_index.get(str(block_id))
-            if not (
-                block_id in assigned
-                and block is not None
-                and ref
-                == {
-                    "sourceId": block.get("sourceId"),
-                    "blockId": block.get("blockId"),
-                    "sha256": block.get("contentSha256"),
-                    "locator": block.get("locator"),
-                }
-            ):
-                diagnostics.append(
-                    _diagnostic(
-                        "SOURCE_REF_BINDING_INVALID",
-                        "InputItem SourceRef 必须精确绑定当前 shard 的 Input Revision block。",
-                        f"/submission/replacementSet/upserts/{position}/node/sourceRefs",
-                    )
-                )
-    return _sort_diagnostics(diagnostics)
-
-
-def _validate_scope_proposal_record(
-    state: Mapping[str, object],
-    prepared: Mapping[str, object],
-    record: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(
-        validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY)
-    )
-    specs = {
-        str(spec["logicalShardId"]): spec
-        for spec in _mappings(prepared.get("specs"))
-    }
-    spec = specs.get(str(record.get("logicalShardId")))
-    if spec is None:
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_SHARD_UNKNOWN",
-                "Scope Proposal record 不属于当前冻结 action group。",
-                "/logicalShardId",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    expected_bindings = {
-        "runId": state["runId"],
-        "packetSha256": _source_scan_packet_sha256(spec),
-        "inputRevisionSha256": sha256_bytes(
-            canonical_json_bytes(state["inputRevision"])
-        ),
-        "baseCandidateSha256": state["baseCandidateSha256"],
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-    }
-    for field, expected in expected_bindings.items():
-        if record.get(field) != expected:
-            diagnostics.append(
-                _diagnostic(
-                    "SCOPE_PROPOSAL_RECORD_BINDING_MISMATCH",
-                    "Scope Proposal record 与当前 revision、candidate、packet 或模型配置不匹配。",
-                    f"/{field}",
-                )
-            )
-    if record.get("status") != "SUCCESS":
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_RECORD_NOT_SUCCESSFUL",
-                "Scope Proposal 只接受已成功封存的 ActionRecord。",
-                "/status",
-            )
-        )
-    submission = record.get("submission")
-    if not isinstance(submission, Mapping) or submission.get("resultKind") != (
-        "SCOPE_PROPOSAL"
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_RESULT_KIND_INVALID",
-                "Scope Proposal 必须返回 SCOPE_PROPOSAL。",
-                "/submission/resultKind",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    if record.get("submissionSha256") != sha256_bytes(
-        canonical_json_bytes(submission)
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_SUBMISSION_HASH_MISMATCH",
-                "Scope Proposal submission hash 与内容不匹配。",
-                "/submissionSha256",
-            )
-        )
-    assigned = list(spec["packet"]["assignedInputItemIds"])
-    if submission.get("inputItemIds") != assigned:
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_INPUT_COVERAGE_MISMATCH",
-                "Scope Proposal inputItemIds 必须按冻结顺序精确覆盖本 shard。",
-                "/submission/inputItemIds",
-            )
-        )
-    if submission.get("reviewedEvidenceIds") != assigned:
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_EVIDENCE_MISMATCH",
-                "Scope Proposal 必须复核本 shard 的全部 InputItem evidence。",
-                "/submission/reviewedEvidenceIds",
-            )
-        )
-    boundary_candidates = _mappings(submission.get("boundaryCandidates"))
-    covered = [
-        str(input_id)
-        for boundary in boundary_candidates
-        for input_id in boundary.get("inputItemIds", [])
-        if isinstance(input_id, str)
-    ]
-    if sorted(covered) != sorted(assigned) or len(covered) != len(set(covered)):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_BOUNDARY_COVERAGE_MISMATCH",
-                "每个分配的 InputItem 必须恰好进入一个候选边界。",
-                "/submission/boundaryCandidates",
-            )
-        )
-    boundary_ids = [str(item.get("boundaryId")) for item in boundary_candidates]
-    if len(boundary_ids) != len(set(boundary_ids)):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_BOUNDARY_ID_DUPLICATE",
-                "候选边界 ID 在 shard 内必须唯一。",
-                "/submission/boundaryCandidates",
-            )
-        )
-    global_ids = set(spec["packet"]["inputItemIdInventory"])
-    for position, affinity in enumerate(
-        _mappings(submission.get("crossShardAffinities"))
-    ):
-        affinity_ids = affinity.get("inputItemIds")
-        if not isinstance(affinity_ids, list) or not set(affinity_ids) <= global_ids:
-            diagnostics.append(
-                _diagnostic(
-                    "SCOPE_PROPOSAL_AFFINITY_UNKNOWN_INPUT",
-                    "跨 shard affinity 只能引用全量 InputItem inventory。",
-                    f"/submission/crossShardAffinities/{position}/inputItemIds",
-                )
-            )
-    self_check = submission.get("selfCheck")
-    completed = (
-        self_check.get("completedCheckIds")
-        if isinstance(self_check, Mapping)
-        else None
-    )
-    if completed != list(SCOPE_PROPOSAL_REQUIRED_CHECK_IDS):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_PROPOSAL_SELF_CHECK_INCOMPLETE",
-                "Scope Proposal 必须完成全部冻结检查项。",
-                "/submission/selfCheck/completedCheckIds",
-            )
-        )
-    return _sort_diagnostics(diagnostics)
-
-
-def _proposal_group(
-    state: Mapping[str, object],
-) -> tuple[Mapping[str, object], dict[str, Mapping[str, object]], tuple[Diagnostic, ...]]:
-    proposal_state = {
-        **state,
-        "maxInitialPacketTokens": state.get(
-            "proposalMaxInitialPacketTokens",
-            state.get("maxInitialPacketTokens"),
-        ),
-    }
-    prepared = _prepare_scope_proposal(proposal_state)
-    specs = _mappings(prepared.get("specs"))
-    records = _mappings(state.get("proposalRecords"))
-    by_shard: dict[str, Mapping[str, object]] = {}
-    duplicate = False
-    for record in records:
-        shard_id = str(record.get("logicalShardId"))
-        duplicate = duplicate or shard_id in by_shard
-        by_shard[shard_id] = record
-    required = [str(spec["logicalShardId"]) for spec in specs]
-    if (
-        prepared.get("outcome") != "ACTION_REQUIRED"
-        or duplicate
-        or set(by_shard) != set(required)
-    ):
-        return (
-            prepared,
-            by_shard,
-            (
-                _diagnostic(
-                    "SCOPE_PROPOSAL_GROUP_INCOMPLETE",
-                    "Scope Join 要求每个冻结 proposal shard 的一条成功 record。",
-                    "/proposalRecords",
-                ),
-            ),
-        )
-    diagnostics = tuple(
-        diagnostic
-        for shard_id in required
-        for diagnostic in _validate_scope_proposal_record(
-            proposal_state,
-            prepared,
-            by_shard[shard_id],
-        )
-    )
-    return prepared, by_shard, _sort_diagnostics(diagnostics)
-
-
-def _prepare_scope_join(state: Mapping[str, object]) -> Mapping[str, object]:
-    try:
-        (
-            input_revision,
-            base_candidate,
-            input_items,
-            source_role_by_id,
-            source_status_by_id,
-        ) = _scope_material(state)
-    except (KeyError, TypeError, ValueError):
-        return _action_error(
-            "SCOPE_JOIN",
-            "CONTRACT_UNSUPPORTED",
-            "SCOPE_JOIN_STATE_INVALID",
-            "Scope Join 输入、candidate 或来源角色绑定无效。",
-            "/state",
-        )
-    conflict_ids = [
-        str(item["inputItemId"])
-        for item in input_items
-        if item.get("kind") == "CONFLICT_CANDIDATE"
-    ]
-    if conflict_ids:
-        diagnostic = _diagnostic(
-            "SOURCE_SEMANTIC_CONFLICT",
-            "来源存在语义冲突，必须由输入 Owner 明确裁决，不能静默选择优先来源。",
-            "/baseCandidate/inputItems",
-        )
-        diagnostic = Diagnostic(
-            code=diagnostic.code,
-            message=diagnostic.message,
-            path=diagnostic.path,
-            details={"subjectIds": conflict_ids},
-        )
-        return {
-            "outcome": "INPUT_REQUIRED",
-            "actionKind": "SCOPE_JOIN",
-            "specs": [],
-            "estimatedInitialPacketTokens": [],
-            "diagnostics": [
-                _diagnostic_value(diagnostic, category="INPUT_REQUIRED")
-            ],
-        }
-    proposal_prepared, proposals_by_shard, proposal_diagnostics = _proposal_group(
-        state
-    )
-    if proposal_diagnostics:
-        return {
-            "outcome": "CONTRACT_UNSUPPORTED",
-            "actionKind": "SCOPE_JOIN",
-            "specs": [],
-            "estimatedInitialPacketTokens": [],
-            "diagnostics": [
-                _diagnostic_value(item) for item in proposal_diagnostics
-            ],
-        }
-    token_budget = state.get("maxInitialPacketTokens")
-    if not isinstance(token_budget, int) or isinstance(token_budget, bool) or token_budget < 1:
-        return _action_error(
-            "SCOPE_JOIN",
-            "CONTRACT_UNSUPPORTED",
-            "SCOPE_JOIN_STATE_INVALID",
-            "Scope Join 初始 packet token 预算无效。",
-            "/maxInitialPacketTokens",
-        )
-    required_shards = [
-        str(spec["logicalShardId"])
-        for spec in _mappings(proposal_prepared.get("specs"))
-    ]
-    policy_path = SKILL_ROOT / "contracts" / "delivery-policy-v1.json"
-    policies = json.loads(policy_path.read_text(encoding="utf-8"))
-    instruction_bindings = [
-        _instruction_binding("prompts/fragments/roles/author.md"),
-        _instruction_binding("prompts/fragments/outputs/author-result.md"),
-        _instruction_binding("prompts/stage1-scope-join.md"),
-        _instruction_binding("references/source-authority.md"),
-        _instruction_binding("references/epic-authoring.md"),
-        _instruction_binding("references/feature-authoring.md"),
-        _instruction_binding("references/technical-work-classification.md"),
-        _instruction_binding("references/delivery-lifecycle-policy.md"),
-        {
-            "path": "contracts/delivery-policy-v1.json",
-            "sha256": sha256_bytes(policy_path.read_bytes()),
-        },
-    ]
-    input_ids = [str(item["inputItemId"]) for item in input_items]
-    responsibility_boundary_ids = list(
-        base_candidate.get("project", {}).get("responsibilityBoundaries", [])
-    )
-    packet = {
-        "contract": "ai-sow-scope-join-packet-v1",
-        "actionKind": "SCOPE_JOIN",
-        "inputRevisionSha256": sha256_bytes(
-            canonical_json_bytes(input_revision)
-        ),
-        "baseCandidateSha256": state["baseCandidateSha256"],
-        "inputItemIds": input_ids,
-        "inputItems": [deepcopy(dict(item)) for item in input_items],
-        "responsibilityBoundaryIds": responsibility_boundary_ids,
-        "scopeProposals": [
-            deepcopy(dict(proposals_by_shard[shard_id]["submission"]))
-            for shard_id in required_shards
-        ],
-        "proposalRecordSha256s": [
-            sha256_bytes(canonical_json_bytes(proposals_by_shard[shard_id]))
-            for shard_id in required_shards
-        ],
-        "sourceRoleById": dict(source_role_by_id),
-        "sourceStatusById": dict(source_status_by_id),
-        "inputCounts": {
-            "inputItems": len(input_items),
-            "scopeProposals": len(required_shards),
-            "sources": len(source_role_by_id),
-        },
-        "deliveryPolicy": policies,
-        "requiredCheckIds": list(SCOPE_JOIN_REQUIRED_CHECK_IDS),
-        "allowedWriteCollections": sorted(STAGE_1_JOIN_COLLECTIONS),
-        "instructionBindings": instruction_bindings,
-    }
-    evidence = [
-        {
-            "evidenceId": str(item["inputItemId"]),
-            "locator": item["sourceRefs"][0]["locator"],
-            "content": item["text"],
-            "sha256": sha256_bytes(str(item["text"]).encode("utf-8")),
-        }
-        for item in input_items
-    ]
-    spec = {
-        "logicalShardId": "scope-join-001",
-        "stage": "EPIC_FEATURE",
-        "role": "AUTHOR",
-        "promptId": "stage1-scope-join-v1",
-        "promptPath": "prompts/stage1-scope-join.md",
-        "resultPayloadSchema": "contracts/action.schema.json",
-        "referencePaths": [
-            "prompts/fragments/roles/author.md",
-            "prompts/fragments/outputs/author-result.md",
-            "references/source-authority.md",
-            "references/epic-authoring.md",
-            "references/feature-authoring.md",
-            "references/technical-work-classification.md",
-            "references/delivery-lifecycle-policy.md",
-            "contracts/delivery-policy-v1.json",
-        ],
-        "evidenceCatalog": evidence,
-        "packet": packet,
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-        "maxOutputTokens": state["maxOutputTokens"],
-    }
-    estimate = _estimated_tokens(
-        {
-            "logicalShardId": spec["logicalShardId"],
-            "payload": spec["packet"],
-            "evidenceCatalog": spec["evidenceCatalog"],
-        }
-    )
-    if estimate > token_budget:
-        return _action_error(
-            "SCOPE_JOIN",
-            "CONTRACT_UNSUPPORTED",
-            "GLOBAL_SCOPE_CAPACITY_EXCEEDED",
-            "全局 Scope Join packet 超过安全上下文预算，禁止截断或局部合并。",
-            "/baseCandidate/inputItems",
-        )
-    return {
-        "outcome": "ACTION_REQUIRED",
-        "actionKind": "SCOPE_JOIN",
-        "inputItemIds": input_ids,
-        "specs": [spec],
-        "estimatedInitialPacketTokens": [estimate],
-        "diagnostics": [],
-    }
-
-
-def _validate_scope_join_record(
-    state: Mapping[str, object],
-    prepared: Mapping[str, object],
-    record: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(
-        validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY)
-    )
-    specs = _mappings(prepared.get("specs"))
-    spec = specs[0] if len(specs) == 1 else None
-    if spec is None or record.get("logicalShardId") != spec.get("logicalShardId"):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_JOIN_SHARD_UNKNOWN",
-                "Scope Join record 不属于当前冻结 action。",
-                "/logicalShardId",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    expected_bindings = {
-        "runId": state["runId"],
-        "packetSha256": _source_scan_packet_sha256(spec),
-        "inputRevisionSha256": sha256_bytes(
-            canonical_json_bytes(state["inputRevision"])
-        ),
-        "baseCandidateSha256": state["baseCandidateSha256"],
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-    }
-    for field, expected in expected_bindings.items():
-        if record.get(field) != expected:
-            diagnostics.append(
-                _diagnostic(
-                    "SCOPE_JOIN_RECORD_BINDING_MISMATCH",
-                    "Scope Join record 与当前 revision、candidate、packet 或模型配置不匹配。",
-                    f"/{field}",
-                )
-            )
-    if record.get("status") != "SUCCESS":
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_JOIN_RECORD_NOT_SUCCESSFUL",
-                "Scope Join 只接受已成功封存的 ActionRecord。",
-                "/status",
-            )
-        )
-    submission = record.get("submission")
-    if not isinstance(submission, Mapping) or submission.get("resultKind") != "PATCH":
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_JOIN_RESULT_KIND_INVALID",
-                "Scope Join 必须返回 PATCH。",
-                "/submission/resultKind",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    if record.get("submissionSha256") != sha256_bytes(
-        canonical_json_bytes(submission)
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_JOIN_SUBMISSION_HASH_MISMATCH",
-                "Scope Join submission hash 与内容不匹配。",
-                "/submissionSha256",
-            )
-        )
-    input_ids = list(prepared.get("inputItemIds", []))
-    if submission.get("reviewedEvidenceIds") != input_ids:
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_JOIN_EVIDENCE_MISMATCH",
-                "Scope Join 必须复核全部 InputItem evidence。",
-                "/submission/reviewedEvidenceIds",
-            )
-        )
-    self_check = submission.get("selfCheck")
-    completed = (
-        self_check.get("completedCheckIds")
-        if isinstance(self_check, Mapping)
-        else None
-    )
-    if completed != list(SCOPE_JOIN_REQUIRED_CHECK_IDS):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_JOIN_SELF_CHECK_INCOMPLETE",
-                "Scope Join 必须完成全部冻结检查项。",
-                "/submission/selfCheck/completedCheckIds",
-            )
-        )
-    replacement = submission.get("replacementSet")
-    if not isinstance(replacement, Mapping):
-        return _sort_diagnostics(diagnostics)
-    expected_hashes = replacement.get("expectedNodeHashes")
-    upserts = replacement.get("upserts")
-    deletes = replacement.get("deletes")
-    if not (
-        isinstance(expected_hashes, Mapping)
-        and isinstance(upserts, list)
-        and isinstance(deletes, list)
-    ):
-        return _sort_diagnostics(diagnostics)
-    for key in [*expected_hashes, *deletes]:
-        collection = str(key).split(":", 1)[0]
-        if collection not in STAGE_1_JOIN_COLLECTIONS:
-            diagnostics.append(
-                _diagnostic(
-                    "OWNER_WRITE_SCOPE_VIOLATION",
-                    "Scope Join 只能写 Stage 1 区域。",
-                    "/submission/replacementSet",
-                )
-            )
-    for position, wrapper in enumerate(upserts):
-        if not isinstance(wrapper, Mapping) or wrapper.get("collection") not in (
-            STAGE_1_JOIN_COLLECTIONS
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "OWNER_WRITE_SCOPE_VIOLATION",
-                    "Scope Join 不得写 Story、AC、Task 或其他 Owner 区域。",
-                    f"/submission/replacementSet/upserts/{position}",
-                )
-            )
-    input_revision = state["inputRevision"]
-    source_by_id = {
-        str(source["sourceId"]): source
-        for source in _mappings(input_revision.get("sources"))
-    }
-    block_by_id = {
-        str(block["blockId"]): block
-        for block in _mappings(input_revision.get("blocks"))
-    }
-    for position, wrapper in enumerate(upserts):
-        if not isinstance(wrapper, Mapping) or wrapper.get("collection") not in {
-            "designItems",
-            "integrations",
-            "nfrs",
-        }:
-            continue
-        node = wrapper.get("node")
-        for ref in _mappings(node.get("sourceRefs") if isinstance(node, Mapping) else None):
-            source = source_by_id.get(str(ref.get("sourceId")))
-            block = block_by_id.get(str(ref.get("blockId")))
-            exact_ref = (
-                block is not None
-                and ref
-                == {
-                    "sourceId": block.get("sourceId"),
-                    "blockId": block.get("blockId"),
-                    "sha256": block.get("contentSha256"),
-                    "locator": block.get("locator"),
-                }
-            )
-            if not (
-                exact_ref
-                and source is not None
-                and source.get("role") in APPROVED_DESIGN_ROLES
-                and source.get("status") == "APPROVED"
-            ):
-                diagnostics.append(
-                    _diagnostic(
-                        "DESIGN_SOURCE_AUTHORITY_VIOLATION",
-                        "DesignItem、Integration 和 NFR 只能由批准 HLD/ADR 的精确 SourceRef 证明。",
-                        f"/submission/replacementSet/upserts/{position}/node/sourceRefs",
-                    )
-                )
-    if diagnostics:
-        return _sort_diagnostics(diagnostics)
-    outcome = apply_replacement(
-        state["baseCandidate"],
-        replacement,
-        owner_stage="STAGE_1",
-    )
-    diagnostics.extend(outcome.diagnostics)
-    if outcome.diagnostics:
-        return _sort_diagnostics(diagnostics)
-    candidate = outcome.candidate
-    input_by_id = {
-        str(item["inputItemId"]): item
-        for item in _mappings(candidate.get("inputItems"))
-    }
-    closures = _mappings(candidate.get("scopeClosure"))
-    closure_by_id = {
-        str(item["inputItemId"]): item
-        for item in closures
-        if isinstance(item.get("inputItemId"), str)
-    }
-    if len(closures) != len(closure_by_id) or set(closure_by_id) != set(input_by_id):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_CLOSURE_NON_UNIQUE",
-                "每个 InputItem 必须且只能有一个全局 Scope closure。",
-                "/scopeClosure",
-            )
-        )
-    for input_id, item in input_by_id.items():
-        closure = closure_by_id.get(input_id)
-        if closure is None:
-            continue
-        if closure.get("sourceRefs") != item.get("sourceRefs"):
-            diagnostics.append(
-                _diagnostic(
-                    "SCOPE_CLOSURE_SOURCE_MISMATCH",
-                    "Scope closure 必须保留 InputItem 的精确 SourceRef。",
-                    f"/scopeClosure/{input_id}/sourceRefs",
-                )
-            )
-        qualifiers = [
-            value
-            for field in (
-                "conditions",
-                "thresholds",
-                "prohibitions",
-                "applicableScopes",
-            )
-            for value in item.get(field, [])
-            if isinstance(value, str)
-        ]
-        if closure.get("preservedQualifiers") != list(dict.fromkeys(qualifiers)):
-            diagnostics.append(
-                _diagnostic(
-                    "SCOPE_QUALIFIER_COVERAGE_MISMATCH",
-                    "Scope closure 必须按原顺序无损保留条件、阈值、禁止项和适用范围。",
-                    f"/scopeClosure/{input_id}/preservedQualifiers",
-                )
-            )
-        source_ids = {
-            str(ref.get("sourceId")) for ref in _mappings(item.get("sourceRefs"))
-        }
-        is_requirement_union = item.get("kind") == "REQUIREMENT" and any(
-            source_by_id.get(source_id, {}).get("role") == "PRD"
-            or (
-                source_by_id.get(source_id, {}).get("role") == "DEMO"
-                and source_by_id.get(source_id, {}).get("status") == "SELECTED"
-            )
-            for source_id in source_ids
-        )
-        if is_requirement_union and closure.get("disposition") in {
-            "OUT_OF_SCOPE",
-            "CONFLICT",
-        }:
-            diagnostics.append(
-                _diagnostic(
-                    "REQUIREMENT_UNION_DROPPED",
-                    "PRD 与选入 Demo 的需求并集不得被静默丢弃。",
-                    f"/scopeClosure/{input_id}/disposition",
-                )
-            )
-    policies = _mappings(candidate.get("policyInstances"))
-    by_policy: dict[str, list[Mapping[str, object]]] = {}
-    for item in policies:
-        by_policy.setdefault(str(item.get("policyId")), []).append(item)
-    for policy_id, inclusion in REQUIRED_POLICY_INCLUSIONS.items():
-        values = by_policy.get(policy_id, [])
-        if len(values) != 1 or values[0].get("inclusionPolicy") != inclusion:
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_POLICY_INSTANCE_MISSING",
-                    "实施型 SOW 必须精确实例化默认自动化与必需上线政策。",
-                    f"/policyInstances/{policy_id}",
-                )
-            )
-    migration_required = any(
-        item.get("kind") != "EXCLUSION"
-        and any(term in str(item.get("text", "")) for term in ("迁移", "持续同步"))
-        for item in input_by_id.values()
-    )
-    migration_values = by_policy.get("policy-data-migration", [])
-    if migration_required:
-        if (
-            len(migration_values) != 1
-            or migration_values[0].get("inclusionPolicy") != "SOURCE_GATED"
-            or not migration_values[0].get("sourceRefs")
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "DELIVERY_POLICY_INSTANCE_MISSING",
-                    "来源明确提出迁移时必须实例化 SOURCE_GATED migration 政策。",
-                    "/policyInstances/policy-data-migration",
-                )
-            )
-    elif migration_values:
-        diagnostics.append(
-            _diagnostic(
-                "DELIVERY_POLICY_SOURCE_GATE_VIOLATION",
-                "来源未提出迁移或持续同步时不得实例化 migration 政策。",
-                "/policyInstances/policy-data-migration",
-            )
-        )
-    return _sort_diagnostics(diagnostics)
-
-
-def accept_result(
-    state: Mapping[str, object],
-    record: Mapping[str, object],
-) -> CompilerProgress:
-    action_kind = str(state.get("actionKind", "SOURCE_SCAN"))
-    prepared = prepare_action(state, action_kind)
-    if prepared.get("outcome") != "ACTION_REQUIRED":
-        diagnostic = _diagnostic(
-            f"{action_kind}_PREPARE_FAILED",
-            f"{action_kind} action 未成功冻结。",
-            "/state",
-        )
-        return CompilerProgress("FAILED", (), (diagnostic,))
-    if action_kind == "SCOPE_PROPOSAL":
-        diagnostics = _validate_scope_proposal_record(state, prepared, record)
-    elif action_kind == "SCOPE_JOIN":
-        diagnostics = _validate_scope_join_record(state, prepared, record)
+    prior_leaves = [add("PRIOR_ANALYZE", chunk, date, []) for chunk in pack("PRIOR_ANALYZE", prior_items, date)]
+    prior_root = join("PRIOR_CONSOLIDATE", prior_leaves, date)
+    pairs = []
+    for chunk in pack("SOURCE_SCAN", source_items, []):
+        scan = add("SOURCE_SCAN", chunk, [], [])
+        audit = add("SOURCE_AUDIT", [], source_refs(chunk), [scan])
+        pairs.append([scan, audit])
+    dependencies = [work for pair in pairs for work in pair] + prior_root
+    if len(dependencies) <= width and fits("SCOPE_SYNTHESIS", [], global_context):
+        add("SCOPE_SYNTHESIS", [], global_context, dependencies)
     else:
-        diagnostics = _validate_source_scan_record(state, prepared, record)
-    if diagnostics:
-        return CompilerProgress("FAILED", (), diagnostics)
-    accepted = [
-        item
-        for item in state.get("acceptedRecords", [])
-        if isinstance(item, Mapping)
-    ]
-    completed = {
-        str(item.get("logicalShardId"))
-        for item in [*accepted, record]
-        if item.get("status") == "SUCCESS"
-    }
-    required = [
-        str(spec["logicalShardId"])
-        for spec in _mappings(prepared.get("specs"))
-    ]
-    pending = tuple(item for item in required if item not in completed)
-    return CompilerProgress(
-        "ACTION_REQUIRED" if pending else "CHECKPOINT_READY",
-        pending,
-        (),
-    )
+        capacity = (width - len(prior_root)) // 2
+        if width < 2 or capacity < 1 or not pairs:
+            raise StagePlanningBlocked("BUDGET_EXHAUSTED")
+        proposals = [add("SCOPE_PROPOSAL", [], global_context,
+                     [work for pair in pairs[offset:offset + capacity] for work in pair] + prior_root)
+                     for offset in range(0, len(pairs), capacity)]
+        join("SCOPE_JOIN", proposals, global_context)
+    return tuple(works)
 
 
-def _apply_scope_proposal_group(
-    state: Mapping[str, object],
-    records: Sequence[Mapping[str, object]],
-) -> CompilerResult:
-    base_candidate = state.get("baseCandidate")
-    if not isinstance(base_candidate, Mapping):
-        diagnostic = _diagnostic(
-            "SCOPE_PROPOSAL_STATE_INVALID",
-            "Scope Proposal 缺少基础 candidate。",
-            "/baseCandidate",
-        )
-        return CompilerResult({}, "", {}, (diagnostic,))
-    prepared = _prepare_scope_proposal(state)
-    specs = _mappings(prepared.get("specs"))
-    required = [str(spec["logicalShardId"]) for spec in specs]
-    by_shard: dict[str, Mapping[str, object]] = {}
-    duplicate = False
-    for record in records:
-        shard_id = str(record.get("logicalShardId"))
-        duplicate = duplicate or shard_id in by_shard
-        by_shard[shard_id] = record
-    if (
-        prepared.get("outcome") != "ACTION_REQUIRED"
-        or duplicate
-        or set(by_shard) != set(required)
-    ):
-        diagnostic = _diagnostic(
-            "SCOPE_PROPOSAL_GROUP_INCOMPLETE",
-            "Scope Proposal group 必须包含每个冻结 shard 的一条成功 record。",
-            "/records",
-        )
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            (diagnostic,),
-        )
-    diagnostics = tuple(
-        diagnostic
-        for shard_id in required
-        for diagnostic in _validate_scope_proposal_record(
-            state,
-            prepared,
-            by_shard[shard_id],
-        )
-    )
-    if diagnostics:
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            _sort_diagnostics(diagnostics),
-        )
-    checkpoint = {
-        "kind": "SCOPE_PROPOSAL",
-        "inputItemIds": list(prepared["inputItemIds"]),
-        "inventorySha256": prepared["inventorySha256"],
-        "proposalRecordSha256s": [
-            sha256_bytes(canonical_json_bytes(by_shard[shard_id]))
-            for shard_id in required
-        ],
-    }
-    return CompilerResult(
-        deepcopy(dict(base_candidate)),
-        sha256_bytes(canonical_json_bytes(base_candidate)),
-        checkpoint,
-        (),
-    )
+def _scan_audit_context(packet):
+    dependencies = [ref["canonicalContent"] for ref in packet["contextRefs"]
+                    if ref["canonicalContent"].get("kind") == "DEPENDENCY_RESULT"]
+    blocks = [ref["canonicalContent"] for ref in packet["contextRefs"]
+              if ref["canonicalContent"].get("kind") == "SOURCE_BLOCK"]
+    if len(dependencies) != 1 or not blocks or packet["workItems"]:
+        raise ValueError("Audit 必须依赖唯一 Scan 并重读对应原始块。")
+    result = dependencies[0]["normalizedResult"]
+    _verify_scan_bindings({"workItems": [{"payload": block} for block in blocks]}, result)
+    return {item["coverageRootId"]: item for item in result}, {block["coverageRootId"]: block for block in blocks}
 
 
-def _apply_scope_join_group(
-    state: Mapping[str, object],
-    records: Sequence[Mapping[str, object]],
-) -> CompilerResult:
-    base_candidate = state.get("baseCandidate")
-    if not isinstance(base_candidate, Mapping):
-        diagnostic = _diagnostic(
-            "SCOPE_JOIN_STATE_INVALID",
-            "Scope Join 缺少基础 candidate。",
-            "/baseCandidate",
-        )
-        return CompilerResult({}, "", {}, (diagnostic,))
-    prepared = _prepare_scope_join(state)
-    if prepared.get("outcome") != "ACTION_REQUIRED" or len(records) != 1:
-        diagnostic = _diagnostic(
-            "SCOPE_JOIN_GROUP_INCOMPLETE",
-            "Scope Join group 必须包含唯一冻结 action 的一条成功 record。",
-            "/records",
-        )
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            (diagnostic,),
-        )
-    record = records[0]
-    diagnostics = _validate_scope_join_record(state, prepared, record)
-    if diagnostics:
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            diagnostics,
-        )
-    submission = record["submission"]
-    outcome = apply_replacement(
-        base_candidate,
-        submission["replacementSet"],
-        owner_stage="STAGE_1",
-    )
-    if outcome.diagnostics:
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            outcome.diagnostics,
-        )
-    checkpoint = {
-        "kind": "SCOPE_JOIN",
-        "inputItemIds": list(prepared["inputItemIds"]),
-        "coverageSha256": sha256_bytes(
-            canonical_json_bytes(
-                {
-                    "inputItemIds": prepared["inputItemIds"],
-                    "requiredCheckIds": list(SCOPE_JOIN_REQUIRED_CHECK_IDS),
-                }
-            )
-        ),
-        "recordSha256s": [sha256_bytes(canonical_json_bytes(record))],
-    }
-    return CompilerResult(
-        outcome.candidate,
-        outcome.candidate_sha256,
-        checkpoint,
-        (),
-    )
+def _verify_audit_bindings(packet, result):
+    scans, blocks = _scan_audit_context(packet)
+    pairs = [(check["coverageRootId"], check["category"]) for check in result["checks"]]
+    if len(pairs) != len(set(pairs)) or set(pairs) != {(root, category) for root in scans for category in AUDIT_CATEGORIES}:
+        raise InvalidActionResult("每个 coverage root 必须独立审计六类语义。")
+    for check in result["checks"]:
+        root = check["coverageRootId"]
+        keys = {fact["localKey"] for fact in scans[root]["facts"]}
+        if not set(check["relatedFactKeys"]) <= keys or not set(check["evidenceIds"]) <= set(blocks[root]["evidenceIds"]):
+            raise InvalidActionResult("Audit 的 fact key 或证据不属于对应 Scan/root。")
 
 
-SCOPE_CHECKPOINT_CHECK_IDS = (
-    "SOURCE_SCAN_COMPLETE",
-    "R1_SOURCE_PASS",
-    "SCOPE_CLOSURE_COMPLETE",
-    "DESIGN_COVERAGE_SUFFICIENT",
-    "R1_SCOPE_PASS",
-    "POLICY_DEFINITION_BOUND",
-)
+def verify_source_audit(packet, result):
+    if validate_contract(result, "source-audit.schema.json", load_registry(SKILL_ROOT / "contracts")):
+        raise InvalidActionResult("SourceAuditIR schema 无效。")
+    _verify_audit_bindings(packet, result)
+    if any(check["decision"] == "MISSING" for check in result["checks"]):
+        raise ScopeInputRequired("Source Audit 发现漏读，不能关闭 Scope。")
 
 
-def _scope_source_manifest_sha256(input_revision: Mapping[str, object]) -> str:
-    return sha256_bytes(
-        canonical_json_bytes(
-            {
-                "sources": input_revision.get("sources", []),
-                "blocks": input_revision.get("blocks", []),
-            }
-        )
-    )
-
-
-def _scope_coverage_sha256(candidate: Mapping[str, object]) -> str:
-    return sha256_bytes(
-        canonical_json_bytes(
-            {
-                "inputItemIds": [
-                    item.get("inputItemId")
-                    for item in _mappings(candidate.get("inputItems"))
-                ],
-                "scopeClosure": candidate.get("scopeClosure", []),
-                "designItems": candidate.get("designItems", []),
-                "integrations": candidate.get("integrations", []),
-                "nfrs": candidate.get("nfrs", []),
-                "policyInstances": candidate.get("policyInstances", []),
-            }
-        )
-    )
-
-
-def _ordered_hashes(
-    values: Sequence[Mapping[str, object]],
-    *,
-    order_field: str,
-    payload_field: str | None = None,
-) -> list[str]:
-    ordered = sorted(values, key=lambda item: str(item.get(order_field, "")))
-    return [
-        sha256_bytes(
-            canonical_json_bytes(
-                item.get(payload_field) if payload_field is not None else item
-            )
-        )
-        for item in ordered
-    ]
-
-
-def _scope_checkpoint_proof(
-    state: Mapping[str, object],
-    candidate: Mapping[str, object],
-    input_revision: Mapping[str, object],
-) -> tuple[dict[str, object], tuple[Diagnostic, ...]]:
-    diagnostics: list[Diagnostic] = []
-    source_records = _mappings(state.get("actionRecords"))
-    valid_source_records = [
-        record
-        for record in source_records
-        if record.get("status") == "SUCCESS"
-        and isinstance(record.get("submission"), Mapping)
-        and record["submission"].get("resultKind") == "SOURCE_SCAN_PATCH"
-        and not validate_contract(
-            record,
-            "action.schema.json",
-            NEXT_SCHEMA_REGISTRY,
-        )
-    ]
-    if not valid_source_records:
-        diagnostics.append(
-            _diagnostic(
-                "SOURCE_SCAN_INCOMPLETE",
-                "Stage 1 checkpoint 缺少成功且合同有效的 Source Scan ActionRecord。",
-                "/actionRecords",
-            )
-        )
-    source_results = _mappings(state.get("r1SourceResults"))
-    normalized_source_results: list[Mapping[str, object]] = []
-    for wrapper in source_results:
-        result = wrapper.get("result")
-        if isinstance(result, Mapping):
-            normalized_source_results.append(result)
-    roots: list[str] = []
-    for block in _mappings(input_revision.get("blocks")):
-        if block.get("extractionDisposition") == "DROPPED":
+def _scope_dependency_catalog(packet):
+    facts, prior_keys, evidence, observations = set(), set(), set(), set()
+    for ref in packet["contextRefs"]:
+        content = ref["canonicalContent"]
+        if content.get("kind") == "PROTOTYPE_OBSERVATION_REF":
+            observations.update(content["observationKeys"])
+            evidence.update(content["evidenceIds"])
+        if content.get("kind") != "DEPENDENCY_RESULT":
             continue
-        root_id = block.get("primaryCoverageBlockId")
-        if isinstance(root_id, str) and root_id not in roots:
-            roots.append(root_id)
-    audit_union = [
-        root_id
-        for wrapper in sorted(
-            source_results,
-            key=lambda item: str(item.get("logicalShardId", "")),
-        )
-        for root_id in (
-            wrapper.get("result", {}).get("sourceAuditCoverageUnion", [])
-            if isinstance(wrapper.get("result"), Mapping)
-            else []
-        )
-        if isinstance(root_id, str)
-    ]
-    if (
-        not normalized_source_results
-        or any(
-            result.get("kind") != "SOURCE_AUDIT"
-            or result.get("decision") != "PASS"
-            or validate_contract(
-                result,
-                "review-repair.schema.json",
-                NEXT_SCHEMA_REGISTRY,
-            )
-            for result in normalized_source_results
-        )
-        or audit_union != roots
-        or len(audit_union) != len(set(audit_union))
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "R1_SOURCE_AUDIT_INCOMPLETE",
-                "R1 Source Audit 必须 PASS 且 coverage union 精确覆盖全部来源 roots。",
-                "/r1SourceResults",
-            )
-        )
-    r1_scope_result = state.get("r1ScopeResult")
-    candidate_projection_sha256 = owner_projection_sha256(candidate, "STAGE_1")
-    ordered_audit_hashes = [
-        {
-            "logicalShardId": str(wrapper.get("logicalShardId")),
-            "reviewResultSha256": sha256_bytes(
-                canonical_json_bytes(wrapper.get("result"))
-            ),
-        }
-        for wrapper in sorted(
-            source_results,
-            key=lambda item: str(item.get("logicalShardId", "")),
-        )
-        if isinstance(wrapper.get("result"), Mapping)
-    ]
-    expected_r1_coverage_sha256 = sha256_bytes(
-        canonical_json_bytes(
-            {
-                "coverageRootIds": roots,
-                "orderedAuditResultHashes": ordered_audit_hashes,
-                "candidateProjectionSha256": candidate_projection_sha256,
+        result = content["normalizedResult"]
+        if isinstance(result, list):
+            for decision in result:
+                for fact in decision["facts"]:
+                    handle = decision["coverageRootId"] + ":" + fact["localKey"]
+                    if handle in facts:
+                        raise ValueError("冻结 Scan fact handle 不唯一。")
+                    facts.add(handle)
+                    evidence.update(fact["evidenceIds"])
+        elif "entities" in result:
+            prior_keys.update(entity["localKey"] for entity in result["entities"])
+            evidence.update(eid for entity in result["entities"] for eid in entity["evidenceIds"])
+        elif "decisions" in result:
+            for decision in result["decisions"]:
+                if facts & set(decision["factIds"]):
+                    raise ValueError("冻结 Scope dependencies 重复处置事实。")
+                facts.update(decision["factIds"])
+                prior_keys.update(decision["priorEntityIds"])
+                evidence.update(decision["boundaryEvidence"]["evidenceIds"])
+                evidence.update(eid for relation in decision["relations"] for eid in relation["evidenceIds"])
+                observations.update(decision["boundaryEvidence"]["observationKeys"])
+    return facts, prior_keys, evidence, observations
+
+
+def _verify_scope_bindings(packet, result):
+    from models import AttemptDiagnostic
+    facts, priors, evidence, observations = _scope_dependency_catalog(packet)
+    decisions = result["decisions"]
+    keys = {decision["localKey"] for decision in decisions}
+    assigned = [fact_id for decision in decisions for fact_id in decision["factIds"]]
+    if len(keys) != len(decisions) or len(assigned) != len(set(assigned)) or set(assigned) != facts:
+        raise InvalidActionResult("每个事实必须恰好有一个 Scope disposition，localKey 不得重复。")
+    adopted = []
+    by_key = {decision["localKey"]: decision for decision in decisions}
+    current_evidence, prior_evidence = set(), {}
+    for ref in packet["contextRefs"]:
+        content = ref["canonicalContent"]
+        if content.get("kind") == "SCOPE_CONTEXT":
+            current_evidence.update(block for source in content["sourceDirectory"] if source["role"] not in {"PRIOR_SOW", "DEMO"} for block in source["blockIds"])
+        elif content.get("kind") == "PROTOTYPE_OBSERVATION_REF":
+            current_evidence.update(content["evidenceIds"])
+        elif content.get("kind") == "DEPENDENCY_RESULT":
+            dependency = content["normalizedResult"]
+            if isinstance(dependency, list):
+                current_evidence.update(eid for item in dependency for fact in item["facts"] for eid in fact["evidenceIds"])
+            elif "entities" in dependency:
+                for item in dependency["entities"]:
+                    prior_evidence[item["localKey"]] = set(item["evidenceIds"])
+    for ref in packet["contextRefs"]:
+        content = ref["canonicalContent"]
+        if content.get("kind") == "DEPENDENCY_RESULT" and isinstance(content["normalizedResult"], dict):
+            for item in content["normalizedResult"].get("decisions", []):
+                for key in item["priorEntityIds"]:
+                    prior_evidence.setdefault(key, set()).update(set(item["boundaryEvidence"]["evidenceIds"]) - current_evidence)
+    used_prior, used_targets = set(), set()
+    for decision_index, decision in enumerate(decisions):
+        boundary = decision["boundaryEvidence"]
+        kind = decision["decisionKind"]
+        if (not set(decision["priorEntityIds"]) <= priors or not set(boundary["evidenceIds"]) <= evidence
+                or not {facet["factId"] for facet in boundary["facetFacts"]} <= facts
+                or not set(boundary["observationKeys"]) <= observations):
+            raise InvalidActionResult("Scope boundary 的事实、Prior、原型或来源引用不存在。", diagnostic=AttemptDiagnostic(
+                "SCOPE_BOUNDARY_REFERENCE_UNBOUND", f"/decisions/{decision_index}/boundaryEvidence", (decision["localKey"],)))
+        adopted.extend(boundary["observationKeys"])
+        for relation_index, relation in enumerate(decision["relations"]):
+            if not set(relation["targetLocalKeys"]) <= keys or not set(relation["evidenceIds"]) <= evidence:
+                raise InvalidActionResult("Scope relation 的 localKey 或证据不存在。", diagnostic=AttemptDiagnostic(
+                    "SCOPE_RELATION_REFERENCE_UNBOUND", f"/decisions/{decision_index}/relations/{relation_index}", (decision["localKey"],)))
+            relation_kind = relation["kind"]
+            target_kinds = {by_key[key]["decisionKind"] for key in relation["targetLocalKeys"]}
+            allowed = {
+                "PARENT": ({"FEATURE"}, {"EPIC"}),
+                "APPLIES_TO": ({"DESIGN_ITEM", "INTEGRATION", "NFR", "POLICY_INSTANCE"}, {"FEATURE", "EPIC"} if kind == "POLICY_INSTANCE" else {"FEATURE"}),
+                "DESIGN": ({"EPIC", "FEATURE"}, {"DESIGN_ITEM"}),
+                "POLICY": ({"EPIC", "FEATURE"}, {"POLICY_INSTANCE"}),
             }
-        )
-    )
-    if not (
-        isinstance(r1_scope_result, Mapping)
-        and not validate_contract(
-            r1_scope_result,
-            "review-repair.schema.json",
-            NEXT_SCHEMA_REGISTRY,
-        )
-        and r1_scope_result.get("kind") == "SOURCE_SCOPE"
-        and r1_scope_result.get("decision") == "PASS"
-        and r1_scope_result.get("candidateProjectionSha256")
-        == candidate_projection_sha256
-        and r1_scope_result.get("coverageSha256")
-        == expected_r1_coverage_sha256
-        and r1_scope_result.get("sourceAuditCoverageUnion") == roots
-        and r1_scope_result.get("completedCheckIds")
-        == [
-            "SOURCE_TO_INPUT",
-            "SCOPE_CLOSURE",
-            "TECHNICAL_CLASSIFICATION",
-            "EPIC_FEATURE_BOUNDARY",
-            "DESIGN_SUFFICIENCY",
-            "SCOPE_EXPANSION",
-            "DELIVERY_POLICY",
-        ]
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "R1_SCOPE_REVIEW_STALE",
-                "R1 Scope Join 必须 PASS 并绑定当前 Stage 1 投影与全部 audit leaf。",
-                "/r1ScopeResult",
-            )
-        )
-    proof = {
-        "sourceManifestSha256": _scope_source_manifest_sha256(input_revision),
-        "ownerProjectionSha256": candidate_projection_sha256,
-        "coverageSha256": _scope_coverage_sha256(candidate),
-        "policyDefinitionSha256": input_revision.get("deliveryPolicySha256"),
-        "actionRecordSha256s": _ordered_hashes(
-            source_records,
-            order_field="logicalShardId",
-        ),
-        "reviewResultSha256s": [
-            *_ordered_hashes(
-                source_results,
-                order_field="logicalShardId",
-                payload_field="result",
-            ),
-            *(
-                [sha256_bytes(canonical_json_bytes(r1_scope_result))]
-                if isinstance(r1_scope_result, Mapping)
-                else []
-            ),
-        ],
-    }
-    return proof, _sort_diagnostics(diagnostics)
+            if relation_kind in allowed and (kind not in allowed[relation_kind][0] or not target_kinds <= allowed[relation_kind][1]):
+                raise InvalidActionResult("Scope 关系的来源或目标类型不合法。", diagnostic=AttemptDiagnostic(
+                    "SCOPE_RELATION_ENDPOINT_INVALID", f"/decisions/{decision_index}/relations/{relation_index}", (decision["localKey"],)))
+            if relation_kind in {"DESIGN", "POLICY"}:
+                for target in relation["targetLocalKeys"]:
+                    applications = {key for item in by_key[target]["relations"] if item["kind"] == "APPLIES_TO" for key in item["targetLocalKeys"]}
+                    matches_epic_design = relation_kind == "DESIGN" and kind == "EPIC" and any(
+                        decision["localKey"] in item["targetLocalKeys"] for key in applications
+                        for item in by_key[key]["relations"] if item["kind"] == "PARENT")
+                    if decision["localKey"] not in applications and not matches_epic_design:
+                        raise InvalidActionResult("显式 DESIGN/POLICY 与 APPLIES_TO 端点相互矛盾。")
+            if relation_kind in {"REUSE_DEPENDENCY", "ADJUST", "SPLIT", "MERGE"}:
+                from change_graph import change_cardinality_supported
+                if kind in {"RETIRE", "EXCLUDE"} or not decision["priorEntityIds"] or target_kinds & {"RETIRE", "EXCLUDE"}:
+                    raise InvalidActionResult("变更关系必须连接真实 Prior 和目标实体。")
+                if not change_cardinality_supported(relation_kind, len(decision["priorEntityIds"]), len(relation["targetLocalKeys"])):
+                    raise InvalidActionResult("变更关系的 Prior/target 基数不符合 V1 合同。")
+                if used_prior.intersection(decision["priorEntityIds"]) or used_targets.intersection(relation["targetLocalKeys"]):
+                    raise InvalidActionResult("同一 Prior 或目标不能进入多个显式变更组。")
+                used_prior.update(decision["priorEntityIds"])
+                used_targets.update(relation["targetLocalKeys"])
+            if relation_kind == "UNCHANGED_IDENTITY" and (relation["targetLocalKeys"] != [decision["localKey"]] or len(decision["priorEntityIds"]) != 1
+                    or not any(item["kind"] in {"REUSE_DEPENDENCY", "ADJUST"} and item["targetLocalKeys"] == [decision["localKey"]] for item in decision["relations"])):
+                raise InvalidActionResult("未变身份声明必须绑定本对象的唯一 1:1 匹配。")
+        parents = [target for relation in decision["relations"] if relation["kind"] == "PARENT" for target in relation["targetLocalKeys"]]
+        if (kind == "FEATURE" and len(parents) != 1) or (kind != "FEATURE" and parents):
+            raise InvalidActionResult("Feature 必须且只能有一个 Epic parent。")
+        if decision["priorEntityIds"] and kind != "RETIRE" and not any(item["kind"] in {"REUSE_DEPENDENCY", "ADJUST", "SPLIT", "MERGE"} for item in decision["relations"]):
+            raise InvalidActionResult("已选择的 Prior 必须有显式变更处置。")
+        if kind == "RETIRE":
+            if (not decision["priorEntityIds"] or used_prior.intersection(decision["priorEntityIds"])
+                    or not current_evidence.intersection(boundary["evidenceIds"])
+                    or any(not prior_evidence.get(key, set()).intersection(boundary["evidenceIds"]) for key in decision["priorEntityIds"])):
+                raise InvalidActionResult("退役必须有互斥 Prior、对应历史证据与本轮移除证据。")
+            used_prior.update(decision["priorEntityIds"])
+        if kind == "POLICY_INSTANCE" and not any(item["kind"] == "APPLIES_TO" for item in decision["relations"]):
+            raise InvalidActionResult("政策实例必须选择实际 Epic/Feature 目标。")
+        roles = [facet["role"] for facet in boundary["facetFacts"]]
+        required_roles = {"DIRECTION", "TRIGGER", "PURPOSE", "DATA_CATEGORY"} if kind == "INTEGRATION" else {"TARGET"} if kind == "NFR" else set()
+        if set(roles) != required_roles or any(roles.count(role) != 1 for role in required_roles - {"DATA_CATEGORY"}):
+            raise InvalidActionResult("目标边界字段的来源事实不齐备或角色不合法。")
+        if (kind == "INTEGRATION") != bool(boundary.get("responsibilityBoundaryIds")):
+            raise InvalidActionResult("仅 Integration 必须选择责任边界。")
+        if kind == "INTEGRATION":
+            contexts = [ref["canonicalContent"] for ref in packet["contextRefs"] if ref["canonicalContent"].get("kind") == "SCOPE_CONTEXT"]
+            allowed_boundaries = {item["responsibilityBoundaryId"] for context in contexts for item in context["responsibilityBoundaries"]}
+            if not set(boundary["responsibilityBoundaryIds"]) <= allowed_boundaries:
+                raise InvalidActionResult("Integration 引用了未声明责任边界。")
+        if kind == "DESIGN_ITEM":
+            approved_evidence = {block for ref in packet["contextRefs"] if ref["canonicalContent"].get("kind") == "SCOPE_CONTEXT"
+                for source in ref["canonicalContent"]["sourceDirectory"] if source["role"] in APPROVED_DESIGN_ROLES and source["status"] == "APPROVED"
+                for block in source["blockIds"]}
+            if not set(boundary["evidenceIds"]) <= approved_evidence:
+                raise InvalidActionResult("设计项证据必须属于本轮批准的 HLD/ADR。")
+    if len(adopted) != len(set(adopted)) or set(adopted) != observations:
+        raise InvalidActionResult("每个原型 observation 必须有一个显式 Scope disposition。")
 
 
-def _design_gap_question(
-    candidate: Mapping[str, object],
-    closure: Mapping[str, object],
-) -> dict[str, object]:
-    input_id = str(closure.get("inputItemId"))
-    checked = [
-        str(ref.get("blockId"))
-        for ref in _mappings(closure.get("sourceRefs"))
-        if isinstance(ref.get("blockId"), str)
-    ]
-    identity = sha256_bytes(
-        canonical_json_bytes(
-            {
-                "candidateSha256": sha256_bytes(canonical_json_bytes(candidate)),
-                "inputItemId": input_id,
-                "checkedEvidenceIds": checked,
-            }
-        )
-    )[:16]
-    return {
-        "questionId": f"design-gap-{identity}",
-        "subjectIds": [input_id],
-        "question": "请在批准的 HLD/ADR 中补充该范围的目标系统、组件、集成、数据、部署、NFR 与责任边界。",
-        "whyAsked": "需求范围已成立，但当前批准设计不足以支持 Story、验收和 Task 拆分。",
-        "answerDetermines": [
-            "Story 技术边界与验收依据",
-            "Task 类型、责任和复杂度",
-        ],
-        "unansweredConsequence": "Stage 1 保持阻断，不生成 Story/AC 或正式 SOW。",
-        "requiredSourceRole": "APPROVED_DESIGN",
-        "checkedEvidenceIds": checked,
-    }
+def verify_scope_decision(packet, result):
+    if validate_contract(result, "scope-decision.schema.json", load_registry(SKILL_ROOT / "contracts")):
+        raise InvalidActionResult("ScopeDecisionIR schema 无效。")
+    _verify_scope_bindings(packet, result)
+    if any("uncertainty" in decision for decision in result["decisions"]):
+        raise ScopeInputRequired("Scope 仍有必须澄清的业务边界。")
 
 
-def _mechanical_design_coverage_diagnostics(
-    candidate: Mapping[str, object],
-    input_revision: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    source_by_id = {
-        str(source["sourceId"]): source
-        for source in _mappings(input_revision.get("sources"))
-    }
-    block_by_id = {
-        str(block["blockId"]): block
-        for block in _mappings(input_revision.get("blocks"))
-    }
-    design_nodes: dict[str, Mapping[str, object]] = {}
-    for collection, id_field in (
-        ("designItems", "designItemId"),
-        ("integrations", "integrationId"),
-        ("nfrs", "nfrId"),
-    ):
-        for node in _mappings(candidate.get(collection)):
-            node_id = node.get(id_field)
-            if isinstance(node_id, str):
-                design_nodes[node_id] = node
-
-    def approved(ref: Mapping[str, object]) -> bool:
-        source = source_by_id.get(str(ref.get("sourceId")))
-        block = block_by_id.get(str(ref.get("blockId")))
-        return bool(
-            source is not None
-            and source.get("role") in APPROVED_DESIGN_ROLES
-            and source.get("status") == "APPROVED"
-            and block is not None
-            and ref
-            == {
-                "sourceId": block.get("sourceId"),
-                "blockId": block.get("blockId"),
-                "sha256": block.get("contentSha256"),
-                "locator": block.get("locator"),
-            }
-        )
-
-    diagnostics: list[Diagnostic] = []
-    for closure in _mappings(candidate.get("scopeClosure")):
-        if closure.get("mechanicalCoverage") != "COMPLETE":
+def validate_bound_scope_context(action_kind, packet):
+    from contracts import load_schema_registry
+    if action_kind not in {"SOURCE_SCAN", "SOURCE_AUDIT", "SCOPE_SYNTHESIS", "SCOPE_PROPOSAL", "SCOPE_JOIN"}:
+        raise ValueError("未知 Scope action kind。")
+    if set(packet) != {"workItems", "contextRefs"}:
+        raise ValueError("Scope 只接受唯一 planner packet 表示。")
+    registry = load_schema_registry(SKILL_ROOT)
+    for ref in packet["contextRefs"]:
+        content = ref["canonicalContent"]
+        if content.get("kind") != "DEPENDENCY_RESULT":
+            if ref["contentSha256"] != sha256_bytes(canonical_json_bytes(content)):
+                raise ValueError("冻结 Scope context hash 漂移。")
             continue
-        refs = list(_mappings(closure.get("sourceRefs")))
-        for target_id in closure.get("targetNodeIds", []):
-            target = design_nodes.get(str(target_id))
-            if target is not None:
-                refs.extend(_mappings(target.get("sourceRefs")))
-        if not any(approved(ref) for ref in refs):
-            diagnostics.append(
-                _diagnostic(
-                    "DESIGN_MECHANICAL_COVERAGE_INVALID",
-                    "mechanicalCoverage=COMPLETE 必须由批准设计的可达精确 SourceRef 证明。",
-                    f"/scopeClosure/{closure.get('inputItemId')}/mechanicalCoverage",
-                )
-            )
-    return _sort_diagnostics(diagnostics)
+        if (set(ref) != {"refId", "canonicalContent"} or set(content) != {"kind", "logicalWorkId", "attemptRecordSha256", "normalizedResult"}
+                or ref["refId"] != "dependency-result-" + content["logicalWorkId"]):
+            raise ValueError("Scope dependency wrapper 不符合唯一表示。")
+        result = content["normalizedResult"]
+        schema = ("fact-decision.schema.json" if isinstance(result, list) else "source-audit.schema.json" if "checks" in result
+                  else "prior-state-decision.schema.json" if "entities" in result else "scope-decision.schema.json")
+        if validate_contract(result, schema, registry):
+            raise ValueError("冻结 Scope dependency schema 无效。")
+    if action_kind == "SOURCE_AUDIT":
+        _scan_audit_context(packet)
+    elif action_kind.startswith("SCOPE_"):
+        _scope_dependency_catalog(packet)
 
 
-def build_scope_closure_checkpoint(
-    state: Mapping[str, object],
-) -> Mapping[str, object]:
-    candidate = state.get("candidate")
-    input_revision = state.get("inputRevision")
-    run_id = state.get("runId")
-    if not (
-        isinstance(candidate, Mapping)
-        and isinstance(input_revision, Mapping)
-        and isinstance(run_id, str)
-    ):
-        return {
-            "outcome": "CONTRACT_UNSUPPORTED",
-            "checkpoint": None,
-            "questions": [],
-            "diagnostics": (
-                _diagnostic(
-                    "SCOPE_CHECKPOINT_STATE_INVALID",
-                    "Stage 1 checkpoint 输入状态无效。",
-                    "/state",
-                ),
-            ),
-        }
-    if validate_contract(
-        input_revision,
-        "input-revision.schema.json",
-        NEXT_SCHEMA_REGISTRY,
-    ):
-        return {
-            "outcome": "CONTRACT_UNSUPPORTED",
-            "checkpoint": None,
-            "questions": [],
-            "diagnostics": (
-                _diagnostic(
-                    "SCOPE_CHECKPOINT_STATE_INVALID",
-                    "Stage 1 checkpoint Input Revision 合同无效。",
-                    "/inputRevision",
-                ),
-            ),
-        }
-    closures = _mappings(candidate.get("scopeClosure"))
-    blocking = [
-        item
-        for item in closures
-        if item.get("disposition") == "CONFLICT"
-        or item.get("deliveryDisposition") == "BLOCKED"
-    ]
-    if blocking:
-        return {
-            "outcome": "INPUT_REQUIRED",
-            "checkpoint": None,
-            "questions": [],
-            "diagnostics": tuple(
-                _diagnostic(
-                    "SCOPE_CLOSURE_BLOCKED",
-                    "Scope conflict 或 BLOCKED delivery disposition 不得进入 Stage 2。",
-                    f"/scopeClosure/{item.get('inputItemId')}",
-                )
-                for item in blocking
-            ),
-        }
-    design_gaps = [
-        item
-        for item in closures
-        if item.get("designCoverageStatus") in {"MISSING", "CONFLICT"}
-        or item.get("mechanicalCoverage") == "MISSING"
-        or item.get("semanticSufficiency") in {"INSUFFICIENT", "NOT_REVIEWED"}
-    ]
-    if design_gaps:
-        return {
-            "outcome": "INPUT_REQUIRED",
-            "checkpoint": None,
-            "questions": [
-                _design_gap_question(candidate, item) for item in design_gaps
-            ],
-            "diagnostics": tuple(
-                _diagnostic(
-                    "DESIGN_COVERAGE_INSUFFICIENT",
-                    "设计机械覆盖或独立语义充分性未通过。",
-                    f"/scopeClosure/{item.get('inputItemId')}/designCoverageStatus",
-                )
-                for item in design_gaps
-            ),
-        }
-    model_diagnostics = validate_sow_model(
-        candidate,
-        "STAGE_1",
-        registry=NEXT_SCHEMA_REGISTRY,
-    )
-    if model_diagnostics:
-        return {
-            "outcome": "OWNER_FIX_REQUIRED",
-            "checkpoint": None,
-            "questions": [],
-            "diagnostics": model_diagnostics,
-        }
-    mechanical_diagnostics = _mechanical_design_coverage_diagnostics(
-        candidate,
-        input_revision,
-    )
-    if mechanical_diagnostics:
-        return {
-            "outcome": "OWNER_FIX_REQUIRED",
-            "checkpoint": None,
-            "questions": [],
-            "diagnostics": mechanical_diagnostics,
-        }
-    proof, proof_diagnostics = _scope_checkpoint_proof(
-        state,
-        candidate,
-        input_revision,
-    )
-    if proof_diagnostics:
-        return {
-            "outcome": "OWNER_FIX_REQUIRED",
-            "checkpoint": None,
-            "questions": [],
-            "diagnostics": proof_diagnostics,
-        }
-    checkpoint = {
-        "contract": "ai-sow-stage-checkpoint-v1",
-        "kind": "SCOPE_CLOSURE",
-        "runId": run_id,
-        "stage": "EPIC_FEATURE",
-        "candidateSha256": sha256_bytes(canonical_json_bytes(candidate)),
-        **proof,
-        "upstreamCheckpointSha256s": list(
-            state.get("upstreamCheckpointSha256s", [])
-        ),
-        "validatorContractSha256": sha256_bytes(
-            (SKILL_ROOT / "contracts/sow-model.schema.json").read_bytes()
-        ),
-        "completedCheckIds": list(SCOPE_CHECKPOINT_CHECK_IDS),
-        "decision": "PASS",
-    }
-    diagnostics = validate_contract(
-        checkpoint,
-        "stage-checkpoint.schema.json",
-        NEXT_SCHEMA_REGISTRY,
-    )
-    if diagnostics:
-        return {
-            "outcome": "CONTRACT_UNSUPPORTED",
-            "checkpoint": None,
-            "questions": [],
-            "diagnostics": diagnostics,
-        }
-    return {
-        "outcome": "READY_FOR_STORY_AC",
-        "checkpoint": checkpoint,
-        "checkpointSha256": sha256_bytes(canonical_json_bytes(checkpoint)),
-        "scopeProjectionSha256": proof["ownerProjectionSha256"],
-        "questions": [],
-        "diagnostics": (),
-    }
+def validate_bound_scope_result(action_kind, packet, normalized_result):
+    """Pure pre-seal binding only; context/schema validation precedes this callback."""
+    result = json.loads(normalized_result)
+    if action_kind == "SOURCE_SCAN":
+        _verify_scan_bindings(packet, result)
+    elif action_kind == "SOURCE_AUDIT":
+        _verify_audit_bindings(packet, result)
+    elif action_kind in {"SCOPE_SYNTHESIS", "SCOPE_PROPOSAL", "SCOPE_JOIN"}:
+        _verify_scope_bindings(packet, result)
+    else:
+        raise ValueError("未知 Scope action kind。")
 
 
-def validate_scope_closure_checkpoint(
-    checkpoint: Mapping[str, object],
-    state: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(
-        validate_contract(
-            checkpoint,
-            "stage-checkpoint.schema.json",
-            NEXT_SCHEMA_REGISTRY,
-        )
-    )
-    candidate = state.get("candidate")
-    input_revision = state.get("inputRevision")
-    if not isinstance(candidate, Mapping) or not isinstance(input_revision, Mapping):
-        diagnostics.append(
-            _diagnostic(
-                "SCOPE_CHECKPOINT_STATE_INVALID",
-                "无法验证 Stage 1 checkpoint 的当前状态。",
-                "/state",
-            )
-        )
-        return _sort_diagnostics(diagnostics)
-    proof, proof_diagnostics = _scope_checkpoint_proof(
-        state,
-        candidate,
-        input_revision,
-    )
-    diagnostics.extend(proof_diagnostics)
-    expected = {
-        "runId": state.get("runId"),
-        "sourceManifestSha256": proof["sourceManifestSha256"],
-        "ownerProjectionSha256": proof["ownerProjectionSha256"],
-        "coverageSha256": proof["coverageSha256"],
-        "policyDefinitionSha256": proof["policyDefinitionSha256"],
-        "actionRecordSha256s": proof["actionRecordSha256s"],
-        "reviewResultSha256s": proof["reviewResultSha256s"],
-        "upstreamCheckpointSha256s": list(
-            state.get("upstreamCheckpointSha256s", [])
-        ),
-        "validatorContractSha256": sha256_bytes(
-            (SKILL_ROOT / "contracts/sow-model.schema.json").read_bytes()
-        ),
-        "completedCheckIds": list(SCOPE_CHECKPOINT_CHECK_IDS),
-    }
-    for field, value in expected.items():
-        if checkpoint.get(field) != value:
-            diagnostics.append(
-                _diagnostic(
-                    "SCOPE_CHECKPOINT_BINDING_STALE",
-                    "ScopeClosureCheckpoint 不再绑定当前 Stage 1 投影或证明闭包。",
-                    f"/{field}",
-                )
-            )
-    return _sort_diagnostics(diagnostics)
+# Deterministic Owner materialization.
+from dataclasses import dataclass
+from types import MappingProxyType
 
 
-def apply_ready_group(
-    state: Mapping[str, object],
-    records: Sequence[Mapping[str, object]],
-) -> CompilerResult:
-    action_kind = str(state.get("actionKind", "SOURCE_SCAN"))
-    if action_kind == "SCOPE_PROPOSAL":
-        return _apply_scope_proposal_group(state, records)
-    if action_kind == "SCOPE_JOIN":
-        return _apply_scope_join_group(state, records)
-    base_candidate = state.get("baseCandidate")
-    if not isinstance(base_candidate, Mapping):
-        diagnostic = _diagnostic(
-            "SOURCE_SCAN_STATE_INVALID",
-            "Source Scan 缺少基础 candidate。",
-            "/baseCandidate",
-        )
-        return CompilerResult({}, "", {}, (diagnostic,))
-    prepared = prepare_action(state, "SOURCE_SCAN")
-    specs = _mappings(prepared.get("specs"))
-    required = [str(spec["logicalShardId"]) for spec in specs]
-    by_shard: dict[str, Mapping[str, object]] = {}
-    duplicate = False
-    for record in records:
-        shard_id = str(record.get("logicalShardId"))
-        if shard_id in by_shard:
-            duplicate = True
-        by_shard[shard_id] = record
-    if (
-        prepared.get("outcome") != "ACTION_REQUIRED"
-        or duplicate
-        or set(by_shard) != set(required)
-    ):
-        diagnostic = _diagnostic(
-            "SOURCE_SCAN_GROUP_INCOMPLETE",
-            "Source Scan group 必须包含每个冻结 logical shard 的一条成功 record。",
-            "/records",
-        )
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            (diagnostic,),
-        )
-    diagnostics = tuple(
-        diagnostic
-        for shard_id in required
-        for diagnostic in _validate_source_scan_record(
-            state,
-            prepared,
-            by_shard[shard_id],
-        )
-    )
-    if diagnostics:
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            _sort_diagnostics(diagnostics),
-        )
-    upserts: list[object] = []
-    deletes: list[object] = []
-    expected_hashes: dict[str, object] = {}
-    for shard_id in required:
-        submission = by_shard[shard_id]["submission"]
-        replacement = submission["replacementSet"]
-        upserts.extend(deepcopy(replacement["upserts"]))
-        deletes.extend(deepcopy(replacement["deletes"]))
-        for key, value in replacement["expectedNodeHashes"].items():
-            if key in expected_hashes and expected_hashes[key] != value:
-                diagnostic = _diagnostic(
-                    "SOURCE_SCAN_EXPECTED_HASH_CONFLICT",
-                    "Source Scan sibling 对同一既有 InputItem 的 expected hash 不一致。",
-                    f"/expectedNodeHashes/{key}",
-                )
-                return CompilerResult(
-                    deepcopy(dict(base_candidate)),
-                    sha256_bytes(canonical_json_bytes(base_candidate)),
-                    {},
-                    (diagnostic,),
-                )
-            expected_hashes[str(key)] = value
-    outcome = apply_replacement(
-        base_candidate,
-        {
-            "expectedNodeHashes": expected_hashes,
-            "upserts": upserts,
-            "deletes": deletes,
-        },
-        owner_stage="STAGE_1_SOURCE_SCAN",
-    )
-    if outcome.diagnostics:
-        return CompilerResult(
-            deepcopy(dict(base_candidate)),
-            sha256_bytes(canonical_json_bytes(base_candidate)),
-            {},
-            outcome.diagnostics,
-        )
-    coverage_root_ids = list(prepared["coverageRootIds"])
-    checkpoint = {
-        "kind": "SOURCE_SCAN",
-        "coverageRootIds": coverage_root_ids,
-        "coverageSha256": sha256_bytes(
-            canonical_json_bytes(
-                {
-                    "coverageRootIds": coverage_root_ids,
-                    "requiredCheckIds": list(SOURCE_SCAN_REQUIRED_CHECK_IDS),
-                }
-            )
-        ),
-        "recordSha256s": [
-            sha256_bytes(canonical_json_bytes(by_shard[shard_id]))
-            for shard_id in required
-        ],
-    }
-    return CompilerResult(
-        outcome.candidate,
-        outcome.candidate_sha256,
-        checkpoint,
-        (),
-    )
+@dataclass(frozen=True)
+class ScopeMaterialization:
+    candidate_bytes: bytes
+    change_graph_bytes: bytes
+    prior_state_bytes: bytes | None
+    identity_by_local_key: Mapping[str, str]
+    review_obligations: tuple[Mapping[str, object], ...] = ()
 
 
-def prepare_repair_action(
-    state: Mapping[str, object],
-    repair_plan: Mapping[str, object],
-    findings: Sequence[Mapping[str, object]],
-) -> Mapping[str, object]:
-    candidate = state.get("baseCandidate")
-    waves = _mappings(repair_plan.get("waves"))
-    if (
-        not isinstance(candidate, Mapping)
-        or repair_plan.get("earliestOwner") != "STAGE_1"
-        or len(waves) != 1
-        or waves[0].get("resumePhase") != "EPIC_FEATURE"
-    ):
-        return _action_error(
-            "REPAIR",
-            "CONTRACT_UNSUPPORTED",
-            "STAGE_1_REPAIR_PLAN_INVALID",
-            "Stage 1 repair 必须绑定唯一、可执行的 Owner wave。",
-            "/repairPlan",
-        )
-    wave = waves[0]
-    finding_ids = list(wave["findingIds"])
-    by_id = {
-        str(item.get("findingId")): item
-        for item in findings
-        if item.get("owner") == "STAGE_1"
-    }
-    if set(finding_ids) != set(by_id):
-        return _action_error(
-            "REPAIR",
-            "CONTRACT_UNSUPPORTED",
-            "STAGE_1_REPAIR_FINDINGS_INVALID",
-            "Stage 1 repair wave 与 finding 集合不一致。",
-            "/findings",
-        )
-    evidence = [
-        {
-            "evidenceId": finding_id,
-            "locator": f"review-finding:{finding_id}",
-            "content": canonical_json_bytes(by_id[finding_id]).decode("utf-8"),
-            "sha256": sha256_bytes(canonical_json_bytes(by_id[finding_id])),
-        }
-        for finding_id in finding_ids
-    ]
-    spec = {
-        "logicalShardId": str(wave["repairWaveId"]),
-        "stage": "REPAIR",
-        "role": "AUTHOR",
-        "promptId": "repair-stage1-v1",
-        "promptPath": "prompts/repair-stage1.md",
-        "resultPayloadSchema": "contracts/action.schema.json",
-        "referencePaths": [
-            "prompts/fragments/roles/author.md",
-            "prompts/fragments/outputs/author-result.md",
-            "references/epic-authoring.md",
-            "references/feature-authoring.md",
-            "references/source-authority.md",
-        ],
-        "evidenceCatalog": evidence,
-        "packet": {
-            "repairPlan": deepcopy(dict(repair_plan)),
-            "findings": [deepcopy(dict(by_id[item])) for item in finding_ids],
-            "baseCandidateSha256": sha256_bytes(canonical_json_bytes(candidate)),
-            "editableNodeIds": list(wave["editableNodeIds"]),
-            "contextNodeIds": list(wave["contextNodeIds"]),
-            "lockedNodeIds": list(wave["lockedNodeIds"]),
-            "candidate": deepcopy(dict(candidate)),
-            "requiredCheckIds": list(STAGE_1_REPAIR_CHECK_IDS),
-            "allowedWriteCollections": sorted(STAGE_1_JOIN_COLLECTIONS),
-        },
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-        "maxOutputTokens": state["maxOutputTokens"],
-    }
-    return {
-        "outcome": "ACTION_REQUIRED",
-        "actionKind": "REPAIR",
-        "specs": [spec],
-        "diagnostics": (),
-    }
+def _complete_scope_results(plan, work_items, context_refs, ledger, budget_policy):
+    from stage_planner import validate_stage_plan, materialize_packet, DependencyResultRef, _effective_envelope, _effective_success
+
+    descriptors = build_scope_work_descriptors(work_items, context_refs, budget_policy)
+    validate_stage_plan(plan, work_items, context_refs, descriptors, [], budget_policy)
+    refs, envelopes, packets, results = {}, {}, {}, {}
+    for work in plan["works"]:
+        key, packet_plan = work["logicalWorkId"], work["packetPlan"]
+        envelope = _effective_envelope(ledger, key)
+        if envelope is None or not any(record.envelope_sha256 == envelope.sha256 and record.outcome == "SUCCEEDED" for record in ledger.attempt_records.values()):
+            raise ScopeInputRequired("Scope plan 尚有未 sealed 的 group/work。")
+        digest, record = _effective_success(ledger, key)
+        if envelope.value["actionContractId"] != packet_plan["actionContractId"] or envelope.value["actionContractSha256"] != packet_plan["actionContractSha256"]:
+            raise ValueError("Scope effective Attempt 与冻结合同不一致。")
+        normalized = ledger.normalized_results[record.normalized_result_sha256]
+        if sha256_bytes(normalized) != record.normalized_result_sha256:
+            raise ValueError("Scope normalized result hash 漂移。")
+        refs[key] = DependencyResultRef(key, digest, normalized)
+        envelopes[key] = envelope
+    for work in plan["works"]:
+        key, packet_plan = work["logicalWorkId"], work["packetPlan"]
+        repair = None
+        if envelopes[key].value["revision"] == 2:
+            from action_ledger import build_attempt_repair_context
+            failures = [digest for digest, record in ledger.attempt_records.items()
+                        if record.logical_work_id == key and record.revision == 1 and record.failure_kind == "INVALID_IR"]
+            if len(failures) != 1:
+                raise ValueError("Scope revision 2 没有唯一原始 INVALID_IR Attempt。")
+            repair = build_attempt_repair_context(key, failures[0], ledger.attempt_records, ledger.raw_outputs,
+                                                 envelopes_by_sha256=ledger.envelopes_by_sha256)
+        packet_bytes = materialize_packet(plan, key, envelopes[key].value["revision"], work_items, context_refs,
+            [refs[dependency] for dependency in packet_plan["dependencyLogicalWorkIds"]], ledger, repair)
+        if sha256_bytes(packet_bytes) != envelopes[key].value["packetSha256"]:
+            raise ValueError("Scope Attempt 没有绑定实际计划 packet。")
+        packets[key], results[key] = json.loads(packet_bytes), json.loads(refs[key].normalized_result)
+    return refs, packets, results
 
 
-def apply_repair_action_group(
-    state: Mapping[str, object],
-    repair_plan: Mapping[str, object],
-    findings: Sequence[Mapping[str, object]],
-    records: Sequence[Mapping[str, object]],
-) -> CompilerResult:
-    candidate = state.get("baseCandidate")
-    if not isinstance(candidate, Mapping):
-        return CompilerResult(
-            {},
-            "",
-            {},
-            (_diagnostic("STAGE_1_REPAIR_STATE_INVALID", "repair 缺少基础 candidate。", "/baseCandidate"),),
-        )
-    prepared = prepare_repair_action(state, repair_plan, findings)
-    specs = _mappings(prepared.get("specs"))
-    if prepared.get("outcome") != "ACTION_REQUIRED" or len(specs) != 1 or len(records) != 1:
-        return CompilerResult(
-            deepcopy(dict(candidate)),
-            sha256_bytes(canonical_json_bytes(candidate)),
-            {},
-            (_diagnostic("STAGE_1_REPAIR_GROUP_INCOMPLETE", "repair group 必须包含唯一成功 record。", "/records"),),
-        )
-    spec = specs[0]
-    record = records[0]
-    diagnostics = list(validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY))
-    expected = {
-        "runId": state["runId"],
-        "logicalShardId": spec["logicalShardId"],
-        "packetSha256": sha256_bytes(
-            canonical_json_bytes(
-                {
-                    "logicalShardId": spec["logicalShardId"],
-                    "payload": spec["packet"],
-                    "evidenceCatalog": spec["evidenceCatalog"],
-                }
-            )
-        ),
-        "inputRevisionSha256": sha256_bytes(canonical_json_bytes(state["inputRevision"])),
-        "baseCandidateSha256": sha256_bytes(canonical_json_bytes(candidate)),
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-        "status": "SUCCESS",
-    }
-    for field, value in expected.items():
-        if record.get(field) != value:
-            diagnostics.append(
-                _diagnostic(
-                    "STAGE_1_REPAIR_RECORD_BINDING_MISMATCH",
-                    "repair record 未绑定当前 plan、candidate、revision 或模型配置。",
-                    f"/{field}",
-                )
-            )
-    submission = record.get("submission")
-    if not isinstance(submission, Mapping) or submission.get("resultKind") != "PATCH":
-        diagnostics.append(
-            _diagnostic("STAGE_1_REPAIR_RESULT_INVALID", "repair 必须返回 PATCH。", "/submission")
-        )
-        return CompilerResult(
-            deepcopy(dict(candidate)),
-            sha256_bytes(canonical_json_bytes(candidate)),
-            {},
-            _sort_diagnostics(diagnostics),
-        )
-    if submission.get("reviewedEvidenceIds") != list(
-        spec["packet"]["repairPlan"]["waves"][0]["findingIds"]
-    ):
-        diagnostics.append(
-            _diagnostic("STAGE_1_REPAIR_EVIDENCE_MISMATCH", "repair 必须覆盖全部 finding。", "/submission/reviewedEvidenceIds")
-        )
-    self_check = submission.get("selfCheck")
-    if not isinstance(self_check, Mapping) or self_check.get("completedCheckIds") != list(
-        STAGE_1_REPAIR_CHECK_IDS
-    ):
-        diagnostics.append(
-            _diagnostic("STAGE_1_REPAIR_SELF_CHECK_INCOMPLETE", "repair 必须完成全部冻结检查。", "/submission/selfCheck")
-        )
-    replacement = submission.get("replacementSet")
-    editable = set(spec["packet"]["editableNodeIds"])
-    targets: set[str] = set()
-    if isinstance(replacement, Mapping):
-        for wrapper in _mappings(replacement.get("upserts")):
-            collection = wrapper.get("collection")
-            node = wrapper.get("node")
-            id_field = NODE_COLLECTIONS.get(str(collection))
-            if isinstance(node, Mapping) and id_field is not None:
-                node_id = node.get(id_field)
-                if isinstance(node_id, str):
-                    targets.add(node_id)
-        deletes = replacement.get("deletes")
-        if isinstance(deletes, list):
-            targets.update(
-                str(item).split(":", 1)[1]
-                for item in deletes
-                if isinstance(item, str) and ":" in item
-            )
-    if not targets or not targets <= editable:
-        diagnostics.append(
-            _diagnostic(
-                "STAGE_1_REPAIR_SCOPE_VIOLATION",
-                "repair 必须且只能修改 wave 的 editable nodes。",
-                "/submission/replacementSet",
-            )
-        )
-    if diagnostics or not isinstance(replacement, Mapping):
-        return CompilerResult(
-            deepcopy(dict(candidate)),
-            sha256_bytes(canonical_json_bytes(candidate)),
-            {},
-            _sort_diagnostics(diagnostics),
-        )
-    outcome = apply_replacement(candidate, replacement, owner_stage="STAGE_1")
-    return CompilerResult(
-        outcome.candidate,
-        outcome.candidate_sha256,
-        {
-            "kind": "STAGE_1_REPAIR",
-            "repairPlanSha256": sha256_bytes(canonical_json_bytes(repair_plan)),
-            "changedNodeIds": list(outcome.changed_node_ids),
-        },
-        outcome.diagnostics,
-    )
+def _scope_source_evidence(work_items):
+    evidence = {}
+    for item in work_items:
+        if item.action_kind != "SOURCE_SCAN":
+            continue
+        for block in [item.work_item_payload["sourceBlock"], *item.work_item_payload.get("contextBlocks", [])]:
+            ref = {"sourceId": block["sourceId"], "blockId": block["blockId"], "sha256": block["contentSha256"], "locator": block["locator"]}
+            if block["blockId"] in evidence and evidence[block["blockId"]] != ref:
+                raise ValueError("来源证据身份冲突。")
+            evidence[block["blockId"]] = ref
+    return evidence
+
+
+def _scope_identity_bindings(decisions, evidence, prior_decision, prior):
+    """The same stable-ID derivation serves conversion and independent root-index proof."""
+    from stable_ids import stable_entity_id, PriorMatch, preserve_prior_id
+    prior_by_key = {}
+    if prior is not None:
+        snapshot_by_anchor = {(item["sourceId"], tuple(sorted(item["evidenceIds"]))): item for item in prior["entities"]}
+        for item in prior_decision["entities"]:
+            prior_by_key[item["localKey"]] = (item, snapshot_by_anchor[(item["sourceId"], tuple(sorted(item["evidenceIds"])) )])
+    change_relations = [(decision, relation) for decision in decisions for relation in decision["relations"]
+                        if relation["kind"] in {"REUSE_DEPENDENCY", "ADJUST", "SPLIT", "MERGE"}]
+    groups_for_target = {}
+    for decision, relation in change_relations:
+        for key in relation["targetLocalKeys"]:
+            groups_for_target.setdefault(key, []).append((decision, relation))
+    by_key = {decision["localKey"]: decision for decision in decisions}
+    ids, resolving = {}, set()
+
+    def entity_id(key):
+        if key in ids:
+            return ids[key]
+        if key in resolving:
+            raise InvalidActionResult("Scope parent 关系存在循环。")
+        resolving.add(key)
+        decision = by_key[key]
+        if decision["decisionKind"] in {"EXCLUDE", "RETIRE"}:
+            raise InvalidActionResult("排除和退役处置没有目标实体身份。")
+        parent_keys = [parent for relation in decision["relations"] if relation["kind"] == "PARENT" for parent in relation["targetLocalKeys"]]
+        if decision["decisionKind"] == "FEATURE" and (len(parent_keys) != 1 or by_key[parent_keys[0]]["decisionKind"] != "EPIC"):
+            raise InvalidActionResult("Feature 必须有唯一 Epic parent。")
+        if decision["decisionKind"] != "FEATURE" and parent_keys:
+            raise InvalidActionResult("只有 Feature 接受 parent。")
+        parent = entity_id(parent_keys[0]) if parent_keys else None
+        boundary = decision["boundaryEvidence"]
+        anchors = [canonical_json_bytes(evidence[eid]).decode("utf-8") for eid in sorted(boundary["evidenceIds"]) if eid in evidence]
+        if not anchors:
+            raise ScopeInputRequired("当前目标缺少本轮来源身份锚点。")
+        identity = stable_entity_id("scope-entity-id-v1", decision["decisionKind"], parent, anchors, (boundary["classification"],))
+        matches = groups_for_target.get(key, [])
+        if len(matches) == 1:
+            source_decision, relation = matches[0]
+            prior_keys = source_decision["priorEntityIds"]
+            if len(prior_keys) == 1 and prior_keys[0] in prior_by_key:
+                original, prior_entity = prior_by_key[prior_keys[0]]
+                unchanged = any(item["kind"] == "UNCHANGED_IDENTITY" and item["targetLocalKeys"] == [key] for item in decision["relations"])
+                ownership = sum(prior_keys[0] in item["priorEntityIds"] for item, _ in change_relations)
+                relation_kind = relation["kind"] if relation["kind"] in {"SPLIT", "MERGE"} else "ONE_TO_ONE"
+                match = PriorMatch(relation_kind, original.get("visiblePriorId"),
+                    original.get("visiblePriorId") == prior_entity["entityId"], ownership == 1 and len(relation["targetLocalKeys"]) == 1,
+                    not unchanged)
+                identity = preserve_prior_id(match) or identity
+        if identity in ids.values():
+            raise ScopeInputRequired("Scope 证据身份碰撞；不能按名称或位置补后缀。")
+        resolving.remove(key)
+        ids[key] = identity
+        return identity
+
+    for key in sorted(by_key):
+        if by_key[key]["decisionKind"] not in {"EXCLUDE", "RETIRE"}:
+            entity_id(key)
+        else:
+            anchors = [canonical_json_bytes(evidence[eid]).decode("utf-8")
+                for eid in sorted(by_key[key]["boundaryEvidence"]["evidenceIds"]) if eid in evidence]
+            ids[key] = stable_entity_id("scope-entity-id-v1", "ANNOTATION", None, anchors, ("EXCLUSION",))
+    return ids, prior_by_key, change_relations, by_key
+
+
+def scope_review_owner_index(candidate_bytes, decisions, work_items, *, prototype_inventory=None,
+                             prior_decision=None, prior_state=None):
+    """Rebuild exact root identities from frozen IR and sources without converting a candidate."""
+    evidence = _scope_source_evidence(work_items)
+    if prototype_inventory is not None:
+        for item in prototype_inventory['evidence']:
+            evidence[item['evidenceId']] = {'sourceId':item['sourceId'],'blockId':item['evidenceId'],
+                'sha256':item['sha256'],'locator':'file:'+item['relativePath']}
+    ids, _, _, roots = _scope_identity_bindings(decisions['decisions'], evidence, prior_decision, prior_state)
+    model = json.loads(candidate_bytes)
+    collections = {'EPIC':'epics','FEATURE':'features','DESIGN_ITEM':'designItems','INTEGRATION':'integrations',
+        'NFR':'nfrs','POLICY_INSTANCE':'policyInstances','EXCLUDE':'scopeAnnotations','RETIRE':'scopeAnnotations'}
+    index = {}; expected = {name:set() for name in collections.values()}
+    for key, identity in ids.items():
+        decision = roots[key]; kind = decision['decisionKind']; collection = collections[kind]
+        id_field = NODE_COLLECTIONS[collection]
+        matches = [(position,node) for position,node in enumerate(model[collection]) if node[id_field] == identity]
+        if len(matches) != 1:
+            raise ValueError('Scope root 未唯一映射到原来源和 parent 派生的稳定实体。')
+        position, node = matches[0]
+        if kind in {'EXCLUDE','RETIRE'}:
+            valid = node['text'] == decision['exclusionReason']
+        elif kind == 'POLICY_INSTANCE':
+            valid = node['policyId'] == decision['boundaryEvidence']['classification']
+        elif kind == 'NFR':
+            valid = node['category'] == decision['boundaryEvidence']['classification']
+        else:
+            valid = node['name'] == decision['boundaryEvidence']['name']
+        if not valid:
+            raise ValueError('Scope root 映射节点正文不匹配 sealed IR。')
+        index[key] = {'id':identity,'path':'/'+collection+'/'+str(position)}
+        expected[collection].add(identity)
+    for collection, identities in expected.items():
+        if len(model[collection]) != len(identities) or {node[NODE_COLLECTIONS[collection]] for node in model[collection]} != identities:
+            raise ValueError('Scope candidate 存在未绑定 root 的节点。')
+    return index
+
+
+def scope_change_graph(decisions, identities, prior_decision, prior_state):
+    """Project changes only from sealed decisions and the independently resolved Prior root."""
+    snapshot = {(row['sourceId'],tuple(sorted(row['evidenceIds']))):row for row in prior_state['entities']} if prior_state else {}
+    prior_ids = {row['localKey']:snapshot[(row['sourceId'],tuple(sorted(row['evidenceIds'])))]['entityId']
+        for row in prior_decision['entities']} if prior_decision else {}
+    graph = {'changeGroups':[], 'retiredPrior':[]}
+    for decision in decisions['decisions']:
+        if decision['decisionKind']=='RETIRE':
+            graph['retiredPrior'].extend({'priorEntityId':prior_ids[key],
+                'evidenceIds':sorted(decision['boundaryEvidence']['evidenceIds'])} for key in decision['priorEntityIds'])
+        for relation in decision['relations']:
+            if relation['kind'] in {'REUSE_DEPENDENCY','ADJUST','SPLIT','MERGE'}:
+                graph['changeGroups'].append({'kind':relation['kind'],
+                    'priorEntityIds':sorted(prior_ids[key] for key in decision['priorEntityIds']),
+                    'targetEntityIds':sorted(identities[key] for key in relation['targetLocalKeys']),
+                    'evidenceIds':sorted(relation['evidenceIds'])})
+    for rows in graph.values(): rows.sort(key=canonical_json_bytes)
+    return graph
+
+
+def materialize_scope_candidate(input_revision_bytes, request, plan, work_items, context_refs, ledger, budget_policy, *, prior_inventories=(), prototype_inventory=None, semantic_repair=None, semantic_repairs=None):
+    from stable_ids import stable_entity_id
+    from sow_model import model_skeleton
+
+    refs, packets, results = _complete_scope_results(plan, work_items, context_refs, ledger, budget_policy)
+    revision = json.loads(input_revision_bytes)
+    expected_revision_hash = sha256_bytes(input_revision_bytes)
+    if any(ledger.envelopes_by_sha256[ledger.attempt_records[ref.attempt_record_sha256].envelope_sha256].value["inputRevisionSha256"] != expected_revision_hash for ref in refs.values()):
+        raise ValueError("Scope Attempt 不属于当前 InputRevision。")
+    prototype_refs, observation_catalog = (), {}
+    selected_demo = {source["sourceId"]: source for source in revision["sources"] if source["role"] == "DEMO"}
+    prototype_contexts = [json.loads(ref.canonical_content) for ref in context_refs if json.loads(ref.canonical_content).get("kind") == "PROTOTYPE_LEDGER"]
+    if selected_demo or prototype_contexts or prototype_inventory is not None:
+        if prototype_inventory is None or len(prototype_contexts) != 1:
+            raise ScopeInputRequired("Scope 需要本轮完整的原型 inventory 和 sealed ledger。")
+        if {(item["sourceId"], item["sha256"]) for item in prototype_inventory["files"]} != {(source["sourceId"], source["rawSha256"]) for source in selected_demo.values()}:
+            raise ValueError("Prototype inventory 与 InputRevision 文件不一致。")
+        prototype_refs = prepare_scope_prototype_contexts(prototype_inventory, prototype_contexts[0]["ledger"], ledger)
+        if json.loads(prototype_refs[0].canonical_content)["inputRevisionSha256"] != expected_revision_hash:
+            raise ValueError("Prototype Attempt 不属于当前 InputRevision。")
+        for ref in prototype_refs[1:]:
+            value = json.loads(ref.canonical_content)
+            observations = json.loads(ledger.normalized_results[value["normalizedResultSha256"]])["observations"]
+            for observation in observations:
+                handle = _prototype_observation_key(value["round"], value["attemptRecordSha256"], observation["localKey"])
+                observation_catalog[handle] = (value, observation)
+    contents = {block["blockId"]: block["content"] for item in work_items if item.action_kind == "SOURCE_SCAN"
+                for block in [item.work_item_payload["sourceBlock"], *item.work_item_payload.get("contextBlocks", [])]}
+    expected_items, expected_contexts = prepare_scope_inputs(input_revision_bytes, contents, request=request, prior_inventories=prior_inventories, prototype_context_refs=prototype_refs)
+    if {item.work_item_id: item for item in work_items} != {item.work_item_id: item for item in expected_items} or {ref.ref_id: ref for ref in context_refs} != {ref.ref_id: ref for ref in expected_contexts}:
+        raise ValueError("Scope descriptors 必须完整绑定实际 InputRevision/request。")
+    consumed = {dep for work in plan["works"] for dep in work["packetPlan"]["dependencyLogicalWorkIds"]}
+    root_ids = set(results) - consumed
+    if len(root_ids) != 1:
+        raise ValueError("Scope 必须有唯一 root。")
+    root = next(iter(root_ids))
+    from prior_state import (resolve_prior_root, validate_bound_prior_context, validate_bound_prior_result,
+                             verify_prior_decision, materialize_prior_snapshot)
+    prior_works = {work["logicalWorkId"]: work for work in plan["works"] if work["packetPlan"]["actionKind"].startswith("PRIOR_")}
+    prior_consumed = {dep for work in prior_works.values() for dep in work["packetPlan"]["dependencyLogicalWorkIds"]}
+    prior_roots = set(prior_works) - prior_consumed
+    prior_ref = resolve_prior_root(plan, ledger, [refs[key] for key in sorted(prior_roots)])
+    for key, work in prior_works.items():
+        arguments = {"inventories": prior_inventories, "input_revision_bytes": input_revision_bytes}
+        validate_bound_prior_context(work["packetPlan"]["actionKind"], packets[key], **arguments)
+        validate_bound_prior_result(work["packetPlan"]["actionKind"], packets[key], refs[key].normalized_result, **arguments)
+    prior = None
+    if prior_ref is not None:
+        prior_decision = json.loads(prior_ref.normalized_result)
+        verify_prior_decision(prior_inventories, prior_decision, input_revision_bytes=input_revision_bytes)
+        prior = materialize_prior_snapshot(prior_inventories, prior_decision, input_revision_bytes=input_revision_bytes)
+    fact_catalog = {}
+    for work in plan["works"]:
+        key, kind = work["logicalWorkId"], work["packetPlan"]["actionKind"]
+        if kind == "SOURCE_SCAN":
+            verify_source_scan(packets[key], results[key])
+            for decision in results[key]:
+                for fact in decision["facts"]:
+                    fact_catalog[decision["coverageRootId"] + ":" + fact["localKey"]] = fact
+        elif kind == "SOURCE_AUDIT":
+            verify_source_audit(packets[key], results[key])
+        elif kind.startswith("SCOPE_"):
+            verify_scope_decision(packets[key], results[key])
+    final_decision = results[root]
+    repairs=semantic_repairs if semantic_repairs is not None else ([semantic_repair] if semantic_repair else [])
+    for repair in repairs:
+        from final_review import replace_owner_decisions
+        final_decision = replace_owner_decisions('SCOPE', final_decision, *repair)
+        verify_scope_decision(packets[root], final_decision)
+    decisions = final_decision["decisions"]
+    policies = [decision["boundaryEvidence"]["classification"] for decision in decisions if decision["decisionKind"] == "POLICY_INSTANCE"]
+    if any(policies.count(policy_id) != 1 for policy_id in REQUIRED_POLICY_INCLUSIONS):
+        raise ScopeInputRequired("Scope 必须明确处置默认自动化与必需上线政策。")
+    evidence = _scope_source_evidence(work_items)
+    if prototype_inventory is not None:
+        for item in prototype_inventory["evidence"]:
+            evidence[item["evidenceId"]] = {"sourceId": item["sourceId"], "blockId": item["evidenceId"],
+                "sha256": item["sha256"], "locator": "file:" + item["relativePath"]}
+    model = model_skeleton(request, revision)
+    fact_ids = {}
+    for handle, fact in sorted(fact_catalog.items()):
+        source_refs = [evidence[eid] for eid in sorted(fact["evidenceIds"])]
+        entity_id = stable_entity_id("scope-entity-id-v1", "FACT", None,
+            [canonical_json_bytes(ref).decode("utf-8") for ref in source_refs], (fact["factKind"],))
+        if entity_id in fact_ids.values():
+            raise ScopeInputRequired("事实证据不足以区分最终身份。")
+        fact_ids[handle] = entity_id
+        model["inputItems"].append({"inputItemId": entity_id, "kind": fact["factKind"], "text": fact["statement"],
+            "conditions": fact["qualifiers"], "thresholds": [], "prohibitions": [], "applicableScopes": [], "sourceRefs": source_refs})
+    ids, prior_by_key, change_relations, by_key = _scope_identity_bindings(
+        decisions, evidence, prior_decision if prior is not None else None, prior)
+    policy_rows = {item["policyId"]: item for item in json.loads((SKILL_ROOT / "contracts/delivery-policy-v1.json").read_bytes())["policies"]}
+    source_directory = {item["sourceId"]: item for item in revision["sources"]}
+
+    def relation_keys(decision, kind):
+        return sorted({target for relation in decision["relations"] if relation["kind"] == kind for target in relation["targetLocalKeys"]})
+
+    def typed_targets(decision, relation, kinds):
+        keys = relation_keys(decision, relation)
+        if any(by_key[key]["decisionKind"] not in kinds for key in keys):
+            raise InvalidActionResult("Scope 关系的目标类型不合法。")
+        return [ids[key] for key in keys]
+
+    def facet_values(decision, role, *, multiple=False):
+        handles = [item["factId"] for item in decision["boundaryEvidence"]["facetFacts"] if item["role"] == role]
+        if not handles or (not multiple and len(handles) != 1):
+            raise ScopeInputRequired("目标边界缺少唯一的 " + role + " 来源事实。")
+        values = [fact_catalog[handle]["statement"] for handle in sorted(handles)]
+        return values if multiple else values[0]
+
+    for decision in decisions:
+        key, kind, boundary = decision["localKey"], decision["decisionKind"], decision["boundaryEvidence"]
+        source_refs = [evidence[eid] for eid in sorted(boundary["evidenceIds"]) if eid in evidence]
+        features = typed_targets(decision, "APPLIES_TO", {"FEATURE"}) if kind in {"DESIGN_ITEM", "INTEGRATION", "NFR"} else []
+        designs = typed_targets(decision, "DESIGN", {"DESIGN_ITEM"})
+        if kind in {"EPIC", "FEATURE"}:
+            policy_keys = relation_keys(decision, "POLICY")
+            policies = typed_targets(decision, "POLICY", {"POLICY_INSTANCE"})
+            node = {"name": boundary["name"], "scopeClass": boundary["classification"], "sourceRefs": source_refs,
+                    "requirementRefs": sorted(fact_ids[handle] for handle in decision["factIds"]), "designRefs": designs, "policyRefs": policies,
+                    "effortPhase": "BUILD", "activationPhase": "BUILD", "inclusionPolicy": "SOURCE_GATED"}
+            if policy_keys:
+                rows = [policy_rows[by_key[item]["boundaryEvidence"]["classification"]] for item in policy_keys]
+                phases = {(row["scopeClass"], row["effortPhase"], row["activationPhase"], row["inclusionPolicy"]) for row in rows}
+                if len(phases) != 1 or rows[0]["scopeClass"] != boundary["classification"]:
+                    raise ScopeInputRequired("同一实体的政策分类或生命周期存在冲突。")
+                for field in ("effortPhase", "activationPhase", "inclusionPolicy"):
+                    node[field] = "BUILD" if rows[0][field] == "DEVELOPMENT" else rows[0][field]
+            if kind == "EPIC":
+                node["epicId"] = ids[key]
+                model["epics"].append(node)
+            else:
+                parent = relation_keys(decision, "PARENT")[0]
+                node.update(featureId=ids[key], epicId=ids[parent], scopeDecision="IN_SCOPE")
+                model["features"].append(node)
+                features = [ids[key]]
+        elif kind == "DESIGN_ITEM":
+            if not source_refs or any(source_directory[ref["sourceId"]]["role"] not in APPROVED_DESIGN_ROLES or source_directory[ref["sourceId"]]["status"] != "APPROVED" for ref in source_refs):
+                raise ScopeInputRequired("设计项只能由本轮批准 HLD/ADR 支持。")
+            model["designItems"].append({"designItemId": ids[key], "name": boundary["name"], "featureIds": features, "sourceRefs": source_refs, "status": "APPROVED"})
+        elif kind == "INTEGRATION":
+            boundaries = {item["responsibilityBoundaryId"] for item in request["responsibilityBoundaries"]}
+            selected = boundary.get("responsibilityBoundaryIds", [])
+            if not selected or not set(selected) <= boundaries:
+                raise ScopeInputRequired("Integration 必须选择 request 中已声明的责任边界。")
+            model["integrations"].append({"integrationId": ids[key], "name": boundary["name"], "featureIds": features,
+                "sourceRefs": source_refs, "direction": facet_values(decision, "DIRECTION"), "trigger": facet_values(decision, "TRIGGER"),
+                "purpose": facet_values(decision, "PURPOSE"), "dataCategories": facet_values(decision, "DATA_CATEGORY", multiple=True),
+                "responsibilityBoundaryIds": selected, "counterpartyBoundary": boundary["classification"]})
+        elif kind == "NFR":
+            model["nfrs"].append({"nfrId": ids[key], "category": boundary["classification"], "featureIds": features,
+                "sourceRefs": source_refs, "status": "DEFINED", "target": facet_values(decision, "TARGET")})
+        elif kind == "POLICY_INSTANCE":
+            row = policy_rows[boundary["classification"]]
+            targets = typed_targets(decision, "APPLIES_TO", {"EPIC", "FEATURE"})
+            if not targets or (row["sourceRoles"] and (not decision["factIds"] or any(source_directory[ref["sourceId"]]["role"] not in row["sourceRoles"] for ref in source_refs))):
+                raise ScopeInputRequired("政策必须有实际目标，SOURCE_GATED 政策必须有授权来源事实。")
+            model["policyInstances"].append({"policyInstanceId": ids[key], "policyId": row["policyId"],
+                "targetNodeIds": targets, "inclusionPolicy": row["inclusionPolicy"], "sourceRefs": source_refs})
+        elif kind in {"EXCLUDE", "RETIRE"}:
+            model["scopeAnnotations"].append({"annotationId": ids[key],
+                "category": "EXCLUSION", "subjectIds": sorted(fact_ids[handle] for handle in decision["factIds"]), "text": decision["exclusionReason"]})
+        for handle in decision["factIds"]:
+            fact = fact_catalog[handle]
+            excluded = kind in {"EXCLUDE", "RETIRE"}
+            project_gate = not excluded and fact["factKind"] == "ASSUMPTION"
+            design_required = not project_gate and (bool(designs) or kind == "DESIGN_ITEM")
+            model["scopeClosure"].append({"inputItemId": fact_ids[handle], "sourceRefs": [evidence[eid] for eid in sorted(fact["evidenceIds"])],
+                "disposition": "OUT_OF_SCOPE" if excluded else "PROJECT_GATE" if project_gate else "SCOPE_NODE", "targetNodeIds": [] if excluded else [ids[key]],
+                "preservedQualifiers": fact["qualifiers"], "crossFeatureRuleIds": [],
+                "mechanicalCoverage": "COMPLETE" if design_required else "NOT_REQUIRED",
+                "semanticSufficiency": "SUFFICIENT" if design_required else "NOT_REQUIRED",
+                "designCoverageStatus": "SUFFICIENT" if design_required else "NOT_REQUIRED",
+                "deliveryDisposition": "NO_DELIVERY" if excluded else "PROJECT_LEVEL_ONLY" if project_gate else "STORY_AC_REQUIRED" if features else "PROJECT_LEVEL_ONLY",
+                "assignedFeatureIds": [] if project_gate else features, "requiredQualifierRefs": [], "crossFeatureTargetIds": []})
+    for collection, id_field in NODE_COLLECTIONS.items():
+        model[collection].sort(key=lambda node: node[id_field])
+    for decision in decisions:
+        for handle in decision["boundaryEvidence"]["observationKeys"]:
+            reference, observation = observation_catalog[handle]
+            if not set(observation["evidenceIds"]) <= set(decision["boundaryEvidence"]["evidenceIds"]):
+                raise InvalidActionResult("原型 disposition 必须保留 observation 的全部来源证据。")
+            if decision["decisionKind"] in {"EXCLUDE", "RETIRE"}:
+                if observation["scopeRelation"] != "NON_SCOPE":
+                    raise ScopeInputRequired("选入原型的目标需求不能静默排除。")
+                continue
+            if observation["scopeRelation"] == "NON_SCOPE":
+                raise InvalidActionResult("NON_SCOPE 原型 observation 不能生成目标范围。")
+    graph = scope_change_graph(final_decision, ids, prior_decision if prior is not None else None, prior)
+    obligations = scope_review_obligations(final_decision, ids, context_refs, ledger, prior, graph, prior_ref)
+    return ScopeMaterialization(canonical_json_bytes(model), canonical_json_bytes(graph),
+                                canonical_json_bytes(prior) if prior is not None else None, MappingProxyType(ids), tuple(obligations))
+
+
+def validate_scope_candidate(material):
+    from change_graph import derive_change_views
+    candidate = json.loads(material.candidate_bytes)
+    prior = json.loads(material.prior_state_bytes) if material.prior_state_bytes is not None else None
+    target_ids = [node[field] for collection, field in NODE_COLLECTIONS.items() if collection in {"epics", "features", "designItems", "integrations", "nfrs", "policyInstances"} for node in candidate[collection]]
+    derive_change_views(json.loads(material.change_graph_bytes), prior, target_ids)
+    return validate_sow_model(candidate, "STAGE_1", registry=load_registry(SKILL_ROOT / "contracts"))
+
+
+def publish_scope_candidate(files, run_id, material):
+    candidate_hash, graph_hash = sha256_bytes(material.candidate_bytes), sha256_bytes(material.change_graph_bytes)
+    base = f".ai-sow/work/runs/{run_id}/stages/SCOPE"
+    files.publish_new(f"{base}/change-graphs/{graph_hash}.json", material.change_graph_bytes)
+    files.publish_new(f"{base}/candidates/{candidate_hash}.json", material.candidate_bytes)
+    return {"candidateSha256": candidate_hash, "changeGraphSha256": graph_hash}
+
+
+def scope_review_obligations(decisions, identity_by_local_key, context_refs, ledger, prior_state, change_graph, prior_root_ref):
+    """Reconstruct every intent/identity obligation from sealed evidence, without conversion."""
+    observations={}
+    obligations=[]
+    for reference in context_refs:
+        value=json.loads(reference.canonical_content)
+        if value.get('kind')=='SCOPE_CONTEXT' and value.get('declaredChangeContext') is not None:
+            obligations.append({'kind':'DECLARED_CHANGE_CONTEXT','inputRevisionSha256':value['inputRevisionSha256'],
+                'declaredChangeContext':value['declaredChangeContext']})
+        if value.get('kind')!='PROTOTYPE_OBSERVATION_REF': continue
+        record=ledger.attempt_records[value['attemptRecordSha256']]
+        if record.normalized_result_sha256!=value['normalizedResultSha256']:
+            raise ValueError('Prototype review obligation result 绑定错误。')
+        for observation in json.loads(ledger.normalized_results[record.normalized_result_sha256])['observations']:
+            observations[_prototype_observation_key(value['round'],value['attemptRecordSha256'],observation['localKey'])]=(value,observation)
+    for decision in decisions['decisions']:
+        for key in decision['boundaryEvidence']['observationKeys']:
+            reference,observation=observations[key]
+            if decision['decisionKind'] not in {'EXCLUDE','RETIRE'} and observation['runtimeStatus']=='CODE_ONLY':
+                obligations.append({'kind':'PROTOTYPE_INTENT','round':reference['round'],'localKey':observation['localKey'],
+                    'attemptRecordSha256':reference['attemptRecordSha256'],'normalizedResultSha256':reference['normalizedResultSha256'],
+                    'sourceEvidenceIds':sorted(observation['evidenceIds']),'targetEntityIds':[identity_by_local_key[decision['localKey']]],'observation':observation})
+    if prior_state is not None:
+        if prior_root_ref is None: raise ValueError('Prior review obligation 缺少实际 root。')
+        prior_hash=sha256_bytes(canonical_json_bytes(prior_state))
+        for retired in change_graph['retiredPrior']:
+            obligations.append({'kind':'PRIOR_IDENTITY','priorEntityIds':[retired['priorEntityId']],'targetEntityIds':[],
+                'relationKind':'RETIRE','evidenceIds':retired['evidenceIds'],
+                'priorRootAttemptRecordSha256':prior_root_ref.attempt_record_sha256,'priorStateSha256':prior_hash,
+                'unchangedIdentityClaimed':False})
+        for group in change_graph['changeGroups']:
+            unchanged=any(relation['kind']=='UNCHANGED_IDENTITY' and
+                set(identity_by_local_key[key] for key in relation['targetLocalKeys']).intersection(group['targetEntityIds'])
+                for decision in decisions['decisions'] for relation in decision['relations'])
+            obligations.append({'kind':'PRIOR_IDENTITY','priorEntityIds':group['priorEntityIds'],'targetEntityIds':group['targetEntityIds'],
+                'relationKind':group['kind'],'evidenceIds':group['evidenceIds'],
+                'priorRootAttemptRecordSha256':prior_root_ref.attempt_record_sha256,'priorStateSha256':prior_hash,
+                'unchangedIdentityClaimed':unchanged})
+    return tuple(sorted(obligations,key=canonical_json_bytes))

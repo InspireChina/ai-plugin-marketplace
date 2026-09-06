@@ -1,7 +1,7 @@
 {
   "name": "ai-sow",
-  "version": "0.1.0-beta.1",
-  "description": "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿，并用 LibreOffice 回算后发布。",
+  "version": "0.1.0-beta.2",
+  "description": "每次仅根据明确提供的 PRD、HLD 和适用往期 SOW，完整编译并逐阶段评审可追溯的 SOW 工作簿，经 LibreOffice 双复读和全部可见 Sheet 视觉评审后请求批准发布。",
   "author": {
     "name": "Inspire"
   },
@@ -15,8 +15,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "AI SOW",
-    "shortDescription": "一次输入材料，自动生成和增量更新 SOW。",
-    "longDescription": "一次提供 PRD、HLD 和适用的往期 SOW，自动完成范围编译、交付分解和终审，并用 LibreOffice 回算、复读后发布可追溯 SOW。",
+    "shortDescription": "一次输入材料，自动编译和评审 SOW。",
+    "longDescription": "一次提供 PRD、HLD 和适用的往期 SOW，自动完成范围编译、交付分解和逐阶段评审，经 LibreOffice 双复读和全部可见 Sheet 视觉评审后请求批准发布可追溯 SOW。",
     "developerName": "Inspire",
     "category": "Productivity",
     "capabilities": [
@@ -26,7 +26,7 @@
     "defaultPrompt": [
       "使用 ai-sow:generate，根据这份 PRD 和 HLD 创建 Greenfield SOW。",
       "使用 ai-sow:generate，根据 PRD、HLD、往期 SOW 和现状变化说明创建 Brownfield SOW。",
-      "使用 ai-sow:generate，用我补充或修改的输入增量更新现有 SOW。"
+      "使用 ai-sow:generate，用我补充或修改的输入重新编译 SOW。"
     ]
   }
 }

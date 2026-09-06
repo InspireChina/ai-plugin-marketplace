@@ -6,37 +6,14 @@ from copy import deepcopy
 from pathlib import Path
 
 from contracts import canonical_json_bytes, load_registry, sha256_bytes, validate_contract
-from delivery_compiler import (
-    _story_coverage_sha256,
-    _story_owner_projection,
-    derive_story_obligations,
-)
-from models import CompilerProgress, CompilerResult, Diagnostic, TaskStandardCatalog
-from sow_model import apply_replacement, validate as validate_sow_model
-from task_standard_catalog import compact_index, hydrate
+from models import Diagnostic, TaskStandardCatalog
+from sow_model import validate as validate_sow_model
+from task_standard_catalog import hydrate
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-NEXT_SCHEMA_REGISTRY = load_registry(SKILL_ROOT / "contracts")
 STAGE_3_COLLECTIONS = frozenset(
     {"tasks", "dependencies", "effectiveStartMatches", "estimationAnnotations"}
-)
-TASK_REQUIRED_CHECK_IDS = (
-    "STORY_AC_CHECKPOINT_BOUND",
-    "TASK_STANDARD_SELECTED",
-    "TASK_STANDARD_RULE_HYDRATED",
-    "TASK_MEASUREMENT_ATOMIC",
-    "STORY_AC_COVERED",
-    "EFFECTIVE_START_DECIDED",
-    "STAGE_3_WRITE_SCOPE",
-)
-TASK_CHECKPOINT_CHECK_IDS = (
-    "STORY_AC_CHECKPOINT_BOUND",
-    "TASK_COVERAGE_COMPLETE",
-    "TASK_CATALOG_BOUND",
-    "ESTIMATION_METHOD_BOUND",
-    "EFFECTIVE_START_BOUND",
-    "STAGE_3_ACTIONS_BOUND",
 )
 
 
@@ -56,595 +33,6 @@ def _ids(value: object) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
 
 
-def _estimate_tokens(value: object) -> int:
-    return max(1, (len(canonical_json_bytes(value)) + 3) // 4)
-
-
-def _stage_one_candidate(model: Mapping[str, object]) -> dict[str, object]:
-    result = deepcopy(dict(model))
-    for collection in (
-        "stories",
-        "acceptanceCriteria",
-        "deliveryAnnotations",
-        "tasks",
-        "dependencies",
-        "effectiveStartMatches",
-        "estimationAnnotations",
-    ):
-        result[collection] = []
-    return result
-
-
-def _validate_story_checkpoint_for_task(
-    state: Mapping[str, object],
-    candidate: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    checkpoint = state["storyAcCheckpoint"]
-    scope_checkpoint = state["scopeClosureCheckpoint"]
-    diagnostics = list(
-        validate_contract(
-            checkpoint, "stage-checkpoint.schema.json", NEXT_SCHEMA_REGISTRY
-        )
-    )
-    try:
-        projection = derive_story_obligations(
-            candidate, state.get("effectivePolicyDecisions")
-        )
-    except ValueError:
-        return (
-            _diagnostic(
-                "STORY_AC_CHECKPOINT_BINDING_STALE",
-                "无法按当前 effective policy decision 重算 Story obligations。",
-                "/effectivePolicyDecisions",
-            ),
-        )
-    expected = {
-        "runId": state.get("runId"),
-        "ownerProjectionSha256": sha256_bytes(
-            canonical_json_bytes(_story_owner_projection(candidate))
-        ),
-        "coverageSha256": _story_coverage_sha256(candidate, projection),
-        "policyDefinitionSha256": candidate.get("project", {}).get(
-            "policyDefinitionSha256"
-        ),
-        "effectivePolicyDecisionSha256": sha256_bytes(
-            canonical_json_bytes(projection["effectivePolicyDecisions"])
-        ),
-        "obligationProjectionSha256": projection["projectionSha256"],
-        "upstreamCheckpointSha256s": [
-            sha256_bytes(canonical_json_bytes(scope_checkpoint))
-        ],
-    }
-    for field, value in expected.items():
-        if checkpoint.get(field) != value:
-            diagnostics.append(
-                _diagnostic(
-                    "STORY_AC_CHECKPOINT_BINDING_STALE",
-                    "STORY_AC checkpoint 不再绑定当前 Stage 2 投影。",
-                    f"/{field}",
-                )
-            )
-    return _sort(diagnostics)
-
-
-def _error(outcome: str, code: str, message: str, path: str) -> Mapping[str, object]:
-    return {
-        "outcome": outcome,
-        "actionKind": "TASK",
-        "specs": [],
-        "diagnostics": [
-            {"code": code, "message": message, "path": path, "details": {}}
-        ],
-    }
-
-
-def hydrate_catalog(
-    state: Mapping[str, object],
-    selected_work_type_ids: Sequence[str],
-    query: str,
-):
-    """Host-neutral Task Standard hydration; no CLI or conversation state required."""
-    source = state.get("taskCatalog")
-    if not isinstance(source, TaskStandardCatalog):
-        raise ValueError("taskCatalog must be a validated TaskStandardCatalog")
-    return hydrate(source, selected_work_type_ids, query)
-
-
-def _story_material(
-    candidate: Mapping[str, object], story: Mapping[str, object]
-) -> dict[str, object]:
-    story_id = str(story["storyId"])
-    feature_id = str(story["featureId"])
-    feature = next(
-        (
-            item
-            for item in _mappings(candidate.get("features"))
-            if item.get("featureId") == feature_id
-        ),
-        None,
-    )
-    return {
-        "story": deepcopy(dict(story)),
-        "acceptanceCriteria": [
-            deepcopy(dict(item))
-            for item in _mappings(candidate.get("acceptanceCriteria"))
-            if item.get("storyId") == story_id
-        ],
-        "feature": deepcopy(dict(feature)) if isinstance(feature, Mapping) else None,
-        "designItems": [
-            deepcopy(dict(item))
-            for item in _mappings(candidate.get("designItems"))
-            if feature_id in item.get("featureIds", [])
-        ],
-        "integrations": [
-            deepcopy(dict(item))
-            for item in _mappings(candidate.get("integrations"))
-            if feature_id in item.get("featureIds", [])
-        ],
-        "nfrs": [
-            deepcopy(dict(item))
-            for item in _mappings(candidate.get("nfrs"))
-            if feature_id in item.get("featureIds", [])
-        ],
-        "policyInstances": [
-            deepcopy(dict(item))
-            for item in _mappings(candidate.get("policyInstances"))
-            if item.get("policyInstanceId") in story.get("policyRefs", [])
-        ],
-    }
-
-
-def _story_evidence(materials: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    result: list[dict[str, object]] = []
-    for material in materials:
-        story = material["story"]
-        story_id = str(story["storyId"])
-        content = canonical_json_bytes(material).decode("utf-8")
-        result.append(
-            {
-                "evidenceId": f"task-input-{story_id}",
-                "locator": f"story:{story_id}",
-                "content": content,
-                "sha256": sha256_bytes(content.encode("utf-8")),
-            }
-        )
-    return result
-
-
-def _task_spec(
-    state: Mapping[str, object],
-    compact: Sequence[Mapping[str, object]],
-    materials: Sequence[Mapping[str, object]],
-    sequence: int,
-) -> dict[str, object]:
-    story_ids = [str(item["story"]["storyId"]) for item in materials]
-    evidence = _story_evidence(materials)
-    return {
-        "logicalShardId": f"task-{sequence:03d}",
-        "stage": "TASK",
-        "role": "AUTHOR",
-        "promptId": "stage3-task-v1",
-        "promptPath": "prompts/stage3-task.md",
-        "resultPayloadSchema": "contracts/action.schema.json",
-        "referencePaths": [
-            "prompts/fragments/roles/author.md",
-            "prompts/fragments/outputs/author-result.md",
-            "references/task-authoring.md",
-            "references/effective-start-matching.md",
-            "references/delivery-work-classification.md",
-            "references/delivery-lifecycle-policy.md",
-        ],
-        "evidenceCatalog": evidence,
-        "packet": {
-            "storyAcCheckpointSha256": sha256_bytes(
-                canonical_json_bytes(state["storyAcCheckpoint"])
-            ),
-            "taskCatalogSemanticSha256": state[
-                "taskCatalog"
-            ].task_catalog_semantic_sha256,
-            "taskEstimationMethodSha256": state[
-                "taskEstimationMethodSha256"
-            ],
-            "priorSowInputSha256": state["priorSowInputSha256"],
-            "assignedStoryIds": story_ids,
-            "assignedStories": deepcopy(list(materials)),
-            "assignedEvidenceIds": [item["evidenceId"] for item in evidence],
-            "taskStandardCompactIndex": deepcopy(list(compact)),
-            "catalogHydration": {
-                "operation": "hydrate-task-standard",
-                "maxRounds": 2,
-                "selectionKey": "工作类型ID",
-            },
-            "requiredCheckIds": list(TASK_REQUIRED_CHECK_IDS),
-            "allowedWriteCollections": sorted(STAGE_3_COLLECTIONS),
-        },
-        "modelProfileId": state["modelProfileId"],
-        "modelConfigSha256": state["modelConfigSha256"],
-        "maxOutputTokens": state["maxOutputTokens"],
-    }
-
-
-def prepare_action(state: Mapping[str, object], action_kind: str) -> Mapping[str, object]:
-    if action_kind != "TASK":
-        return _error(
-            "CONTRACT_UNSUPPORTED",
-            "COMPILER_ACTION_KIND_UNSUPPORTED",
-            "Task Compiler 只接受 TASK action kind。",
-            "/actionKind",
-        )
-    candidate = state.get("baseCandidate")
-    checkpoint = state.get("storyAcCheckpoint")
-    source = state.get("taskCatalog")
-    if not (
-        isinstance(candidate, Mapping)
-        and isinstance(checkpoint, Mapping)
-        and isinstance(source, TaskStandardCatalog)
-    ):
-        return _error(
-            "CONTRACT_UNSUPPORTED",
-            "TASK_STATE_INVALID",
-            "Task action 缺少 Story candidate、STORY_AC checkpoint 或有效目录。",
-            "/state",
-        )
-    checkpoint_diagnostics = _validate_story_checkpoint_for_task(state, candidate)
-    if checkpoint_diagnostics:
-        return {
-            "outcome": "CONTRACT_UNSUPPORTED",
-            "actionKind": "TASK",
-            "specs": [],
-            "diagnostics": [
-                {
-                    "code": item.code,
-                    "message": item.message,
-                    "path": item.path,
-                    "details": dict(item.details),
-                }
-                for item in checkpoint_diagnostics
-            ],
-        }
-    if source.template_sha256 != candidate.get("project", {}).get("templateSha256"):
-        return _error(
-            "CONTRACT_UNSUPPORTED",
-            "TASK_TEMPLATE_BINDING_MISMATCH",
-            "Task Standard Catalog 必须来自 Input Revision 绑定的同一模板。",
-            "/taskCatalog/templateSha256",
-        )
-    if state.get("priorSowInputSha256") not in {
-        "NOT_PROVIDED",
-        *state.get("inputRevision", {}).get("priorSowSha256s", []),
-    }:
-        return _error(
-            "CONTRACT_UNSUPPORTED",
-            "PRIOR_SOW_BINDING_MISMATCH",
-            "priorSowInputSha256 未绑定当前 Input Revision。",
-            "/priorSowInputSha256",
-        )
-    token_budget = state.get("maxInitialPacketTokens")
-    if not isinstance(token_budget, int) or isinstance(token_budget, bool) or token_budget < 1:
-        return _error(
-            "CONTRACT_UNSUPPORTED",
-            "TASK_STATE_INVALID",
-            "Task 初始 packet token 预算无效。",
-            "/maxInitialPacketTokens",
-        )
-    compact = [dict(item) for item in compact_index(source)]
-    materials = [
-        _story_material(candidate, story)
-        for story in _mappings(candidate.get("stories"))
-    ]
-    batches: list[list[Mapping[str, object]]] = []
-    current: list[Mapping[str, object]] = []
-    for material in materials:
-        attempted = [*current, material]
-        spec = _task_spec(state, compact, attempted, len(batches) + 1)
-        estimate = _estimate_tokens(
-            {
-                "logicalShardId": spec["logicalShardId"],
-                "payload": spec["packet"],
-                "evidenceCatalog": spec["evidenceCatalog"],
-            }
-        )
-        if current and estimate > token_budget:
-            batches.append(current)
-            current = [material]
-        else:
-            current = attempted
-    if current:
-        batches.append(current)
-    specs = [
-        _task_spec(state, compact, batch, index)
-        for index, batch in enumerate(batches, 1)
-    ]
-    estimates = [
-        _estimate_tokens(
-            {
-                "logicalShardId": spec["logicalShardId"],
-                "payload": spec["packet"],
-                "evidenceCatalog": spec["evidenceCatalog"],
-            }
-        )
-        for spec in specs
-    ]
-    if len(specs) > 8 or any(value > token_budget for value in estimates):
-        return _error(
-            "CONTRACT_UNSUPPORTED",
-            "TASK_CAPACITY_EXCEEDED",
-            "Task stories 与 compact catalog 无法在安全上下文预算内完整分配。",
-            "/baseCandidate/stories",
-        )
-    return {
-        "outcome": "ACTION_REQUIRED",
-        "actionKind": "TASK",
-        "specs": specs,
-        "estimatedInitialPacketTokens": estimates,
-        "diagnostics": [],
-    }
-
-
-def _packet_sha256(spec: Mapping[str, object]) -> str:
-    return sha256_bytes(
-        canonical_json_bytes(
-            {
-                "logicalShardId": spec["logicalShardId"],
-                "payload": spec["packet"],
-                "evidenceCatalog": spec["evidenceCatalog"],
-            }
-        )
-    )
-
-
-def _validate_task_nodes(
-    state: Mapping[str, object],
-    spec: Mapping[str, object],
-    replacement: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    diagnostics: list[Diagnostic] = []
-    source: TaskStandardCatalog = state["taskCatalog"]
-    assigned_story_ids = set(_ids(spec["packet"].get("assignedStoryIds")))
-    base = state["baseCandidate"]
-    ac_story = {
-        str(item["acceptanceCriterionId"]): str(item["storyId"])
-        for item in _mappings(base.get("acceptanceCriteria"))
-    }
-    tasks: dict[str, Mapping[str, object]] = {}
-    matches: dict[str, Mapping[str, object]] = {}
-    for position, wrapper in enumerate(_mappings(replacement.get("upserts"))):
-        collection = wrapper.get("collection")
-        node = wrapper.get("node")
-        if collection not in STAGE_3_COLLECTIONS:
-            diagnostics.append(
-                _diagnostic(
-                    "OWNER_WRITE_SCOPE_VIOLATION",
-                    "Task action 只能写 Stage 3 区域。",
-                    f"/replacementSet/upserts/{position}",
-                )
-            )
-            continue
-        if not isinstance(node, Mapping):
-            continue
-        if collection == "tasks":
-            task_id = str(node.get("taskId"))
-            tasks[task_id] = node
-            work_type_id = node.get("workTypeId")
-            row = source.by_work_type_id.get(str(work_type_id))
-            if row is None:
-                diagnostics.append(
-                    _diagnostic(
-                        "TASK_STANDARD_UNKNOWN",
-                        "Task 必须选择当前模板目录中的工作类型。",
-                        f"/tasks/{task_id}/workTypeId",
-                    )
-                )
-            else:
-                if node.get("rowSemanticSha256") != row.get("rowSemanticSha256"):
-                    diagnostics.append(
-                        _diagnostic(
-                            "TASK_STANDARD_HASH_MISMATCH",
-                            "Task rowSemanticSha256 与当前模板规则不一致。",
-                            f"/tasks/{task_id}/rowSemanticSha256",
-                        )
-                    )
-                mode = node.get("workMode")
-                if row.get(f"{mode}适用") is not True:
-                    diagnostics.append(
-                        _diagnostic(
-                            "TASK_WORK_MODE_NOT_ALLOWED",
-                            "当前工作类型不允许候选 workMode。",
-                            f"/tasks/{task_id}/workMode",
-                        )
-                    )
-            if node.get("storyId") not in assigned_story_ids:
-                diagnostics.append(
-                    _diagnostic(
-                        "TASK_STORY_NOT_ASSIGNED",
-                        "Task 只能属于当前 shard 分配的 Story。",
-                        f"/tasks/{task_id}/storyId",
-                    )
-                )
-            for ac_id in _ids(node.get("acceptanceCriterionIds")):
-                if ac_story.get(ac_id) != node.get("storyId"):
-                    diagnostics.append(
-                        _diagnostic(
-                            "TASK_AC_STORY_MISMATCH",
-                            "Task 引用的 AC 必须属于同一 Story。",
-                            f"/tasks/{task_id}/acceptanceCriterionIds/{ac_id}",
-                        )
-                    )
-        elif collection == "effectiveStartMatches":
-            matches[str(node.get("taskId"))] = node
-    for task_id, task in tasks.items():
-        match = matches.get(task_id)
-        expected = {
-            "新建": "NO_MATCH_NEW",
-            "调整": "MATCHED_ADJUSTMENT",
-            "接入复用": "MATCHED_REUSE",
-        }.get(str(task.get("workMode")))
-        if match is None or match.get("decision") != expected:
-            diagnostics.append(
-                _diagnostic(
-                    "TASK_EFFECTIVE_START_MODE_MISMATCH",
-                    "每个 Task 的 workMode 必须由同 Task 的 Effective Start 决定支持。",
-                    f"/tasks/{task_id}/workMode",
-                )
-            )
-        if task.get("workMode") in {"调整", "接入复用"} and (
-            match is None
-            or not _ids(match.get("candidateIds"))
-            or not _ids(match.get("checkedLocators"))
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "TASK_EFFECTIVE_START_EVIDENCE_MISSING",
-                    "调整或接入复用必须绑定具体起点对象与已检查证据位置。",
-                    f"/effectiveStartMatches/{task_id}",
-                )
-            )
-        if (
-            state.get("priorSowInputSha256") == "NOT_PROVIDED"
-            and task.get("workMode") != "新建"
-        ):
-            diagnostics.append(
-                _diagnostic(
-                    "TASK_EFFECTIVE_START_MODE_MISMATCH",
-                    "没有 Prior SOW 或当前起点证据时只能使用新建。",
-                    f"/tasks/{task_id}/workMode",
-                )
-            )
-    if set(tasks) != set(matches):
-        diagnostics.append(
-            _diagnostic(
-                "TASK_EFFECTIVE_START_SET_MISMATCH",
-                "effectiveStartMatches 必须与当前 shard Task 一一对应。",
-                "/effectiveStartMatches",
-            )
-        )
-    return _sort(diagnostics)
-
-
-def _validate_record(
-    state: Mapping[str, object],
-    prepared: Mapping[str, object],
-    record: Mapping[str, object],
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(
-        validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY)
-    )
-    specs = {
-        str(item["logicalShardId"]): item
-        for item in _mappings(prepared.get("specs"))
-    }
-    spec = specs.get(str(record.get("logicalShardId")))
-    if spec is None:
-        diagnostics.append(
-            _diagnostic(
-                "TASK_SHARD_UNKNOWN",
-                "Task record 不属于当前冻结 action group。",
-                "/logicalShardId",
-            )
-        )
-        return _sort(diagnostics)
-    expected = {
-        "runId": state.get("runId"),
-        "packetSha256": _packet_sha256(spec),
-        "inputRevisionSha256": sha256_bytes(
-            canonical_json_bytes(state.get("inputRevision"))
-        ),
-        "baseCandidateSha256": state.get("baseCandidateSha256"),
-        "modelProfileId": state.get("modelProfileId"),
-        "modelConfigSha256": state.get("modelConfigSha256"),
-    }
-    for field, value in expected.items():
-        if record.get(field) != value:
-            diagnostics.append(
-                _diagnostic(
-                    "TASK_RECORD_BINDING_MISMATCH",
-                    "Task record 与当前冻结输入不匹配。",
-                    f"/{field}",
-                )
-            )
-    submission = record.get("submission")
-    if record.get("status") != "SUCCESS" or not isinstance(submission, Mapping):
-        diagnostics.append(
-            _diagnostic(
-                "TASK_RECORD_NOT_SUCCESSFUL",
-                "Task Compiler 只接受成功 ActionRecord。",
-                "/status",
-            )
-        )
-        return _sort(diagnostics)
-    if submission.get("resultKind") != "PATCH":
-        diagnostics.append(
-            _diagnostic(
-                "TASK_RESULT_KIND_INVALID", "Task action 必须返回 PATCH。", "/submission/resultKind"
-            )
-        )
-    if record.get("submissionSha256") != sha256_bytes(canonical_json_bytes(submission)):
-        diagnostics.append(
-            _diagnostic(
-                "TASK_SUBMISSION_HASH_MISMATCH",
-                "Task submission hash 与内容不一致。",
-                "/submissionSha256",
-            )
-        )
-    if submission.get("reviewedEvidenceIds") != spec["packet"]["assignedEvidenceIds"]:
-        diagnostics.append(
-            _diagnostic(
-                "TASK_EVIDENCE_MISMATCH",
-                "Task action 必须复核全部 assigned Story evidence。",
-                "/submission/reviewedEvidenceIds",
-            )
-        )
-    self_check = submission.get("selfCheck")
-    if not isinstance(self_check, Mapping) or self_check.get("completedCheckIds") != list(
-        TASK_REQUIRED_CHECK_IDS
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "TASK_SELF_CHECK_INCOMPLETE",
-                "Task action 必须完成全部冻结检查项。",
-                "/submission/selfCheck/completedCheckIds",
-            )
-        )
-    replacement = submission.get("replacementSet")
-    if isinstance(replacement, Mapping):
-        diagnostics.extend(_validate_task_nodes(state, spec, replacement))
-        for key in [
-            *(replacement.get("expectedNodeHashes", {}).keys() if isinstance(replacement.get("expectedNodeHashes"), Mapping) else []),
-            *(replacement.get("deletes", []) if isinstance(replacement.get("deletes"), list) else []),
-        ]:
-            if str(key).split(":", 1)[0] not in STAGE_3_COLLECTIONS:
-                diagnostics.append(
-                    _diagnostic(
-                        "OWNER_WRITE_SCOPE_VIOLATION",
-                        "Task action 不得修改其他 Owner 的区域。",
-                        "/submission/replacementSet",
-                    )
-                )
-    return _sort(diagnostics)
-
-
-def accept_result(state: Mapping[str, object], record: Mapping[str, object]) -> CompilerProgress:
-    prepared = prepare_action(state, "TASK")
-    if prepared.get("outcome") != "ACTION_REQUIRED":
-        return CompilerProgress(
-            "FAILED", (), (_diagnostic("TASK_PREPARE_FAILED", "Task action 未成功冻结。", "/state"),)
-        )
-    diagnostics = _validate_record(state, prepared, record)
-    if diagnostics:
-        return CompilerProgress("FAILED", (), diagnostics)
-    completed = {
-        str(item.get("logicalShardId"))
-        for item in [
-            *_mappings(state.get("acceptedRecords")),
-            record,
-        ]
-        if item.get("status") == "SUCCESS"
-    }
-    required = [str(item["logicalShardId"]) for item in prepared["specs"]]
-    pending = tuple(item for item in required if item not in completed)
-    return CompilerProgress("ACTION_REQUIRED" if pending else "CHECKPOINT_READY", pending, ())
-
-
 def _task_coverage_diagnostics(model: Mapping[str, object]) -> tuple[Diagnostic, ...]:
     diagnostics: list[Diagnostic] = []
     tasks = _mappings(model.get("tasks"))
@@ -659,17 +47,18 @@ def _task_coverage_diagnostics(model: Mapping[str, object]) -> tuple[Diagnostic,
         )
     for story in _mappings(model.get("stories")):
         story_id = str(story.get("storyId"))
-        story_tasks = [item for item in tasks if item.get("storyId") == story_id]
+        story_tasks = [item for item in tasks if criteria_by_story[story_id].intersection(
+            _ids(item.get("acceptanceCriterionIds")))]
         covered = {
             ac_id
             for task in story_tasks
             for ac_id in _ids(task.get("acceptanceCriterionIds"))
         }
-        if not story_tasks or covered != criteria_by_story[story_id]:
+        if not story_tasks or not criteria_by_story[story_id].issubset(covered):
             diagnostics.append(
                 _diagnostic(
                     "TASK_STORY_AC_COVERAGE_INCOMPLETE",
-                    "每个 Story 的全部且仅其自身 AC 必须由至少一个 Task 覆盖。",
+                    "每个 Story 的全部 AC 必须由至少一个实际 Task 覆盖。",
                     f"/stories/{story_id}",
                 )
             )
@@ -687,7 +76,7 @@ def _task_coverage_diagnostics(model: Mapping[str, object]) -> tuple[Diagnostic,
                 diagnostics.append(
                     _diagnostic(
                         code,
-                        "Story 引用的批准设计与交付政策必须由同 Story Task 落实。",
+                        "Story 引用的批准设计与交付政策必须由覆盖其 AC 的 Task 落实。",
                         f"/stories/{story_id}/{field}",
                     )
                 )
@@ -734,242 +123,792 @@ def _task_coverage_diagnostics(model: Mapping[str, object]) -> tuple[Diagnostic,
     return _sort(diagnostics)
 
 
-def apply_ready_group(
-    state: Mapping[str, object], records: Sequence[Mapping[str, object]]
-) -> CompilerResult:
-    base = state.get("baseCandidate")
-    if not isinstance(base, Mapping):
-        return CompilerResult({}, "", {}, (_diagnostic("TASK_STATE_INVALID", "缺少 Task 基础 candidate。", "/baseCandidate"),))
-    prepared = prepare_action(state, "TASK")
-    required = [str(item["logicalShardId"]) for item in _mappings(prepared.get("specs"))]
-    by_shard: dict[str, Mapping[str, object]] = {}
-    duplicate = False
-    for record in records:
-        shard_id = str(record.get("logicalShardId"))
-        duplicate = duplicate or shard_id in by_shard
-        by_shard[shard_id] = record
-    if prepared.get("outcome") != "ACTION_REQUIRED" or duplicate or set(by_shard) != set(required):
-        return CompilerResult(
-            deepcopy(dict(base)),
-            sha256_bytes(canonical_json_bytes(base)),
-            {},
-            (_diagnostic("TASK_GROUP_INCOMPLETE", "Task group 必须包含全部冻结 sibling records。", "/records"),),
-        )
-    diagnostics = tuple(
-        item
-        for shard_id in required
-        for item in _validate_record(state, prepared, by_shard[shard_id])
-    )
-    if diagnostics:
-        return CompilerResult(deepcopy(dict(base)), sha256_bytes(canonical_json_bytes(base)), {}, _sort(diagnostics))
-    combined: dict[str, object] = {"expectedNodeHashes": {}, "upserts": [], "deletes": []}
-    for shard_id in required:
-        replacement = by_shard[shard_id]["submission"]["replacementSet"]
-        for key, value in replacement["expectedNodeHashes"].items():
-            if key in combined["expectedNodeHashes"]:
-                diagnostics += (_diagnostic("TASK_REPLACEMENT_OVERLAP", "Task shards 不得修改同一节点。", f"/records/{shard_id}/{key}"),)
-            combined["expectedNodeHashes"][key] = value
-        combined["upserts"].extend(replacement["upserts"])
-        combined["deletes"].extend(replacement["deletes"])
-    if diagnostics:
-        return CompilerResult(deepcopy(dict(base)), sha256_bytes(canonical_json_bytes(base)), {}, _sort(diagnostics))
-    outcome = apply_replacement(base, combined, owner_stage="STAGE_3")
-    if outcome.diagnostics:
-        return CompilerResult(deepcopy(dict(base)), sha256_bytes(canonical_json_bytes(base)), {}, outcome.diagnostics)
-    diagnostics = _sort(
-        [
-            *validate_sow_model(outcome.candidate, "STAGE_3", registry=NEXT_SCHEMA_REGISTRY),
-            *_task_coverage_diagnostics(outcome.candidate),
-        ]
-    )
-    if diagnostics:
-        return CompilerResult(outcome.candidate, outcome.candidate_sha256, {}, diagnostics)
-    return CompilerResult(
-        outcome.candidate,
-        outcome.candidate_sha256,
-        {
-            "kind": "TASK_CANDIDATE",
-            "coverageSha256": _task_coverage_sha256(outcome.candidate),
-            "recordSha256s": [
-                sha256_bytes(canonical_json_bytes(by_shard[shard_id]))
-                for shard_id in required
-            ],
-        },
-        (),
-    )
+# Exact TaskDecisionIR boundary.
+from dataclasses import dataclass
+import json
+from contracts import InvalidActionResult, load_schema_registry
+from models import ContextRefDescriptor
+from stage_planner import AtomicWorkItemDescriptor, make_planned_work
+from task_standard_catalog import decision_catalog
 
 
-def _task_owner_projection(model: Mapping[str, object]) -> dict[str, object]:
-    return {
-        collection: deepcopy(list(_mappings(model.get(collection))))
-        for collection in sorted(STAGE_3_COLLECTIONS)
-    }
+@dataclass(frozen=True)
+class TaskInputs:
+    story_candidate_bytes: bytes
+    checkpoint_bytes: bytes
+    checkpoint_sha256: str
+    input_revision_bytes: bytes
+    task_catalog: TaskStandardCatalog
+    work_items: tuple[AtomicWorkItemDescriptor, ...]
+    context_refs: tuple[ContextRefDescriptor, ...]
+    prior_state_bytes: bytes | None = None
+    prior_state_sha256: str | None = None
+    change_graph_bytes: bytes | None = None
+    change_graph_sha256: str | None = None
 
 
-def _task_coverage_sha256(model: Mapping[str, object]) -> str:
-    return sha256_bytes(
-        canonical_json_bytes(
-            {
-                "storyAc": [
-                    {
-                        "storyId": story.get("storyId"),
-                        "acceptanceCriterionIds": [
-                            item.get("acceptanceCriterionId")
-                            for item in _mappings(model.get("acceptanceCriteria"))
-                            if item.get("storyId") == story.get("storyId")
-                        ],
-                    }
-                    for story in _mappings(model.get("stories"))
-                ],
-                "tasks": model.get("tasks", []),
-                "integrations": [
-                    item.get("integrationId")
-                    for item in _mappings(model.get("integrations"))
-                ],
-                "effectiveStartMatches": model.get("effectiveStartMatches", []),
-            }
-        )
-    )
+class TaskInputRequired(ValueError):
+    pass
 
 
-def _task_checkpoint_material(
-    state: Mapping[str, object],
-) -> tuple[dict[str, object], tuple[Diagnostic, ...]]:
-    candidate = state.get("candidate")
-    source = state.get("taskCatalog")
-    checkpoint = state.get("storyAcCheckpoint")
-    if not (
-        isinstance(candidate, Mapping)
-        and isinstance(source, TaskStandardCatalog)
-        and isinstance(checkpoint, Mapping)
-    ):
-        return {}, (_diagnostic("TASK_CHECKPOINT_STATE_INVALID", "Task checkpoint 输入状态无效。", "/state"),)
-    task_diagnostics = list(
-        validate_sow_model(candidate, "STAGE_3", registry=NEXT_SCHEMA_REGISTRY)
-    )
-    task_diagnostics.extend(_task_coverage_diagnostics(candidate))
-    prepared = prepare_action(state, "TASK")
-    records = _mappings(state.get("taskActionRecords"))
-    required = [str(item["logicalShardId"]) for item in _mappings(prepared.get("specs"))]
-    by_shard = {str(item.get("logicalShardId")): item for item in records}
-    if prepared.get("outcome") != "ACTION_REQUIRED" or len(by_shard) != len(records) or set(by_shard) != set(required):
-        task_diagnostics.append(
-            _diagnostic("TASK_ACTION_PROOF_INCOMPLETE", "Task checkpoint 缺少完整冻结 ActionRecord 集。", "/taskActionRecords")
-        )
-        action_hashes: list[str] = []
-    else:
-        for shard_id in required:
-            task_diagnostics.extend(_validate_record(state, prepared, by_shard[shard_id]))
-        action_hashes = [
-            sha256_bytes(canonical_json_bytes(by_shard[shard_id]))
-            for shard_id in required
-        ]
-        replay = apply_ready_group(state, records)
-        task_diagnostics.extend(replay.diagnostics)
-        if not replay.diagnostics and canonical_json_bytes(_task_owner_projection(replay.model)) != canonical_json_bytes(_task_owner_projection(candidate)):
-            task_diagnostics.append(
-                _diagnostic("TASK_CANDIDATE_RECORD_MISMATCH", "Task candidate 不是冻结 records 一次性 Join 的结果。", "/candidate")
-            )
-    used_ids = sorted({str(item.get("workTypeId")) for item in _mappings(candidate.get("tasks"))})
-    used_rows = [
-        {
-            "workTypeId": work_type_id,
-            "rowSemanticSha256": source.by_work_type_id[work_type_id]["rowSemanticSha256"],
-        }
-        for work_type_id in used_ids
-        if work_type_id in source.by_work_type_id
-    ]
-    if len(used_rows) != len(used_ids):
-        task_diagnostics.append(
-            _diagnostic("TASK_STANDARD_UNKNOWN", "Task checkpoint 引用了未知工作类型。", "/tasks")
-        )
-    matches = sorted(
-        _mappings(candidate.get("effectiveStartMatches")),
-        key=lambda item: str(item.get("taskId")),
-    )
-    effective_decisions = [
-        {
-            "taskId": item.get("taskId"),
-            "decision": item.get("decision"),
-            "evidenceSha256": sha256_bytes(canonical_json_bytes(item)),
-        }
-        for item in matches
-    ]
-    upstream = [sha256_bytes(canonical_json_bytes(checkpoint))]
-    review_results = sorted(
-        _mappings(state.get("taskReviewResults")),
-        key=lambda item: str(item.get("logicalShardId", "")),
-    )
-    material = {
-        "sourceManifestSha256": checkpoint.get("sourceManifestSha256"),
-        "ownerProjectionSha256": sha256_bytes(canonical_json_bytes(_task_owner_projection(candidate))),
-        "coverageSha256": _task_coverage_sha256(candidate),
-        "policyDefinitionSha256": checkpoint.get("policyDefinitionSha256"),
-        "actionRecordSha256s": action_hashes,
-        "reviewResultSha256s": [
-            sha256_bytes(canonical_json_bytes(item.get("result") if isinstance(item.get("result"), Mapping) else item))
-            for item in review_results
-        ],
-        "upstreamCheckpointSha256s": upstream,
-        "effectivePolicyDecisionSha256": checkpoint.get("effectivePolicyDecisionSha256"),
-        "taskCatalogSemanticSha256": source.task_catalog_semantic_sha256,
-        "taskEstimationMethodSha256": state.get("taskEstimationMethodSha256"),
-        "priorSowInputSha256": state.get("priorSowInputSha256"),
-        "usedTaskStandards": used_rows,
-        "effectiveStartMatchDecisions": effective_decisions,
-    }
-    return material, _sort(task_diagnostics)
+def task_review_rules(candidate, task_catalog):
+    """Bind the candidate's selected full rules for independent semantic Review."""
+    if candidate['project']['templateSha256'] != task_catalog.template_sha256:
+        raise ValueError('Task Review 模板与候选不一致。')
+    rules = {row['workTypeId']: row for row in decision_catalog(task_catalog)}
+    selected = set()
+    for task in candidate['tasks']:
+        key = task['workTypeId']
+        if key not in rules or task['rowSemanticSha256'] != rules[key]['rowSemanticSha256']:
+            raise ValueError('Task Review 工作类型或行 hash 与本轮模板不一致。')
+        selected.add(key)
+    return {'kind': 'TASK_RULES', 'templateSha256': task_catalog.template_sha256,
+        'catalogSemanticSha256': task_catalog.task_catalog_semantic_sha256,
+        'rows': [rules[key] for key in sorted(selected)]}
 
 
-def build_task_checkpoint(state: Mapping[str, object]) -> Mapping[str, object]:
-    material, diagnostics = _task_checkpoint_material(state)
-    if diagnostics:
-        return {"outcome": "OWNER_FIX_REQUIRED", "checkpoint": None, "diagnostics": diagnostics}
-    checkpoint = {
-        "contract": "ai-sow-stage-checkpoint-v1",
-        "kind": "TASK",
-        "runId": state["runId"],
-        "stage": "TASK",
-        "candidateSha256": sha256_bytes(canonical_json_bytes(state["candidate"])),
-        **material,
-        "validatorContractSha256": sha256_bytes(
-            (SKILL_ROOT / "contracts/sow-model.schema.json").read_bytes()
-        ),
-        "completedCheckIds": list(TASK_CHECKPOINT_CHECK_IDS),
-        "decision": "PASS",
-    }
-    contract_diagnostics = validate_contract(checkpoint, "stage-checkpoint.schema.json", NEXT_SCHEMA_REGISTRY)
-    if contract_diagnostics:
-        return {"outcome": "CONTRACT_UNSUPPORTED", "checkpoint": None, "diagnostics": contract_diagnostics}
-    return {
-        "outcome": "READY_FOR_REVIEW",
-        "checkpoint": checkpoint,
-        "checkpointSha256": sha256_bytes(canonical_json_bytes(checkpoint)),
-        "diagnostics": (),
-    }
+def factor_task_repair_packet(packet):
+    """Send repeated sealed Story values once without changing their meaning."""
+    validate_bound_task_context(packet)
+    factored = deepcopy(packet)
+    stories = {}
+    for item in factored['workItems']:
+        story = item['payload']['story']
+        digest = sha256_bytes(canonical_json_bytes(story))
+        stories[digest] = story
+        item['payload']['story'] = {'storyRef': digest}
+    return {'contract': 'ai-sow-task-repair-context-v1',
+        'packetSha256': sha256_bytes(canonical_json_bytes(packet)),
+        'packet': factored, 'stories': {key: stories[key] for key in sorted(stories)}}
 
 
-def validate_task_checkpoint(
-    checkpoint: Mapping[str, object], state: Mapping[str, object]
-) -> tuple[Diagnostic, ...]:
-    diagnostics = list(validate_contract(checkpoint, "stage-checkpoint.schema.json", NEXT_SCHEMA_REGISTRY))
-    material, material_diagnostics = _task_checkpoint_material(state)
-    diagnostics.extend(material_diagnostics)
-    expected = {
-        "runId": state.get("runId"),
-        **material,
-        "validatorContractSha256": sha256_bytes(
-            (SKILL_ROOT / "contracts/sow-model.schema.json").read_bytes()
-        ),
-        "completedCheckIds": list(TASK_CHECKPOINT_CHECK_IDS),
-    }
-    for field, value in expected.items():
-        if checkpoint.get(field) != value:
-            diagnostics.append(
-                _diagnostic(
-                    "TASK_CHECKPOINT_BINDING_STALE",
-                    "TASK checkpoint 不再绑定当前 Stage 3 投影或证明闭包。",
-                    f"/{field}",
-                )
-            )
+def expand_task_repair_packet(value):
+    """Restore and verify the exact bound Owner packet before any validation."""
+    if value.get('contract') != 'ai-sow-task-repair-context-v1':
+        validate_bound_task_context(value)
+        return deepcopy(value)
+    if set(value) != {'contract', 'packetSha256', 'packet', 'stories'}:
+        raise ValueError('Task Repair context 字段不完整或包含额外字段。')
+    stories = value['stories']
+    if not isinstance(stories, dict) or any(sha256_bytes(canonical_json_bytes(story)) != key
+                                           for key, story in stories.items()):
+        raise ValueError('Task Repair Story 字典 hash 漂移。')
+    packet = deepcopy(value['packet'])
+    used = set()
+    for item in packet['workItems']:
+        reference = item['payload'].get('story')
+        if not isinstance(reference, dict) or set(reference) != {'storyRef'} or reference['storyRef'] not in stories:
+            raise ValueError('Task Repair 缺失精确 Story 引用。')
+        used.add(reference['storyRef'])
+        item['payload']['story'] = deepcopy(stories[reference['storyRef']])
+    if set(stories) != used or sha256_bytes(canonical_json_bytes(packet)) != value['packetSha256']:
+        raise ValueError('Task Repair 展开结果与原 Owner packet 不一致。')
+    validate_bound_task_context(packet)
+    return packet
+
+
+# Source authority only. The template alone defines selection/calculation rules.
+_UI_WORK_TYPES = frozenset({'FE-VIEW', 'FE-EDIT', 'FE-FLOW', 'FE-DASHBOARD', 'FE-UI-COMPONENT'})
+_TECHNICAL_ROLES = frozenset({'HLD', 'ADR', 'SUPPLEMENT', 'QUESTION_ANSWER'})
+
+
+def _current_task_start_contexts(packet, model, revision, target_keys):
+    """Offer source-bound counterpart commitments, never infer an existing vendor implementation."""
+    _, targets, _, _ = _task_packet_catalog(packet)
+    sources = {row['sourceId']: row for row in revision['sources']}
+    blocks = {(row['sourceId'], row['blockId']): row for row in revision['blocks']}
+    def approved(ref, roles):
+        source = sources.get(ref['sourceId'], {})
+        block = blocks.get((ref['sourceId'], ref['blockId']), {})
+        return (source.get('status') == 'APPROVED' and source.get('role') in roles
+                and (block.get('contentSha256'), block.get('locator')) == (ref['sha256'], ref['locator']))
+    facts = {row['inputItemId']: row for row in model['inputItems']}
+    integrations = {row['integrationId']: row for row in model['integrations']}
+    result = []
+    for target_key in sorted(target_keys):
+        target = targets.get(target_key)
+        if target is None or target['targetKind'] != 'INTEGRATION': continue
+        integration = integrations.get(target['nodeId'])
+        if (integration is None or integration['counterpartyBoundary'] != 'EXTERNAL'
+                or not integration['responsibilityBoundaryIds']
+                or not any(approved(ref, _TECHNICAL_ROLES) for ref in target['sourceRefs'])): continue
+        scope = {target['nodeId'], *integration['featureIds']}
+        scope.update(row['epicId'] for row in model['features'] if row['featureId'] in scope)
+        anchors = set(map(canonical_json_bytes, integration['sourceRefs']))
+        for closure in model['scopeClosure']:
+            fact = facts[closure['inputItemId']]
+            if (closure['disposition'] != 'PROJECT_GATE' or fact['kind'] != 'ASSUMPTION'
+                    or not scope.intersection(closure['targetNodeIds'])
+                    or not anchors.intersection(map(canonical_json_bytes, fact['sourceRefs']))
+                    or not all(approved(ref, {'PRD', *_TECHNICAL_ROLES}) for ref in fact['sourceRefs'])): continue
+            key = 'current:' + sha256_bytes(canonical_json_bytes([fact['inputItemId'], target_key]))
+            result.append({'kind':'TASK_EFFECTIVE_START','evidenceId':key,'entityId':fact['inputItemId'],
+                'basis':'CURRENT_RESPONSIBILITY_COMMITMENT','summary':fact['text'],'commitment':deepcopy(fact),
+                'targetKeys':[target_key],'modes':['接入复用'],'sourceRefs':deepcopy(fact['sourceRefs']),
+                'responsibilityBoundaryIds':integration['responsibilityBoundaryIds'],
+                'interpretation':'仅为现有对端可使用的责任承诺候选；不是供应商侧集成已实现的证明。保留全部条件，结合模板和原文判断是否适用。'})
+    return result
+
+
+def prepare_task_repair_packet(packet, original, review, story_candidate_bytes, input_revision_bytes, resolution=None):
+    from final_review import repair_root_keys, is_manual_repair, resolution_field
+    validate_bound_task_context(packet)
+    model, revision = map(_task_object, (story_candidate_bytes, input_revision_bytes))
+    checkpoint = next(ref['canonicalContent'] for ref in packet['contextRefs']
+                      if ref['canonicalContent'].get('kind') == 'TASK_STORY_CHECKPOINT')
+    if (checkpoint['candidateSha256'] != sha256_bytes(story_candidate_bytes)
+            or checkpoint['inputRevisionSha256'] != sha256_bytes(input_revision_bytes)):
+        raise ValueError('Task Repair 补充上下文必须绑定同一 sealed Story 与 revision。')
+    roots = set(repair_root_keys('TASK', original, review, resolution))
+    previous = [ref['canonicalContent'] for ref in packet['contextRefs']
+                if ref['canonicalContent'].get('kind')=='TASK_REPAIR_AUTHORIZATION']
+    if len(previous)>1: raise ValueError('Task Repair 授权上下文不唯一。')
+    if resolution is not None:
+        _,targets,_,_=_task_packet_catalog(packet)
+        allowed_targets={row['technicalTarget'] for row in original['tasks'] if row['localKey'] in roots}
+        if (not is_manual_repair(resolution) and not set(resolution['technicalTargetKeys'])<=allowed_targets) or not allowed_targets<=targets.keys():
+            raise ValueError('澄清只能绑定当前问题 Task 的既有批准技术目标。')
+        current=deepcopy(model)
+        for collection,node in _task_node_bindings(packet,original): current[collection].append(node)
+        for collection in ('tasks','effectiveStartMatches'): current[collection].sort(key=lambda node:node['taskId'])
+        if resolution['candidateSha256']!=sha256_bytes(canonical_json_bytes(current)):
+            raise ValueError('澄清不是当前候选。')
+    authorized = [{field: deepcopy(row[field]) for field in
+        ('localKey','storyLocalKey','acceptanceCriterionKeys','technicalTarget')}
+        for row in original['tasks'] if row['localKey'] in roots]
+    old_roots={row['localKey']:row for row in previous[0]['roots']} if previous else {}
+    old_roots.update({row['localKey']:row for row in authorized})
+    context = {'kind':'TASK_REPAIR_AUTHORIZATION','reviewDecisionSha256':sha256_bytes(canonical_json_bytes(review)),
+               'ownerIRSha256':sha256_bytes(canonical_json_bytes(original)),
+               'roots':[old_roots[key] for key in sorted(old_roots)]}
+    if previous: context['previousAuthorizationSha256']=sha256_bytes(canonical_json_bytes(previous[0]))
+    if resolution is not None: context[resolution_field(resolution)]=resolution
+    extra = [context, *_current_task_start_contexts(packet, model, revision,
+        {row['technicalTarget'] for row in authorized})]
+    result = deepcopy(packet)
+    inherited = {ref['refId']:ref['canonicalContent'] for ref in result['contextRefs']
+                 if ref['canonicalContent'].get('basis')=='CURRENT_RESPONSIBILITY_COMMITMENT'}
+    inherited.update({entry.get('evidenceId','task-repair-authorization'):entry for entry in extra})
+    extra = [inherited[key] for key in sorted(inherited)] if previous else extra
+    result['contextRefs'] = [ref for ref in result['contextRefs'] if
+        ref['canonicalContent'].get('kind') != 'TASK_REPAIR_AUTHORIZATION'
+        and ref['canonicalContent'].get('basis') != 'CURRENT_RESPONSIBILITY_COMMITMENT']
+    for entry in extra:
+        key = entry.get('evidenceId', 'task-repair-authorization')
+        result['contextRefs'].append({'refId':key,'canonicalContent':entry,
+            'contentSha256':sha256_bytes(canonical_json_bytes(entry))})
+    validate_bound_task_context(result)
+    return result
+
+
+def _task_covered_targets(packet, task, obligations, targets):
+    """Return exact target projections for authorized shared AC coverage, or None."""
+    from final_review import repair_key_root
+    from sow_model import stories_share_task_scope
+    target = targets.get(task['technicalTarget'])
+    story_key = task['storyLocalKey']
+    keys = set(task['acceptanceCriterionKeys'])
+    if target is None or story_key not in target['storyKeys'] or not keys <= obligations.keys(): return None
+    criteria = [obligations[key] for key in keys]
+    primary = next((row['story'] for row in criteria if row['storyLocalKey'] == story_key), None)
+    if primary is None: return None
+    foreign = [row for row in criteria if row['storyLocalKey'] != story_key]
+    if not foreign: return [target]
+    contexts = [ref['canonicalContent'] for ref in packet['contextRefs']
+                if ref['canonicalContent'].get('kind') == 'TASK_REPAIR_AUTHORIZATION']
+    if len(contexts) != 1: return None
+    roots = contexts[0]['roots']
+    if repair_key_root(task['localKey'], {row['localKey'] for row in roots}) is None: return None
+    # Every foreign obligation must originate in an explicitly affected root and
+    # share an approved implementation target or declared Feature scope.
+    selected = {target['targetKey']: target}
+    for criterion in foreign:
+        matches = [row for row in roots if criterion['acceptanceCriterionKey'] in row['acceptanceCriterionKeys']
+                   and row['storyLocalKey'] == criterion['storyLocalKey']]
+        candidates = [targets[row['technicalTarget']] for row in matches if row['technicalTarget'] in targets]
+        candidates = [other for other in candidates if other['targetKind'] == target['targetKind']
+            and (other['targetKey'] == target['targetKey'] or stories_share_task_scope(primary, criterion['story']))]
+        if not candidates: return None
+        for other in candidates: selected[other['targetKey']] = other
+    return [selected[key] for key in sorted(selected)]
+
+
+def _task_object(payload):
+    value = json.loads(payload)
+    if not isinstance(value, dict) or canonical_json_bytes(value) != payload:
+        raise ValueError('Task 输入必须是 canonical JSON object。')
+    return value
+
+
+def prepare_task_inputs(story_candidate_bytes, checkpoint_bytes, *, checkpoint_sha256,
+                        task_catalog, input_revision_bytes, prior_state_bytes=None, prior_state_sha256=None,
+                        change_graph_bytes=None, change_graph_sha256=None):
+    """Consume resolved upstream bytes and proof; never reopen source files."""
+    from sow_model import owner_projection_sha256
+    model, checkpoint, revision = map(_task_object, (story_candidate_bytes, checkpoint_bytes, input_revision_bytes))
+    registry = load_schema_registry(SKILL_ROOT)
+    if (validate_contract(checkpoint, 'stage-checkpoint.schema.json', registry)
+            or validate_contract(revision, 'input-revision.schema.json', registry)
+            or validate_sow_model(model, 'STAGE_2', registry=registry)
+            or checkpoint['stageKind'] != 'STORY_AC'
+            or sha256_bytes(checkpoint_bytes) != checkpoint_sha256
+            or not checkpoint['upstreamCheckpointSha256s']
+            or checkpoint['candidateSha256'] != sha256_bytes(story_candidate_bytes)
+            or checkpoint['inputRevisionSha256'] != sha256_bytes(input_revision_bytes)
+            or model['project']['inputRevisionSha256'] != sha256_bytes(input_revision_bytes)
+            or not isinstance(task_catalog, TaskStandardCatalog)
+            or model['project']['templateSha256'] != task_catalog.template_sha256
+            or revision['templateSha256'] != task_catalog.template_sha256
+            or any(model[collection] for collection in STAGE_3_COLLECTIONS)):
+        raise ValueError('Task 输入没有绑定 sealed Story/AC、revision 和本轮模板。')
+    sources = {item['sourceId']:item for item in revision['sources']}
+    blocks = {(item['sourceId'],item['blockId']):item for item in revision['blocks']}
+    if len(sources) != len(revision['sources']) or len(blocks) != len(revision['blocks']):
+        raise ValueError('Task revision 来源身份重复。')
+    facts = model['inputItems']
+    evidence, targets, bodies = {}, {}, []
+    def evidence_keys(refs):
+        keys = []
+        for ref in refs:
+            source, block = sources.get(ref['sourceId']), blocks.get((ref['sourceId'],ref['blockId']))
+            block_bound = block is not None and (block['contentSha256'],block['locator']) == (ref['sha256'],ref['locator'])
+            file_bound = source is not None and source['role']=='DEMO' and source['rawSha256']==ref['sha256'] and ref['locator']=='file:'+source['path']
+            if source is None or source['status']=='REFERENCE_ONLY' or not (block_bound or file_bound):
+                raise ValueError('Task SourceRef 未绑定本轮授权来源。')
+            key = 'evidence-' + sha256_bytes(canonical_json_bytes(ref))
+            constraints = [text for fact in facts if ref in fact['sourceRefs']
+                           for field in ('conditions','thresholds','prohibitions') for text in fact[field]]
+            evidence[key] = {'kind':'TASK_EVIDENCE','evidenceId':key,'sourceRole':source['role'],
+                             'sourceRef':ref,'measurementConstraints':constraints}
+            keys.append(key)
+        if not keys:
+            raise TaskInputRequired('Task 技术对象/AC 缺少来源证据。')
+        return sorted(set(keys))
+    def target(key, kind, name, node, story):
+        refs = list(node['sourceRefs'])
+        target_key = 'target:'+key
+        if kind == 'STORY_IMPLEMENTATION':
+            baseline = [item for item in model['designItems']
+                        if item['status']=='APPROVED' and story['featureId'] in item['featureIds']
+                        and item['designItemId'] in story['designRefs']
+                        and any(sources[ref['sourceId']]['role'] in _TECHNICAL_ROLES
+                                and sources[ref['sourceId']]['status']=='APPROVED'
+                                for ref in item['sourceRefs'])]
+            if not baseline:
+                return
+            refs += [ref for item in baseline for ref in item['sourceRefs']
+                     if sources[ref['sourceId']]['role'] in _TECHNICAL_ROLES
+                     and sources[ref['sourceId']]['status']=='APPROVED']
+            refs = list({canonical_json_bytes(ref):ref for ref in refs}.values())
+            target_key += ':implementation'
+        if kind == 'POLICY_INSTANCE':
+            # Policy authority and its implementation baseline are distinct.
+            # Shared release coverage may span the policy's declared targets;
+            # other policies retain this Feature's technical source boundary.
+            baseline_features = {story['featureId']}
+            if node['policyId']=='policy-go-live':
+                declared = {feature['featureId'] for feature in model['features']
+                            if feature['featureId'] in node['targetNodeIds']
+                            or feature['epicId'] in node['targetNodeIds']}
+                baseline_features = declared.intersection(baseline_features | set(story['coverageSet']))
+            baseline = [item for item in model['designItems']
+                        if item['status']=='APPROVED' and baseline_features.intersection(item['featureIds'])]
+            baseline += [item for item in model['integrations'] if baseline_features.intersection(item['featureIds'])]
+            baseline += [item for item in model['nfrs']
+                         if item['status']=='DEFINED' and baseline_features.intersection(item['featureIds'])]
+            refs += [ref for item in baseline for ref in item['sourceRefs']
+                     if sources[ref['sourceId']]['role'] in _TECHNICAL_ROLES
+                     and sources[ref['sourceId']]['status']=='APPROVED']
+            refs = list({canonical_json_bytes(ref):ref for ref in refs}.values())
+            target_key += ':story:'+story['storyId']
+        entry = targets.setdefault(target_key, {'kind':'TASK_TARGET','targetKey':target_key,
+            'targetKind':kind,'nodeId':key,'name':name,'sourceRefs':sorted(refs,key=canonical_json_bytes),
+            'evidenceIds':evidence_keys(refs),'storyKeys':[], 'designItemIds':[], 'integrationIds':[],
+            'nfrIds':[], 'policyInstanceIds':[]})
+        entry['storyKeys'].append('story:'+story['storyId'])
+        if kind == 'DESIGN_ITEM': entry['designItemIds'] = [key]
+        if kind == 'STORY_IMPLEMENTATION':
+            entry['designItemIds'] = sorted(item['designItemId'] for item in baseline)
+        if kind == 'INTEGRATION':
+            entry['integrationIds'] = [key]
+        if kind == 'NFR': entry['nfrIds'] = [key]
+        if kind == 'POLICY_INSTANCE':
+            entry['policyInstanceIds'] = [key]
+            entry['designItemIds'] = sorted(set(story['designRefs']).intersection(
+                item['designItemId'] for item in baseline if 'designItemId' in item))
+    for story in sorted(model['stories'],key=lambda item:item['storyId']):
+        story_key = 'story:'+story['storyId']
+        target(story['storyId'],'USER_INTERFACE',story['name'],story,story)
+        if not story['policyRefs']:
+            target(story['storyId'],'STORY_IMPLEMENTATION',story['name'],story,story)
+        for design in model['designItems']:
+            if design['designItemId'] in story['designRefs']:
+                if design['status'] != 'APPROVED': raise TaskInputRequired('Task 所需设计尚未批准。')
+                target(design['designItemId'],'DESIGN_ITEM',design['name'],design,story)
+        for integration in model['integrations']:
+            if story['featureId'] in integration['featureIds']:
+                target(integration['integrationId'],'INTEGRATION',integration['name'],integration,story)
+        for nfr in model['nfrs']:
+            if story['featureId'] in nfr['featureIds'] and nfr['status']=='DEFINED':
+                target(nfr['nfrId'],'NFR',nfr['target'],nfr,story)
+        for policy in model['policyInstances']:
+            if policy['policyInstanceId'] in story['policyRefs']:
+                target(policy['policyInstanceId'],'POLICY_INSTANCE',policy['policyId'],policy,story)
+        criteria = sorted((ac for ac in model['acceptanceCriteria'] if ac['storyId']==story['storyId']),key=lambda ac:ac['acceptanceCriterionId'])
+        if not criteria: raise TaskInputRequired('Task Story 至少需要一条完整关闭义务的 sealed AC。')
+        for ac in criteria:
+            bodies.append({'contractVersion':'task-obligation-v1','storyLocalKey':story_key,
+                'storyId':story['storyId'],'acceptanceCriterionKey':'ac:'+ac['acceptanceCriterionId'],
+                'acceptanceCriterionId':ac['acceptanceCriterionId'],'story':story,'acceptanceCriterion':ac,
+                'evidenceIds':evidence_keys(ac['sourceRefs'])})
+    for entry in targets.values():
+        entry['storyKeys'] = sorted(set(entry['storyKeys']))
+        if entry['targetKind']=='INTEGRATION':
+            owned_inputs = {item['inputItemId'] for item in model['scopeClosure']
+                            if entry['nodeId'] in item['targetNodeIds'] and item['disposition']=='SCOPE_NODE'}
+            anchors = set(map(canonical_json_bytes,entry['sourceRefs']))
+            candidates = [story for story in model['stories'] if 'story:'+story['storyId'] in entry['storyKeys']]
+            responsible = min(candidates,key=lambda story:(
+                -len(owned_inputs.intersection(story['requirementRefs'])),
+                -len(anchors.intersection(map(canonical_json_bytes,story['sourceRefs']))),
+                bool(story['policyRefs']),story['storyId']))
+            entry['storyKeys'] = ['story:'+responsible['storyId']]
+            entry['designItemIds'] = sorted(design['designItemId'] for design in model['designItems']
+                if design['designItemId'] in responsible['designRefs'] and set(map(canonical_json_bytes,design['sourceRefs'])).intersection(map(canonical_json_bytes,entry['sourceRefs'])))
+    items = tuple(AtomicWorkItemDescriptor(sha256_bytes(canonical_json_bytes(body)), 'TASK',
+        'STORY_AC_CHECKPOINT',checkpoint_sha256,ordinal,body) for ordinal,body in enumerate(bodies))
+    contexts = [ContextRefDescriptor('sealed-task-story',canonical_json_bytes({'kind':'TASK_STORY_CHECKPOINT',
+        'checkpointSha256':checkpoint_sha256,'candidateSha256':checkpoint['candidateSha256'],
+        'inputRevisionSha256':sha256_bytes(input_revision_bytes)})),
+        ContextRefDescriptor('task-catalog',canonical_json_bytes({'kind':'TASK_CATALOG',
+            'templateSha256':task_catalog.template_sha256,'catalogSemanticSha256':task_catalog.semantic_sha256,
+            'rows':[{key:row[key] for key in ('workTypeId','name','category','unit','deliverable','modes','neighbors','sitEligibility','rowSemanticSha256')}
+                    for row in decision_catalog(task_catalog)]}))]
+    prior_contexts = _task_prior_contexts(model, revision, targets, prior_state_bytes, prior_state_sha256,
+                                        change_graph_bytes, change_graph_sha256, registry)
+    contexts += [ContextRefDescriptor(key,canonical_json_bytes(entry)) for key,entry in sorted({**targets,**evidence}.items())]
+    contexts += prior_contexts
+    return TaskInputs(story_candidate_bytes,checkpoint_bytes,checkpoint_sha256,input_revision_bytes,task_catalog,items,
+                      tuple(contexts) if items else (),prior_state_bytes,prior_state_sha256,change_graph_bytes,change_graph_sha256)
+
+
+def _task_prior_contexts(model, revision, targets, prior_bytes, prior_hash, graph_bytes, graph_hash, registry):
+    """Project already resolved Prior/ChangeGraph proofs; never analyze cells."""
+    if revision['priorSowState']=='NOT_PROVIDED':
+        if any(value is not None for value in (prior_bytes,prior_hash,graph_bytes,graph_hash)):
+            raise ValueError('未提供 Prior 的 revision 不得注入现状证明。')
+        return []
+    if any(value is None for value in (prior_bytes,prior_hash,graph_bytes,graph_hash)):
+        raise TaskInputRequired('Task 需要调用者解析并授权 Prior 与 ChangeGraph hash 证明。')
+    snapshot,graph = _task_object(prior_bytes),_task_object(graph_bytes)
+    if (sha256_bytes(prior_bytes)!=prior_hash or sha256_bytes(graph_bytes)!=graph_hash
+            or validate_contract(snapshot,'prior-state-snapshot.schema.json',registry)
+            or snapshot['inputRevisionSha256']!=model['project']['inputRevisionSha256']):
+        raise ValueError('Task Prior snapshot 与本轮证明不一致。')
+    from change_graph import derive_change_views
+    target_ids = [item[field] for collection,field in (('epics','epicId'),('features','featureId'),
+        ('designItems','designItemId'),('integrations','integrationId'),('nfrs','nfrId'),('policyInstances','policyInstanceId'))
+        for item in model[collection]]
+    derive_change_views(graph,snapshot,target_ids)
+    sources = {item['sourceId']:item for item in revision['sources']}
+    prior_evidence = {}
+    for item in snapshot['evidence']:
+        source = sources.get(item['sourceId'])
+        if (source is None or source['role']!='PRIOR_SOW' or source['status']!='APPLICABLE'
+                or source['rawSha256']!=item['workbookSha256']):
+            raise ValueError('Task Prior 证据不是本轮适用 PRIOR_SOW。')
+        prior_evidence[(item['sourceId'],item['priorEvidenceId'])] = item
+    contexts = []
+    for entity in snapshot['entities']:
+        groups = [group for group in graph['changeGroups'] if entity['entityId'] in group['priorEntityIds']]
+        bound_targets = sorted(key for key,target in targets.items()
+            if any(target['nodeId'] in group['targetEntityIds'] for group in groups))
+        if not bound_targets: continue
+        refs=[]
+        for evidence_id in entity['evidenceIds']:
+            item=prior_evidence.get((entity['sourceId'],evidence_id))
+            if item is None: raise ValueError('Task Prior 实体缺少该来源的证据。')
+            refs.append({'sourceId':entity['sourceId'],'blockId':evidence_id,'sha256':item['workbookSha256'],
+                'locator':item['sheet']+'!'+item['absoluteA1Range']})
+        modes = sorted({'接入复用' if group['kind']=='REUSE_DEPENDENCY' else '调整' for group in groups})
+        key='prior:'+entity['entityId']
+        contexts.append(ContextRefDescriptor(key,canonical_json_bytes({'kind':'TASK_EFFECTIVE_START',
+            'evidenceId':key,'entityId':entity['entityId'],'summary':entity['semanticSummary'],
+            'targetKeys':bound_targets,'modes':modes,'sourceRefs':sorted(refs,key=canonical_json_bytes),
+            'priorStateSha256':prior_hash,'changeGraphSha256':graph_hash})))
+    return contexts
+
+
+def hydrate_task_rules(inputs, selected_work_type_ids, query):
+    """Read selected, adjacent and challenger rules from the frozen catalog."""
+    hydrated = hydrate(inputs.task_catalog, selected_work_type_ids, query)
+    rows = {row['workTypeId']:row for row in decision_catalog(inputs.task_catalog)}
+    return tuple(rows[row['工作类型ID']] for row in hydrated.rows)
+
+
+def _task_contexts_for_items(items, contexts):
+    stories = {item.work_item_payload['storyLocalKey'] for item in items}
+    required = {'sealed-task-story','task-catalog'} if items else set()
+    required.update(key for item in items for key in item.work_item_payload['evidenceIds'])
+    for ref in contexts:
+        value = json.loads(ref.canonical_content)
+        if value.get('kind')=='TASK_TARGET' and stories.intersection(value['storyKeys']):
+            required.add(ref.ref_id);required.update(value['evidenceIds'])
+    for ref in contexts:
+        value = json.loads(ref.canonical_content)
+        if value.get('kind')=='TASK_EFFECTIVE_START' and required.intersection(value['targetKeys']):
+            required.add(ref.ref_id)
+    selected = [ref for ref in contexts if ref.ref_id in required]
+    if {ref.ref_id for ref in selected} != required: raise ValueError('Task 缺少关联 context。')
+    return selected
+
+
+def build_task_work_descriptors(work_items, context_refs, budget_policy):
+    from stage_planner import estimate_work_input_tokens, StagePlanningBlocked, run_budget_policy_value
+    from contracts import usable_action_input_tokens
+    ordered = sorted(work_items,key=lambda item:(item.work_item_payload['storyId'],item.work_item_payload['acceptanceCriterionId']))
+    checkpoints = [json.loads(ref.canonical_content) for ref in context_refs if ref.ref_id=='sealed-task-story']
+    if ordered and (len(checkpoints)!=1 or len({item.work_item_id for item in ordered})!=len(ordered)
+            or any(item.source_role!='STORY_AC_CHECKPOINT' or item.action_kind!='TASK'
+                or item.source_sha256!=checkpoints[0]['checkpointSha256'] or item.block_ordinal!=ordinal
+                or item.work_item_id!=sha256_bytes(canonical_json_bytes(item.work_item_payload))
+                for ordinal,item in enumerate(ordered))):
+        raise ValueError('Task Atomic metadata 必须绑定 sealed Story/AC 的排序投影。')
+    units = {}
+    for item in ordered: units.setdefault(item.work_item_payload['storyId'],[]).append(item)
+    usable = usable_action_input_tokens(run_budget_policy_value(budget_policy))
+    works, current = [], []
+    for unit in units.values():
+        if current and estimate_work_input_tokens('TASK',current+unit,_task_contexts_for_items(current+unit,context_refs),budget_policy)>usable:
+            works.append(make_planned_work('TASK',current,_task_contexts_for_items(current,context_refs),[]));current=[]
+        current += unit
+        if estimate_work_input_tokens('TASK',current,_task_contexts_for_items(current,context_refs),budget_policy)>usable:
+            raise StagePlanningBlocked('BUDGET_EXHAUSTED')
+    if current: works.append(make_planned_work('TASK',current,_task_contexts_for_items(current,context_refs),[]))
+    return tuple(works)
+
+
+def _task_packet_catalog(packet):
+    contents = [ref['canonicalContent'] for ref in packet['contextRefs']]
+    rows = [item for item in contents if item.get('kind')=='TASK_CATALOG']
+    checkpoints = [item for item in contents if item.get('kind')=='TASK_STORY_CHECKPOINT']
+    if packet['workItems'] and (len(rows)!=1 or len(checkpoints)!=1): raise ValueError('Task packet 缺少唯一目录/checkpoint。')
+    obligations = {item['payload']['acceptanceCriterionKey']:item['payload'] for item in packet['workItems']}
+    targets = {item['targetKey']:item for item in contents if item.get('kind')=='TASK_TARGET'}
+    evidence = {item['evidenceId']:item for item in contents if item.get('kind') in {'TASK_EVIDENCE','TASK_EFFECTIVE_START'}}
+    if len(obligations)!=len(packet['workItems']): raise ValueError('Task packet 义务重复。')
+    return obligations, targets, evidence, {row['workTypeId']:row for row in rows[0]['rows']} if rows else {}
+
+
+def validate_bound_task_context(packet):
+    """Check frozen context outside current-output INVALID_IR conversion."""
+    if set(packet)!={'workItems','contextRefs'}: raise ValueError('Task packet 只允许两集合。')
+    if len({ref['refId'] for ref in packet['contextRefs']})!=len(packet['contextRefs']): raise ValueError('Task context 重复。')
+    for ref in packet['contextRefs']:
+        if 'contentSha256' in ref and ref['contentSha256']!=sha256_bytes(canonical_json_bytes(ref['canonicalContent'])):
+            raise ValueError('Task context hash 漂移。')
+    obligations,targets,evidence,rows = _task_packet_catalog(packet)
+    for item in packet['workItems']:
+        if item['workItemId']!=sha256_bytes(canonical_json_bytes(item['payload'])): raise ValueError('Task obligation hash 漂移。')
+    for item in [*obligations.values(),*targets.values()]:
+        if not set(item['evidenceIds']).issubset(evidence): raise ValueError('Task 冻结证据引用未闭合。')
+    if any(target['storyKeys']==[] for target in targets.values()): raise ValueError('Task target 无 Story 归属。')
+
+
+def _task_decision_diagnostics(packet, result):
+    obligations,targets,evidence,rows = _task_packet_catalog(packet)
+    diagnostics, covered, local_keys, charges, counts, integration_owners = [],set(),set(),set(),defaultdict(int),defaultdict(int)
+    stories = {item['storyLocalKey'] for item in obligations.values()}
+    closed_designs, closed_policies = defaultdict(set), defaultdict(set)
+    diagnostic_keys=set(); current_path='/tasks'; current_key=None
+    def add(code):
+        identity=(code,current_path,current_key)
+        if identity not in diagnostic_keys:
+            diagnostic_keys.add(identity)
+            diagnostics.append(Diagnostic(code=code,message='Task 决策未关闭当前义务、目录或来源权威。',
+                path=current_path,details={'subjectIds':[current_key]} if current_key else {}))
+    for index,task in enumerate(result['tasks']):
+        current_path='/tasks/'+str(index);current_key=task['localKey']
+        story_key, keys, work_type = task['storyLocalKey'],set(task['acceptanceCriterionKeys']),task['workTypeId']
+        if task['localKey'] in local_keys: add('TASK_LOCAL_KEY_DUPLICATE')
+        local_keys.add(task['localKey'])
+        if story_key not in stories: add('TASK_STORY_NOT_ASSIGNED')
+        covered_targets = _task_covered_targets(packet, task, obligations, targets)
+        if covered_targets is None: add('TASK_AC_STORY_MISMATCH')
+        else: covered.update(keys)
+        covered_stories = {obligations[key]['storyLocalKey'] for key in keys if key in obligations}
+        for covered_story in covered_stories: counts[covered_story] += 1
+        row = rows.get(work_type)
+        if row is None: add('TASK_STANDARD_UNKNOWN')
+        elif task['workModeDecision'] not in row['modes']: add('TASK_WORK_MODE_NOT_ALLOWED')
+        selected = set(task['evidenceIds'])
+        if not selected.issubset(evidence): add('TASK_EVIDENCE_UNBOUND')
+        target = targets.get(task['technicalTarget'])
+        if target is None or story_key not in target['storyKeys']:
+            add('TASK_TARGET_UNBOUND');continue
+        bound_targets = covered_targets or [target]
+        allowed = {key for entry in bound_targets for key in entry['evidenceIds']}
+        allowed.update(key for ac in keys if ac in obligations for key in obligations[ac]['evidenceIds'])
+        allowed.update(item['evidenceId'] for item in _task_start_evidence(task,evidence))
+        if not selected.issubset(allowed): add('TASK_EVIDENCE_UNBOUND')
+        for covered_story in covered_stories:
+            for entry in bound_targets:
+                if covered_story in entry['storyKeys']:
+                    closed_designs[covered_story].update(entry['designItemIds'])
+                    closed_policies[covered_story].update(entry['policyInstanceIds'])
+        if not selected.intersection(target['evidenceIds']): add('TASK_EVIDENCE_UNBOUND')
+        target_evidence = [evidence[key] for key in selected.intersection(target['evidenceIds'])]
+        technical = any(item['sourceRole'] in _TECHNICAL_ROLES for item in target_evidence)
+        if work_type not in _UI_WORK_TYPES and not technical: add('TASK_DEMO_TECHNICAL_AUTHORITY')
+        if target['targetKind']=='USER_INTERFACE' and work_type not in _UI_WORK_TYPES: add('TASK_TARGET_TYPE_INVALID')
+        if target['targetKind']=='INTEGRATION':
+            if row is None or row['sitEligibility']!='PER_INTEGRATION': add('TASK_INTEGRATION_TYPE_INVALID')
+            else:
+                for key in target['integrationIds']: integration_owners[key]+=1
+        elif row and row['sitEligibility']=='PER_INTEGRATION': add('TASK_INTEGRATION_TYPE_INVALID')
+        if task['workModeDecision']!='新建' and not _task_start_evidence(task,evidence):
+            add('TASK_EFFECTIVE_START_EVIDENCE_MISSING')
+        if task['complexityDecision']=='L' and not (technical and target['targetKind']!='USER_INTERFACE'
+                or any(item['measurementConstraints'] for item in target_evidence)):
+            add('TASK_COMPLEXITY_EVIDENCE_MISSING')
+        # One approved design may contain several independent counting objects.
+        # Source anchors distinguish them; changing a local label/boundary alone
+        # cannot turn the same supported object into another billable instance.
+        source_anchors = tuple(sorted(canonical_json_bytes(evidence[key]['sourceRef']) for key in selected
+            if key in evidence and evidence[key]['kind']=='TASK_EVIDENCE'))
+        charge = (story_key,task['technicalTarget'],work_type,source_anchors)
+        if charge in charges: add('TASK_DUPLICATE_CHARGE')
+        charges.add(charge)
+    current_path='/tasks';current_key=None
+    if covered!=set(obligations): add('TASK_STORY_AC_COVERAGE_INCOMPLETE')
+    for item in obligations.values():
+        current_path='/stories/'+item['storyLocalKey'];current_key=item['storyLocalKey']
+        if not set(item['story']['designRefs']).issubset(closed_designs[item['storyLocalKey']]): add('TASK_STORY_DESIGN_COVERAGE_INCOMPLETE')
+        if not set(item['story']['policyRefs']).issubset(closed_policies[item['storyLocalKey']]): add('TASK_STORY_POLICY_COVERAGE_INCOMPLETE')
+    for story_key,value in counts.items():
+        current_path='/stories/'+story_key;current_key=story_key
+        if value>4: add('TASK_STORY_TASK_LIMIT')
+    current_path='/integrations';current_key=None
+    integration_ids = {key for target in targets.values() for key in target['integrationIds']}
+    if any(integration_owners[key]!=1 for key in integration_ids): add('TASK_INTEGRATION_OWNER_NON_UNIQUE')
     return _sort(diagnostics)
+
+
+def verify_task_decision(packet, result):
+    diagnostics = validate_contract(result,'task-decision.schema.json',load_schema_registry(SKILL_ROOT))
+    if diagnostics: return diagnostics
+    validate_bound_task_context(packet)
+    return _task_decision_diagnostics(packet,result)
+
+
+def validate_bound_task_result(packet, normalized_result):
+    """Pure bytes-only pre-seal check after shared schema/normalization."""
+    if _task_decision_diagnostics(packet,json.loads(normalized_result)):
+        raise InvalidActionResult('Task IR 未关闭当前义务与来源权威。')
+
+
+def _task_start_evidence(task, evidence):
+    return [evidence[key] for key in task['evidenceIds'] if key in evidence
+        and evidence[key]['kind']=='TASK_EFFECTIVE_START'
+        and task['technicalTarget'] in evidence[key]['targetKeys']
+        and task['workModeDecision'] in evidence[key]['modes']]
+
+
+@dataclass(frozen=True)
+class TaskMaterialization:
+    candidate_bytes: bytes
+    candidate_sha256: str
+    story_candidate_bytes: bytes
+    checkpoint_sha256: str
+    packet_bytes: bytes
+    decision_bytes: bytes
+
+
+def _complete_task_results(inputs, plan, ledger, budget_policy):
+    from stage_planner import validate_stage_plan, materialize_packet, _effective_envelope, _effective_success
+    from action_ledger import build_attempt_repair_context
+    expected = prepare_task_inputs(inputs.story_candidate_bytes,inputs.checkpoint_bytes,
+        checkpoint_sha256=inputs.checkpoint_sha256,task_catalog=inputs.task_catalog,input_revision_bytes=inputs.input_revision_bytes,
+        prior_state_bytes=inputs.prior_state_bytes,prior_state_sha256=inputs.prior_state_sha256,
+        change_graph_bytes=inputs.change_graph_bytes,change_graph_sha256=inputs.change_graph_sha256)
+    if (sorted(inputs.work_items,key=lambda item:item.work_item_id)!=sorted(expected.work_items,key=lambda item:item.work_item_id)
+            or sorted(inputs.context_refs,key=lambda ref:ref.ref_id)!=sorted(expected.context_refs,key=lambda ref:ref.ref_id)):
+        raise ValueError('Task work/context 不是 sealed 上游的确定性投影。')
+    descriptors=build_task_work_descriptors(inputs.work_items,inputs.context_refs,budget_policy)
+    validate_stage_plan(plan,inputs.work_items,inputs.context_refs,descriptors,[inputs.checkpoint_sha256],budget_policy)
+    checkpoint=json.loads(inputs.checkpoint_bytes)
+    results=[]
+    for work in plan['works']:
+        key,packet_plan=work['logicalWorkId'],work['packetPlan']
+        envelope=_effective_envelope(ledger,key)
+        if envelope is None or not any(record.envelope_sha256==envelope.sha256 and record.outcome=='SUCCEEDED'
+                for record in ledger.attempt_records.values()):
+            raise TaskInputRequired('Task plan 尚有未 sealed 的 LogicalWork。')
+        _,record=_effective_success(ledger,key)
+        if (envelope.value['actionContractId']!=packet_plan['actionContractId']
+                or envelope.value['actionContractSha256']!=packet_plan['actionContractSha256']
+                or envelope.value['inputRevisionSha256']!=sha256_bytes(inputs.input_revision_bytes)
+                or envelope.value['baseCandidateSha256']!=sha256_bytes(inputs.story_candidate_bytes)
+                or len({item.value['runId'] for item in ledger.envelopes_by_sha256.values()})!=1):
+            raise ValueError('Task effective Attempt 未绑定本轮上游/合同。')
+        normalized=ledger.normalized_results[record.normalized_result_sha256]
+        if sha256_bytes(normalized)!=record.normalized_result_sha256: raise ValueError('Task normalized hash 漂移。')
+        repair=None
+        if envelope.value['revision']==2:
+            failed=[digest for digest,item in ledger.attempt_records.items()
+                if item.logical_work_id==key and item.revision==1 and item.failure_kind=='INVALID_IR']
+            if len(failed)!=1: raise ValueError('Task revision 2 没有唯一 INVALID_IR Attempt。')
+            repair=build_attempt_repair_context(key,failed[0],ledger.attempt_records,ledger.raw_outputs,
+                envelopes_by_sha256=ledger.envelopes_by_sha256)
+        packet_bytes=materialize_packet(plan,key,envelope.value['revision'],inputs.work_items,inputs.context_refs,[],ledger,repair)
+        if sha256_bytes(packet_bytes)!=envelope.value['packetSha256']: raise ValueError('Task Attempt 未绑定实际计划 packet。')
+        result=json.loads(normalized)
+        if verify_task_decision(json.loads(packet_bytes),result): raise InvalidActionResult('Task sealed IR 未关闭当前义务。')
+        results.append((key,result))
+    return results
+
+
+def _task_node_bindings(packet, result):
+    """Single-node binding rules shared with independent complete validation."""
+    from stable_ids import stable_entity_id
+    obligations,targets,evidence,rows=_task_packet_catalog(packet)
+    identities=set()
+    for task in result['tasks']:
+        target=targets[task['technicalTarget']]
+        criteria=[obligations[key] for key in task['acceptanceCriterionKeys']]
+        story=next(item['story'] for item in criteria if item['storyLocalKey']==task['storyLocalKey'])
+        bound_targets=_task_covered_targets(packet,task,obligations,targets)
+        if bound_targets is None: raise ValueError('Task 共享覆盖未经授权。')
+        selected=[evidence[key] for key in task['evidenceIds'] if evidence[key]['kind']=='TASK_EVIDENCE']
+        source_refs={canonical_json_bytes(item['sourceRef']):item['sourceRef'] for item in selected}
+        anchors=[canonical_json_bytes({'role':'SOURCE','sourceRef':ref}).decode() for ref in source_refs.values()]
+        anchors += [canonical_json_bytes({'role':'TARGET','sourceRef':ref}).decode() for entry in bound_targets for ref in entry['sourceRefs']]
+        task_id=stable_entity_id('task-id-v1','TASK',story['storyId'],sorted(set(anchors)),(target['targetKind'],))
+        if task_id in identities:
+            raise TaskInputRequired('Task 来源身份碰撞；需要独立技术对象证据，不能使用名称或序号后缀。')
+        identities.add(task_id)
+        yield 'tasks', {'taskId':task_id,'storyId':story['storyId'],'name':target['name'],
+            'workTypeId':task['workTypeId'],'rowSemanticSha256':rows[task['workTypeId']]['rowSemanticSha256'],
+            'workMode':task['workModeDecision'],'actualMeasurementScope':task['deliverableBoundary'],
+            'complexity':task['complexityDecision'],'sourceRefs':[source_refs[key] for key in sorted(source_refs)],
+            'acceptanceCriterionIds':sorted(item['acceptanceCriterionId'] for item in criteria),
+            'designItemIds':sorted({key for entry in bound_targets for key in entry['designItemIds']
+                if any(key in criterion['story']['designRefs'] and criterion['storyLocalKey'] in entry['storyKeys'] for criterion in criteria)}),
+            'integrationIds':sorted({key for entry in bound_targets for key in entry['integrationIds']}),
+            'nfrIds':sorted({key for entry in bound_targets for key in entry['nfrIds']}),
+            'policyInstanceIds':sorted({key for entry in bound_targets for key in entry['policyInstanceIds']})}
+        starts=_task_start_evidence(task,evidence) if task['workModeDecision']!='新建' else []
+        yield 'effectiveStartMatches', {'taskId':task_id,'queryKey':target['targetKey'],
+            'candidateIds':sorted({item['entityId'] for item in starts}),
+            'checkedLocators':sorted({ref['locator'] for item in starts for ref in item['sourceRefs']}),
+            'decision':{'新建':'NO_MATCH_NEW','调整':'MATCHED_ADJUSTMENT','接入复用':'MATCHED_REUSE'}[task['workModeDecision']]}
+
+
+def verify_task_replacement_ac_scope(original, review, replacement, resolution=None):
+    """Each repair may redistribute only its own affected roots' existing ACs."""
+    from final_review import repair_root_keys, repair_key_root
+    roots=set(repair_root_keys('TASK',original,review,resolution))
+    allowed={key for task in original['tasks'] if task['localKey'] in roots
+             for key in task['acceptanceCriterionKeys']}
+    for task in replacement['tasks']:
+        if (repair_key_root(task['localKey'],roots) is None
+                or not set(task['acceptanceCriterionKeys'])<=allowed):
+            raise ValueError('当前修复只能分配本轮授权 roots 已有的 AC；历史授权不扩展新修复范围。')
+
+
+def apply_task_repairs(packet, decisions, repairs, inputs):
+    from final_review import replace_owner_decisions
+    for repair in repairs:
+        review,replacement,*answers=repair
+        resolution=answers[0] if answers else None
+        verify_task_replacement_ac_scope(decisions,review,replacement,resolution)
+        packet=prepare_task_repair_packet(packet,decisions,review,
+            inputs.story_candidate_bytes,inputs.input_revision_bytes,resolution)
+        decisions=replace_owner_decisions('TASK',decisions,review,replacement,resolution)
+    return packet,decisions
+
+
+def materialize_task_candidate(inputs, plan, ledger, budget_policy, *, semantic_repair=None, semantic_repairs=None):
+    results=_complete_task_results(inputs,plan,ledger,budget_policy)
+    packet={'workItems':[{'workItemId':item.work_item_id,'payload':item.work_item_payload} for item in inputs.work_items],
+        'contextRefs':[{'refId':ref.ref_id,'canonicalContent':json.loads(ref.canonical_content),
+            'contentSha256':sha256_bytes(ref.canonical_content)} for ref in inputs.context_refs]}
+    joined={'tasks':[]}
+    for key,result in results:
+        for original in result['tasks']:
+            task=deepcopy(original);task['localKey']=key+':'+task['localKey'];joined['tasks'].append(task)
+    repairs = semantic_repairs if semantic_repairs is not None else ([semantic_repair] if semantic_repair else [])
+    packet,joined=apply_task_repairs(packet,joined,repairs,inputs)
+    if _task_decision_diagnostics(packet,joined): raise InvalidActionResult('Task 完整 IR union 未关闭义务或重复计价。')
+    model=json.loads(inputs.story_candidate_bytes)
+    for collection,node in _task_node_bindings(packet,joined): model[collection].append(node)
+    for collection in ('tasks','effectiveStartMatches'): model[collection].sort(key=lambda node:node['taskId'])
+    joined['tasks'].sort(key=lambda task:task['localKey'])
+    raw=canonical_json_bytes(model)
+    return TaskMaterialization(raw,sha256_bytes(raw),inputs.story_candidate_bytes,inputs.checkpoint_sha256,
+        canonical_json_bytes(packet),canonical_json_bytes(joined))
+
+
+def validate_task_candidate(material):
+    model,upstream=json.loads(material.candidate_bytes),json.loads(material.story_candidate_bytes)
+    diagnostics=list(validate_sow_model(model,'STAGE_3',registry=load_schema_registry(SKILL_ROOT)))
+    if sha256_bytes(material.candidate_bytes)!=material.candidate_sha256:
+        diagnostics.append(_diagnostic('TASK_CANDIDATE_HASH_MISMATCH','Task 候选 hash 漂移。'))
+    for collection,value in upstream.items():
+        if collection not in STAGE_3_COLLECTIONS and model.get(collection)!=value:
+            diagnostics.append(_diagnostic('STAGE_3_WRITE_SCOPE','Task 不得修改 sealed 上游。','/'+collection))
+    packet,result=json.loads(material.packet_bytes),json.loads(material.decision_bytes)
+    expected={collection:{} for collection in STAGE_3_COLLECTIONS}
+    for collection,node in _task_node_bindings(packet,result): expected[collection][node['taskId']]=node
+    for collection,field in (('tasks','taskId'),('effectiveStartMatches','taskId'),('dependencies','dependencyId'),('estimationAnnotations','annotationId')):
+        if {node[field]:node for node in model[collection]}!=expected[collection]:
+            diagnostics.append(_diagnostic('TASK_NODE_IR_BINDING_MISMATCH','Task 节点与 sealed IR 完整绑定不一致。','/'+collection))
+    diagnostics.extend(_task_coverage_diagnostics(model))
+    diagnostics.extend(_task_decision_diagnostics(packet,result))
+    return _sort(diagnostics)
+
+
+def verify_task_repair_chain(entries, candidates, revision_bytes, author_ir, final_hash):
+    from final_review import replace_owner_decisions, repair_root_keys, owner_resolution, resolution_field
+    remaining=list(entries);current_ir=author_ir;previous_packet=None;last_hash=None;resolutions={};fields={}
+    while remaining:
+        matches=[row for row in remaining if row[1]['ownerIR']==current_ir]
+        if len(matches)!=1: raise ValueError('Task Repair 链必须从实际 Author IR 唯一连续恢复。')
+        entry=matches[0];remaining.remove(entry);old_hash,body,replacement=entry
+        if last_hash is not None and old_hash!=last_hash: raise ValueError('Task Repair 跳过了前一个候选。')
+        before=json.loads(candidates[old_hash]);packet=expand_task_repair_packet(body['ownerPacket'])
+        if previous_packet is None:
+            previous_packet=deepcopy(packet)
+            previous_packet['contextRefs']=[ref for ref in previous_packet['contextRefs'] if
+                ref['canonicalContent'].get('kind')!='TASK_REPAIR_AUTHORIZATION'
+                and ref['canonicalContent'].get('basis')!='CURRENT_RESPONSIBILITY_COMMITMENT']
+        upstream=deepcopy(before)
+        for collection in STAGE_3_COLLECTIONS: upstream[collection]=[]
+        resolution=owner_resolution(body)
+        expected=prepare_task_repair_packet(previous_packet,current_ir,body['reviewDecision'],
+            canonical_json_bytes(upstream),revision_bytes,resolution)
+        if packet!=expected or body['authorizedRootKeys']!=repair_root_keys('TASK',current_ir,body['reviewDecision'],resolution):
+            raise ValueError('Task Repair 上下文或授权闭包漂移。')
+        if verify_task_decision(previous_packet,current_ir): raise ValueError('Task Repair 原义务未闭合。')
+        original=deepcopy(upstream)
+        for collection,node in _task_node_bindings(previous_packet,current_ir): original[collection].append(node)
+        for collection in ('tasks','effectiveStartMatches'): original[collection].sort(key=lambda node:node['taskId'])
+        if original!=before: raise ValueError('Task Repair 原候选未绑定实际 IR。')
+        verify_task_replacement_ac_scope(current_ir,body['reviewDecision'],replacement,resolution)
+        current_ir=replace_owner_decisions('TASK',current_ir,body['reviewDecision'],replacement,resolution)
+        if verify_task_decision(packet,current_ir): raise ValueError('Task Repair 义务未闭合。')
+        after=deepcopy(upstream)
+        for collection,node in _task_node_bindings(packet,current_ir): after[collection].append(node)
+        for collection in ('tasks','effectiveStartMatches'): after[collection].sort(key=lambda node:node['taskId'])
+        raw=canonical_json_bytes(after);last_hash=sha256_bytes(raw)
+        if candidates.get(last_hash)!=raw: raise ValueError('Task Repair 未保留未改变结果或缺少完整后继候选。')
+        if resolution is not None: fields[resolution_field(resolution)]=resolution
+        resolutions[last_hash]=deepcopy(fields);previous_packet=packet
+    if last_hash!=final_hash: raise ValueError('Task Repair 链未到达最终 PASS 候选。')
+    return resolutions
+
+
+def publish_task_candidate(files,run_id,material):
+    if sha256_bytes(material.candidate_bytes)!=material.candidate_sha256: raise ValueError('Task candidate hash 漂移。')
+    files.publish_new(f'.ai-sow/work/runs/{run_id}/stages/TASK/candidates/{material.candidate_sha256}.json',material.candidate_bytes)
+    return {'candidateSha256':material.candidate_sha256}

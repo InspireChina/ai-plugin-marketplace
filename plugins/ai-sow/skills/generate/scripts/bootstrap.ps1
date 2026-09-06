@@ -5,6 +5,7 @@
     [ValidateSet("start", "submit", "hydrate", "resume", "approve", "abandon", "status")]
     [string]$Mode,
     [string]$Request,
+    [string]$BudgetPolicy,
     [string]$ActionId,
     [string]$Result,
     [string]$Execution,
@@ -151,6 +152,7 @@ if ($SafeProjectRoot.Length -ge 97 -and -not (Test-LongPathsEnabled)) {
 
 $OrchestratorArgs = @($Orchestrator, "--project-root", $SafeProjectRoot, "--mode", $Mode)
 if (-not [string]::IsNullOrWhiteSpace($Request)) { $OrchestratorArgs += @("--request", $Request) }
+if (-not [string]::IsNullOrWhiteSpace($BudgetPolicy)) { $OrchestratorArgs += @("--budget-policy", $BudgetPolicy) }
 if (-not [string]::IsNullOrWhiteSpace($ActionId)) { $OrchestratorArgs += @("--action-id", $ActionId) }
 if (-not [string]::IsNullOrWhiteSpace($Result)) { $OrchestratorArgs += @("--result", $Result) }
 if (-not [string]::IsNullOrWhiteSpace($Execution)) { $OrchestratorArgs += @("--execution", $Execution) }

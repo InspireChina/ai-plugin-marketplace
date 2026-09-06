@@ -2,7 +2,56 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的结构。当前版本尚未公开发布。
 
-## 0.1.0-beta.1 - 未发布
+## 0.1.0-beta.2 - 未发布
+
+- 修复 RENDER 完成事件与输出发布之间中断后的恢复：先持久保存真实 Office PDF，再记录成功事件；恢复复用事件绑定原字节并校验篡改，避免字体替代引起的重复导出漂移。已验证 renderer、工作簿和预览保持不变。
+
+- 修复 XLSX 数组公式被转为含内存地址的 Python 对象字符串而导致证据块 ID 漂移的问题；按原公式文本读取，缺少公式或无原公式文本的数据表公式明确失败，不执行公式。已冻结的 revision 原字节保留，新 Prepare 得到确定性证据。
+
+- 收紧连续 Task Repair 的本轮 AC 授权：在公开提交、物化与 proof 回放中拒绝借用历史无关 roots 的覆盖，保留已批准的共享资产结果。
+
+- 修复 ABANDON 决定落盘后中断恢复继续读取已移除 active marker 的问题；工件取证从最终 Task checkpoint 和预览修复授权链恢复候选绑定，离线读取不再要求可变当前候选。
+- Prior 行分区支持同 packet、同 source/Sheet 的授权实体引用；Attempt repair 提供 canonical packet hash 不变的无损表传输，尚未发行的 retry 可在原容量内恢复，保留原失败和全部消耗。宿主中断采用独立调用证据和有限等待，未知用量与本地估算分开披露。
+
+- Task 独立评审补齐候选实际选中类型的完整冻结模板规则，并校验模板与行 hash；明确工程资产和正式执行的边界、逐 Task 的 AC/来源支持及跨类型重叠检查，保持原有修复次数和 PASS 门禁。
+
+- 共享上线政策按实例保留完整跨功能覆盖，不再按 Feature 复制计价义务；Task 技术依据仅扩展到该政策明确覆盖的目标，保留独立应用/环境的来源边界。SIT/UAT 仍逐功能独立交付，Author/Review 明确自动化代码与普通联调、人工支持的区别。
+
+- Story 校验恢复生命周期政策的独立边界，拒绝业务与政策、不同政策之间的错误合并；保留同 Feature 共享架构约束的合法合并，并在 Author 提示中明确边界与限定词检查。
+
+- Story 义务按单个 Feature 展开时同步收敛边界 key，避免共享设计的原多 Feature 适用范围阻止其并入业务 Story；明确独立限定和跨 Feature 隔离仍有效。
+
+- Task 增加仅由 Story 明确引用的批准技术设计形成的实现目标，使业务事务承接共享架构约束，避免为设计覆盖而按 Story 重复计量同一运行环境；UI、跨 Feature 来源隔离和独立语义评审保持有效。
+
+- Task 政策目标按 Story 保留所属 Feature 的批准技术依据，拒绝跨 Feature 借用或 Demo 升格；Integration 责任 Story 优先匹配其上游事实和来源，避免仅按 ID 选中无关部署 Story。
+
+- 预算恢复允许同模型/估算器下单调提高未来请求的上下文容量，保留原 Envelope、计划、输入、输出和 Attempt；修复大失败输出导致未发行 retry 在旧容量下阻止预算替换的问题。
+
+- Story/AC 与 Task 统一遵循来源粒度：至少一条 AC 完整关闭全部义务，不再强制凑两条；保持来源身份冲突、限定词和覆盖闭包检查。客户/第三方提供物的扫描分类与 Scope 评审明确项目门禁边界。
+- Markdown 编号条目使用独立证据块并保留续行，避免同一列表中的正式范围、客户责任和排除项共用 anchor；InputRevision parser 升至 v2。
+- 配对验收准备支持已冻结旧请求的 `currentStateDelta`/来源 `status` 形态，按原始文件 hash 与路径无业务漂移迁移到 v3。
+- Scope 将 `ASSUMPTION` 保留为项目级前提，不自动派生供应商 Story/Task；补清政策 ID、来源证据 ID 和交付阶段关系的边界，避免无效引用与生命周期冲突。
+- 真实多次运行的配对复核读取内容寻址的放弃、人工复核、合同不支持和系统失败终态，保留失败记录，并校验终态正文 hash、Schema 与输入绑定。
+- 窄 IR 的绑定错误可保留结构化诊断；Scope 引用/关系错误将具体 code、JSON path 和 root 带入原有 bounded retry；Task 预检定位到具体 Task/Story，并合并同一 Story 的重复覆盖诊断。
+- 同步 v3 request/Action、28 份业务 Schema、renderer-v12 和独立安装合同；内部 checkpoint 自动封存，实际配对仅共同审阅两份 Excel 后取得一个 PairDecision。
+- 移除旧 benchmark 执行协议，只保留明确标为已取代的历史比较分析。复制 smoke 使用逐 Action 新进程 fixture，明确区分进程隔离与真实 provider 认证。
+- 真实模型、浏览器、B.a–B.p 及最终双工作簿验收尚未完成，不声明基准或性能改善。
+
+## 0.1.0-beta.1 - 已取代的开发记录
+
+### 确定性编译切换（未发布）
+
+- `generation-renderer-v9` 接通最终 XLSX、Office 非敏感 identity、双复读与完整 ZIP/公式错误扫描；汇总 Sheet 的实体 ID/SourceRef 经只读 Prior adapter 往返。
+- 每个 workbook 仅一个 ARTIFACT_VISUAL_REVIEW，实际 Office PDF renders 覆盖全部可见 Sheet；完整深层 ArtifactManifest 与 immutable workbook 校验后才请求批准。generation 携带完整离线证明。
+- renderer、Office、reference Office、reopen、render 与最终验证分别记录实际 active-time 区间；超额后停止下游步骤，预算增加后不重复完整成功输出。
+
+- 删除剩余跨 run 路由、proof/DTO、REUSE/RENDER_ONLY/DELTA_COMPILE 与默认自动化排除入口。每次新 run 仅依赖本次明确输入，Brownfield 现状声明进入冻结 Scope context。
+- 补充业务材料使用 abandon/start；预算替换必须严格增加允许限额，正文相同也拒绝。APPROVE 精确发布重放和 ABANDON 终态恢复保留。
+
+- 三个 Owner 使用完整冻结 StagePlan、真实 Attempt pre-seal 校验、分别计时的物化与完整验证，以及条件输入确定后才发行的 fresh Review/Repair；PASS 自动推进。
+- StageCheckpoint 绑定实际 plan、所有 Attempt、候选 revisions、validator、Review/PASS、上游与可选 Prior snapshot；恢复不重复转换，status 只读验证。
+- 移除旧动态分组、通用 PATCH、分层 Theme Join/Adjudication 编译路径。新 run 不复用旧 generation 业务内容。hydrate 使用本轮原文/冻结 Task 规则与唯一完整请求计量。
+- 模板字节未改变；renderer 的上述 v9 输出语义取代旧 v8。下方旧 R1/层级评审与增量路线条目为已取代的开发历史；完整输出、Office/浏览器和发布验证仍在最终集成验收执行。
 
 ### 新增
 
@@ -86,3 +135,14 @@
 - 路径越界、符号链接穿越、损坏输入、action/Schema/hash 漂移和 Office 验证失败均 fail closed；
   last-known-good 不被覆盖。
 - 自动生成结果只用于离线评审、估算和签署准备，不代表客户签署、验收或产生法律效力。
+
+- 生成后定向 Repair：Scope、Story/AC、Task 支持授权对象调整、合并、拆分并保留正确结果；Task 共享验收覆盖及当前责任承诺起点带完整证明。Repair 请求无损字典化，可在同一预算内恢复未发行工作。renderer v10 展示共享覆盖和计量归属，保留原模板全部计价公式。
+
+- Task 输入澄清可通过 `resume --decision` 绑定真实 INPUT_REQUIRED、既有目标与 USER/SIMULATED_USER 决定，追加一次定向修复；累计链、原 Review、完整校验和 fresh Review 保留，拒绝新增未批准目标。
+
+- 生成后局部修复：支持 Scope、Story/AC、Task 的受控合并/拆分及逐字段保留；新增原终态绑定的人工裁定继续与累计离线证明，不清零自动次数。
+- renderer v11：不同工作类型共享技术目标名称时，以模板工作类型名称区分显示；同类型重名仍拒绝，原计价公式和已 PASS 业务模型不变。
+
+- renderer v12：Office 向量预览按原比例、完整重叠窗口分页；新增预览失败后的 RENDER 后缀修复，复用已验证 Excel/Office 前缀，保留旧工件与失败视觉证明。
+
+- 往期 Excel 大 Sheet 改为完整证据行分区，去除重复单元格正文并保留全部来源绑定；首组发行前的容量等待可从原 run 恢复，完整验证已有 Prototype 与预算。

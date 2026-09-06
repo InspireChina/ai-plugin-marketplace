@@ -118,7 +118,7 @@ DETERMINISTIC_TIME = dt.datetime(2000, 1, 1, 0, 0, 0)
 WRAPPED_LINE_HEIGHT = 15
 WRAPPED_ROW_PADDING = 4
 MAX_EXCEL_ROW_HEIGHT = 409.5
-FORMULA_ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "Err:")
+FORMULA_ERROR_PREFIXES = ("#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#NULL!", "Err:")
 SUMMARY_LABELS = (
     "直接开发人天",
     "SIT支持人天",
@@ -174,6 +174,47 @@ def require_unique_names(entries: list[dict[str, Any]], label: str) -> None:
         projected_names[key] = name
 
 
+def task_covered_story_ids(model, task):
+    criteria = {row['acceptanceCriterionId']: row['storyId'] for row in model['acceptanceCriteria']}
+    return {task['storyId'], *(criteria[key] for key in task.get('acceptanceCriterionIds', []) if key in criteria)}
+
+
+def _task_display_names(model, catalog_rows):
+    stories = {row['storyId']: row for row in model['stories']}
+    policies = {row['policyId'] for row in model.get('policyInstances', [])}
+    # Policy identifiers select a rule; the Story names its concrete deliverable.
+    names = {task['taskId']: (stories[task['storyId']]['name']+'：'+catalog_rows[task['workTypeId']]['工作类型名称']
+        if task['name'] in policies else task['name']) for task in model['tasks']}
+    groups = {}
+    for task in model['tasks']:
+        key=unicodedata.normalize('NFC',str(safe_text(names[task['taskId']]))).casefold()
+        groups.setdefault(key,[]).append(task)
+    for tasks in groups.values():
+        if len(tasks)>1:
+            # Several independent work types may share one technical target description.
+            # A repeated type remains ambiguous and must fail the uniqueness check.
+            for task in tasks:
+                names[task['taskId']]+='：'+catalog_rows[task['workTypeId']]['工作类型名称']
+    require_unique_names([{'name':name} for name in names.values()], 'Task')
+    return names
+
+
+def shared_story_formula(header, formula, payload):
+    """Project only display/coverage formulas; all monetary formulas stay in the template."""
+    refs = payload.get('_sharedTaskReferences', [])
+    if not refs or header not in {'任务列表','校验结果'}: return formula
+    def literal(value): return '"'+str(safe_text(value)).replace('"','""')+'"'
+    if header == '任务列表':
+        predicate = re.search(r'TaskTable\[所属故事\]=\$C[0-9]+', formula)
+        if predicate is None: raise ValueError('shared Story display prototype changed')
+        shared = ['((TaskTable[所属故事]='+literal(ref['story'])+')*(TaskTable[任务名称]='+literal(ref['task'])+'))' for ref in refs]
+        return formula.replace(predicate.group(), '('+'+'.join(['('+predicate.group()+')',*shared])+')>0')
+    count = re.search(r'COUNTIF\(TaskTable\[所属故事\],\$C[0-9]+\)', formula)
+    if count is None: raise ValueError('shared Story coverage prototype changed')
+    shared = ['COUNTIFS(TaskTable[所属故事],'+literal(ref['story'])+',TaskTable[任务名称],'+literal(ref['task'])+')' for ref in refs]
+    return formula.replace(count.group(), '('+'+'.join([count.group(),*shared])+')')
+
+
 def build_rows(
     model: dict[str, Any],
     task_catalog: TaskStandardCatalog,
@@ -192,10 +233,10 @@ def build_rows(
         ("Epic", model["epics"]),
         ("Feature", model["features"]),
         ("Story", model["stories"]),
-        ("Task", model["tasks"]),
     ):
         require_unique_names(entries, label)
 
+    display_names = _task_display_names(model, catalog_rows)
     acceptance_names_by_story: dict[str, list[str]] = {}
     for criterion in model["acceptanceCriteria"]:
         acceptance_names_by_story.setdefault(criterion["storyId"], []).append(
@@ -210,10 +251,11 @@ def build_rows(
             raise ValueError(f"template work type is missing: {work_type_id}")
         if catalog_row.get("rowSemanticSha256") != task["rowSemanticSha256"]:
             raise ValueError(f"task standard row hash changed: {work_type_id}")
-        task_display_names_by_story.setdefault(task["storyId"], []).append(
-            f"• [{catalog_row['工作类型名称']}/{task['workMode']}/{task['complexity']}] "
-            f"{task['name']}"
-        )
+        for story_id in task_covered_story_ids(model,task):
+            task_display_names_by_story.setdefault(story_id, []).append(
+                f"• [{catalog_row['工作类型名称']}/{task['workMode']}/{task['complexity']}] "
+                f"{display_names[task['taskId']]}"
+            )
 
     story_notes, _story_note_inventory = model_story_note_projection(model)
 
@@ -222,6 +264,10 @@ def build_rows(
         feature = features[story["featureId"]]
         epic = epics[feature["epicId"]]
         story_name = str(safe_text(story["name"]))
+        shared = [{'story':stories[task['storyId']]['name'],'task':display_names[task['taskId']]}
+            for task in model['tasks'] if task['storyId']!=story['storyId'] and story['storyId'] in task_covered_story_ids(model,task)]
+        notes = [story_notes.get(story['storyId'], '')]
+        notes += ['共享交付：'+ref['task']+'；人天计入「'+ref['story']+'」，本故事不重复计量。' for ref in shared]
         story_rows.append(
             {
                 "需求": safe_text(epic["name"]),
@@ -232,7 +278,8 @@ def build_rows(
                     f"• {name}"
                     for name in acceptance_names_by_story.get(story["storyId"], [])
                 ),
-                "备注": story_notes.get(story["storyId"], ""),
+                "备注": "\n".join(note for note in notes if note),
+                "_sharedTaskReferences": shared,
                 "任务列表": "\n".join(
                     task_display_names_by_story.get(story["storyId"], [])
                 ),
@@ -255,7 +302,7 @@ def build_rows(
         task_rows.append(
             {
                 "所属故事": story_name,
-                "任务名称": task["name"],
+                "任务名称": display_names[task["taskId"]],
                 "工作类型ID": work_type_id,
                 "工作方式": task["workMode"],
                 "复杂度": task["complexity"],
@@ -351,6 +398,84 @@ def formula_errors(workbook: Any) -> tuple[str, ...]:
                 ):
                     errors.append(f"{worksheet.title}!{cell.coordinate}:{value}")
     return tuple(errors)
+
+
+
+def scan_workbook_integrity(path: Path) -> dict[str, object]:
+    """Read every ZIP member and both workbook views; never calculate formulas."""
+    import zipfile
+    from openpyxl.formula.tokenizer import Tokenizer
+    from contracts import canonical_json_bytes, sha256_bytes
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if archive.testzip() is not None or len(archive.namelist()) != len(set(archive.namelist())):
+                raise ValueError('corrupt or duplicate ZIP member')
+            for name in archive.namelist():
+                if name.endswith('.xml'): ET.fromstring(archive.read(name))
+        formulas = []
+        for cached in (False, True):
+            book = openpyxl.load_workbook(path, data_only=cached)
+            try:
+                errors = formula_errors(book)
+                if errors: raise ValueError('workbook formula errors: '+str(errors))
+                if not cached:
+                    for sheet in book:
+                        for row in sheet:
+                            for cell in row:
+                                if cell.data_type != 'f': continue
+                                expression = formula_text(cell.value)
+                                for token in Tokenizer(expression).items:
+                                    if token.type == 'OPERAND' and token.subtype == 'ERROR':
+                                        raise ValueError('formula contains error reference')
+                                    if token.type == 'OPERAND' and token.subtype == 'RANGE' and '!' in token.value:
+                                        sheet_ref = token.value.rsplit('!', 1)[0].strip("'").replace("''", "'")
+                                        if sheet_ref not in book.sheetnames:
+                                            raise ValueError('unresolved cross-sheet reference')
+                                formulas.append([sheet.title, cell.coordinate, comparable_formula(expression)])
+            finally: book.close()
+        return {'formulaSha256':sha256_bytes(canonical_json_bytes(formulas)), 'formulaCount':len(formulas)}
+    except (zipfile.BadZipFile, ET.ParseError, KeyError) as error:
+        raise ValueError('workbook ZIP integrity failed') from error
+
+
+def visible_identity_rows(model):
+    """One explicit owner row per ID; reference rows do not assert ownership."""
+    from contracts import canonical_json_bytes
+    fields = {'inputItems':'inputItemId','epics':'epicId','features':'featureId',
+        'designItems':'designItemId','integrations':'integrationId','nfrs':'nfrId',
+        'policyInstances':'policyInstanceId','stories':'storyId','acceptanceCriteria':'acceptanceCriterionId',
+        'tasks':'taskId','dependencies':'dependencyId','scopeAnnotations':'annotationId',
+        'deliveryAnnotations':'annotationId','estimationAnnotations':'annotationId','decisions':'decisionId'}
+    rows = []
+    seen = set()
+    for collection, field in fields.items():
+        for item in model.get(collection, []):
+            identity = item[field]
+            if identity in seen: raise ValueError('ambiguous visible identity owner')
+            seen.add(identity)
+            rows.append([identity, collection, item.get('name', item.get('text', identity))])
+            for ref in item.get('sourceRefs', []):
+                rows.append([identity, 'SourceRef', canonical_json_bytes(ref).decode('utf-8').strip()])
+    return rows
+
+
+def write_visible_identity(workbook, model):
+    from openpyxl.styles import Alignment, Font, PatternFill
+    sheet = workbook['03-工作量汇总']
+    # C is outside the template's two-column summary Table; retain A/B authority.
+    sheet.column_dimensions['C'].width = 100
+    start = sheet.max_row + 3
+    for offset, values in enumerate([['实体 ID', '类型 / 来源', '名称 / 公开来源引用'], *visible_identity_rows(model)]):
+        row = start + offset
+        for column, value in enumerate(values, 1):
+            cell = sheet.cell(row, column, safe_text(value)); cell.data_type = 's'
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
+            cell.font = Font(name='Arial', size=10, bold=offset == 0)
+            cell.fill = PatternFill('solid', fgColor='E8EEF6' if offset == 0 else 'FFFFFF')
+        sheet.row_dimensions[row].height = min(MAX_EXCEL_ROW_HEIGHT, max(32, max(
+            wrapped_line_count(str(v), effective_cell_width(sheet, sheet.cell(row,c)))
+            for c,v in enumerate(values,1))*WRAPPED_LINE_HEIGHT+WRAPPED_ROW_PADDING))
+    sheet.print_area = f'A1:{get_column_letter(sheet.max_column)}{sheet.max_row}'
 
 
 def verify_formula_cache_results(
@@ -535,6 +660,7 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
                     formula,
                     origin=prototypes[column_offset].coordinate,
                 ).translate_formula(cell.coordinate)
+                if table_name == 'SOWStoryTable': translated = shared_story_formula(header,translated,payload)
                 cell.value = (
                     ArrayFormula(ref=cell.coordinate, text=translated)
                     if is_array
@@ -775,6 +901,8 @@ def verify_workbook(
                             prototype,
                             origin=origin,
                         ).translate_formula(cell.coordinate)
+                        if table_name == 'SOWStoryTable':
+                            expected_formula = shared_story_formula(header,expected_formula,payload)
                         actual_formula = (
                             formula_text(cell.value)
                             if isinstance(cell.value, (str, ArrayFormula))
@@ -909,6 +1037,7 @@ def audit_calculated_workbook(
     template_path: Path,
     model: dict[str, Any],
     engine: Any,
+    *, expected_layout_path: Path | None = None, reference_path: Path | None = None,
 ) -> WorkbookAudit:
     """Verify projected inputs and reread every calculation authority/result.
 
@@ -918,13 +1047,16 @@ def audit_calculated_workbook(
     """
     stack = ExitStack()
     try:
-        temporary_root = Path(
-            stack.enter_context(tempfile.TemporaryDirectory(prefix="ai-sow-audit-"))
-        )
-        expected_layout_path = temporary_root / "expected-layout.xlsx"
-        reference_path = temporary_root / "reference.xlsx"
-        write_workbook(template_path, model, expected_layout_path)
-        recalculate_workbook(expected_layout_path, reference_path, engine)
+        if (expected_layout_path is None) != (reference_path is None):
+            raise ValueError('audit requires both externally prepared reference paths')
+        if expected_layout_path is None:
+            temporary_root = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="ai-sow-audit-")))
+            expected_layout_path = temporary_root / "expected-layout.xlsx"
+            reference_path = temporary_root / "reference.xlsx"
+            write_workbook(template_path, model, expected_layout_path)
+            recalculate_workbook(expected_layout_path, reference_path, engine)
+        scan_workbook_integrity(path)
+        scan_workbook_integrity(reference_path)
         expected_layout_workbook = openpyxl.load_workbook(
             expected_layout_path, data_only=False, read_only=False
         )
@@ -1058,16 +1190,8 @@ def audit_calculated_workbook(
             story_name = record["故事"]
             if not isinstance(story_name, str) or not story_name:
                 raise ValueError("calculated story name is missing")
-            matching_tasks = [
-                task
-                for task in task_records
-                if task.get("所属故事") == story_name
-            ]
-            expected_task_list = "\n".join(
-                f"• [{task['工作类型名称']}/{task['工作方式']}/{task['复杂度']}] "
-                f"{task['任务名称']}"
-                for task in matching_tasks
-            )
+            expected_story = next(row for row in expected['SOWStoryTable'] if row['故事']==story_name)
+            expected_task_list = expected_story['任务列表']
             if not expected_task_list or record["任务列表"] != expected_task_list:
                 raise ValueError("calculated story task list changed")
             require_number(record["故事人天"], "SOWStoryTable.故事人天")
@@ -1184,6 +1308,7 @@ def write_workbook(
         clear_orphan_table_formulas(workbook)
         for table_name in TABLES:
             fill_table(workbook, table_name, rows[table_name])
+        write_visible_identity(workbook, model)
         # A blank fitToHeight is interpreted as one page by LibreOffice when
         # fit-to-page is enabled, which compresses long Task sheets until the
         # text is unreadable. Zero means unlimited vertical pages while the
@@ -1214,3 +1339,33 @@ def write_workbook(
         engine_name=None,
         engine_version=None,
     )
+
+
+def dual_reopen(path, projected_path):
+    import openpyxl
+    report = scan_workbook_integrity(path)
+    formula = openpyxl.load_workbook(path, data_only=False)
+    cached = openpyxl.load_workbook(path, data_only=True)
+    projected = openpyxl.load_workbook(projected_path, data_only=False)
+    try:
+        count = 0
+        for source_sheet in projected:
+            actual_sheet = formula[source_sheet.title]
+            for row in source_sheet:
+                for cell in row:
+                    actual = actual_sheet[cell.coordinate]
+                    if cell.data_type == 'f':
+                        if actual.data_type != 'f' or comparable_formula(actual.value) != comparable_formula(cell.value):
+                            raise ValueError('dual reopen formula missing or changed')
+        for sheet in formula:
+            for row in sheet:
+                for cell in row:
+                    if cell.data_type != 'f': continue
+                    value = cached[sheet.title][cell.coordinate].value
+                    if value is None or not isinstance(value, (str, int, float, bool)):
+                        raise ValueError('dual reopen required cached value missing or invalid')
+                    count += 1
+        if count == 0: raise ValueError('dual reopen has no formula inventory')
+        return {**report, 'cachedValueCount':count}
+    finally:
+        formula.close(); cached.close(); projected.close()

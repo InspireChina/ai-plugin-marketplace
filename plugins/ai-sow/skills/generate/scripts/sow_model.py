@@ -102,6 +102,14 @@ class SitAssignmentError(ValueError):
         super().__init__(f"{category}:{code}:{subject_id}")
 
 
+def stories_share_task_scope(primary, other):
+    """A shared deliverable stays within an explicitly declared Feature scope."""
+    if not primary or not other: return False
+    return (primary.get('featureId') == other.get('featureId')
+            or other.get('featureId') in primary.get('coverageSet', [])
+            or primary.get('featureId') in other.get('coverageSet', []))
+
+
 def _diagnostic(code: str, path: str, message: str, **details: object) -> Diagnostic:
     return Diagnostic(code=code, message=message, path=path, details=details)
 
@@ -314,6 +322,7 @@ def _reference_diagnostics(model: Mapping[str, object], stage: str) -> list[Diag
                     "Story 必须引用存在的 Feature。",
                 )
             )
+    stories = {node["storyId"]: node for node in _mappings(model.get("stories"))}
     story_by_ac: dict[str, str] = {}
     for node in _mappings(model.get("acceptanceCriteria")):
         story_id = node.get("storyId")
@@ -345,12 +354,13 @@ def _reference_diagnostics(model: Mapping[str, object], stage: str) -> list[Diag
         check("tasks", node, "nfrIds", collection_ids["nfrs"])
         check("tasks", node, "policyInstanceIds", policy_ids)
         for ac_id in node.get("acceptanceCriterionIds", []):
-            if isinstance(ac_id, str) and story_by_ac.get(ac_id) != story_id:
+            if (isinstance(ac_id, str) and story_by_ac.get(ac_id) != story_id
+                    and not stories_share_task_scope(stories.get(story_id), stories.get(story_by_ac.get(ac_id)))):
                 diagnostics.append(
                     _diagnostic(
                         "TASK_AC_STORY_MISMATCH",
                         f"/tasks/{task_id}/acceptanceCriterionIds/{ac_id}",
-                        "Task 引用的 AC 必须属于同一 Story。",
+                        "Task 共享 AC 必须属于同一或显式覆盖的 Feature 范围；精确授权由 Task Owner proof 校验。",
                     )
                 )
     for node in _mappings(model.get("dependencies")):

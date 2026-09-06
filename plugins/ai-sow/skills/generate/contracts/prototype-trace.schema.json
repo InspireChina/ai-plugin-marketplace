@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:prototype-trace:1",
+  "description": "宿主执行 Demo 后提交的 typed trace。",
+  "$ref": "#/$defs/prototypeTraceResult",
+  "$defs": {
+    "prototypeTraceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleSha256",
+        "scenarioSha256",
+        "browserProfile",
+        "files",
+        "externalRequestCount",
+        "runs",
+        "unresolvedDiscoveries"
+      ],
+      "properties": {
+        "bundleSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "scenarioSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "browserProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "browserVersion",
+            "viewport",
+            "dpr",
+            "locale",
+            "timezone",
+            "cleanProfile",
+            "emptyStorage",
+            "clockPolicy",
+            "randomPolicy",
+            "waitPolicy"
+          ],
+          "properties": {
+            "browserVersion": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "viewport": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "width",
+                "height"
+              ],
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "dpr": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "locale": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "timezone": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "cleanProfile": {
+              "const": true
+            },
+            "emptyStorage": {
+              "const": true
+            },
+            "clockPolicy": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "randomPolicy": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "waitPolicy": {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "relativePath",
+              "sha256"
+            ],
+            "properties": {
+              "relativePath": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        },
+        "externalRequestCount": {
+          "const": 0
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "scenarioId",
+              "replay",
+              "stable",
+              "browserProfileSha256",
+              "steps"
+            ],
+            "properties": {
+              "scenarioId": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "replay": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "stable": {
+                "type": "boolean"
+              },
+              "browserProfileSha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stepId",
+                    "page",
+                    "eventObserved",
+                    "interactionId",
+                    "operation",
+                    "selector",
+                    "value",
+                    "assertions",
+                    "screenshotSha256"
+                  ],
+                  "properties": {
+                    "stepId": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    },
+                    "interactionId": {
+                      "type": ["string", "null"],
+                      "pattern": "\\S"
+                    },
+                    "page": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    },
+                    "eventObserved": {
+                      "type": "boolean"
+                    },
+                    "operation": {
+                      "enum": [
+                        "navigate",
+                        "click",
+                        "fill",
+                        "select",
+                        "check",
+                        "press",
+                        "wait"
+                      ]
+                    },
+                    "selector": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "assertions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "selector",
+                          "attribute",
+                          "expected",
+                          "actual",
+                          "passed"
+                        ],
+                        "properties": {
+                          "selector": {
+                            "type": "string",
+                            "pattern": "\\S"
+                          },
+                          "attribute": {
+                            "type": "string",
+                            "pattern": "\\S"
+                          },
+                          "expected": {
+                            "type": "string"
+                          },
+                          "actual": {
+                            "type": "string"
+                          },
+                          "passed": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "screenshotSha256": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "minItems": 1
+              }
+            }
+          },
+          "minItems": 1
+        },
+        "unresolvedDiscoveries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "page",
+              "selector",
+              "event",
+              "sourceEvidenceIds",
+              "domExcerpt",
+              "screenshotSha256"
+            ],
+            "properties": {
+              "page": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "selector": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "event": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "sourceEvidenceIds": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                }
+              },
+              "domExcerpt": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "screenshotSha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

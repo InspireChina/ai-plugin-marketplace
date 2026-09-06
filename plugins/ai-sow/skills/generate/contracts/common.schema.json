@@ -21,6 +21,16 @@
       "type": "string",
       "minLength": 1
     },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "name", "plannedEffectiveDate"],
+      "properties": {
+        "projectId": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/nonEmptyText"},
+        "plannedEffectiveDate": {"type": "string", "format": "date"}
+      }
+    },
     "idArray": {
       "type": "array",
       "uniqueItems": true,

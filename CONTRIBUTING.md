@@ -20,7 +20,13 @@ SOW 正式工作簿必须由真实 LibreOffice 重新计算并复读，不能用
 每个插件都必须自包含，不得依赖自身安装目录以外的文件。实现行为变更前先添加测试，
 并保持 manifest、合同版本、文档和发布说明一致。
 
-## 必需检查
+## 每 Task 验收与最终验证
+
+每个 Task 仅验证本次新增/修复行为和直接受影响的契约、调用边界，不默认运行整文件、整插件或完整端到端。
+单元、局部集成和完整端到端使用独立 pytest markers；命令与层级说明见
+[插件测试指南](plugins/ai-sow/tests/README.md)。已有测试的重复内容应合并并说明承接断言，保留关键失败与边界回归。
+
+以下为计划最终集成/交付门禁，不是每个 Task 的默认检查：
 
 ```text
 uv run --project plugins/ai-sow --locked python -m unittest discover -s tests -v
@@ -33,11 +39,10 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 实际执行而不是被跳过。Pull Request 应说明问题、选定边界、用户可见
 行为、测试结果，以及任何隐私或兼容性影响。提交应保持小而聚焦。
 
-冒烟命令只把插件包复制到独立临时目录，在该目录之外创建用户项目：先建立复制插件的 `.venv`，再
-直接通过 Python `NextAction` API 运行 Greenfield、Brownfield、输入恢复、无变化复用、无 Reviewer 的
-`RENDER_ONLY` 与保留未受影响节点的 `DELTA_COMPILE`，不要求安装 Codex 或 Claude Code CLI。它会
-检查 `FRESH_NO_HISTORY`、不可变 revision/generation、manifest hash 闭包、SOW 工作簿 Table/公式、
-配套说明和 last-known-good，并用读取守卫证明运行时不访问复制插件或测试项目之外的文件。失败时
-保留精确 work-dir、failure receipt 和 worker stdout/stderr；成功后最终 JSON 报告包含临时工作目录。
+冒烟命令把插件包复制到独立临时目录，并在其外创建用户项目，通过 Python `NextAction` API 验证
+Greenfield、Brownfield、同 run 恢复、abandon/start，以及相同输入、模板变化和业务变化时的新 run 完整编译。
+每轮都必须完成三阶段 fresh Review。它同时检查不可变输入和输出、工作簿 Table/公式、last-known-good，
+并用读取守卫证明运行时不访问复制插件或测试项目之外的文件。完整发布 smoke 在最终集成门禁执行；
+失败保留 work-dir、failure receipt 和 worker stdout/stderr，成功报告包含临时工作目录。
 
 提交贡献即表示你同意该贡献采用 Apache License 2.0。

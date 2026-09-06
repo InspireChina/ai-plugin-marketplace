@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -250,8 +251,32 @@ def recalculate_workbook(
         os.replace(converted, output)
         normalize_xlsx(output, table_source_path=candidate)
         return OfficeRoundtrip(
-            engine={"name": engine.name, "version": engine.version},
+            engine=office_identity(engine),
             output_path=str(output),
         )
     finally:
         shutil.rmtree(temporary, ignore_errors=True)
+
+
+OFFICE_ARGUMENTS = ['-env:UserInstallation=PROFILE_DIR', '--headless', '--convert-to',
+                    'xlsx', '--outdir', 'OUTPUT_DIR', 'INPUT_XLSX']
+
+
+def validate_office_identity(value):
+    if set(value) != {'executableBasename','binarySha256','version','platform','normalizedArguments','exitCode'}:
+        raise ValueError('Office identity fields invalid')
+    if (not re.fullmatch(r'[A-Za-z0-9_.-]+', str(value['executableBasename']))
+        or not re.fullmatch(r'[0-9a-f]{64}', str(value['binarySha256']))
+        or not re.fullmatch(r'LibreOffice[^\\/\r\n]*', str(value['version']))
+        or value['platform'] not in {'Darwin','Linux','Windows'}
+        or type(value['exitCode']) is not int or value['exitCode'] != 0
+        or value['normalizedArguments'] != OFFICE_ARGUMENTS):
+        raise ValueError('Office identity contains non-stable paths or unsuccessful execution')
+    return value
+
+
+def office_identity(engine):
+    from contracts import sha256_bytes
+    return validate_office_identity({'executableBasename':Path(engine.executable).name,
+        'binarySha256':sha256_bytes(Path(engine.executable).read_bytes()),'version':engine.version,
+        'platform':platform.system(),'normalizedArguments':OFFICE_ARGUMENTS[:],'exitCode':0})

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:change-graph:1",
+  "description": "显式变更组和退役证据；NEW/KEEP 与 effective active view 只在运行时派生。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "changeGroups",
+    "retiredPrior"
+  ],
+  "properties": {
+    "changeGroups": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "priorEntityIds",
+          "targetEntityIds",
+          "evidenceIds"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "REUSE_DEPENDENCY",
+              "ADJUST",
+              "SPLIT",
+              "MERGE"
+            ]
+          },
+          "priorEntityIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          "targetEntityIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          "evidenceIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        }
+      }
+    },
+    "retiredPrior": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "priorEntityId",
+          "evidenceIds"
+        ],
+        "properties": {
+          "priorEntityId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

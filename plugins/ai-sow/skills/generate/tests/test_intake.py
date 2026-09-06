@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "integration"
+
 import hashlib
 import json
 import sys
@@ -18,12 +20,69 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from contracts import canonical_json_bytes  # noqa: E402
+import intake as intake_module  # noqa: E402
 from intake import prepare  # noqa: E402
 from runtime.project_io import ProjectFiles  # noqa: E402
 
 
 def read_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_demo_bundle_static_resources_preserve_relative_layout(tmp_path):
+    sys.path.insert(0, str(SKILL_ROOT / "tests"))
+    from test_prototype_analysis import demo_files
+    request_path = write_next_request(tmp_path)
+    request = read_json(request_path)
+    demo = demo_files() + [{"sourceId": "demo-image", "relativePath": "demo/pixel.png", "content": b'\x89PNG\r\n\x1a\n\xff\x00'}]
+    request["demo"] = {"entrypoint": "demo/index.html", "files": []}
+    for item in demo:
+        path = tmp_path / item["relativePath"]
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(item["content"])
+        request["demo"]["files"].append({"sourceId": item["sourceId"], "role": "DEMO", "path": item["relativePath"], "expectedSha256": hashlib.sha256(item["content"]).hexdigest()})
+    request_path.write_bytes(canonical_json_bytes(request))
+    result = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
+    assert result.diagnostics == ()
+    sources = {item["sourceId"]: item for item in result.value["sources"]}
+    for item in demo:
+        copy = tmp_path / sources[item["sourceId"]]["path"]
+        assert copy.read_bytes() == (tmp_path / item["relativePath"]).read_bytes() == item["content"]
+    copied_html = tmp_path / sources["demo-html"]["path"]
+    assert (copied_html.parent / "app.js").read_bytes() == demo[2]["content"]
+    assert (copied_html.parent / "style.css").read_bytes() == demo[1]["content"]
+
+
+def test_demo_bundle_boundary_missing_dependency_creates_no_revision(tmp_path):
+    request_path = write_next_request(tmp_path, include_demos=True)
+    request = read_json(request_path)
+    path = tmp_path / request["demo"]["entrypoint"]
+    path.write_text('<button>Save</button><script src="missing.js"></script>')
+    request["demo"]["files"][0]["expectedSha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    request_path.write_bytes(canonical_json_bytes(request))
+    result = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
+    assert [item.code for item in result.diagnostics] == ["DEMO_DEPENDENCY_UNDECLARED"]
+    assert not (tmp_path / ".ai-sow/inputs/revisions").exists()
+
+
+@pytest.mark.parametrize("html,code", [
+    ('<script type="module">import "missing.js"</script>', "DEMO_DEPENDENCY_UNDECLARED"),
+    ('<script type="module">import "https://example.invalid/app.js"</script>', "DEMO_REMOTE_DEPENDENCY"),
+    ('<style>body{background:url(missing.png)}</style>', "DEMO_DEPENDENCY_UNDECLARED"),
+    ('<img srcset="missing.png 1x">', "DEMO_DEPENDENCY_UNDECLARED"),
+])
+def test_demo_inline_dependency_closure_prevents_revision_publication(tmp_path, html, code):
+    request_path = write_next_request(tmp_path, include_demos=True)
+    request = read_json(request_path)
+    source = tmp_path / request["demo"]["entrypoint"]
+    original = ('<button id="save">Save</button>' + html).encode()
+    source.write_bytes(original)
+    request["demo"]["files"][0]["expectedSha256"] = hashlib.sha256(original).hexdigest()
+    request_path.write_bytes(canonical_json_bytes(request))
+    result = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
+    assert [item.code for item in result.diagnostics] == [code]
+    assert not (tmp_path / ".ai-sow/inputs/revisions").exists()
+    assert source.read_bytes() == original
 
 
 def write_next_request(
@@ -50,15 +109,16 @@ def write_next_request(
             "sourceId": "prd-main",
             "role": "PRD",
             "path": "inputs/prd.md",
-            "status": "APPROVED",
+            "expectedSha256": hashlib.sha256((inputs / "prd.md").read_bytes()).hexdigest(),
         },
         {
             "sourceId": "hld-main",
             "role": "HLD",
             "path": "inputs/hld.md",
-            "status": design_status,
+            "expectedSha256": hashlib.sha256((inputs / "hld.md").read_bytes()).hexdigest(),
         },
     ]
+    demo: dict[str, object] | None = None
     if include_prior:
         prior = openpyxl.Workbook()
         prior.active.title = "Scope"
@@ -70,31 +130,26 @@ def write_next_request(
                 "sourceId": "prior-main",
                 "role": "PRIOR_SOW",
                 "path": "inputs/prior.xlsx",
-                "status": "APPLICABLE",
+                "expectedSha256": hashlib.sha256((inputs / "prior.xlsx").read_bytes()).hexdigest(),
             }
         )
     if include_demos:
         (inputs / "selected.html").write_text(
             "<button id='refund'>提交退款</button>", encoding="utf-8"
         )
-        sources.extend(
-            [
+        demo = {
+            "entrypoint": "inputs/selected.html",
+            "files": [
                 {
                     "sourceId": "demo-selected",
                     "role": "DEMO",
                     "path": "inputs/selected.html",
-                    "status": "SELECTED",
+                    "expectedSha256": hashlib.sha256((inputs / "selected.html").read_bytes()).hexdigest(),
                 },
-                {
-                    "sourceId": "demo-ignored",
-                    "role": "DEMO",
-                    "path": "inputs/does-not-exist.html",
-                    "status": "NOT_SELECTED",
-                },
-            ]
-        )
+            ],
+        }
     value = {
-        "contract": "ai-sow-generate-request-v2",
+        "contract": "ai-sow-generate-request-v3",
         "project": {
             "projectId": "project-refund",
             "name": "退款项目",
@@ -112,7 +167,7 @@ def write_next_request(
         "sources": sources,
         "questions": [],
         "questionnaireAnswers": [],
-        "currentStateDelta": (
+        "declaredChangeContext": (
             {
                 "status": "NO_KNOWN_CHANGES",
                 "summary": "未发现会改变本期范围的现状变化。",
@@ -122,15 +177,35 @@ def write_next_request(
             else None
         ),
     }
+    if demo is not None:
+        value["demo"] = demo
     path = project / "next-request.json"
     path.write_bytes(canonical_json_bytes(value))
     return path
 
 
+def test_project_effective_start_is_copied_unchanged_into_input_revision(
+    tmp_path: Path,
+) -> None:
+    request_path = write_next_request(tmp_path)
+
+    result = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
+
+    assert result.value is not None
+    assert result.value["project"] == {
+        "projectId": "project-refund",
+        "name": "退款项目",
+        "plannedEffectiveDate": "2026-10-01",
+    }
+
+
 def test_prepare_runs_cheap_gate_before_full_parse_or_project_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    request_path = write_next_request(tmp_path, design_status="DRAFT")
+    request_path = write_next_request(tmp_path)
+    request = read_json(request_path)
+    request["sources"] = [request["sources"][0]]
+    request_path.write_bytes(canonical_json_bytes(request))
     calls: list[str] = []
 
     def unexpected_parse(*args, **kwargs):
@@ -143,10 +218,40 @@ def test_prepare_runs_cheap_gate_before_full_parse_or_project_mutation(
 
     assert result.value is None
     assert {item.code for item in result.diagnostics} == {
-        "DESIGN_SOURCE_NOT_APPROVED"
+        "APPROVED_DESIGN_REQUIRED"
     }
     assert calls == []
     assert not (tmp_path / ".ai-sow").exists()
+
+
+def test_source_mutation_after_hash_gate_before_parse_is_not_published(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_path = write_next_request(tmp_path)
+    original_extract = intake_module.extract_source_blocks
+    mutated = False
+
+    def mutate_then_extract(path: Path, **kwargs: object):
+        nonlocal mutated
+        if not mutated and path.name == "prd.md":
+            path.write_text(
+                "# 被替换的范围\n\n该内容未绑定到请求 expectedSha256。\n",
+                encoding="utf-8",
+            )
+            mutated = True
+        return original_extract(path, **kwargs)
+
+    monkeypatch.setattr(intake_module, "extract_source_blocks", mutate_then_extract)
+
+    result = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
+
+    assert mutated is True
+    assert result.value is None
+    assert {item.code for item in result.diagnostics} == {
+        "SOURCE_CHANGED_DURING_PREPARE"
+    }
+    assert not (tmp_path / ".ai-sow/inputs/revisions").exists()
 
 
 def test_input_revision_is_immutable_and_atomically_accepted(tmp_path: Path) -> None:
@@ -183,6 +288,11 @@ def test_input_revision_is_immutable_and_atomically_accepted(tmp_path: Path) -> 
     (tmp_path / "inputs/prd.md").write_text(
         "# 退款范围\n\n用户提交退款后还可撤销。\n", encoding="utf-8"
     )
+    request = read_json(request_path)
+    request["sources"][0]["expectedSha256"] = hashlib.sha256(
+        (tmp_path / "inputs/prd.md").read_bytes()
+    ).hexdigest()
+    request_path.write_bytes(canonical_json_bytes(request))
     second = prepare(request_path.name, files=files)
 
     assert second.value is not None
@@ -195,7 +305,7 @@ def test_input_revision_is_immutable_and_atomically_accepted(tmp_path: Path) -> 
     assert not any((tmp_path / ".ai-sow/inputs/pending").glob(".stage-*"))
 
 
-def test_selected_demo_is_hash_bound_as_requirement_source(tmp_path: Path) -> None:
+def test_demo_bundle_request_is_hash_bound_as_requirement_source(tmp_path: Path) -> None:
     request_path = write_next_request(tmp_path, include_demos=True)
 
     result = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
@@ -234,19 +344,10 @@ def test_input_revision_never_uses_external_temporary_directory(
     assert not any((tmp_path / ".ai-sow/inputs/pending").glob(".build-*"))
 
 
-def test_hld_or_adr_requires_approved_status(tmp_path: Path) -> None:
-    request_path = write_next_request(tmp_path, design_status="REJECTED")
-
-    rejected = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
-
-    assert rejected.value is None
-    assert {item.code for item in rejected.diagnostics} == {
-        "DESIGN_SOURCE_NOT_APPROVED"
-    }
-    assert not (tmp_path / ".ai-sow").exists()
-
+def test_hld_or_adr_is_accepted_as_design_source(tmp_path: Path) -> None:
+    request_path = write_next_request(tmp_path)
     request = read_json(request_path)
-    request["sources"][1].update({"role": "ADR", "status": "APPROVED"})
+    request["sources"][1]["role"] = "ADR"
     request_path.write_bytes(canonical_json_bytes(request))
     approved = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
 
@@ -262,6 +363,28 @@ def test_brownfield_without_prior_sow_records_not_provided(tmp_path: Path) -> No
     assert result.value is not None
     assert result.value["priorSowState"] == "NOT_PROVIDED"
     assert result.value["priorSowSha256s"] == []
+
+
+def test_source_role_and_hash_contract_makes_every_brownfield_prior_applicable(
+    tmp_path: Path,
+) -> None:
+    request_path = write_next_request(
+        tmp_path,
+        mode="BROWNFIELD",
+        include_prior=True,
+    )
+
+    result = prepare(request_path.name, files=ProjectFiles.open(tmp_path))
+
+    assert result.value is not None
+    prior = next(
+        source
+        for source in result.value["sources"]
+        if source["role"] == "PRIOR_SOW"
+    )
+    assert prior["status"] == "APPLICABLE"
+    assert result.value["priorSowState"] == "PROVIDED"
+    assert result.value["priorSowSha256s"] == [prior["rawSha256"]]
 
 
 def test_parse_failure_never_changes_current_generation_or_project_template(

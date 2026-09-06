@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:benchmark:benchmark-expectation-manifest:1",
+  "description": "在首个被测 Action 之前封存的独立范围与变更预期。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "expectedObligations",
+    "expectedBrownfieldChanges",
+    "expectedUnchangedCapabilities"
+  ],
+  "properties": {
+    "expectedObligations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectationId",
+          "sourceId",
+          "exactLocator",
+          "requiredDisposition"
+        ],
+        "properties": {
+          "expectationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exactLocator": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requiredDisposition": {
+            "enum": [
+              "FORMAL_CLAIM",
+              "PROJECT_GATE",
+              "OUT_OF_SCOPE"
+            ]
+          }
+        }
+      }
+    },
+    "expectedBrownfieldChanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectationId",
+          "priorLocatorIds",
+          "targetLocatorIds",
+          "allowedKinds"
+        ],
+        "properties": {
+          "expectationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "priorLocatorIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "targetLocatorIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "allowedKinds": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "REUSE_DEPENDENCY",
+                "ADJUST",
+                "SPLIT",
+                "MERGE",
+                "NEW",
+                "RETIRE"
+              ]
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "expectedUnchangedCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectationId",
+          "priorLocatorIds"
+        ],
+        "properties": {
+          "expectationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "priorLocatorIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        }
+      }
+    }
+  }
+}

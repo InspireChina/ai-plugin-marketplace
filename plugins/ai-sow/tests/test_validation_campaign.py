@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "integration"
+
 import hashlib
 import json
 import os
@@ -764,7 +766,7 @@ def test_e2e_and_enablement_tools_have_no_update_golden_mode(tmp_path: Path) -> 
 
     result = run_campaign("start", "--manifest", str(manifest), "--work-dir", str(work))
     benchmark_help = subprocess.run(
-        [sys.executable, str(Path(__file__).parent / "support/run_pipeline_benchmark.py"), "--help"],
+        [sys.executable, str(Path(__file__).parent / "support/analyze_historical_benchmark.py"), "--help"],
         cwd=REPO_ROOT,
         capture_output=True,
         check=False,

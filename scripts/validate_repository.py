@@ -12,15 +12,12 @@ import sys
 import tomllib
 from pathlib import Path
 
-RELEASE_VERSION = "0.1.0-beta.1"
-PYTHON_RUNTIME_VERSION = "0.1.0b1"
+RELEASE_VERSION = "0.1.0-beta.2"
+PYTHON_RUNTIME_VERSION = "0.1.0b2"
 SOW_STANDARD_VERSION = "1.3"
 MARKETPLACE_NAME = "ai-plugin-marketplace"
 PUBLISHER_NAME = "Inspire"
-AI_SOW_DESCRIPTION = (
-    "一次提供 PRD、HLD 和适用的往期 SOW，自动生成或增量更新可追溯的 SOW 工作簿，"
-    "并用 LibreOffice 回算后发布。"
-)
+AI_SOW_DESCRIPTION = '每次仅根据明确提供的 PRD、HLD 和适用往期 SOW，完整编译并逐阶段评审可追溯的 SOW 工作簿，经 LibreOffice 双复读和全部可见 Sheet 视觉评审后请求批准发布。'
 CODEX_MARKETPLACE = ".agents/plugins/marketplace.json"
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
 CODEX_PLUGIN_MANIFEST = ".codex-plugin/plugin.json"
@@ -79,22 +76,34 @@ AI_SOW_GENERATE_SUPPORT_FILES = (
     "skills/generate/references/task-authoring.md",
     "skills/generate/references/technical-work-classification.md",
 )
-AI_SOW_SCHEMA_IDS = {
-    name: f"urn:ai-sow:generate:next:{name.removesuffix('.schema.json')}:1"
-    for name in (
-        "action.schema.json",
-        "artifact-approval.schema.json",
-        "common.schema.json",
-        "current.schema.json",
-        "generation-manifest.schema.json",
-        "input-revision.schema.json",
-        "request.schema.json",
-        "review-repair.schema.json",
-        "run-state.schema.json",
-        "sow-model.schema.json",
-        "stage-checkpoint.schema.json",
-    )
-}
+AI_SOW_SCHEMA_IDS = {'action.schema.json': 'urn:ai-sow:generate:next:action:1',
+ 'artifact-repair-authorization.schema.json': 'urn:ai-sow:generate:next:artifact-repair-authorization:1',
+ 'artifact-approval.schema.json': 'urn:ai-sow:generate:next:artifact-approval:1',
+ 'change-graph.schema.json': 'urn:ai-sow:generate:next:change-graph:1',
+ 'common.schema.json': 'urn:ai-sow:generate:next:common:1',
+ 'current.schema.json': 'urn:ai-sow:generate:next:current:1',
+ 'fact-decision.schema.json': 'urn:ai-sow:generate:next:fact-decision:1',
+ 'generation-manifest.schema.json': 'urn:ai-sow:generate:next:generation-manifest:1',
+ 'input-revision.schema.json': 'urn:ai-sow:generate:next:input-revision:1',
+ 'owner-clarification.schema.json': 'urn:ai-sow:generate:next:owner-clarification:1',
+ 'owner-repair-authorization.schema.json': 'urn:ai-sow:generate:next:owner-repair-authorization:1',
+ 'prior-state-decision.schema.json': 'urn:ai-sow:generate:next:prior-state-decision:1',
+ 'prior-state-snapshot.schema.json': 'urn:ai-sow:generate:next:prior-state-snapshot:1',
+ 'prototype-observation.schema.json': 'urn:ai-sow:generate:next:prototype-observation:1',
+ 'prototype-scenario.schema.json': 'urn:ai-sow:generate:next:prototype-scenario:1',
+ 'prototype-trace.schema.json': 'urn:ai-sow:generate:next:prototype-trace:1',
+ 'request.schema.json': 'urn:ai-sow:generate:next:request:1',
+ 'review-repair.schema.json': 'urn:ai-sow:generate:next:review-repair:1',
+ 'run-budget-policy.schema.json': 'urn:ai-sow:generate:next:run-budget-policy:1',
+ 'run-event.schema.json': 'urn:ai-sow:generate:next:run-event:1',
+ 'run-state.schema.json': 'urn:ai-sow:generate:next:run-state:1',
+ 'scope-decision.schema.json': 'urn:ai-sow:generate:next:scope-decision:1',
+ 'source-audit.schema.json': 'urn:ai-sow:generate:next:source-audit:1',
+ 'sow-model.schema.json': 'urn:ai-sow:generate:next:sow-model:1',
+ 'stage-checkpoint.schema.json': 'urn:ai-sow:generate:next:stage-checkpoint:1',
+ 'story-ac-decision.schema.json': 'urn:ai-sow:generate:next:story-ac-decision:1',
+ 'task-decision.schema.json': 'urn:ai-sow:generate:next:task-decision:1',
+ 'visual-review.schema.json': 'urn:ai-sow:generate:visual-review:1'}
 
 
 def load_json(path: Path) -> object:
@@ -517,7 +526,7 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     expected_schema_names = set(AI_SOW_SCHEMA_IDS)
     if actual_schema_names != expected_schema_names:
         errors.append(
-            "AI SOW contract set must be the eleven cutover schemas, "
+            "AI SOW contract set must be the exact final generate schemas, "
             f"found {sorted(actual_schema_names)}"
         )
     for name, expected_id in AI_SOW_SCHEMA_IDS.items():
@@ -787,7 +796,7 @@ def validate_model_efficiency_gate(plugin_root: Path) -> list[str]:
     """Require SATISFIED claims to be derived from exact recomputed evidence."""
 
     policy_path = plugin_root / "tests/benchmarks/model-efficiency-policy-v1.json"
-    runner_path = plugin_root / "tests/support/run_pipeline_benchmark.py"
+    runner_path = plugin_root / "tests/support/analyze_historical_benchmark.py"
     try:
         policy = load_json(policy_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -959,6 +968,21 @@ def validate_public_tree(repo_root: Path) -> list[str]:
     return errors
 
 
+def validate_current_behavior_text(repo_root: Path) -> list[str]:
+    """Current operation docs may not advertise a retired protocol."""
+    paths = [repo_root / name for name in ('README.md', 'AGENTS.md', 'CONTRIBUTING.md',
+             'docs/architecture/ai-plugin-marketplace-design.md', 'plugins/ai-sow/README.md',
+             'plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md', 'plugins/ai-sow/docs/CONTEXT.md',
+             'plugins/ai-sow/skills/generate/SKILL.md')]
+    for relative in ('plugins/ai-sow/references', 'plugins/ai-sow/skills/generate/references'):
+        paths.extend((repo_root / relative).glob('*.md'))
+    retired = ('currentStateDelta', 'REFERENCE_ONLY', 'RENDER_ONLY', 'DELTA_COMPILE',
+               '固定 3×8', 'stage approval', 'Demo-as-current-state')
+    return [f'retired current behavior token in {path.relative_to(repo_root)}: {token}'
+            for path in paths if path.is_file()
+            for token in retired if token in path.read_text(encoding='utf-8')]
+
+
 def validate_repository(repo_root: Path) -> list[str]:
     repo_root = repo_root.resolve()
     plugin_root = repo_root / "plugins/ai-sow"
@@ -979,6 +1003,7 @@ def validate_repository(repo_root: Path) -> list[str]:
     errors.extend(validate_model_efficiency_gate(plugin_root))
     errors.extend(validate_publisher_identity(repo_root, plugin_root))
     errors.extend(validate_public_tree(repo_root))
+    errors.extend(validate_current_behavior_text(repo_root))
     return errors
 
 

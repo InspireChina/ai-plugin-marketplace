@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "e2e"
+
 import hashlib
 import os
 import shutil
@@ -13,6 +15,8 @@ from openpyxl.utils.cell import range_boundaries
 
 SKILL_ROOT = Path(__file__).parents[1]
 SCRIPTS = SKILL_ROOT / "scripts"
+sys.path.insert(0, str(SKILL_ROOT / "tests"))
+sys.path.insert(0, str(SKILL_ROOT.parents[1]))
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
@@ -35,9 +39,8 @@ def installed_soffice() -> Path:
 
 
 def reviewed_sow_model() -> dict[str, object]:
-    from test_layered_review import review_state  # noqa: PLC0415
-
-    return review_state()["candidate"]
+    from test_workbook import render_model
+    return render_model()
 
 
 def named_table_records(workbook, sheet_name: str, table_name: str):
@@ -187,3 +190,67 @@ def test_zip_external_attributes_are_host_independent() -> None:
     assert deterministic_external_attr(windows_archive_bit) == (
         deterministic_external_attr(unix_regular_file)
     )
+
+
+@pytest.mark.unit
+def test_office_identity_is_non_sensitive_and_rejects_paths_or_failure(tmp_path):
+    from contracts import canonical_json_bytes
+    binary = tmp_path/'customer-secret'/'soffice'; binary.parent.mkdir(); binary.write_bytes(b'binary')
+    engine = office_engine.OfficeEngine(str(binary), 'LibreOffice', 'LibreOffice 26.2.0.0 build abc')
+    assert callable(getattr(office_engine, 'office_identity', None)), 'Office identity producer missing'
+    identity = office_engine.office_identity(engine)
+    assert set(identity) == {'executableBasename','binarySha256','version','platform','normalizedArguments','exitCode'}
+    assert identity['binarySha256'] == hashlib.sha256(b'binary').hexdigest()
+    assert b'customer-secret' not in canonical_json_bytes(identity)
+    for field, value in [('exitCode',1),('executableBasename','/private/soffice'),
+                         ('normalizedArguments',['--outdir','/customer/output']),('version','/private/customer')]:
+        bad = {**identity, field:value}
+        with pytest.raises(ValueError): office_engine.validate_office_identity(bad)
+
+
+def test_dual_reopen_rejects_missing_formula_and_cache(tmp_path, monkeypatch):
+    model, template, candidate, calculated, engine = calculated_fixture(tmp_path, monkeypatch)
+    from workbook import dual_reopen
+    report = dual_reopen(calculated, candidate)
+    assert report['formulaCount'] > 0 and report['cachedValueCount'] == report['formulaCount']
+    import zipfile
+    for mutation in ('formula','cache','cache_type'):
+        bad = tmp_path/(mutation+'.xlsx')
+        with zipfile.ZipFile(calculated) as source, zipfile.ZipFile(bad,'w') as target:
+            changed = False
+            for name in source.namelist():
+                raw = source.read(name)
+                if name.startswith('xl/worksheets/') and not changed:
+                    import re
+                    if mutation == 'cache_type':
+                        pattern = rb'(<c\b[^>]*?)(?: t="[^"]*")?(><f\b[^>]*>.*?</f>)<v>.*?</v>'
+                        raw, count = re.subn(pattern, rb'\1 t="str"\2<v>wrong-cache-type</v>', raw, count=1)
+                    else:
+                        pattern = rb'<f\b[^>]*>.*?</f>' if mutation == 'formula' else rb'(<f\b[^>]*>.*?</f>)(<v>.*?</v>)'
+                        raw, count = re.subn(pattern, b'' if mutation == 'formula' else rb'\1<v></v>', raw, count=1)
+                    changed = bool(count)
+                target.writestr(name, raw)
+        assert changed
+        if mutation == 'cache_type':
+            opened = load_workbook(bad,data_only=True)
+            try: assert any(cell.value == 'wrong-cache-type' for sheet in opened for row in sheet for cell in row)
+            finally: opened.close()
+            with pytest.raises(ValueError):
+                workbook_module.audit_calculated_workbook(bad,template,model,engine,
+                    expected_layout_path=candidate,reference_path=calculated)
+        else:
+            with pytest.raises(ValueError): dual_reopen(bad, candidate)
+
+
+@pytest.mark.unit
+def test_immutable_final_xlsx_uses_publish_new_and_hash_reopen(tmp_path):
+    from runtime.project_io import ProjectFiles
+    import generation_store
+    assert callable(getattr(generation_store, 'freeze_workbook', None)), 'immutable final producer missing'
+    files = ProjectFiles.open(tmp_path); path = '.ai-sow/work/runs/run/artifact/sow.xlsx'
+    digest = hashlib.sha256(b'one').hexdigest()
+    generation_store.freeze_workbook(files, path, b'one', digest)
+    generation_store.freeze_workbook(files, path, b'one', digest)
+    with pytest.raises(ValueError): generation_store.freeze_workbook(files, path, b'two', digest)
+    with pytest.raises(Exception): generation_store.freeze_workbook(files, path, b'two', hashlib.sha256(b'two').hexdigest())
+    assert files.read_bytes(path) == b'one'

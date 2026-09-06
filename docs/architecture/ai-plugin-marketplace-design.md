@@ -1,7 +1,7 @@
 # AI Plugin Marketplace 设计规格
 
 - 日期：2026-09-02
-- 当前 Beta：`0.1.0-beta.1`
+- 当前 Beta：`0.1.0-beta.2`
 - 目标稳定版本：`0.1.0`
 - SOW 标准：`1.3`
 
@@ -64,7 +64,7 @@ orchestrator
 - `scope_compiler` 拥有 Stage 1 的 InputItem、Scope Closure、Epic/Feature 与 Design/NFR/Policy；
 - `delivery_compiler` 拥有 Stage 2 的 Story/AC，不能反向修改 Scope；
 - `task_compiler` 拥有 Stage 3 的 Task、Dependency、Effective Start Match 与 Estimation Annotation；
-- `final_review` 运行 R1、R2/R3 leaf review、Theme Join、Adjudication 与最小 repair planning；
+- `final_review` 在各阶段完整验证后执行 fresh Review、条件 Owner IR Repair 和 PASS checkpoint；
 - `package_renderer` 只读取 reviewed SOW Model 与 revision 模板，确定性生成 Package；
 - `generation_store` 独立复核 artifact、approval 和 generation proof closure，再原子切换 current。
 
@@ -74,7 +74,7 @@ orchestrator
 
 PRD 和 HLD 只接受 UTF-8 Markdown（`.md`）；往期 SOW 只接受 `.xlsx`；补充材料接受 UTF-8 纯文本
 （默认 Markdown）、HTML、TypeScript、TSX 或 `.xlsx`。PDF、Word、PowerPoint 和其他需要专用解析器
-的格式不受支持，运行时依赖中不得引入对应解析器。
+的格式不受支持，不提供对应输入解析路径；pypdf 仅复读本流程产生的 Office PDF renders。
 
 Greenfield 不要求往期 SOW。Brownfield 未提供适用往期 SOW 时记录 `NOT_PROVIDED` 并建立新基线，
 不能虚构历史承诺；若缺口实质改变范围或估算，则返回 `REQUEST_INPUT` 或安全终态。
@@ -84,7 +84,7 @@ HTML/TypeScript/TSX 原型既是源码输入，也是功能与交互证据：编
 
 ## 输入、稳定数据与发布事务
 
-插件维护不可变 input revision、一份 reviewed `SOW Model`、三个 stage checkpoint、layered review
+插件维护不可变 input revision、一份 reviewed `SOW Model`、三个 stage checkpoint、各阶段 fresh Review
 decision、artifact approval 与 generation manifest。Package 只投影这些证明闭合的数据，不拥有新事实。
 
 ```text
@@ -102,9 +102,10 @@ input revision、action result/record、checkpoint 和 generation 都不可变�
 用户批准先在 `work/` 完成；发布存储层再次验 hash 后发布 generation，最后原子替换 `current.json`。
 失败、等待或阻断不会修改当前指针，因此上一份有效 SOW 始终可用。
 
-`REUSE` 和 `RENDER_ONLY` 不启动 Reviewer；`DELTA_COMPILE` 以上一份 SOW Model 为基线并用 expected
-node hash 保护已有对象；证明闭包无效时 `FULL_COMPILE`。语义未变化的对象保留 ID 与规范 JSON，
-含义变化时创建新 ID；工作簿和说明始终完整重渲染，不对 OOXML 做局部 patch。
+每个新 run 都是 `FULL_COMPILE`，只根据本次完整 request 明列的来源和冻结政策编译，不读取旧 generation
+或隐藏 work 决定业务内容。Brownfield 只消费显式 `PRIOR_SOW` 与本次 `declaredChangeContext`；同一未完成
+run 只恢复自己的 StagePlan、Attempt 和 checkpoint。业务变化使用 abandon/start，稳定身份由受控规则生成。
+工作簿和说明完整渲染，不对 OOXML 做局部 patch。
 
 ## 工作簿计算权威
 
@@ -113,7 +114,7 @@ node hash 保护已有对象；证明闭包无效时 `FULL_COMPILE`。语义未�
 公式原型、样式、行高、自动筛选、数据验证和跨 Sheet 引用，并在发布前复读结构与公式。
 
 普通文本以 `= / + / - / @` 开头时按文本安全写入。任何改变工作簿确定性投影的实现都必须更新
-`generation-renderer-v8` 与由 `package_renderer.py`、`workbook.py`、`office_engine.py`、
+`generation-renderer-v12` 与由 `package_renderer.py`、`workbook.py`、`office_engine.py`、
 `story_notes.py` 组成的 fingerprint baseline。
 
 ## 安装后运行模型
@@ -146,14 +147,14 @@ Git 只用于普通协作。插件不 clone、fetch、pull、reset、commit、pu
 
 ## 验证与发布边界
 
-验证分四层：
+最终验证包含以下门禁；每 Task 只执行变更相关的 unit 和直接边界 integration：
 
 1. 根测试检查 marketplace、manifest、文档链接、Schema/template hash 和单 Skill 发布面；
-2. generate 测试覆盖输入格式、范围/交付编译、增量闭包、终审、发布和工作簿；
+2. generate 测试覆盖显式输入、范围/交付完整编译、本轮冻结恢复、fresh Review、发布和工作簿；
 3. 仓库验证器检查自包含边界、版本身份、renderer fingerprint 和公开文本；
 4. 锁定输入的 validation campaign fail-fast，并从精确失败 checkpoint 恢复；
-5. copy smoke 只复制 `plugins/ai-sow/`，直接用 Python API 运行 Greenfield、Brownfield、输入恢复、
-   `REUSE`、`RENDER_ONLY` 和 `DELTA_COMPILE`。
+5. copy smoke 只复制 `plugins/ai-sow/`，直接用 Python API 运行 Greenfield、Brownfield、abandon/start，
+   并验证相同输入、模板字节变化和业务变化时的三次新 run 完整编译与独立三阶段 fresh Review。
 
 copy smoke 还验证 fresh context、生成目录精确文件集合、manifest hash 闭包、工作簿 Table/公式和说明
 文档，并用读取守卫阻止运行时访问复制插件与测试项目之外的路径。失败收据、worker stdout/stderr 和

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "unit"
+
 import copy
 import sys
 from pathlib import Path
@@ -514,6 +516,18 @@ def test_owner_projection_ignores_downstream_additions_but_detects_direct_change
     direct = copy.deepcopy(model)
     direct["features"][0]["name"] = "退款申请处理"
     assert owner_projection_sha256(direct, "STAGE_1") != baseline
+
+
+def test_scope_fact_kinds_and_program_source_refs_remain_in_owner_projection():
+    model = valid_model()
+    for collection in ("epics", "features"):
+        model[collection][0]["sourceRefs"] = [source_ref()]
+    for kind in ("RULE", "ASSUMPTION", "RISK"):
+        model["inputItems"][0]["kind"] = kind
+        assert validate(model, "STAGE_3", registry=REGISTRY) == ()
+    before = owner_projection_sha256(model, "STAGE_1")
+    model["features"][0]["sourceRefs"][0]["sha256"] = HEX_D
+    assert owner_projection_sha256(model, "STAGE_1") != before
 
 
 def test_derived_obligations_sit_assignments_and_graph_are_not_persisted() -> None:

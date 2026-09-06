@@ -94,7 +94,7 @@ def model_story_note_projection(
     """Project model annotations once without inventing scope decisions."""
     stories = _mappings(model.get("stories"))
     first_story_by_feature: dict[str, str] = {}
-    for story in stories:
+    for story in sorted(stories, key=lambda item: str(item.get("storyId", ""))):
         feature_id = story.get("featureId")
         story_id = story.get("storyId")
         if isinstance(feature_id, str) and isinstance(story_id, str):
@@ -107,11 +107,11 @@ def model_story_note_projection(
     by_story: dict[str, list[str]] = {}
     projected: list[dict[str, object]] = []
     suppressed: list[str] = []
-    for annotation in (
+    for annotation in sorted((
         _mappings(model.get("scopeAnnotations"))
         + _mappings(model.get("deliveryAnnotations"))
         + _mappings(model.get("estimationAnnotations"))
-    ):
+    ), key=lambda item: str(item.get("annotationId", ""))):
         annotation_id = annotation.get("annotationId")
         text = annotation.get("text")
         subject_ids = _ids(annotation.get("subjectIds"))
@@ -205,7 +205,7 @@ def render_model_notes(
             "生成与评审",
             [
                 f"项目：{project_id}",
-                "renderer：generation-renderer-v8",
+                "renderer：generation-renderer-v12",
                 f"终审：{review_decision.get('decision')}",
                 f"Task Standard：{task_catalog.semantic_sha256}",
             ],

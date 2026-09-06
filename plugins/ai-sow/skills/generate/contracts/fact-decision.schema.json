@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:fact-decision:1",
+  "description": "由固定 Owner 消费的窄决策合同，不允许最终节点、SourceRef、hash 或 checkpoint。",
+  "$ref": "#/$defs/sourceScanResult",
+  "$defs": {
+    "factDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverageRootId",
+        "disposition",
+        "facts"
+      ],
+      "properties": {
+        "coverageRootId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "disposition": {
+          "enum": [
+            "FACT",
+            "NO_RELEVANT_FACT"
+          ]
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "localKey",
+              "factKind",
+              "statement",
+              "evidenceIds",
+              "qualifiers"
+            ],
+            "properties": {
+              "localKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "factKind": {
+                "enum": [
+                  "REQUIREMENT",
+                  "RULE",
+                  "CONSTRAINT",
+                  "EXCLUSION",
+                  "ASSUMPTION",
+                  "RISK"
+                ]
+              },
+              "statement": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "evidenceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "qualifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                }
+              }
+            }
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "noRelevantReason": {
+          "type": "string",
+          "pattern": "\\S"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "FACT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "facts": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "required": [
+                "noRelevantReason"
+              ]
+            }
+          },
+          "else": {
+            "properties": {
+              "facts": {
+                "maxItems": 0
+              }
+            },
+            "required": [
+              "noRelevantReason"
+            ]
+          }
+        }
+      ]
+    },
+    "sourceScanResult": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/factDecision"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  }
+}

@@ -1,109 +1,304 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ai-sow:generate:next:artifact-approval:1",
-  "description": "绑定已验证候选工件及用户批准、默认自动化排除或放弃决定。",
+  "description": "绑定已验证候选工件及用户批准或放弃决定；范围变化须 abandon/start。",
   "oneOf": [
-    {"$ref": "#/$defs/artifactManifest"},
-    {"$ref": "#/$defs/approval"}
+    {
+      "$ref": "#/$defs/artifactManifest"
+    },
+    {
+      "$ref": "#/$defs/approval"
+    }
   ],
   "$defs": {
     "artifactManifest": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "contract", "runId", "candidateSha256", "sourceManifestSha256",
-        "stageCheckpointSha256s", "reviewDecisionSha256", "templateSha256",
-        "effectivePolicyDecisionSha256", "taskCatalogSemanticSha256",
-        "taskEstimationMethodSha256", "rendererContract", "rendererSha256", "workbook", "notes",
-        "workbookVerification"
+        "contract",
+        "runId",
+        "candidateSha256",
+        "sourceManifestSha256",
+        "stageCheckpointSha256s",
+        "reviewDecisionSha256",
+        "templateSha256",
+        "effectivePolicyDecisionSha256",
+        "taskCatalogSemanticSha256",
+        "rendererContract",
+        "rendererSha256",
+        "workbook",
+        "notes",
+        "workbookVerification",
+        "proofBundle",
+        "verification",
+        "structureFormulaSha256",
+        "priorStateSha256",
+        "office",
+        "visibleSheets",
+        "renders",
+        "visualReview"
       ],
       "properties": {
-        "contract": {"const": "ai-sow-artifact-manifest-v1"},
-        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
-        "candidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "sourceManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "stageCheckpointSha256s": {
-          "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
-          "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+        "contract": {
+          "const": "ai-sow-artifact-manifest-v2"
         },
-        "reviewDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "templateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "effectivePolicyDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "taskCatalogSemanticSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "taskEstimationMethodSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "rendererContract": {"const": "generation-renderer-v8"},
-        "rendererSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "workbook": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"},
-        "notes": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"},
-        "workbookVerification": {"$ref": "#/$defs/workbookVerification"}
+        "runId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "candidateSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "sourceManifestSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "stageCheckpointSha256s": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+          }
+        },
+        "reviewDecisionSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "templateSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "effectivePolicyDecisionSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "taskCatalogSemanticSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "rendererContract": {
+          "const": "generation-renderer-v12"
+        },
+        "rendererSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "workbook": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"
+        },
+        "notes": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"
+        },
+        "workbookVerification": {
+          "$ref": "#/$defs/workbookVerification"
+        },
+        "proofBundle": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"
+        },
+        "verification": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/hashPath"
+        },
+        "structureFormulaSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "priorStateSha256": {
+          "oneOf": [
+            {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "office": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executableBasename",
+            "binarySha256",
+            "version",
+            "platform",
+            "normalizedArguments",
+            "exitCode"
+          ],
+          "properties": {
+            "executableBasename": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "binarySha256": {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^LibreOffice[^\\\\/\\r\\n]*$"
+            },
+            "platform": {
+              "enum": [
+                "Darwin",
+                "Linux",
+                "Windows"
+              ]
+            },
+            "normalizedArguments": {
+              "const": [
+                "-env:UserInstallation=PROFILE_DIR",
+                "--headless",
+                "--convert-to",
+                "xlsx",
+                "--outdir",
+                "OUTPUT_DIR",
+                "INPUT_XLSX"
+              ]
+            },
+            "exitCode": {
+              "const": 0,
+              "type": "integer"
+            }
+          }
+        },
+        "visibleSheets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "renders": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sheetKey",
+              "path",
+              "sha256"
+            ],
+            "properties": {
+              "sheetKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"
+              },
+              "sha256": {
+                "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+              }
+            }
+          }
+        },
+        "visualReview": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "attemptRecordSha256"
+          ],
+          "properties": {
+            "attemptRecordSha256": {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+            }
+          }
+        }
       }
     },
     "workbookVerification": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["trustState", "engineName", "engineVersion"],
+      "required": [
+        "trustState",
+        "engineName",
+        "engineVersion"
+      ],
       "properties": {
-        "trustState": {"const": "VERIFIED"},
-        "engineName": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
-        "engineVersion": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+        "trustState": {
+          "const": "VERIFIED"
+        },
+        "engineName": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"
+        },
+        "engineVersion": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"
+        }
       }
     },
     "approval": {
       "oneOf": [
-        {"$ref": "#/$defs/approveDecision"},
-        {"$ref": "#/$defs/excludeDecision"},
-        {"$ref": "#/$defs/abandonDecision"}
+        {
+          "$ref": "#/$defs/approveDecision"
+        },
+        {
+          "$ref": "#/$defs/abandonDecision"
+        }
       ]
     },
     "approvalBase": {
       "type": "object",
       "required": [
-        "contract", "runId", "artifactManifestSha256", "reviewDecisionSha256",
-        "candidateSha256", "sourceManifestSha256", "templateSha256",
-        "effectivePolicyDecisionSha256", "decision"
+        "contract",
+        "runId",
+        "artifactManifestSha256",
+        "reviewDecisionSha256",
+        "candidateSha256",
+        "sourceManifestSha256",
+        "templateSha256",
+        "effectivePolicyDecisionSha256",
+        "decision"
       ],
       "properties": {
-        "contract": {"const": "ai-sow-approval-v1"},
-        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
-        "artifactManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "reviewDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "candidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "sourceManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "templateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "effectivePolicyDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "decision": {"enum": ["APPROVE", "EXCLUDE_DEFAULT_AUTOMATION", "ABANDON"]}
+        "contract": {
+          "const": "ai-sow-approval-v1"
+        },
+        "runId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "artifactManifestSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "reviewDecisionSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "candidateSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "sourceManifestSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "templateSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "effectivePolicyDecisionSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "decision": {
+          "enum": [
+            "APPROVE",
+            "ABANDON"
+          ]
+        }
       }
     },
     "approveDecision": {
       "type": "object",
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/approvalBase"},
         {
-          "required": ["approvedAt"],
-          "properties": {
-            "decision": {"const": "APPROVE"},
-            "approvedAt": {"type": "string", "format": "date-time"}
-          }
-        }
-      ]
-    },
-    "excludeDecision": {
-      "type": "object",
-      "unevaluatedProperties": false,
-      "allOf": [
-        {"$ref": "#/$defs/approvalBase"},
+          "$ref": "#/$defs/approvalBase"
+        },
         {
-          "required": ["excludedPolicyInstanceIds", "reason"],
+          "required": [
+            "approvedAt"
+          ],
           "properties": {
-            "decision": {"const": "EXCLUDE_DEFAULT_AUTOMATION"},
-            "excludedPolicyInstanceIds": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"}
+            "decision": {
+              "const": "APPROVE"
             },
-            "reason": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+            "approvedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "pairDecisionSha256": {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+            }
           }
         }
       ]
@@ -112,12 +307,20 @@
       "type": "object",
       "unevaluatedProperties": false,
       "allOf": [
-        {"$ref": "#/$defs/approvalBase"},
         {
-          "required": ["reason"],
+          "$ref": "#/$defs/approvalBase"
+        },
+        {
+          "required": [
+            "reason"
+          ],
           "properties": {
-            "decision": {"const": "ABANDON"},
-            "reason": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}
+            "decision": {
+              "const": "ABANDON"
+            },
+            "reason": {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"
+            }
           }
         }
       ]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+TEST_LAYER = "unit"
+
 import copy
 import sys
 from decimal import Decimal
@@ -28,6 +30,22 @@ def _workbook_copy(tmp_path: Path, name: str) -> Path:
     target = tmp_path / name
     target.write_bytes(TEMPLATE.read_bytes())
     return target
+
+
+def test_template_calculation_authority_decision_catalog_uses_current_rules_without_parameters(tmp_path):
+    import task_standard_catalog as owner
+    source = catalog(TEMPLATE)
+    rows = owner.decision_catalog(source)
+    assert len(rows) == 88
+    assert rows[0]['workTypeId'] == source.rows[0]['工作类型ID']
+    assert rows[0]['complexityRules'] == {key: source.rows[0][key+'标准'] for key in ('S', 'M', 'L')}
+    assert all(not any(word in key for word in ('人天', '倍率', '公式', '取整')) for row in rows for key in row)
+    changed_path = _workbook_copy(tmp_path, 'rules.xlsx')
+    _mutate_cell(changed_path, 'T5', '本轮 S 档只含一个查询条件')
+    changed = owner.decision_catalog(catalog(changed_path))
+    assert changed[0]['complexityRules']['S'] == '本轮 S 档只含一个查询条件'
+    assert changed[0]['rowSemanticSha256'] != rows[0]['rowSemanticSha256']
+    assert [r['workTypeId'] for r in changed] == [r['workTypeId'] for r in rows]
 
 
 def _mutate_cell(path: Path, address: str, value: object) -> None:

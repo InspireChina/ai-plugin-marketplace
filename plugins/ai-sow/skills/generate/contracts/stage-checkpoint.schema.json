@@ -1,132 +1,84 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ai-sow:generate:next:stage-checkpoint:1",
-  "description": "绑定三个 Owner 阶段的候选、投影、覆盖、上游依赖与通过证明。",
-  "oneOf": [
-    {"$ref": "#/$defs/scopeClosureCheckpoint"},
-    {"$ref": "#/$defs/storyAcCheckpoint"},
-    {"$ref": "#/$defs/taskCheckpoint"}
+  "description": "绑定阶段冻结计划、实际执行、完整验证和独立评审通过的不可变证明。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stageKind",
+    "inputRevisionSha256",
+    "upstreamCheckpointSha256s",
+    "stagePlanSha256",
+    "effectiveAttemptRecordSha256s",
+    "candidateSha256",
+    "validatorResultSha256",
+    "reviewPacketSha256",
+    "reviewDecisionSha256"
   ],
-  "$defs": {
-    "baseCheckpoint": {
-      "type": "object",
-      "required": [
-        "contract", "kind", "runId", "stage", "candidateSha256",
-        "sourceManifestSha256", "ownerProjectionSha256", "coverageSha256",
-        "policyDefinitionSha256",
-        "actionRecordSha256s", "reviewResultSha256s", "upstreamCheckpointSha256s",
-        "validatorContractSha256", "completedCheckIds", "decision"
-      ],
-      "properties": {
-        "contract": {"const": "ai-sow-stage-checkpoint-v1"},
-        "kind": {"enum": ["SCOPE_CLOSURE", "STORY_AC", "TASK"]},
-        "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
-        "stage": {"enum": ["EPIC_FEATURE", "STORY_AC", "TASK"]},
-        "candidateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "sourceManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "ownerProjectionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "coverageSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "policyDefinitionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "actionRecordSha256s": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256Array"},
-        "reviewResultSha256s": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256Array"},
-        "upstreamCheckpointSha256s": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256Array"},
-        "validatorContractSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-        "completedCheckIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
-        "decision": {"const": "PASS"}
-      }
-    },
-    "scopeClosureCheckpoint": {
-      "type": "object",
-      "unevaluatedProperties": false,
-      "allOf": [
-        {"$ref": "#/$defs/baseCheckpoint"},
-        {
-          "properties": {
-            "kind": {"const": "SCOPE_CLOSURE"},
-            "stage": {"const": "EPIC_FEATURE"}
-          }
-        }
+  "properties": {
+    "stageKind": {
+      "enum": [
+        "SCOPE",
+        "STORY_AC",
+        "TASK"
       ]
     },
-    "storyAcCheckpoint": {
-      "type": "object",
-      "unevaluatedProperties": false,
-      "allOf": [
-        {"$ref": "#/$defs/baseCheckpoint"},
-        {
-          "required": ["effectivePolicyDecisionSha256", "obligationProjectionSha256", "obligationCounts", "outstandingIds"],
-          "properties": {
-            "kind": {"const": "STORY_AC"},
-            "stage": {"const": "STORY_AC"},
-            "effectivePolicyDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-            "obligationProjectionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-            "obligationCounts": {"$ref": "#/$defs/obligationCounts"},
-            "outstandingIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"}
+    "inputRevisionSha256": {
+      "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+    },
+    "upstreamCheckpointSha256s": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+      },
+      "uniqueItems": true
+    },
+    "stagePlanSha256": {
+      "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+    },
+    "effectiveAttemptRecordSha256s": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "candidateSha256": {
+      "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+    },
+    "validatorResultSha256": {
+      "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+    },
+    "reviewPacketSha256": {
+      "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+    },
+    "reviewDecisionSha256": {
+      "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+    },
+    "priorStateSha256": {
+      "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stageKind": {
+            "enum": [
+              "STORY_AC",
+              "TASK"
+            ]
           }
         }
-      ]
-    },
-    "obligationCounts": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["required", "closed"],
-      "properties": {
-        "required": {"type": "integer", "minimum": 0},
-        "closed": {"type": "integer", "minimum": 0}
-      }
-    },
-    "taskCheckpoint": {
-      "type": "object",
-      "unevaluatedProperties": false,
-      "allOf": [
-        {"$ref": "#/$defs/baseCheckpoint"},
-        {
+      },
+      "then": {
+        "not": {
           "required": [
-            "effectivePolicyDecisionSha256", "taskCatalogSemanticSha256", "taskEstimationMethodSha256",
-            "priorSowInputSha256", "usedTaskStandards", "effectiveStartMatchDecisions"
-          ],
-          "properties": {
-            "kind": {"const": "TASK"},
-            "stage": {"const": "TASK"},
-            "effectivePolicyDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-            "taskCatalogSemanticSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-            "taskEstimationMethodSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
-            "priorSowInputSha256": {
-              "oneOf": [
-                {"const": "NOT_PROVIDED"},
-                {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
-              ]
-            },
-            "usedTaskStandards": {
-              "type": "array",
-              "items": {"$ref": "#/$defs/usedTaskStandard"}
-            },
-            "effectiveStartMatchDecisions": {
-              "type": "array",
-              "items": {"$ref": "#/$defs/effectiveStartMatchDecision"}
-            }
-          }
+            "priorStateSha256"
+          ]
         }
-      ]
-    },
-    "usedTaskStandard": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["workTypeId", "rowSemanticSha256"],
-      "properties": {
-        "workTypeId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
-        "rowSemanticSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
-      }
-    },
-    "effectiveStartMatchDecision": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["taskId", "decision", "evidenceSha256"],
-      "properties": {
-        "taskId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
-        "decision": {"enum": ["MATCHED_ADJUSTMENT", "MATCHED_REUSE", "NO_MATCH_NEW"]},
-        "evidenceSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
       }
     }
-  }
+  ]
 }

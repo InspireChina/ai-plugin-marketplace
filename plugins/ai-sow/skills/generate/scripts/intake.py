@@ -39,7 +39,7 @@ TEMPLATE_ASSET = SKILL_ROOT / "assets/sow-template.xlsx"
 PROJECT_TEMPLATE_PATH = ".ai-sow/templates/sow-template.xlsx"
 DELIVERY_POLICY_ASSET = SKILL_ROOT / "contracts/delivery-policy-v1.json"
 EXECUTION_POLICY_ASSET = SKILL_ROOT / "contracts/execution-policy-v1.json"
-PARSER_VERSION = "1"
+PARSER_VERSION = "2"
 
 
 def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
@@ -69,12 +69,21 @@ def _revision_failure(diagnostics: Sequence[Diagnostic]) -> InputRevisionResult:
 def _selected_next_sources(value: Mapping[str, object]) -> list[Mapping[str, object]]:
     sources = value.get("sources")
     assert isinstance(sources, list)
-    return [
-        source
-        for source in sources
+    selected = [
+        {**source, "_requestPath": f"/sources/{index}"}
+        for index, source in enumerate(sources)
         if isinstance(source, Mapping)
-        and not (source.get("role") == "DEMO" and source.get("status") == "NOT_SELECTED")
     ]
+    demo = value.get("demo")
+    if isinstance(demo, Mapping):
+        files = demo.get("files")
+        if isinstance(files, list):
+            selected.extend(
+                {**source, "_requestPath": f"/demo/files/{index}"}
+                for index, source in enumerate(files)
+                if isinstance(source, Mapping)
+            )
+    return selected
 
 
 def _template_table_names(path: Path) -> set[str]:
@@ -123,50 +132,41 @@ def _cheap_prepare_gate(
     sources = _selected_next_sources(value)
     source_ids: set[str] = set()
     for index, source in enumerate(sources):
+        request_path = str(source.get("_requestPath", f"/sources/{index}"))
         source_id = source.get("sourceId")
         if isinstance(source_id, str) and source_id in source_ids:
             diagnostics.append(
                 _diagnostic(
                     "SOURCE_ID_DUPLICATE",
                     "sourceId 必须在当前请求中唯一。",
-                    f"/sources/{index}/sourceId",
+                    f"{request_path}/sourceId",
                 )
             )
         if isinstance(source_id, str):
             source_ids.add(source_id)
 
     roles = [source.get("role") for source in sources]
+    if value.get("mode") == "GREENFIELD" and "PRIOR_SOW" in roles:
+        diagnostics.append(
+            _diagnostic(
+                "GREENFIELD_PRIOR_SOW_FORBIDDEN",
+                "Greenfield 请求不得携带 PRIOR_SOW。",
+                "/sources",
+            )
+        )
     if "PRD" not in roles:
         diagnostics.append(
             _diagnostic("PRD_REQUIRED", "必须提供已批准 PRD。", "/sources")
         )
-    design_sources = [
-        source for source in sources if source.get("role") in {"HLD", "ADR"}
-    ]
-    for source in design_sources:
-        if source.get("status") != "APPROVED":
-            diagnostics.append(
-                _diagnostic(
-                    "DESIGN_SOURCE_NOT_APPROVED",
-                    "HLD/ADR 只有在状态为 APPROVED 时才能构成设计基线。",
-                    f"/sources/{source.get('sourceId')}/status",
-                )
-            )
-    if not any(source.get("status") == "APPROVED" for source in design_sources):
-        if not any(item.code == "DESIGN_SOURCE_NOT_APPROVED" for item in diagnostics):
-            diagnostics.append(
-                _diagnostic(
-                    "APPROVED_DESIGN_REQUIRED",
-                    "必须提供至少一份已批准 HLD 或 ADR。",
-                    "/sources",
-                )
-            )
-    if value.get("mode") == "BROWNFIELD" and value.get("currentStateDelta") is None:
+    design_sources = [source for source in sources if source.get("role") in {"HLD", "ADR"}]
+    if not design_sources:
+        diagnostics.append(_diagnostic("APPROVED_DESIGN_REQUIRED", "必须提供至少一份 HLD 或 ADR。", "/sources"))
+    if value.get("mode") == "BROWNFIELD" and value.get("declaredChangeContext") is None:
         diagnostics.append(
             _diagnostic(
-                "BROWNFIELD_CURRENT_STATE_DELTA_REQUIRED",
+                "BROWNFIELD_DECLARED_CHANGE_CONTEXT_REQUIRED",
                 "Brownfield 必须声明当前状态变化。",
-                "/currentStateDelta",
+                "/declaredChangeContext",
             )
         )
 
@@ -183,19 +183,34 @@ def _cheap_prepare_gate(
     resolved: list[Mapping[str, object]] = []
     if not diagnostics:
         for index, source in enumerate(sources):
+            request_path = str(source.get("_requestPath", f"/sources/{index}"))
             relative_path = source.get("path")
             role = source.get("role")
             assert isinstance(relative_path, str) and isinstance(role, str)
             try:
                 path = files.resolve(relative_path)
+                if sha256_bytes(path.read_bytes()) != source.get("expectedSha256"):
+                    raise SourceReadError("SOURCE_HASH_MISMATCH", "来源字节哈希与 expectedSha256 不一致。")
                 inspect_source_header(path, source_role=role)
             except (ProjectIOError, SourceReadError) as error:
                 code = error.code
                 diagnostics.append(
-                    _diagnostic(code, str(error), f"/sources/{index}/path")
+                    _diagnostic(code, str(error), f"{request_path}/path")
                 )
             else:
                 resolved.append({**source, "_resolvedPath": path})
+
+    if not diagnostics and isinstance(value.get("demo"), Mapping):
+        from prototype_analysis import inventory_demo_bundle, PrototypeError
+
+        try:
+            inventory_demo_bundle(str(value["demo"]["entrypoint"]), [
+                {"sourceId": source["sourceId"], "relativePath": source["path"],
+                 "content": source["_resolvedPath"].read_bytes()}
+                for source in resolved if source["role"] == "DEMO"
+            ])
+        except PrototypeError as error:
+            diagnostics.append(_diagnostic(error.code, "Demo 静态 bundle 未通过边界校验。", "/demo"))
 
     template_path: Path | None = None
     if not diagnostics:
@@ -353,7 +368,7 @@ def _accept_revision_tree(
 
 
 def prepare(request_path: str, *, files: ProjectFiles) -> InputRevisionResult:
-    """Create or reuse one immutable, lossless Input Revision from a strict request."""
+    """Rebuild a lossless snapshot solely from this explicit request and its sources."""
     try:
         request_payload = files.read_bytes(request_path)
         try:
@@ -392,8 +407,13 @@ def prepare(request_path: str, *, files: ProjectFiles) -> InputRevisionResult:
             extension = path.suffix.casefold()
             directory = "prior-sows" if role == "PRIOR_SOW" else "sources"
             source_relative = f"{directory}/{source_id}/source{extension}"
+            if role == "DEMO":
+                source_relative = f"demo/{source['path']}"
             source_payload = path.read_bytes()
-            if sha256_bytes(source_payload) != document.raw_sha256:
+            if (
+                sha256_bytes(source_payload) != document.raw_sha256
+                or document.raw_sha256 != source.get("expectedSha256")
+            ):
                 return _revision_failure(
                     [
                         _diagnostic(
@@ -408,7 +428,11 @@ def prepare(request_path: str, *, files: ProjectFiles) -> InputRevisionResult:
                 {
                     "sourceId": source_id,
                     "role": role,
-                    "status": source["status"],
+                    "status": {
+                        "PRD": "APPROVED", "HLD": "APPROVED", "ADR": "APPROVED",
+                        "DEMO": "SELECTED", "PRIOR_SOW": "APPLICABLE",
+                        "SUPPLEMENT": "REFERENCE_ONLY",
+                    }[role],
                     "path": source_relative,
                     "rawSha256": document.raw_sha256,
                     "parserId": document.parser_id,
@@ -461,11 +485,11 @@ def prepare(request_path: str, *, files: ProjectFiles) -> InputRevisionResult:
         template_payload = template_path.read_bytes()
         delivery_policy = DELIVERY_POLICY_ASSET.read_bytes()
         execution_policy = EXECUTION_POLICY_ASSET.read_bytes()
-        prior_hashes = sorted(
+        prior_hashes = sorted({
             str(source["rawSha256"])
             for source in source_results
             if source["role"] == "PRIOR_SOW"
-        )
+        })
         source_results.sort(key=lambda item: (str(item["role"]), str(item["sourceId"])))
         bound_blocks.sort(key=lambda item: (str(item["sourceId"]), str(item["locator"]), str(item["blockId"])))
         identity = {
@@ -473,6 +497,7 @@ def prepare(request_path: str, *, files: ProjectFiles) -> InputRevisionResult:
             "templateSha256": sha256_bytes(template_payload),
             "deliveryPolicySha256": sha256_bytes(delivery_policy),
             "executionPolicySha256": sha256_bytes(execution_policy),
+            "project": value["project"],
             "sources": source_results,
             "blocks": [_manifest_block(block) for block in bound_blocks],
         }
@@ -487,6 +512,7 @@ def prepare(request_path: str, *, files: ProjectFiles) -> InputRevisionResult:
             "templateSha256": sha256_bytes(template_payload),
             "deliveryPolicySha256": sha256_bytes(delivery_policy),
             "executionPolicySha256": sha256_bytes(execution_policy),
+            "project": value["project"],
             "priorSowState": "PROVIDED" if prior_hashes else "NOT_PROVIDED",
             "priorSowSha256s": prior_hashes,
             "sources": source_results,

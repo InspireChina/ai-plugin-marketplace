@@ -8,59 +8,48 @@ import re
 import shutil
 import sys
 import tempfile
-import time
 from collections.abc import Mapping, Sequence
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from referencing import Registry
+
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from contracts import (  # noqa: E402
-    canonical_json_bytes,
-    load_registry,
-    sha256_bytes,
-    validate_action_binding,
-    validate_contract,
-    validate_state_combination,
-)
-from delivery_compiler import (  # noqa: E402
-    apply_ready_group as apply_story_action_group,
-    build_story_ac_checkpoint,
-    prepare_action as prepare_delivery_action,
-)
-from final_review import (  # noqa: E402
-    _normalize_findings,
-    advance_layered_review,
-    build_repair_plan,
-    prepare_r1_scope_join,
-    prepare_r1_source_audit,
-    validate_r1_scope_join_result,
-    validate_r1_source_audit_result,
-)
+from contracts import action_contract_binding, action_provider_request, canonical_json_bytes, estimate_action_input_tokens, load_registry, load_schema_registry, sha256_bytes, usable_action_input_tokens, validate_contract, validate_action_envelope, validate_state_combination
 from generation_store import load_current, promote  # noqa: E402
 from intake import prepare as prepare_input_revision  # noqa: E402
-from models import Diagnostic, RouteDecision  # noqa: E402
+from action_ledger import (
+    ActionLedger,
+    attempt_record_from_value,
+    attempt_record_value,
+    issue as issue_attempt,
+    finish as finish_attempt,
+    is_group_ready,
+    build_attempt_repair_context,
+    validate_attempt_repair_context,
+)
+from run_events import run_event_value, validate_run_event_log
+from models import (
+    ActionEnvelope,
+    AttemptCompletion,
+    AttemptDiagnostic,
+    AttemptTiming,
+    ContextRefDescriptor,
+    Diagnostic,
+    RunEvent,
+    Usage,
+)  # noqa: E402
 from package_renderer import PackageRenderError, prepare_draft  # noqa: E402
 from runtime.project_io import ProjectFiles, ProjectIOError  # noqa: E402
-from scope_compiler import (  # noqa: E402
-    apply_repair_action_group as apply_scope_repair_action_group,
-    apply_ready_group as apply_scope_action_group,
-    prepare_action as prepare_scope_action,
-    build_scope_closure_checkpoint,
-    prepare_repair_action as prepare_scope_repair_action,
-)
 from sow_model import model_skeleton  # noqa: E402
-from task_compiler import (  # noqa: E402
-    apply_ready_group as apply_task_action_group,
-    build_task_checkpoint,
-    prepare_action as prepare_task_action,
-)
 from task_standard_catalog import catalog as load_task_standard_catalog  # noqa: E402
+from stage_planner import StagePlanningBlocked
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -68,143 +57,7 @@ NEXT_SCHEMA_REGISTRY = load_registry(SKILL_ROOT / "contracts")
 WORK_ROOT = ".ai-sow/work"
 ACTIVE_RUN_PATH = f"{WORK_ROOT}/active-run.json"
 RUNS_ROOT = f"{WORK_ROOT}/runs"
-EXECUTION_POLICY_SHA256 = sha256_bytes(
-    (SKILL_ROOT / "contracts" / "execution-policy-v1.json").read_bytes()
-)
-ROUTE_CONTEXT_CONTRACT = "ai-sow-route-context-v1"
-GENERATION_PROOF_CLOSURE_CONTRACT = "ai-sow-generation-proof-closure-v1"
-GENERATION_MANIFEST_CONTRACT = "ai-sow-generation-manifest-v2"
 RENDERER_FINGERPRINT_PATH = SKILL_ROOT / "contracts/renderer-fingerprint-baseline.json"
-_STDLIB_TEMPFILE = tempfile
-_PROJECT_TEMP_ROOT: ContextVar[Path | None] = ContextVar(
-    "ai_sow_project_temp_root", default=None
-)
-
-
-class _ProjectLocalTempfile:
-    """Route unqualified renderer tempdirs through the active project context."""
-
-    @staticmethod
-    def _with_project_dir(
-        args: tuple[object, ...], kwargs: dict[str, object]
-    ) -> dict[str, object]:
-        updated = dict(kwargs)
-        root = _PROJECT_TEMP_ROOT.get()
-        if root is not None and len(args) < 3 and updated.get("dir") is None:
-            updated["dir"] = root
-        return updated
-
-    def mkdtemp(self, *args: object, **kwargs: object) -> str:
-        return _STDLIB_TEMPFILE.mkdtemp(
-            *args, **self._with_project_dir(args, kwargs)
-        )
-
-    def TemporaryDirectory(  # noqa: N802 - mirrors the stdlib API
-        self, *args: object, **kwargs: object
-    ) -> tempfile.TemporaryDirectory[str]:
-        return _STDLIB_TEMPFILE.TemporaryDirectory(
-            *args, **self._with_project_dir(args, kwargs)
-        )
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(_STDLIB_TEMPFILE, name)
-
-
-_PROJECT_LOCAL_TEMPFILE = _ProjectLocalTempfile()
-# The renderer and workbook are fingerprint-frozen. Their only unqualified
-# tempfile calls are permanently routed through a context-local adapter; calls
-# outside orchestration retain the stdlib default, while concurrent projects do
-# not share mutable TMPDIR or tempfile.tempdir process state.
-prepare_draft.__globals__["tempfile"] = _PROJECT_LOCAL_TEMPFILE
-_audit_calculated_workbook = prepare_draft.__globals__.get(
-    "audit_calculated_workbook"
-)
-if callable(_audit_calculated_workbook):
-    _audit_calculated_workbook.__globals__["tempfile"] = _PROJECT_LOCAL_TEMPFILE
-
-
-def _prepare_project_local_draft(
-    reviewed_model: Mapping[str, object],
-    *,
-    template_path: Path,
-    review_decision: Mapping[str, object],
-    temporary_root: Path,
-) -> object:
-    token = _PROJECT_TEMP_ROOT.set(temporary_root)
-    try:
-        return prepare_draft(
-            reviewed_model,
-            template_path=template_path,
-            review_decision=review_decision,
-        )
-    finally:
-        _PROJECT_TEMP_ROOT.reset(token)
-
-
-ROUTE_CONTEXT_FIELDS = frozenset(
-    {
-        "contract",
-        "taskCatalogSemanticSha256",
-        "taskEstimationMethodSha256",
-        "rendererSha256",
-        "effectivePolicyDecisionSha256",
-        "checkpointSha256s",
-        "reviewDecisionSha256",
-        "inputDiagnostics",
-    }
-)
-ROUTING_BASIS_FIELDS = frozenset(
-    {
-        "semanticInputSha256",
-        "templateSha256",
-        "deliveryPolicySha256",
-        "executionPolicySha256",
-        "taskCatalogSemanticSha256",
-        "taskEstimationMethodSha256",
-        "rendererSha256",
-        "effectivePolicyDecisionSha256",
-        "scopeClosureCheckpointSha256",
-        "storyAcCheckpointSha256",
-        "taskCheckpointSha256",
-        "reviewDecisionSha256",
-    }
-)
-ROUTE_RECOVERY_STAGE = {
-    "semanticInputSha256": "STAGE_1",
-    "deliveryPolicySha256": "STAGE_1",
-    "scopeClosureCheckpointSha256": "STAGE_1",
-    "effectivePolicyDecisionSha256": "STAGE_2",
-    "storyAcCheckpointSha256": "STAGE_2",
-    "taskCatalogSemanticSha256": "STAGE_3",
-    "taskEstimationMethodSha256": "STAGE_3",
-    "taskCheckpointSha256": "STAGE_3",
-    "reviewDecisionSha256": "REVIEW",
-    "templateSha256": "RENDER",
-    "rendererSha256": "RENDER",
-}
-ROUTE_STAGE_RANK = {
-    "STAGE_1": 0,
-    "STAGE_2": 1,
-    "STAGE_3": 2,
-    "REVIEW": 3,
-    "RENDER": 4,
-}
-ROUTE_INVALIDATIONS = {
-    "STAGE_1": ("SCOPE_CLOSURE", "STORY_AC", "TASK", "REVIEW", "ARTIFACT"),
-    "STAGE_2": ("STORY_AC", "TASK", "REVIEW", "ARTIFACT"),
-    "STAGE_3": ("TASK", "REVIEW", "ARTIFACT"),
-    "REVIEW": ("REVIEW", "ARTIFACT"),
-    "RENDER": ("ARTIFACT",),
-}
-FULL_COMPILE_INVALIDATIONS = (
-    "SCOPE_CLOSURE",
-    "STORY_AC",
-    "TASK",
-    "REVIEW",
-    "ARTIFACT",
-)
-
-
 def _renderer_sha256() -> str:
     baseline = json.loads(RENDERER_FINGERPRINT_PATH.read_text(encoding="utf-8"))
     files = baseline.get("files") if isinstance(baseline, Mapping) else None
@@ -224,461 +77,150 @@ def _renderer_sha256() -> str:
     return sha256_bytes(canonical_json_bytes(actual))
 
 
-def advance_stage_one(state: Mapping[str, object]) -> dict[str, object]:
-    """Return the next host-neutral Stage 1 transition without running a worker."""
-    candidate = state.get("candidate")
-    input_items = (
-        candidate.get("inputItems") if isinstance(candidate, Mapping) else None
-    )
-    scope_closure = (
-        candidate.get("scopeClosure") if isinstance(candidate, Mapping) else None
-    )
-    source_records = [
-        item
-        for item in state.get("actionRecords", [])
-        if isinstance(item, Mapping)
-        and isinstance(item.get("submission"), Mapping)
-        and item["submission"].get("resultKind") == "SOURCE_SCAN_PATCH"
-    ] if isinstance(state.get("actionRecords"), list) else []
-    proposal_records = [
-        item
-        for item in state.get("proposalRecords", [])
-        if isinstance(item, Mapping)
-    ] if isinstance(state.get("proposalRecords"), list) else []
-    transitions = (
-        (not source_records, "SOURCE_SCAN", "EPIC_FEATURE"),
-        (not isinstance(input_items, list) or not input_items, "SOURCE_SCAN", "EPIC_FEATURE"),
-        (not proposal_records, "SCOPE_PROPOSAL", "EPIC_FEATURE"),
-        (not isinstance(scope_closure, list) or not scope_closure, "SCOPE_JOIN", "EPIC_FEATURE"),
-        (not state.get("r1SourceResults"), "R1_SOURCE_INDEPENDENT_SCAN", "SOURCE_AUDIT"),
-        (not state.get("r1ScopeResult"), "R1_SCOPE_JOIN", "SOURCE_SCOPE"),
-    )
-    for required, action_kind, stage in transitions:
-        if required:
-            return {
-                "outcome": "ACTION_REQUIRED",
-                "actionKind": action_kind,
-                "stage": stage,
-                "lowestRecoveryStage": "STAGE_1",
-                "nextAction": None,
-                "diagnostics": [],
-            }
-    checkpoint_result = build_scope_closure_checkpoint(state)
-    if checkpoint_result.get("outcome") != "READY_FOR_STORY_AC":
-        return {
-            **checkpoint_result,
-            "lowestRecoveryStage": "STAGE_1",
-            "nextAction": None,
-        }
-    return {
-        **checkpoint_result,
-        "nextPhase": "STORY_AC",
-        "lowestRecoveryStage": None,
-        "nextAction": None,
-    }
+def prepare_artifact(state, files, *, template_path):
+    """Artifact work only starts from the current run's three verified checkpoints."""
+    marker = _read_active_marker(files)
+    if marker is None or marker['runId'] != state.get('runId'):
+        return _blocked('ARTIFACT_INPUT_INVALID','工件生成必须使用本轮 sealed checkpoints。')
+    current = _recover_active_run(files, marker)
+    if state != current or template_path != _revision_template_path(files,marker['inputRevisionPath']):
+        return _blocked('ARTIFACT_INPUT_INVALID','工件输入必须绑定当前 frozen run。')
+    return _advance_artifact(files,current)
 
 
-def advance_stage_two(state: Mapping[str, object]) -> dict[str, object]:
-    """Return the next host-neutral Story/AC transition without invoking a CLI."""
-    prepared = prepare_delivery_action(state, "STORY_AC")
-    if prepared.get("outcome") != "ACTION_REQUIRED":
-        return {
-            **prepared,
-            "lowestRecoveryStage": "STAGE_2",
-            "nextAction": None,
-        }
-    required = [
-        str(spec.get("logicalShardId"))
-        for spec in prepared.get("specs", [])
-        if isinstance(spec, Mapping)
-    ]
-    records = [
-        item
-        for item in state.get("storyActionRecords", [])
-        if isinstance(item, Mapping)
-    ] if isinstance(state.get("storyActionRecords"), list) else []
-    completed = {
-        str(record.get("logicalShardId"))
-        for record in records
-        if record.get("status") == "SUCCESS"
-    }
-    pending = [shard_id for shard_id in required if shard_id not in completed]
-    if pending:
-        return {
-            "outcome": "ACTION_REQUIRED",
-            "actionKind": "STORY_AC",
-            "stage": "STORY_AC",
-            "requiredLogicalShardIds": required,
-            "pendingLogicalShardIds": pending,
-            "joinRequired": len(required) > 1,
-            "specs": prepared["specs"],
-            "lowestRecoveryStage": "STAGE_2",
-            "nextAction": None,
-            "diagnostics": [],
-        }
-    joined = apply_story_action_group(state, records)
-    if joined.diagnostics:
-        return {
-            "outcome": "OWNER_FIX_REQUIRED",
-            "candidate": joined.model,
-            "lowestRecoveryStage": "STAGE_2",
-            "nextAction": None,
-            "diagnostics": joined.diagnostics,
-        }
-    checkpoint_state = {
-        **state,
-        "candidate": joined.model,
-        "storyActionRecords": records,
-        "upstreamCheckpointSha256s": [
-            sha256_bytes(canonical_json_bytes(state["scopeClosureCheckpoint"]))
-        ],
-    }
-    checkpoint_result = build_story_ac_checkpoint(checkpoint_state)
-    if checkpoint_result.get("outcome") != "READY_FOR_TASK":
-        return {
-            **checkpoint_result,
-            "candidate": joined.model,
-            "lowestRecoveryStage": "STAGE_2",
-            "nextAction": None,
-        }
-    return {
-        **checkpoint_result,
-        "candidate": joined.model,
-        "nextPhase": "TASK",
-        "joinRequired": len(required) > 1,
-        "lowestRecoveryStage": None,
-        "nextAction": None,
-    }
+def _artifact_budget_guard(files, state):
+    ledger = _load_action_ledger(files,state['runId'])
+    if _active_seconds(ledger,_read_run_events(files,state['runId'])) >= _effective_budget_policy(files,state['runId'])[1]['maxActiveSeconds']:
+        raise StagePlanningBlocked('BUDGET_EXHAUSTED')
 
 
-def advance_stage_three(state: Mapping[str, object]) -> dict[str, object]:
-    """Return the next host-neutral Task transition without invoking a CLI."""
-    prepared = prepare_task_action(state, "TASK")
-    if prepared.get("outcome") != "ACTION_REQUIRED":
-        return {
-            **prepared,
-            "lowestRecoveryStage": "STAGE_3",
-            "nextAction": None,
-        }
-    required = [
-        str(spec.get("logicalShardId"))
-        for spec in prepared.get("specs", [])
-        if isinstance(spec, Mapping)
-    ]
-    records = [
-        item
-        for item in state.get("taskActionRecords", [])
-        if isinstance(item, Mapping)
-    ] if isinstance(state.get("taskActionRecords"), list) else []
-    completed = {
-        str(record.get("logicalShardId"))
-        for record in records
-        if record.get("status") == "SUCCESS"
-    }
-    pending = [shard_id for shard_id in required if shard_id not in completed]
-    if pending:
-        return {
-            "outcome": "ACTION_REQUIRED",
-            "actionKind": "TASK",
-            "stage": "TASK",
-            "requiredLogicalShardIds": required,
-            "pendingLogicalShardIds": pending,
-            "joinRequired": len(required) > 1,
-            "specs": prepared["specs"],
-            "lowestRecoveryStage": "STAGE_3",
-            "nextAction": None,
-            "diagnostics": [],
-        }
-    joined = apply_task_action_group(state, records)
-    if joined.diagnostics:
-        return {
-            "outcome": "OWNER_FIX_REQUIRED",
-            "candidate": joined.model,
-            "lowestRecoveryStage": "STAGE_3",
-            "nextAction": None,
-            "diagnostics": joined.diagnostics,
-        }
-    checkpoint_result = build_task_checkpoint(
-        {
-            **state,
-            "candidate": joined.model,
-            "taskActionRecords": records,
-        }
-    )
-    if checkpoint_result.get("outcome") != "READY_FOR_REVIEW":
-        return {
-            **checkpoint_result,
-            "candidate": joined.model,
-            "lowestRecoveryStage": "STAGE_3",
-            "nextAction": None,
-        }
-    return {
-        **checkpoint_result,
-        "candidate": joined.model,
-        "nextPhase": "REVIEW",
-        "joinRequired": len(required) > 1,
-        "lowestRecoveryStage": None,
-        "nextAction": None,
-    }
+def _artifact_result(files, state, manifest_path, digest):
+    from generation_store import validate_artifact_manifest
+    manifest = validate_artifact_manifest(files,manifest_path,digest)
+    root = Path(manifest_path).parent.as_posix()
+    return {'outcome':'REQUEST_APPROVAL','state':dict(state),'artifactManifestPath':manifest_path,
+        'artifactManifestSha256':digest,'workbookPath':root+'/sow.xlsx','notesPath':root+'/sow-notes.md',
+        'summary':'候选 SOW 已完成 Office 重算、双复读、完整校验及全部可见 Sheet 视觉评审。',
+        'nextAction':{'contract':'ai-sow-next-action-v1','kind':'REQUEST_APPROVAL',
+            'artifactManifestPath':manifest_path,'artifactManifestSha256':digest},'diagnostics':[]}
 
 
-def advance_review(state: Mapping[str, object]) -> dict[str, object]:
-    """Return the next host-neutral fresh review transition."""
-    result = dict(advance_layered_review(state))
-    if result.get("outcome") == "READY_FOR_APPROVAL":
-        result["lowestRecoveryStage"] = None
-    else:
-        result["lowestRecoveryStage"] = "REVIEW"
-    result["nextAction"] = None
-    return result
+
+def _artifact_repair_entries(files,state):
+    entries={}
+    for event in _read_run_events(files,state['runId']):
+        if event.type!='ARTIFACT_REPAIR_AUTHORIZED': continue
+        digest=event.payload['authorizationSha256']
+        answer=_mapping(files,f"{RUNS_ROOT}/{state['runId']}/artifact-repairs/{digest}.json")
+        terminal=_mapping(files,_state_snapshot_path(state['runId'],answer['terminalStateSha256']))
+        if digest in entries: raise ValueError('同一预览裁定不可重复授权。')
+        entries[digest]={'authorization':answer,'terminalState':terminal}
+    return entries
 
 
-def prepare_artifact(
-    state: Mapping[str, object],
-    files: ProjectFiles,
-    *,
-    template_path: Path,
-) -> dict[str, object]:
-    """Render, verify and atomically freeze one immutable approval artifact."""
-    candidate = state.get("candidate")
-    review_decision = state.get("reviewDecision")
-    task_checkpoint = state.get("taskCheckpoint")
-    if not all(
-        isinstance(value, Mapping)
-        for value in (candidate, review_decision, task_checkpoint)
-    ):
-        return {
-            "outcome": "SYSTEM_FAILED",
-            "nextAction": None,
-            "diagnostics": [
-                {
-                    "code": "ARTIFACT_INPUT_INVALID",
-                    "message": "候选工件缺少 reviewed model、Task checkpoint 或终审决定。",
-                    "path": "",
-                    "details": {},
-                }
-            ],
-        }
-    assert isinstance(candidate, Mapping)
-    assert isinstance(review_decision, Mapping)
-    assert isinstance(task_checkpoint, Mapping)
-    rendered = None
-    render_temp_root: Path | None = None
-    try:
-        run_id = str(state["runId"])
-        render_temp_root = files.ensure_dir(
-            f"{RUNS_ROOT}/{run_id}/render-temp"
-        )
-        rendered = _prepare_project_local_draft(
-            candidate,
-            template_path=Path(template_path),
-            review_decision=review_decision,
-            temporary_root=render_temp_root,
-        )
-        audit = getattr(rendered, "workbook_audit", None)
-        if (
-            audit is None
-            or getattr(audit, "trust_state", None) != "VERIFIED"
-            or not getattr(audit, "engine_name", None)
-            or not getattr(audit, "engine_version", None)
-        ):
-            raise PackageRenderError(
-                "WORKBOOK_VERIFY_FAILED",
-                "候选工作簿没有可信的 Office 复读证明。",
-            )
-        workbook_path = Path(str(getattr(rendered, "workbook_path")))
-        notes_path = Path(str(getattr(rendered, "notes_path")))
-        workbook_payload = workbook_path.read_bytes()
-        notes_payload = notes_path.read_bytes()
-        candidate_payload = canonical_json_bytes(candidate)
-        review_payload = canonical_json_bytes(review_decision)
-        project = candidate.get("project")
-        if not isinstance(project, Mapping):
-            raise PackageRenderError(
-                "ARTIFACT_INPUT_INVALID", "sow-model 缺少 project 绑定。"
-            )
-        input_revision = state.get("inputRevision")
-        effective_policy_decisions = state.get("effectivePolicyDecisions")
-        checkpoints = [
-            state.get("scopeClosureCheckpoint"),
-            state.get("storyAcCheckpoint"),
-            state.get("taskCheckpoint"),
-        ]
-        if not isinstance(input_revision, Mapping) or not isinstance(
-            effective_policy_decisions, Mapping
-        ) or not all(isinstance(item, Mapping) for item in checkpoints):
-            raise PackageRenderError(
-                "ARTIFACT_INPUT_INVALID",
-                "候选工件缺少自包含的输入、政策或 Stage checkpoint。",
-            )
-        input_revision_payload = canonical_json_bytes(input_revision)
-        policy_payload = canonical_json_bytes(effective_policy_decisions)
-        checkpoint_payloads = [
-            canonical_json_bytes(item) for item in checkpoints
-        ]
-        source_manifest_sha256 = sha256_bytes(
-            canonical_json_bytes(
-                {
-                    "sources": input_revision.get("sources", []),
-                    "blocks": input_revision.get("blocks", []),
-                }
-            )
-        )
-        if (
-            project.get("inputRevisionSha256")
-            != sha256_bytes(input_revision_payload)
-            or project.get("sourceManifestSha256") != source_manifest_sha256
-            or task_checkpoint.get("effectivePolicyDecisionSha256")
-            != sha256_bytes(policy_payload)
-        ):
-            raise PackageRenderError(
-                "ARTIFACT_INPUT_STALE",
-                "候选工件输入、来源或政策 hash 已漂移。",
-            )
-        stage_hashes = [
-            review_decision.get(field)
-            for field in (
-                "scopeClosureCheckpointSha256",
-                "storyAcCheckpointSha256",
-                "taskCheckpointSha256",
-            )
-        ]
-        manifest = {
-            "contract": "ai-sow-artifact-manifest-v1",
-            "runId": state["runId"],
-            "candidateSha256": sha256_bytes(candidate_payload),
-            "sourceManifestSha256": source_manifest_sha256,
-            "stageCheckpointSha256s": stage_hashes,
-            "reviewDecisionSha256": sha256_bytes(review_payload),
-            "templateSha256": sha256_bytes(Path(template_path).read_bytes()),
-            "effectivePolicyDecisionSha256": task_checkpoint[
-                "effectivePolicyDecisionSha256"
-            ],
-            "taskCatalogSemanticSha256": task_checkpoint[
-                "taskCatalogSemanticSha256"
-            ],
-            "taskEstimationMethodSha256": task_checkpoint[
-                "taskEstimationMethodSha256"
-            ],
-            "rendererContract": "generation-renderer-v8",
-            "rendererSha256": _renderer_sha256(),
-            "workbook": {
-                "path": "sow.xlsx",
-                "sha256": sha256_bytes(workbook_payload),
-            },
-            "notes": {
-                "path": "sow-notes.md",
-                "sha256": sha256_bytes(notes_payload),
-            },
-            "workbookVerification": {
-                "trustState": "VERIFIED",
-                "engineName": audit.engine_name,
-                "engineVersion": audit.engine_version,
-            },
-        }
-        diagnostics = validate_contract(
-            manifest,
-            "artifact-approval.schema.json",
-            NEXT_SCHEMA_REGISTRY,
-        )
-        if diagnostics:
-            raise PackageRenderError(
-                "ARTIFACT_MANIFEST_INVALID",
-                "候选工件 manifest 未通过严格合同校验。",
-            )
-        manifest_payload = canonical_json_bytes(manifest)
-        manifest_sha256 = sha256_bytes(manifest_payload)
-        artifacts_relative = f"{RUNS_ROOT}/{run_id}/artifacts"
-        artifacts_root = files.ensure_dir(artifacts_relative)
-        existing_sequences = [
-            int(item.name.split("-", 1)[0])
-            for item in artifacts_root.iterdir()
-            if item.is_dir()
-            and re.fullmatch(r"[0-9]{6}-[0-9a-f]{64}", item.name)
-        ]
-        sequence = max(existing_sequences, default=0) + 1
-        version_name = f"{sequence:06d}-{manifest_sha256}"
-        version_relative = f"{artifacts_relative}/{version_name}"
-        version_path = artifacts_root / version_name
-        staging_path = Path(
-            tempfile.mkdtemp(prefix=".artifact-stage-", dir=artifacts_root)
-        )
-        try:
-            staging_files = ProjectFiles.open(staging_path)
-            for name, payload in (
-                ("sow.xlsx", workbook_payload),
-                ("sow-notes.md", notes_payload),
-                ("sow-model.json", candidate_payload),
-                ("input-revision.json", input_revision_payload),
-                ("effective-policy-decision.json", policy_payload),
-                ("scope-closure-checkpoint.json", checkpoint_payloads[0]),
-                ("story-ac-checkpoint.json", checkpoint_payloads[1]),
-                ("task-checkpoint.json", checkpoint_payloads[2]),
-                ("sow-template.xlsx", Path(template_path).read_bytes()),
-                ("review-decision.json", review_payload),
-                ("artifact-manifest.json", manifest_payload),
-            ):
-                staging_files.write_atomic(name, payload)
-            os.replace(staging_path, version_path)
-        finally:
-            if staging_path.exists():
-                shutil.rmtree(staging_path)
-        manifest_relative = f"{version_relative}/artifact-manifest.json"
-        next_action = {
-            "contract": "ai-sow-next-action-v1",
-            "kind": "REQUEST_APPROVAL",
-            "artifactManifestPath": manifest_relative,
-            "artifactManifestSha256": manifest_sha256,
-        }
-        if validate_contract(next_action, "action.schema.json", NEXT_SCHEMA_REGISTRY):
-            raise PackageRenderError(
-                "ARTIFACT_NEXT_ACTION_INVALID",
-                "候选工件的批准动作未通过严格合同校验。",
-            )
-        return {
-            "outcome": "REQUEST_APPROVAL",
-            "artifactManifestPath": manifest_relative,
-            "artifactManifestSha256": manifest_sha256,
-            "workbookPath": f"{version_relative}/sow.xlsx",
-            "notesPath": f"{version_relative}/sow-notes.md",
-            "summary": (
-                "候选 SOW 已完成 LibreOffice 重算和完整复读；"
-                f"请审阅候选说明与工作簿。工件版本：{sequence:06d}。"
-            ),
-            "nextAction": next_action,
-            "lowestRecoveryStage": None,
-            "diagnostics": [],
-        }
-    except (PackageRenderError, OSError, KeyError, TypeError, ValueError) as error:
-        code = getattr(error, "code", "WORKBOOK_VERIFY_FAILED")
-        return {
-            "outcome": "SYSTEM_FAILED",
-            "nextAction": None,
-            "lowestRecoveryStage": "RENDER",
-            "diagnostics": [
-                {
-                    "code": code,
-                    "message": str(error),
-                    "path": "",
-                    "details": {},
-                }
-            ],
-        }
-    finally:
-        if rendered is not None:
-            root = Path(str(getattr(rendered, "root", "")))
-            if root.is_dir():
-                shutil.rmtree(root)
-        if render_temp_root is not None:
-            for empty_directory in (
-                render_temp_root,
-                render_temp_root.parent,
-                render_temp_root.parent.parent,
-            ):
-                try:
-                    empty_directory.rmdir()
-                except OSError:
-                    break
+def _current_artifact_repair_plan(files,state):
+    from generation_store import artifact_repair_plan
+    entries=_artifact_repair_entries(files,state)
+    ledger=_load_action_ledger(files,state['runId'])
+    packets={envelope.value['packetSha256']:files.read_bytes(envelope.value['packetPath']) for envelope in ledger.envelopes_by_sha256.values()}
+    return artifact_repair_plan(entries,[run_event_value(event) for event in _read_run_events(files,state['runId'])],
+        ledger,packets,state['runId'],state['currentCandidateSha256'])
+
+
+def _resume_artifact_repair(files,path):
+    from generation_store import artifact_repair_plan
+    answer=_mapping(files,_managed_request_path(files,path))
+    if validate_contract(answer,'artifact-repair-authorization.schema.json',load_schema_registry(SKILL_ROOT)):
+        raise ValueError('工件预览修复裁定无效。')
+    marker=_read_active_marker(files)
+    if marker is None or marker['runId']!=answer['runId']: raise ValueError('工件修复必须作用于当前停止的 run。')
+    state=_read_active_run(files,marker);entries=_artifact_repair_entries(files,state);digest=sha256_bytes(canonical_json_bytes(answer))
+    if digest in entries and state.get('result') is None: return
+    if (state['phase']!='DONE' or state['result']!='MANUAL_REVIEW_REQUIRED'
+            or sha256_bytes(canonical_json_bytes(state))!=answer['terminalStateSha256']
+            or state['currentCandidateSha256']!=answer['candidateSha256'] or answer['rendererSha256']!=_renderer_sha256()):
+        raise ValueError('预览修复未绑定原终态、模型和当前已修 renderer。')
+    _verify_completed_stages(files,state)
+    current=_current_artifact_repair_plan(files,state)
+    events=[run_event_value(event) for event in _read_run_events(files,state['runId'])]
+    if digest not in entries:
+        entries[digest]={'authorization':answer,'terminalState':dict(state)}
+        payload={'artifactRevision':current['revision']+1,'previousArtifactRevision':current['revision'],'authorizationSha256':digest}
+        events.append({'runId':state['runId'],'sequence':len(events)+1,'type':'ARTIFACT_REPAIR_AUTHORIZED','payload':payload})
+        ledger=_load_action_ledger(files,state['runId']);packets={e.value['packetSha256']:files.read_bytes(e.value['packetPath']) for e in ledger.envelopes_by_sha256.values()}
+        artifact_repair_plan(entries,events,ledger,packets,state['runId'],state['currentCandidateSha256'])
+        files.publish_new(f"{RUNS_ROOT}/{state['runId']}/artifact-repairs/{digest}.json",canonical_json_bytes(answer))
+        _append_run_event(files,state['runId'],'ARTIFACT_REPAIR_AUTHORIZED',payload)
+    _write_active_state(files,marker,{**state,'phase':'DRAFT','result':None,'wait':'NONE'})
+
+def _advance_artifact(files, state):
+    import package_renderer as renderer
+    from generation_store import freeze_workbook, collect_artifact_proof, prepare_artifact_manifest, artifact_step_directory
+    from stage_planner import _effective_envelope, _effective_success
+    _verify_completed_stages(files,state)
+    marker = _read_active_marker(files)
+    template = _revision_template_path(files,marker['inputRevisionPath'])
+    model = files.read_json(state['currentCandidatePath'])
+    run_root = f"{RUNS_ROOT}/{state['runId']}"
+    repair_plan=_current_artifact_repair_plan(files,state)
+    temporary = files.ensure_dir(f"{RUNS_ROOT}/{state['runId']}/render-temp")
+    def step(kind, operation):
+        revision=repair_plan['stepRevisions'][kind]
+        directory=artifact_step_directory(run_root,kind,revision)
+        raw = _read_step_output(files,state,'ARTIFACT',revision,kind,directory)
+        if raw is None:
+            raw = _deterministic_step(files,state,kind,operation,stage='ARTIFACT',revision=revision)
+            _content(files,directory,raw)
+        return json.loads(raw)
+    projection = step('MATERIALIZE',lambda:renderer.project_artifact(model,template,temporary,{'decision':'PASS'}))
+    calculated = step('OFFICE',lambda:renderer.calculate_artifact(projection,temporary))
+    reference = step('OFFICE_REFERENCE',lambda:renderer.calculate_artifact(projection,temporary))
+    verification = step('VALIDATE',lambda:renderer.verify_artifact(model,template,projection,calculated,reference,temporary))
+    renders = step('RENDER',lambda:renderer.render_artifact(calculated,temporary))
+    _artifact_budget_guard(files,state)
+    artifact_root = f"{RUNS_ROOT}/{state['runId']}/artifacts/{repair_plan['revision']:06d}-{state['currentCandidateSha256']}"
+    workbook = renderer.decode_binary(calculated['workbook']); workbook_hash=sha256_bytes(workbook)
+    freeze_workbook(files,artifact_root+'/sow.xlsx',workbook,workbook_hash)
+    render_refs=[]
+    for item in renders['renders']:
+        payload=renderer.decode_binary(item['bytes'])
+        if sha256_bytes(payload)!=item['sha256']: raise ValueError('render step output hash mismatch')
+        path=artifact_root+'/renders/'+item['path']; files.publish_new(path,payload)
+        render_refs.append({'sheetKey':item['sheetKey'],'path':path,'sha256':item['sha256']})
+    _,contract_hash = action_contract_binding(SKILL_ROOT,'ARTIFACT_VISUAL_REVIEW-v1')
+    identity,logical,group = renderer.visual_identity(workbook_hash,[r['sha256'] for r in render_refs],contract_hash)
+    body={'identity':identity,'workbook':{'path':artifact_root+'/sow.xlsx','sha256':workbook_hash},
+        'visibleSheets':[r['sheetKey'] for r in render_refs],'renders':render_refs}
+    packet={'workItems':[{'workItemId':'workbook','payload':body}],'contextRefs':[]}
+    ledger=_load_action_ledger(files,state['runId'])
+    if _effective_envelope(ledger,logical) is None:
+        return _issue_singleton(files,state,'ARTIFACT',group,logical,'ARTIFACT_VISUAL_REVIEW-v1',canonical_json_bytes(packet))
+    record_hash,record=_effective_success(ledger,logical)
+    renderer.validate_visual_result(packet,ledger.normalized_results[record.normalized_result_sha256])
+    if json.loads(ledger.normalized_results[record.normalized_result_sha256])['overallDecision']!='PASS':
+        terminal=_write_active_state(files,marker,{**state,'phase':'DONE','wait':'NONE','result':'MANUAL_REVIEW_REQUIRED','expectedActionIds':[]})
+        return {'outcome':'MANUAL_REVIEW_REQUIRED','state':dict(terminal),'nextAction':None,'diagnostics':[{'code':'ARTIFACT_VISUAL_REVIEW_FAILED','message':'工作簿视觉检查未通过。'}]}
+    def manifest_operation():
+        fingerprint=json.loads(RENDERER_FINGERPRINT_PATH.read_bytes())
+        if fingerprint['rendererContract']!=renderer.RENDERER_CONTRACT or any(
+            sha256_bytes((SKILL_ROOT/path).read_bytes())!=digest for path,digest in fingerprint['files'].items()):
+            raise ValueError('renderer fingerprint baseline drift')
+        return prepare_artifact_manifest(files,state,template_path=template,
+            proof=collect_artifact_proof(files,state,marker['inputRevisionPath'],repair_entries=_artifact_repair_entries(files,state)),calculated=calculated,
+            projection=projection,verification=verification,renders=renders,renderer_fingerprint=fingerprint,
+            visual_record_sha256=record_hash)
+    sealed=step('FINAL_VALIDATE',manifest_operation)
+    _artifact_budget_guard(files,state)
+    files.publish_new(sealed['manifestPath'],canonical_json_bytes(sealed['manifest']))
+    # This immutable event is the benchmark's verified terminal boundary. A
+    # crash before the mutable state pointer advances must not duplicate it.
+    events = _read_run_events(files, state['runId'])
+    latest = next((event for event in reversed(events) if event.type == 'RUN_STATE_CHANGED'), None)
+    if latest is None or latest.payload['toState'] != 'AWAITING_FINAL_REVIEW':
+        _append_run_event(files, state['runId'], 'RUN_STATE_CHANGED',
+            {'fromState': state['phase'], 'toState': 'AWAITING_FINAL_REVIEW'})
+    state=_write_active_state(files,marker,{**state,'phase':'AWAITING_FINAL_REVIEW','wait':'APPROVAL','expectedActionIds':[]})
+    return _artifact_result(files,state,sealed['manifestPath'],sealed['manifestSha256'])
 
 
 def _diagnostic(code: str, message: str, path: str = "") -> Diagnostic:
@@ -691,506 +233,6 @@ def _diagnostic_value(value: Diagnostic) -> dict[str, object]:
         "message": value.message,
         "path": value.path,
         "details": dict(value.details),
-    }
-
-
-def _route_diagnostic(value: object) -> Diagnostic | None:
-    if isinstance(value, Diagnostic):
-        return value
-    if not isinstance(value, Mapping):
-        return None
-    code = value.get("code")
-    message = value.get("message")
-    path = value.get("path")
-    details = value.get("details")
-    if not (
-        isinstance(code, str)
-        and code
-        and isinstance(message, str)
-        and message
-        and isinstance(path, str)
-        and isinstance(details, Mapping)
-    ):
-        return None
-    return Diagnostic(code=code, message=message, path=path, details=dict(details))
-
-
-def _semantic_input_sha256(input_revision: Mapping[str, object]) -> str:
-    fields = (
-        "requestSha256",
-        "priorSowState",
-        "priorSowSha256s",
-        "sources",
-        "blocks",
-    )
-    if any(field not in input_revision for field in fields):
-        raise ValueError("input revision 缺少语义路由字段")
-    semantic = {field: input_revision[field] for field in fields}
-    sources = input_revision.get("sources")
-    if not isinstance(sources, list):
-        raise ValueError("input revision sources 合同无效")
-    semantic["sources"] = [
-        {key: value for key, value in source.items() if key != "path"}
-        if isinstance(source, Mapping)
-        else source
-        for source in sources
-    ]
-    return sha256_bytes(canonical_json_bytes(semantic))
-
-
-def _current_routing_basis(
-    state: Mapping[str, object],
-    input_revision: Mapping[str, object],
-) -> dict[str, str]:
-    if (
-        state.get("contract") != ROUTE_CONTEXT_CONTRACT
-        or set(state) != ROUTE_CONTEXT_FIELDS
-    ):
-        raise ValueError("route context 合同无效")
-    checkpoints = state.get("checkpointSha256s")
-    if not isinstance(checkpoints, Mapping):
-        raise ValueError("route context 缺少 checkpoint hashes")
-    basis: dict[str, object] = {
-        "semanticInputSha256": _semantic_input_sha256(input_revision),
-        "templateSha256": input_revision.get("templateSha256"),
-        "deliveryPolicySha256": input_revision.get("deliveryPolicySha256"),
-        "executionPolicySha256": input_revision.get("executionPolicySha256"),
-        "taskCatalogSemanticSha256": state.get("taskCatalogSemanticSha256"),
-        "taskEstimationMethodSha256": state.get("taskEstimationMethodSha256"),
-        "rendererSha256": state.get("rendererSha256"),
-        "effectivePolicyDecisionSha256": state.get(
-            "effectivePolicyDecisionSha256"
-        ),
-        "scopeClosureCheckpointSha256": checkpoints.get("SCOPE_CLOSURE"),
-        "storyAcCheckpointSha256": checkpoints.get("STORY_AC"),
-        "taskCheckpointSha256": checkpoints.get("TASK"),
-        "reviewDecisionSha256": state.get("reviewDecisionSha256"),
-    }
-    if set(basis) != ROUTING_BASIS_FIELDS or any(
-        not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None
-        for value in basis.values()
-    ):
-        raise ValueError("route context hash 不完整或格式无效")
-    return {key: str(value) for key, value in basis.items()}
-
-
-def _valid_generation_proof_closure(
-    current_generation: Mapping[str, object],
-) -> bool:
-    if (
-        set(current_generation)
-        != {
-            "contract",
-            "generationContract",
-            "generationId",
-            "publicationComplete",
-            "selfContained",
-            "routingBasis",
-            "proofClosure",
-        }
-        or current_generation.get("contract") != GENERATION_PROOF_CLOSURE_CONTRACT
-        or current_generation.get("generationContract")
-        != GENERATION_MANIFEST_CONTRACT
-        or current_generation.get("publicationComplete") is not True
-        or current_generation.get("selfContained") is not True
-    ):
-        return False
-    basis = current_generation.get("routingBasis")
-    closure = current_generation.get("proofClosure")
-    if not (
-        isinstance(basis, Mapping)
-        and set(basis) == ROUTING_BASIS_FIELDS
-        and all(
-            isinstance(value, str)
-            and re.fullmatch(r"[0-9a-f]{64}", value) is not None
-            for value in basis.values()
-        )
-        and isinstance(closure, Mapping)
-        and set(closure) == {"stageCheckpoints", "reviewDecision", "artifactManifest"}
-    ):
-        return False
-    checkpoints = closure.get("stageCheckpoints")
-    review = closure.get("reviewDecision")
-    artifact = closure.get("artifactManifest")
-    checkpoint_basis_fields = {
-        "SCOPE_CLOSURE": "scopeClosureCheckpointSha256",
-        "STORY_AC": "storyAcCheckpointSha256",
-        "TASK": "taskCheckpointSha256",
-    }
-    if not isinstance(checkpoints, Mapping) or set(checkpoints) != set(
-        checkpoint_basis_fields
-    ):
-        return False
-    for kind, basis_field in checkpoint_basis_fields.items():
-        checkpoint = checkpoints.get(kind)
-        if not (
-            isinstance(checkpoint, Mapping)
-            and set(checkpoint) == {"sha256", "decision"}
-            and checkpoint.get("decision") == "PASS"
-            and checkpoint.get("sha256") == basis[basis_field]
-        ):
-            return False
-    return bool(
-        isinstance(review, Mapping)
-        and set(review) == {"sha256", "decision"}
-        and review.get("decision") == "PASS"
-        and review.get("sha256") == basis["reviewDecisionSha256"]
-        and isinstance(artifact, Mapping)
-        and set(artifact) == {"sha256", "verified"}
-        and artifact.get("verified") is True
-        and isinstance(artifact.get("sha256"), str)
-        and re.fullmatch(r"[0-9a-f]{64}", str(artifact["sha256"])) is not None
-    )
-
-
-def _route_decision(
-    *,
-    state: Mapping[str, object],
-    input_revision: Mapping[str, object],
-    current_generation: Mapping[str, object] | None,
-    route: str,
-    lowest_recovery_stage: str | None,
-    changed: Sequence[str],
-    reused: Sequence[str],
-    invalidated: Sequence[str],
-    diagnostics: Sequence[Diagnostic] = (),
-    legacy_generation_contract: str | None = None,
-) -> RouteDecision:
-    decision_value = {
-        "route": route,
-        "lowestRecoveryStage": lowest_recovery_stage,
-        "changed": list(changed),
-        "reused": list(reused),
-        "invalidated": list(invalidated),
-        "diagnostics": [_diagnostic_value(item) for item in diagnostics],
-    }
-    generation_evidence: object
-    if legacy_generation_contract is not None:
-        generation_evidence = {"contract": legacy_generation_contract}
-    else:
-        generation_evidence = current_generation
-    proof_sha256 = sha256_bytes(
-        canonical_json_bytes(
-            {
-                "contract": "ai-sow-route-decision-proof-v1",
-                "state": state,
-                "inputRevision": input_revision,
-                "currentGeneration": generation_evidence,
-                "decision": decision_value,
-            }
-        )
-    )
-    return RouteDecision(
-        route=route,  # type: ignore[arg-type]
-        lowest_recovery_stage=lowest_recovery_stage,  # type: ignore[arg-type]
-        changed=tuple(changed),
-        reused=tuple(reused),
-        invalidated=tuple(invalidated),
-        diagnostics=tuple(diagnostics),
-        proof_sha256=proof_sha256,
-    )
-
-
-def plan_route(
-    state: Mapping[str, object],
-    input_revision: Mapping[str, object],
-    current_generation: Mapping[str, object] | None,
-) -> RouteDecision:
-    """Choose one immutable route from hashes and a self-contained proof closure."""
-    input_diagnostic_values = state.get("inputDiagnostics")
-    if isinstance(input_diagnostic_values, Sequence) and not isinstance(
-        input_diagnostic_values, (str, bytes)
-    ):
-        input_diagnostics = tuple(
-            diagnostic
-            for value in input_diagnostic_values
-            if (diagnostic := _route_diagnostic(value)) is not None
-        )
-        if input_diagnostics:
-            return _route_decision(
-                state=state,
-                input_revision=input_revision,
-                current_generation=current_generation,
-                route="FULL_COMPILE",
-                lowest_recovery_stage=None,
-                changed=(),
-                reused=(),
-                invalidated=(),
-                diagnostics=input_diagnostics,
-            )
-
-    if current_generation is None:
-        return _route_decision(
-            state=state,
-            input_revision=input_revision,
-            current_generation=None,
-            route="FULL_COMPILE",
-            lowest_recovery_stage="STAGE_1",
-            changed=("generationProofClosure",),
-            reused=(),
-            invalidated=FULL_COMPILE_INVALIDATIONS,
-        )
-
-    generation_contract = current_generation.get("contract")
-    if generation_contract != GENERATION_PROOF_CLOSURE_CONTRACT:
-        contract_name = (
-            generation_contract if isinstance(generation_contract, str) else "INVALID"
-        )
-        return _route_decision(
-            state=state,
-            input_revision=input_revision,
-            current_generation=None,
-            route="FULL_COMPILE",
-            lowest_recovery_stage="STAGE_1",
-            changed=("generationProofClosure",),
-            reused=(),
-            invalidated=FULL_COMPILE_INVALIDATIONS,
-            legacy_generation_contract=contract_name,
-        )
-
-    if not _valid_generation_proof_closure(current_generation):
-        diagnostic = _diagnostic(
-            "GENERATION_PROOF_CLOSURE_INVALID",
-            "已发布 generation 的自包含检查点、评审或工件证明无效。",
-            "/currentGeneration",
-        )
-        return _route_decision(
-            state=state,
-            input_revision=input_revision,
-            current_generation=current_generation,
-            route="FULL_COMPILE",
-            lowest_recovery_stage="STAGE_1",
-            changed=("generationProofClosure",),
-            reused=(),
-            invalidated=FULL_COMPILE_INVALIDATIONS,
-            diagnostics=(diagnostic,),
-        )
-
-    try:
-        current_basis = _current_routing_basis(state, input_revision)
-    except (TypeError, ValueError):
-        diagnostic = _diagnostic(
-            "ROUTE_CONTEXT_INVALID",
-            "当前输入或路由 hash 上下文不完整。",
-            "/routeContext",
-        )
-        return _route_decision(
-            state=state,
-            input_revision=input_revision,
-            current_generation=current_generation,
-            route="FULL_COMPILE",
-            lowest_recovery_stage="STAGE_1",
-            changed=("routeContext",),
-            reused=(),
-            invalidated=FULL_COMPILE_INVALIDATIONS,
-            diagnostics=(diagnostic,),
-        )
-    baseline_basis = current_generation["routingBasis"]
-    changed = tuple(
-        sorted(
-            field
-            for field in ROUTING_BASIS_FIELDS
-            if current_basis[field] != baseline_basis[field]
-        )
-    )
-    reused = tuple(sorted(ROUTING_BASIS_FIELDS.difference(changed)))
-    if not changed:
-        return _route_decision(
-            state=state,
-            input_revision=input_revision,
-            current_generation=current_generation,
-            route="REUSE",
-            lowest_recovery_stage=None,
-            changed=(),
-            reused=reused,
-            invalidated=(),
-        )
-
-    if "executionPolicySha256" in changed:
-        diagnostic = _diagnostic(
-            "ROUTE_HASH_DRIFT_UNSUPPORTED",
-            "执行政策变化不能由既有语义证明安全局部恢复。",
-            "/inputRevision/executionPolicySha256",
-        )
-        return _route_decision(
-            state=state,
-            input_revision=input_revision,
-            current_generation=current_generation,
-            route="FULL_COMPILE",
-            lowest_recovery_stage="STAGE_1",
-            changed=changed,
-            reused=reused,
-            invalidated=FULL_COMPILE_INVALIDATIONS,
-            diagnostics=(diagnostic,),
-        )
-
-    recovery_stages = tuple(ROUTE_RECOVERY_STAGE[field] for field in changed)
-    lowest_recovery_stage = min(
-        recovery_stages,
-        key=lambda stage: ROUTE_STAGE_RANK[stage],
-    )
-    render_only = set(changed).issubset({"templateSha256", "rendererSha256"})
-    return _route_decision(
-        state=state,
-        input_revision=input_revision,
-        current_generation=current_generation,
-        route="RENDER_ONLY" if render_only else "DELTA_COMPILE",
-        lowest_recovery_stage=lowest_recovery_stage,
-        changed=changed,
-        reused=reused,
-        invalidated=ROUTE_INVALIDATIONS[lowest_recovery_stage],
-    )
-
-
-def _input_revision_by_sha256(
-    files: ProjectFiles, expected_sha256: str
-) -> tuple[str, Mapping[str, object]]:
-    try:
-        root = files.resolve(".ai-sow/inputs/revisions", expect="dir")
-    except ProjectIOError as error:
-        if error.code == "PROJECT_PATH_MISSING":
-            raise ProjectIOError(
-                "INPUT_REVISION_NOT_FOUND",
-                ".ai-sow/inputs/revisions",
-                "已发布 generation 绑定的 Input Revision 不存在。",
-            ) from error
-        raise
-    matches: list[tuple[str, Mapping[str, object]]] = []
-    for path in sorted(root.glob("revision-*/manifest.json")):
-        relative = path.relative_to(files.root).as_posix()
-        payload = files.read_bytes(relative)
-        if sha256_bytes(payload) == expected_sha256:
-            matches.append((relative, _mapping(files, relative)))
-    if len(matches) != 1:
-        raise ProjectIOError(
-            "INPUT_REVISION_NOT_UNIQUE",
-            ".ai-sow/inputs/revisions",
-            "已发布 generation 必须唯一绑定一个不可变 Input Revision。",
-        )
-    return matches[0]
-
-
-def _generation_route_materials(
-    files: ProjectFiles,
-    current: object,
-) -> dict[str, object]:
-    manifest_path = str(getattr(current, "manifest_path"))
-    manifest = _mapping(files, manifest_path)
-    generation_root = Path(manifest_path).parent.as_posix()
-    input_revision_path, input_revision = _input_revision_by_sha256(
-        files, str(manifest["inputRevisionSha256"])
-    )
-    checkpoint_names = (
-        ("SCOPE_CLOSURE", "scope-closure-checkpoint.json"),
-        ("STORY_AC", "story-ac-checkpoint.json"),
-        ("TASK", "task-checkpoint.json"),
-    )
-    checkpoints = {
-        kind: _mapping(files, f"{generation_root}/proof/{name}")
-        for kind, name in checkpoint_names
-    }
-    checkpoint_hashes = {
-        kind: sha256_bytes(canonical_json_bytes(checkpoint))
-        for kind, checkpoint in checkpoints.items()
-    }
-    review_decision = _mapping(files, f"{generation_root}/proof/review-decision.json")
-    review_sha256 = sha256_bytes(canonical_json_bytes(review_decision))
-    artifact_manifest = _mapping(
-        files, f"{generation_root}/proof/artifact-manifest.json"
-    )
-    artifact_sha256 = sha256_bytes(canonical_json_bytes(artifact_manifest))
-    proof = {
-        "contract": GENERATION_PROOF_CLOSURE_CONTRACT,
-        "generationContract": manifest["contract"],
-        "generationId": manifest["generationId"],
-        "publicationComplete": manifest["publicationComplete"],
-        "selfContained": True,
-        "routingBasis": {
-            "semanticInputSha256": _semantic_input_sha256(input_revision),
-            "templateSha256": manifest["templateSha256"],
-            "deliveryPolicySha256": input_revision["deliveryPolicySha256"],
-            "executionPolicySha256": input_revision["executionPolicySha256"],
-            "taskCatalogSemanticSha256": artifact_manifest[
-                "taskCatalogSemanticSha256"
-            ],
-            "taskEstimationMethodSha256": artifact_manifest[
-                "taskEstimationMethodSha256"
-            ],
-            "rendererSha256": artifact_manifest["rendererSha256"],
-            "effectivePolicyDecisionSha256": artifact_manifest[
-                "effectivePolicyDecisionSha256"
-            ],
-            "scopeClosureCheckpointSha256": checkpoint_hashes["SCOPE_CLOSURE"],
-            "storyAcCheckpointSha256": checkpoint_hashes["STORY_AC"],
-            "taskCheckpointSha256": checkpoint_hashes["TASK"],
-            "reviewDecisionSha256": review_sha256,
-        },
-        "proofClosure": {
-            "stageCheckpoints": {
-                kind: {"sha256": checkpoint_hashes[kind], "decision": checkpoint["decision"]}
-                for kind, checkpoint in checkpoints.items()
-            },
-            "reviewDecision": {
-                "sha256": review_sha256,
-                "decision": review_decision["decision"],
-            },
-            "artifactManifest": {
-                "sha256": artifact_sha256,
-                "verified": artifact_manifest.get("workbookVerification", {}).get(
-                    "trustState"
-                )
-                == "VERIFIED",
-            },
-        },
-    }
-    return {
-        "manifest": manifest,
-        "generationRoot": generation_root,
-        "inputRevisionPath": input_revision_path,
-        "inputRevision": input_revision,
-        "candidate": _mapping(files, str(manifest["sowModelPath"])),
-        "checkpoints": checkpoints,
-        "reviewDecision": review_decision,
-        "artifactManifest": artifact_manifest,
-        "effectivePolicyDecisions": _mapping(
-            files, f"{generation_root}/input/effective-policy-decision.json"
-        ),
-        "proof": proof,
-    }
-
-
-def _route_context_for_revision(
-    files: ProjectFiles,
-    input_revision_path: str,
-    input_revision: Mapping[str, object],
-    materials: Mapping[str, object],
-) -> dict[str, object]:
-    proof = materials["proof"]
-    assert isinstance(proof, Mapping)
-    basis = proof["routingBasis"]
-    assert isinstance(basis, Mapping)
-    template_path = files.resolve(
-        f"{Path(input_revision_path).parent.as_posix()}/sow-template.xlsx",
-        expect="file",
-    )
-    task_catalog = load_task_standard_catalog(template_path)
-    return {
-        "contract": ROUTE_CONTEXT_CONTRACT,
-        "taskCatalogSemanticSha256": task_catalog.task_catalog_semantic_sha256,
-        "taskEstimationMethodSha256": sha256_bytes(
-            (SKILL_ROOT / "references/task-authoring.md").read_bytes()
-        ),
-        "rendererSha256": _renderer_sha256(),
-        "effectivePolicyDecisionSha256": basis[
-            "effectivePolicyDecisionSha256"
-        ],
-        "checkpointSha256s": {
-            "SCOPE_CLOSURE": basis["scopeClosureCheckpointSha256"],
-            "STORY_AC": basis["storyAcCheckpointSha256"],
-            "TASK": basis["taskCheckpointSha256"],
-        },
-        "reviewDecisionSha256": basis["reviewDecisionSha256"],
-        "inputDiagnostics": [],
     }
 
 
@@ -1388,7 +430,7 @@ def _read_active_marker(files: ProjectFiles) -> Mapping[str, object] | None:
 
 def _initial_run_state(marker: Mapping[str, object]) -> dict[str, object]:
     return {
-        "contract": "ai-sow-run-state-v1",
+        "contract": "ai-sow-run-state-v3",
         "runId": marker["runId"],
         "requestSha256": marker["requestSha256"],
         "route": "FULL_COMPILE",
@@ -1400,11 +442,6 @@ def _initial_run_state(marker: Mapping[str, object]) -> dict[str, object]:
         "currentCandidatePath": None,
         "expectedActionIds": [],
         "checkpointRefs": [],
-        "budget": {
-            "executionPolicySha256": EXECUTION_POLICY_SHA256,
-            "modelActionsStarted": 0,
-            "modelActionsCompleted": 0,
-        },
         "resumeFromPhase": None,
     }
 
@@ -1426,12 +463,13 @@ def _validated_run_state(value: object, path: str) -> Mapping[str, object]:
     return value
 
 
-def _recover_active_run(
+def _read_active_run(
     files: ProjectFiles,
     marker: Mapping[str, object],
     *,
     verify_request: bool = True,
 ) -> Mapping[str, object]:
+    _effective_budget_policy(files, str(marker["runId"]))
     request_path = str(marker["requestPath"])
     if (
         verify_request
@@ -1460,7 +498,6 @@ def _recover_active_run(
     except ProjectIOError as error:
         if error.code != "PROJECT_PATH_MISSING" or marker["status"] != "RESERVED":
             raise
-        files.publish_new(state_path, canonical_json_bytes(expected_state))
         state = expected_state
     if (
         state.get("runId") != marker["runId"]
@@ -1480,7 +517,6 @@ def _recover_active_run(
     except ProjectIOError as error:
         if error.code != "PROJECT_PATH_MISSING" or marker["status"] != "RESERVED":
             raise
-        files.publish_new(binding_path, canonical_json_bytes(expected_binding))
         binding = expected_binding
     if binding != expected_binding:
         raise ProjectIOError(
@@ -1489,15 +525,25 @@ def _recover_active_run(
             "run input binding 与 active marker 不一致。",
         )
 
-    state_payload = files.read_bytes(state_path)
-    state_sha256 = sha256_bytes(state_payload)
     if marker["status"] == "ACTIVE":
+        state_sha256 = sha256_bytes(files.read_bytes(state_path))
         if marker["stateSha256"] != state_sha256:
             raise ProjectIOError(
                 "RUN_STATE_HASH_MISMATCH",
                 state_path,
                 "active marker 未绑定当前 run state。",
             )
+    return state
+
+
+def _recover_active_run(
+    files: ProjectFiles,
+    marker: Mapping[str, object],
+    *,
+    verify_request: bool = True,
+) -> Mapping[str, object]:
+    state = _read_active_run(files, marker, verify_request=verify_request)
+    if marker["status"] == "ACTIVE":
         reconciled = _reconcile_active_state(files, marker, state)
         if (
             reconciled.get("phase") == "DONE"
@@ -1511,6 +557,10 @@ def _recover_active_run(
                 files.unlink_exact(ACTIVE_RUN_PATH, expected_payload=active_payload)
         return reconciled
 
+    files.publish_new(str(marker["statePath"]), canonical_json_bytes(state))
+    files.publish_new(
+        str(marker["bindingPath"]), canonical_json_bytes(_input_binding(marker))
+    )
     return _write_active_state(files, marker, state)
 
 
@@ -1561,21 +611,29 @@ def _next_model_action(
     ]
     if state.get("wait") != "MODEL" or not action_ids:
         return None
-    envelopes = [
-        _mapping(files, _action_paths(str(state["runId"]), action_id)["envelope"])
-        for action_id in action_ids
-    ]
+    ledger = _load_action_ledger(files, str(state["runId"]))
+    issued = {
+        str(item.value["actionId"]): item
+        for item in ledger.envelopes_by_sha256.values()
+    }
+    if any(action_id not in issued for action_id in action_ids):
+        raise ProjectIOError(
+            "ACTION_ISSUANCE_PROOF_INVALID", "", "等待的 action 缺少精确发行证明。"
+        )
+    envelopes = [dict(issued[action_id].value) for action_id in action_ids]
     if len(envelopes) == 1:
         return envelopes[0]
-    group = envelopes[0]["group"]
-    assert isinstance(group, Mapping)
+    group_ids = {str(envelope.get("groupId")) for envelope in envelopes}
+    if len(group_ids) != 1:
+        raise ProjectIOError(
+            "ACTION_GROUP_BINDING_INVALID", "", "等待中的 action groupId 不一致。"
+        )
+    group_id = group_ids.pop()
+    policies = [_published_budget_policy(files, state['runId'], envelope['budgetPolicySha256']) for envelope in envelopes]
     next_action = {
-        "contract": "ai-sow-next-action-v1",
-        "kind": "MODEL_ACTION_GROUP",
-        "groupId": group["groupId"],
-        "maxConcurrency": group["maxConcurrency"],
-        "groupDeadlineMilliseconds": group["groupDeadlineMilliseconds"],
-        "actions": envelopes,
+        "contract": "ai-sow-next-action-v1", "kind": "MODEL_ACTION_GROUP", "groupId": group_id,
+        "maxConcurrency": min(len(envelopes), *(policy['maxConcurrency'] for policy in policies)),
+        "groupDeadlineMilliseconds": 600000, "actions": envelopes,
     }
     if validate_contract(next_action, "action.schema.json", NEXT_SCHEMA_REGISTRY):
         raise ProjectIOError(
@@ -1596,245 +654,303 @@ def _public_active_result(
     }
 
 
-def _start_public_pipeline(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-) -> dict[str, object]:
-    """Freeze the first host-neutral action without invoking a model runtime."""
+def _prototype_inventory(files, state):
+    from prototype_analysis import inventory_demo_bundle
+
     marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError(
-            "RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "当前项目没有 active run。"
-        )
-    current = dict(state)
-    if current.get("phase") != "PREPARE" or current.get("wait") != "NONE":
-        return _public_active_result(files, current)
-    input_revision_path = str(marker["inputRevisionPath"])
-    input_revision = _mapping(files, input_revision_path)
-    revision_root = str(Path(input_revision_path).parent.as_posix())
+    revision_path = str(marker["inputRevisionPath"])
+    revision_root = Path(revision_path).parent.as_posix()
     request = _mapping(files, f"{revision_root}/request.json")
-    if current.get("route") == "DELTA_COMPILE" and isinstance(
-        current.get("currentCandidatePath"), str
-    ):
-        candidate = _mapping(files, str(current["currentCandidatePath"]))
-        snapshot = {
-            "path": current["currentCandidatePath"],
-            "sha256": current["currentCandidateSha256"],
-        }
-    else:
-        candidate = model_skeleton(request, input_revision)
-        snapshot = _append_candidate_snapshot(files, str(marker["runId"]), candidate)
-    compiler_state = {
-        "contract": "ai-sow-scope-compiler-state-v1",
-        "runId": marker["runId"],
-        "inputRevision": input_revision,
-        "sourceContents": _source_contents_for_revision(
-            files, input_revision_path, input_revision
-        ),
-        "baseCandidate": candidate,
-        "baseCandidateSha256": snapshot["sha256"],
-        "maxInitialPacketTokens": 48000,
-        "maxOutputTokens": 12000,
-        "modelProfileId": "host-selected-author-v1",
-        "modelConfigSha256": sha256_bytes(
-            canonical_json_bytes(
-                {
-                    "contract": "ai-sow-host-model-selection-v1",
-                    "selection": "HOST_DEFAULT",
-                    "contextPolicy": "FRESH_NO_HISTORY",
-                }
-            )
-        ),
-        "acceptedRecords": [],
-    }
-    prepared = prepare_scope_action(compiler_state, "SOURCE_SCAN")
-    if prepared.get("outcome") != "ACTION_REQUIRED":
-        diagnostics = tuple(
-            item
-            for item in prepared.get("diagnostics", ())
-            if isinstance(item, (Diagnostic, Mapping))
-        )
-        return {
-            "outcome": str(prepared.get("outcome", "CONTRACT_UNSUPPORTED")),
-            "nextAction": None,
-            "diagnostics": [
-                _diagnostic_value(item)
-                if isinstance(item, Diagnostic)
-                else dict(item)
-                for item in diagnostics
-            ],
-        }
-    specs = _mappings(prepared.get("specs"))
-    _issue_action_group(
-        files,
-        str(marker["runId"]),
-        specs,
-        max_concurrency=min(4, len(specs)),
-        group_deadline_milliseconds=600000,
-        shard_deadline_milliseconds=480000,
-        pipeline_step="SOURCE_SCAN",
-    )
-    active = _read_active_marker(files)
-    if active is None:
-        raise ProjectIOError(
-            "RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "发放 action 后 active run 意外缺失。"
-        )
-    return _public_active_result(files, _recover_active_run(files, active))
+    revision = _mapping(files, revision_path)
+    demo = request.get("demo")
+    if not demo:
+        return None
+    sources = {source["sourceId"]: source for source in revision["sources"]}
+    declared = []
+    for file in demo["files"]:
+        source = sources[file["sourceId"]]
+        content = files.read_bytes(source["path"])
+        if sha256_bytes(content) != source["rawSha256"]:
+            raise ProjectIOError("SOURCE_HASH_MISMATCH", source["path"], "Demo 原始字节发生变化。")
+        declared.append({"sourceId": file["sourceId"], "relativePath": Path(source["path"]).relative_to(revision_root).as_posix(), "content": content})
+    return inventory_demo_bundle("demo/" + demo["entrypoint"], declared)
 
 
-def _pipeline_plans(
-    files: ProjectFiles, run_id: str
-) -> list[Mapping[str, object]]:
-    try:
-        groups_root = files.resolve(f"{RUNS_ROOT}/{run_id}/groups", expect="dir")
-    except ProjectIOError as error:
-        if error.code == "PROJECT_PATH_MISSING":
-            return []
-        raise
-    invalidated_group_ids = {
-        str(group_id)
-        for transition in _exclusion_transitions(files, run_id)
-        for group_id in transition["invalidatedGroupIds"]
-    }
-    plans: list[Mapping[str, object]] = []
-    for path in groups_root.glob("*/plan.json"):
-        relative = path.relative_to(files.root).as_posix()
-        plan = _mapping(files, relative)
-        if (
-            plan.get("contract") != "ai-sow-pipeline-action-plan-v1"
-            or plan.get("groupId") != path.parent.name
-            or not isinstance(plan.get("pipelineStep"), str)
-            or not isinstance(plan.get("sequence"), int)
-            or not isinstance(plan.get("actionIds"), list)
-        ):
-            raise ProjectIOError(
-                "PIPELINE_PLAN_INVALID", relative, "pipeline action plan 结构无效。"
-            )
-        if str(plan["groupId"]) in invalidated_group_ids:
+def _prototype_execution_counts(files: ProjectFiles, run_id: str) -> tuple[dict[str, int], bool]:
+    """Derive known trace counts and uncertainty; never persist counters."""
+    ledger = _load_action_ledger(files, run_id)
+    counts = {"maxScenarioSteps": 0, "maxScreenshots": 0}
+    unmeasured = False
+    for record in ledger.attempt_records.values():
+        envelope = ledger.envelopes_by_sha256[record.envelope_sha256]
+        if envelope.value["actionContractId"] != "PROTOTYPE_BROWSER-v1":
             continue
-        plans.append(plan)
-    return sorted(plans, key=lambda item: (int(item["sequence"]), str(item["groupId"])))
+        if record.normalized_result_sha256 is None:
+            if record.failure_kind == "EXECUTION" and record.timing.started_at_utc is not None:
+                unmeasured = True
+            continue
+        trace = json.loads(ledger.normalized_results[record.normalized_result_sha256])
+        steps = [step for run in trace["runs"] for step in run["steps"]]
+        counts["maxScenarioSteps"] += len(steps)
+        counts["maxScreenshots"] += sum(step["screenshotSha256"] is not None for step in steps)
+    return counts, unmeasured
 
 
-def _exclusion_transitions(
-    files: ProjectFiles, run_id: str
-) -> list[Mapping[str, object]]:
-    root_path = f"{RUNS_ROOT}/{run_id}/invalidations"
-    try:
-        root = files.resolve(root_path, expect="dir")
-    except ProjectIOError as error:
-        if error.code == "PROJECT_PATH_MISSING":
-            return []
-        raise
-    transitions: list[Mapping[str, object]] = []
-    for path in sorted(root.glob("exclusion-*.json")):
-        relative = path.relative_to(files.root).as_posix()
-        value = _mapping(files, relative)
-        required = {
-            "contract",
-            "runId",
-            "decisionSha256",
-            "artifactManifestSha256",
-            "baseCandidateSha256",
-            "candidatePath",
-            "candidateSha256",
-            "invalidatedGroupIds",
-        }
-        if (
-            set(value) != required
-            or value.get("contract") != "ai-sow-exclusion-transition-v1"
-            or value.get("runId") != run_id
-            or not isinstance(value.get("invalidatedGroupIds"), list)
-            or any(
-                not isinstance(item, str)
-                for item in value.get("invalidatedGroupIds", [])
-            )
-        ):
-            raise ProjectIOError(
-                "EXCLUSION_TRANSITION_INVALID",
-                relative,
-                "exclusion transition 结构无效。",
-            )
-        candidate_path = str(value["candidatePath"])
-        candidate_payload = files.read_bytes(candidate_path)
-        if sha256_bytes(candidate_payload) != value.get("candidateSha256"):
-            raise ProjectIOError(
-                "EXCLUSION_TRANSITION_INVALID",
-                candidate_path,
-                "exclusion transition 绑定的 candidate 已变化。",
-            )
-        transitions.append(value)
-    return transitions
+def _prototype_bundles(files,state):
+    from stage_planner import _effective_envelope,_effective_success
+    ledger=_load_action_ledger(files,state['runId'])
+    keys=[]
+    for event in _read_run_events(files,state['runId']):
+        if event.type!='ACTION_ISSUED': continue
+        envelope=ledger.envelopes_by_sha256[event.payload['envelopeSha256']]
+        key=envelope.value['logicalWorkId']
+        if envelope.value['actionContractId'].startswith('PROTOTYPE_') and key not in keys: keys.append(key)
+    bundles=[]
+    for key in keys:
+        envelope=_effective_envelope(ledger,key)
+        if not is_group_ready(ledger,[key]): continue
+        digest,record=_effective_success(ledger,key)
+        bundles.append({'attemptRecord':attempt_record_value(record),'envelope':dict(envelope.value),
+            'packet':_mapping(files,envelope.value['packetPath']),
+            'normalizedResult':json.loads(ledger.normalized_results[record.normalized_result_sha256])})
+    return bundles
 
 
-def _materialize_pending_exclusion_transition(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-) -> None:
+def _issue_prototype(files,state,action_kind,round):
+    inventory=_prototype_inventory(files,state)
+    identity={'stageKind':'SCOPE','actionKind':action_kind,'inputRevisionSha256':state['currentInputRevisionSha256'],
+        'bundleSha256':inventory['bundleSha256'],'round':round}
+    payload={'identity':identity,'inventory':inventory,'prototypeLedger':None}
+    records=_prototype_bundles(files,state)
+    def of_kind(kind): return [row for row in records if row['envelope']['actionContractId']==kind+'-v1']
+    if action_kind=='PROTOTYPE_SCENARIO':
+        payload['demoLimits']=_effective_budget_policy(files,state['runId'])[1]['demoLimits']
+        counts,unmeasured=_prototype_execution_counts(files,state['runId'])
+        if unmeasured: return _prototype_wait(files,state,'PROTOTYPE_EXECUTION_UNMEASURED')
+        payload['demoRemaining']={key:max(0,payload['demoLimits'][key]-count) for key,count in counts.items()}
+    if of_kind('PROTOTYPE_ANALYZE'):
+        payload['prototypeLedger']=_publish_prototype_ledger(files,state)
+    if action_kind in {'PROTOTYPE_BROWSER','PROTOTYPE_ANALYZE'}:
+        scenario=of_kind('PROTOTYPE_SCENARIO')[-1]
+        payload['scenario']=_prototype_result_ref(scenario)
+        for key in ('demoLimits','demoRemaining'): payload[key]=scenario['packet']['workItems'][0]['payload'][key]
+    if action_kind=='PROTOTYPE_BROWSER' and of_kind('PROTOTYPE_BROWSER'):
+        payload['browserProfileSource']=_prototype_result_ref(of_kind('PROTOTYPE_BROWSER')[0])
+    if action_kind=='PROTOTYPE_ANALYZE': payload['trace']=_prototype_result_ref(of_kind('PROTOTYPE_BROWSER')[-1])
+    logical='logical-'+sha256_bytes(canonical_json_bytes(identity))
+    group='control-group-'+sha256_bytes(canonical_json_bytes({'logicalWorkId':logical}))
+    packet=canonical_json_bytes({'workItems':[{'workItemId':logical,'payload':payload}],'contextRefs':[]})
+    return _issue_singleton(files,state,'SCOPE',group,logical,action_kind+'-v1',packet)
+
+
+def _prototype_result_ref(bundle):
+    return {"logicalWorkId": bundle["envelope"]["logicalWorkId"],
+            "attemptRecordSha256": sha256_bytes(canonical_json_bytes(bundle["attemptRecord"])),
+            "normalizedResultSha256": bundle["attemptRecord"]["normalizedResultSha256"],
+            "normalizedResult": bundle["normalizedResult"]}
+
+
+def _prototype_wait(files, state, code):
     run_id = str(state["runId"])
-    decisions_root = f"{RUNS_ROOT}/{run_id}/decisions"
-    try:
-        root = files.resolve(decisions_root, expect="dir")
-    except ProjectIOError as error:
-        if error.code == "PROJECT_PATH_MISSING":
-            return
-        raise
-    existing_hashes = {
-        str(item["decisionSha256"])
-        for item in _exclusion_transitions(files, run_id)
-    }
-    for path in sorted(root.glob("exclusion-*.json")):
-        relative = path.relative_to(files.root).as_posix()
-        decision = _mapping(files, relative)
-        payload = canonical_json_bytes(decision)
-        decision_sha256 = sha256_bytes(payload)
-        if (
-            path.name != f"exclusion-{decision_sha256}.json"
-            or decision.get("decision") != "EXCLUDE_DEFAULT_AUTOMATION"
-            or validate_contract(
-                decision, "artifact-approval.schema.json", NEXT_SCHEMA_REGISTRY
-            )
-        ):
-            raise ProjectIOError(
-                "EXCLUSION_DECISION_INVALID", relative, "排除决定合同或文件名无效。"
-            )
-        if decision_sha256 in existing_hashes:
+    wait_id = "prototype-wait-" + code
+    events = _read_run_events(files, run_id)
+    if not any(event.type == "WAITING_INPUT_ENTERED" and event.payload["waitId"] == wait_id for event in events):
+        _append_run_event(files, run_id, "RUN_STATE_CHANGED", {"fromState": state["phase"], "toState": "WAITING_INPUT"})
+        _append_run_event(files, run_id, "WAITING_INPUT_ENTERED", {"waitId": wait_id, "reasonCode": code})
+    waiting = _write_active_state(files, _read_active_marker(files), {**state, "wait": "INPUT", "expectedActionIds": [], "resumeFromPhase": state["phase"]})
+    return {"outcome": "WAITING_INPUT", "state": dict(waiting), "nextAction": None,
+            "diagnostics": [_diagnostic_value(_diagnostic(code, "Demo 证据尚未闭合，请补充完整输入后重新启动。"))]}
+
+
+def _publish_prototype_ledger(files, state):
+    from prototype_analysis import verify_prototype_trace, verify_prototype_observations
+
+    run_id = str(state["runId"])
+    inventory = _prototype_inventory(files, state)
+    ledger = _load_action_ledger(files, run_id)
+    rounds = []
+    dispositions = {}
+    bundles=_prototype_bundles(files,state)
+    for bundle in bundles:
+        if bundle['envelope']['actionContractId']!='PROTOTYPE_ANALYZE-v1': continue
+        payload = bundle["packet"]["workItems"][0]["payload"]
+        round_number = payload["identity"]["round"]
+        verify_prototype_observations(inventory, payload["scenario"]["normalizedResult"], payload["trace"]["normalizedResult"], bundle["normalizedResult"])
+        evidence = verify_prototype_trace(inventory, payload["scenario"]["normalizedResult"], payload["trace"]["normalizedResult"])
+        attempts = []
+        for item in bundles:
+            if item['packet']['workItems'][0]['payload']['identity']['round']==round_number:
+                work=item['envelope']['logicalWorkId']
+                attempts.extend(digest for digest,record in sorted(ledger.attempt_records.items(),key=lambda pair:(pair[1].revision,pair[1].attempt)) if record.logical_work_id==work)
+        observations = bundle["normalizedResult"]["observations"]
+        round_dispositions = {item["interactionId"]: item["disposition"] for item in evidence["interactionDispositions"]}
+        for observation in observations:
+            for interaction_id in observation["interactionIds"]:
+                if observation["scopeRelation"] == "NON_SCOPE":
+                    round_dispositions[interaction_id] = "EXCLUDED"
+                elif observation["runtimeStatus"] == "CODE_ONLY":
+                    round_dispositions.setdefault(interaction_id, "NOT_EXERCISED")
+                elif observation["runtimeStatus"] in {"BROKEN", "NOT_EXERCISED"}:
+                    round_dispositions[interaction_id] = observation["runtimeStatus"]
+        evidence["interactionDispositions"] = [{"interactionId": key, "disposition": value} for key, value in sorted(round_dispositions.items())]
+        rounds.append({"round": round_number, "attemptRecordSha256s": attempts,
+                       "observationRefs": [{"localKey": item["localKey"], "attemptRecordSha256": sha256_bytes(canonical_json_bytes(bundle["attemptRecord"])), "normalizedResultSha256": bundle["attemptRecord"]["normalizedResultSha256"], "pointer": f"/observations/{index}"} for index, item in enumerate(observations)],
+                       "interactionDispositions": evidence["interactionDispositions"]})
+        dispositions.update({item["interactionId"]: item["disposition"] for item in evidence["interactionDispositions"]})
+    value = {"bundleSha256": inventory["bundleSha256"], "rounds": rounds,
+             "interactionDispositions": [{"interactionId": key, "disposition": value} for key, value in sorted(dispositions.items())],
+             "sealed": set(dispositions) == {item["interactionId"] for item in inventory["interactions"]}}
+    payload = canonical_json_bytes(value)
+    digest = sha256_bytes(payload)
+    path = f"{RUNS_ROOT}/{run_id}/stages/SCOPE/prototype-ledgers/{digest}.json"
+    files.publish_new(path, payload)
+    return {"path": path, "sha256": digest, "value": value}
+
+
+def _planning_policy(value):
+    from stage_planner import RunBudgetPolicy, DemoBudgetLimits
+    return RunBudgetPolicy(value['contractVersion'], value['modelProfileId'], value['modelContextLimitTokens'],
+        value['estimatorVersion'], value['maxPlannedTokens'], value['maxActiveSeconds'], value['outputReserveTokens'],
+        value['hydrateReserveTokens'], value['safetyMarginTokens'], value['referenceOverheadTokens'],
+        value['maxConcurrency'], DemoBudgetLimits(value['demoLimits']['maxDiscoveryRounds'],
+            value['demoLimits']['maxScenarioSteps'], value['demoLimits']['maxScreenshots']))
+
+
+def _prior_inventories(files, state):
+    from prior_state import inventory_prior_workbook
+    marker = _read_active_marker(files)
+    revision = _mapping(files, marker['inputRevisionPath'])
+    inventories = {}
+    for source in revision['sources']:
+        if source['role'] != 'PRIOR_SOW' or source['rawSha256'] in inventories:
             continue
-        if decision.get("candidateSha256") != state.get("currentCandidateSha256"):
+        digest = source['rawSha256']
+        path = f"{RUNS_ROOT}/{state['runId']}/stages/SCOPE/prior-inventories/{digest}.json"
+        inventory = _optional_json(files, path)
+        if inventory is None:
+            source_path = files.resolve(source['path'], expect='file')
+            if sha256_bytes(files.read_bytes(source['path'])) != digest:
+                raise ValueError('Prior input hash 漂移。')
+            inventory = inventory_prior_workbook(source_path)
+            files.publish_new(path, canonical_json_bytes(inventory))
+        if inventory['workbookSha256'] != digest:
+            raise ValueError('Prior inventory 未绑定输入。')
+        inventories[digest] = inventory
+    return tuple(inventories.values())
+
+
+def _scope_plan_inputs(files, state):
+    from scope_compiler import prepare_scope_inputs, prepare_scope_prototype_contexts
+    marker = _read_active_marker(files)
+    revision_path = marker['inputRevisionPath']
+    revision_bytes = files.read_bytes(revision_path)
+    revision = json.loads(revision_bytes)
+    request = _mapping(files, str(Path(revision_path).parent / 'request.json'))
+    refs = ()
+    if request.get('demo'):
+        inventory = _prototype_inventory(files, state)
+        prototype = _publish_prototype_ledger(files, state)
+        refs = prepare_scope_prototype_contexts(inventory, prototype['value'], _load_action_ledger(files, state['runId']))
+    items, contexts = prepare_scope_inputs(revision_bytes, _source_contents_for_revision(files, revision_path, revision),
+        request=request, prior_inventories=_prior_inventories(files, state), prototype_context_refs=refs)
+    return items, contexts
+
+
+def _frozen_scope_plan(files, state):
+    from stage_planner import plan_stage, validate_stage_plan
+    from scope_compiler import build_scope_work_descriptors
+    root = files.ensure_dir(f"{RUNS_ROOT}/{state['runId']}/stages/SCOPE/plans")
+    paths = list(root.glob('*.json'))
+    if len(paths) > 1:
+        raise ValueError('每阶段只能有一个完整冻结 StagePlan。')
+    existing = json.loads(paths[0].read_bytes()) if paths else None
+    policy_value = (_published_budget_policy(files, state['runId'], existing['budgetPolicySha256'])
+                    if existing else _effective_budget_policy(files, state['runId'])[1])
+    policy = _planning_policy(policy_value)
+    items, contexts = _scope_plan_inputs(files, state)
+    works = build_scope_work_descriptors(items, contexts, policy)
+    plan = plan_stage('SCOPE', items, contexts, works, [], policy)
+    if existing:
+        if existing != plan or paths[0].stem != sha256_bytes(canonical_json_bytes(existing)):
+            raise ValueError('StagePlan 与完整冻结输入不一致。')
+    else:
+        files.publish_new(f"{RUNS_ROOT}/{state['runId']}/stages/SCOPE/plans/{sha256_bytes(canonical_json_bytes(plan))}.json", canonical_json_bytes(plan))
+    return plan, items, contexts, policy
+
+
+def _envelope_for_work(files, state, stage, group_id, logical_id, contract_id, packet):
+    contract, digest = action_contract_binding(SKILL_ROOT, contract_id)
+    policy_hash, policy = _effective_budget_policy(files, state['runId'])
+    action_id = 'action-' + sha256_bytes(canonical_json_bytes({'runId':state['runId'], 'logicalWorkId':logical_id, 'revision':1, 'attempt':1}))[:12]
+    paths = _action_paths(state['runId'], action_id)
+    output = min(contract['limits']['maxOutputTokens'], policy['outputReserveTokens'])
+    hydrate = min(contract['limits']['maxHydrateTokens'], policy['hydrateReserveTokens'])
+    if contract['executionKind'] == 'HOST_BROWSER': output, hydrate = 0, 0
+    value = {'contract':'ai-sow-action-v3','runId':state['runId'],'actionId':action_id,
+        'logicalWorkId':logical_id,'revision':1,'attempt':1,'stageKind':stage,'groupId':group_id,
+        'inputRevisionSha256':state['currentInputRevisionSha256'],
+        'upstreamCheckpointSha256s':sorted(ref['sha256'] for ref in state['checkpointRefs']),
+        'baseCandidateSha256':state['currentCandidateSha256'],'actionContractId':contract_id,
+        'actionContractSha256':digest,'packetPath':paths['packet'],'packetSha256':sha256_bytes(packet),
+        'resultPath':paths['output'],'validatorVersion':'action-result-dispatch-v1','budgetPolicySha256':policy_hash,
+        'executionLimits':{'estimatedInputTokens':estimate_action_input_tokens(SKILL_ROOT, contract_id, packet,
+            budget_policy=policy,max_output_tokens=output),'maxOutputTokens':output,'maxHydrateTokens':hydrate}}
+    previous = _optional_json(files, paths['envelope'])
+    if previous is not None:
+        # Physical interrupted publication retains its original issuance policy.
+        if any(previous[key] != value[key] for key in value if key not in {'budgetPolicySha256','executionLimits'}):
+            raise ValueError('原 Envelope 与冻结工作不一致。')
+        return previous
+    return value
+
+
+def _issue_frozen_group(files, state, plan, items, contexts, group):
+    from stage_planner import materialize_packet, DependencyResultRef, _effective_success, _effective_envelope
+    ledger = _load_action_ledger(files, state['runId'])
+    works = {work['logicalWorkId']: work['packetPlan'] for work in plan['works']}
+    prepared = []
+    for key in group['requiredLogicalWorkIds']:
+        previous = _effective_envelope(ledger, key)
+        if previous is not None:
             continue
-        candidate_path = (
-            f"{RUNS_ROOT}/{run_id}/revisions/exclusion-{decision_sha256}/"
-            "sow-model.json"
-        )
-        candidate_payload = files.read_bytes(candidate_path)
-        suffix_steps = {
-            "STORY_AC",
-            "TASK",
-            "STORY_DESIGN",
-            "STORY_DESIGN_THEME_JOIN",
-            "TASK_ESTIMATION",
-            "TASK_ESTIMATION_THEME_JOIN",
-            "ADJUDICATION",
-        }
-        invalidated_group_ids = [
-            str(plan["groupId"])
-            for plan in _pipeline_plans(files, run_id)
-            if plan.get("pipelineStep") in suffix_steps
-        ]
-        transition = {
-            "contract": "ai-sow-exclusion-transition-v1",
-            "runId": run_id,
-            "decisionSha256": decision_sha256,
-            "artifactManifestSha256": decision["artifactManifestSha256"],
-            "baseCandidateSha256": decision["candidateSha256"],
-            "candidatePath": candidate_path,
-            "candidateSha256": sha256_bytes(candidate_payload),
-            "invalidatedGroupIds": invalidated_group_ids,
-        }
-        files.publish_new(
-            f"{RUNS_ROOT}/{run_id}/invalidations/exclusion-{decision_sha256}.json",
-            canonical_json_bytes(transition),
-        )
+        descriptor = works[key]
+        dependencies = []
+        for dependency in descriptor['dependencyLogicalWorkIds']:
+            digest, record = _effective_success(ledger, dependency)
+            dependencies.append(DependencyResultRef(dependency, digest, ledger.normalized_results[record.normalized_result_sha256]))
+        packet = materialize_packet(plan, key, 1, items, contexts, dependencies, ledger)
+        envelope = _envelope_for_work(files, state, plan['stageKind'], group['groupId'], key, descriptor['actionContractId'], packet)
+        prepared.append((envelope, packet))
+    policy = _effective_budget_policy(files, state['runId'])[1]
+    _guard_action_budget(ledger, _read_run_events(files, state['runId']), policy, [
+        ActionEnvelope(value, _action_paths(state['runId'],value['actionId'])['envelope'], sha256_bytes(canonical_json_bytes(value)))
+        for value, packet in prepared])
+    for envelope, packet in prepared:
+        _persist_issued_action(files, envelope, packet)
+    ledger = _load_action_ledger(files, state['runId'])
+    expected = []
+    for key in group['requiredLogicalWorkIds']:
+        envelope = _effective_envelope(ledger, key)
+        record = next((record for record in ledger.attempt_records.values() if record.envelope_sha256 == envelope.sha256), None)
+        if record is None or record.outcome != 'SUCCEEDED': expected.append(envelope.value['actionId'])
+    state = _write_active_state(files, _read_active_marker(files), {**state,
+        'phase':_phase_for_action_stage(plan['stageKind']), 'wait':'MODEL' if expected else 'NONE', 'expectedActionIds':expected})
+    return _public_active_result(files, state)
+
+
+def _start_public_pipeline(files, state):
+    marker = _read_active_marker(files)
+    revision = _mapping(files, marker['inputRevisionPath'])
+    request = _mapping(files, str(Path(marker['inputRevisionPath']).parent / 'request.json'))
+    if state['currentCandidateSha256'] is None:
+        _append_candidate_snapshot(files, state['runId'], model_skeleton(request, revision))
+        state = _read_active_run(files, _read_active_marker(files))
+    if request.get('demo'):
+        return _issue_prototype(files, state, 'PROTOTYPE_SCENARIO', 1)
+    from stage_planner import next_issuable_group
+    plan, items, contexts, policy = _frozen_scope_plan(files, state)
+    group = next_issuable_group(plan, _load_action_ledger(files, state['runId']))
+    return _issue_frozen_group(files, state, plan, items, contexts, group)
 
 
 def _pending_abandon_decision(
@@ -1867,790 +983,734 @@ def _pending_abandon_decision(
     return False
 
 
-def _plan_applied(files: ProjectFiles, run_id: str, plan: Mapping[str, object]) -> bool:
-    return _optional_json(
-        files, f"{RUNS_ROOT}/{run_id}/groups/{plan['groupId']}/applied.json"
-    ) is not None
 
 
-def _plan_records(
-    files: ProjectFiles,
-    run_id: str,
-    plan: Mapping[str, object],
-) -> list[Mapping[str, object]]:
-    records: list[Mapping[str, object]] = []
-    for action_id in plan["actionIds"]:
-        record = _optional_json(files, _action_paths(run_id, str(action_id))["record"])
-        if not isinstance(record, Mapping) or record.get("status") != "SUCCESS":
-            raise ProjectIOError(
-                "ACTION_GROUP_INCOMPLETE",
-                f"{RUNS_ROOT}/{run_id}/groups/{plan['groupId']}",
-                "pipeline group 缺少已封存的成功 ActionRecord。",
-            )
-        result_path = record.get("resultPath")
-        submission_sha256 = record.get("submissionSha256")
-        if not isinstance(result_path, str) or not isinstance(submission_sha256, str):
-            raise ProjectIOError(
-                "ACTION_RECORD_INVALID",
-                _action_paths(run_id, str(action_id))["record"],
-                "成功 ActionRecord 缺少 submission 引用。",
-            )
-        submission_payload = files.read_bytes(result_path)
-        if sha256_bytes(submission_payload) != submission_sha256:
-            raise ProjectIOError(
-                "ACTION_SUBMISSION_HASH_MISMATCH",
-                result_path,
-                "ActionRecord 绑定的 submission 已变化。",
-            )
-        try:
-            submission = json.loads(submission_payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ProjectIOError(
-                "ACTION_SUBMISSION_INVALID",
-                result_path,
-                "ActionRecord 绑定的 submission 不是有效 JSON。",
-            ) from error
-        hydrated = {**record, "submission": submission}
-        if validate_contract(hydrated, "action.schema.json", NEXT_SCHEMA_REGISTRY):
-            raise ProjectIOError(
-                "ACTION_RECORD_INVALID",
-                _action_paths(run_id, str(action_id))["record"],
-                "装载 submission 后的 ActionRecord 合同无效。",
-            )
-        records.append(hydrated)
-    return records
+def _verify_completed_stages(files,state):
+    from final_review import verify_checkpoint_proof
+    from task_compiler import verify_task_repair_chain
+    ledger=_load_action_ledger(files,state['runId'])
+    packets={item.value['packetSha256']:files.read_bytes(item.value['packetPath']) for item in ledger.envelopes_by_sha256.values()}
+    completed={}
+    for stage in ('SCOPE','STORY_AC','TASK'):
+        root=_stage_root(state,stage)
+        raw=_one_content(files,root+'/checkpoints')
+        if raw is None: break
+        checkpoint=json.loads(raw)
+        plan=_one_content(files,root+'/plans')
+        for revision in range(1,_stage_revision_limit(files,state,stage)+1):
+            review = _read_step_output(files,state,stage,revision,'MATERIALIZE',root+f'/review-inputs/{revision}')
+            validator = _read_step_output(files,state,stage,revision,'VALIDATE',root+f'/validators/{revision}')
+            if (review is None) != (validator is None):
+                raise ValueError('Checkpoint 缺少完整物化或验证输出事务。')
+        def content_map(relative,pattern):
+            try: directory=files.resolve(root+'/'+relative,expect='dir')
+            except ProjectIOError as error:
+                if error.code=='PROJECT_PATH_MISSING': return {}
+                raise
+            values={}
+            for path in directory.glob(pattern):
+                payload=files.read_bytes(path.relative_to(files.root).as_posix())
+                if sha256_bytes(payload)!=path.stem: raise ValueError('Checkpoint proof 内容 hash 漂移。')
+                if path.stem in values: raise ValueError('Checkpoint proof 不唯一。')
+                values[path.stem]=payload
+            return values
+        upstream=[] if stage=='SCOPE' else [completed['SCOPE' if stage=='STORY_AC' else 'STORY_AC']]
+        verify_checkpoint_proof(checkpoint,task_repair_verifier=verify_task_repair_chain,revision_bytes=files.read_bytes(_read_active_marker(files)['inputRevisionPath']),
+            plan_bytes=plan,upstream_bytes=upstream,ledger=ledger,candidates=content_map('candidates','*.json'),
+            validators=content_map('validators','*/*.json'),review_inputs=content_map('review-inputs','*/*.json'),
+            packets=packets,prior_states=content_map('prior-states','*.json'),
+            manual_authorizations={key:value['answer'] for key,value in _manual_repair_records(files,state,stage).items()})
+        completed[stage]=raw
+    for ref in state['checkpointRefs']:
+        stage='SCOPE' if ref['kind']=='SCOPE_CLOSURE' else ref['kind']
+        if stage not in completed or sha256_bytes(completed[stage])!=ref['sha256'] or files.read_bytes(ref['path'])!=completed[stage]:
+            raise ValueError('状态 checkpoint 引用未绑定完整证明。')
 
 
-def _records_for_step(
-    files: ProjectFiles,
-    run_id: str,
-    plans: Sequence[Mapping[str, object]],
-    step: str,
-    *,
-    applied_only: bool = True,
-) -> list[Mapping[str, object]]:
-    records: list[Mapping[str, object]] = []
-    for plan in plans:
-        if plan.get("pipelineStep") != step:
-            continue
-        if applied_only and not _plan_applied(files, run_id, plan):
-            continue
-        records.extend(_plan_records(files, run_id, plan))
-    return records
+def _stage_root(state, stage):
+    return f"{RUNS_ROOT}/{state['runId']}/stages/{stage}"
 
 
-def _review_wrappers(records: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    return [
-        {
-            "logicalShardId": record["logicalShardId"],
-            "result": dict(record["submission"]),
-        }
-        for record in records
-        if isinstance(record.get("submission"), Mapping)
-    ]
+def _one_content(files, directory):
+    try:
+        root = files.resolve(directory, expect='dir')
+    except ProjectIOError as error:
+        if error.code == 'PROJECT_PATH_MISSING': return None
+        raise
+    paths = list(root.glob('*.json'))
+    if len(paths) > 1: raise ValueError('同一已封输入只能有一个内容寻址值。')
+    if not paths: return None
+    raw = files.read_bytes(paths[0].relative_to(files.root).as_posix())
+    if sha256_bytes(raw) != paths[0].stem: raise ValueError('内容寻址文件 hash 漂移。')
+    return raw
 
 
-def _checkpoint_from_state(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    kind: str,
-) -> Mapping[str, object] | None:
-    matches = [
-        item
-        for item in _mappings(state.get("checkpointRefs"))
-        if item.get("kind") == kind
-    ]
-    if not matches:
-        return None
-    if len(matches) != 1:
-        raise ProjectIOError(
-            "CHECKPOINT_REF_INVALID", "", f"{kind} checkpoint 引用必须唯一。"
-        )
-    checkpoint = _mapping(files, str(matches[0]["path"]))
-    if sha256_bytes(canonical_json_bytes(checkpoint)) != matches[0]["sha256"]:
-        raise ProjectIOError(
-            "CHECKPOINT_HASH_MISMATCH",
-            str(matches[0]["path"]),
-            f"{kind} checkpoint hash 不匹配。",
-        )
-    return checkpoint
+def _content(files, directory, raw):
+    digest = sha256_bytes(raw)
+    files.publish_new(f'{directory}/{digest}.json', raw)
+    return digest
 
 
-def _candidate_snapshot_by_sha256(
-    files: ProjectFiles,
-    run_id: str,
-    candidate_sha256: str,
-) -> Mapping[str, object]:
-    if not re.fullmatch(r"[0-9a-f]{64}", candidate_sha256):
-        raise ProjectIOError(
-            "RUN_CANDIDATE_HASH_INVALID",
-            candidate_sha256,
-            "历史 candidate hash 格式无效。",
-        )
-    candidate_root = f"{RUNS_ROOT}/{run_id}/candidates"
-    directory = files.resolve(candidate_root, expect="dir")
-    suffix = f"-{candidate_sha256}.json"
-    matches: list[str] = []
-    for child in directory.iterdir():
-        relative = f"{candidate_root}/{child.name}"
-        files.resolve(relative, expect="file")
-        if re.fullmatch(r"[0-9]{6}-[0-9a-f]{64}\.json", child.name) is None:
-            raise ProjectIOError(
-                "RUN_CANDIDATE_PATH_INVALID",
-                relative,
-                "candidate 目录包含非合同文件。",
-            )
-        if child.name.endswith(suffix):
-            matches.append(child.name)
-    matches.sort()
-    if len(matches) != 1:
-        raise ProjectIOError(
-            "RUN_CANDIDATE_SNAPSHOT_MISSING",
-            candidate_root,
-            "阶段 action plan 绑定的历史 candidate 必须且只能存在一份。",
-        )
-    relative = f"{candidate_root}/{matches[0]}"
-    candidate = _mapping(files, relative)
-    if sha256_bytes(canonical_json_bytes(candidate)) != candidate_sha256:
-        raise ProjectIOError(
-            "RUN_CANDIDATE_HASH_MISMATCH",
-            relative,
-            "历史 candidate 内容与 action plan hash 不匹配。",
-        )
-    return candidate
+def _checkpoint_bytes(files, state, stage):
+    raw = _one_content(files, _stage_root(state, stage)+'/checkpoints')
+    if raw is None: raise ValueError('缺少 sealed 上游 checkpoint。')
+    return raw
 
 
-def _persist_public_checkpoint(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    kind: str,
-    checkpoint: Mapping[str, object],
-) -> Mapping[str, object]:
-    run_id = str(state["runId"])
-    payload = canonical_json_bytes(checkpoint)
-    digest = sha256_bytes(payload)
-    relative = f"{RUNS_ROOT}/{run_id}/checkpoints/{kind.lower()}-{digest}.json"
-    files.publish_new(relative, payload)
-    refs = [
-        dict(item)
-        for item in _mappings(state.get("checkpointRefs"))
-        if item.get("kind") != kind
-    ]
-    refs.append({"kind": kind, "path": relative, "sha256": digest})
-    order = {"SCOPE_CLOSURE": 0, "STORY_AC": 1, "TASK": 2}
-    refs.sort(key=lambda item: order[str(item["kind"])])
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError(
-            "RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "checkpoint 只能写入 active run。"
-        )
-    return _write_active_state(files, marker, {**state, "checkpointRefs": refs})
-
-
-def _public_model_config_sha256() -> str:
-    return sha256_bytes(
-        canonical_json_bytes(
-            {
-                "contract": "ai-sow-host-model-selection-v1",
-                "selection": "HOST_DEFAULT",
-                "contextPolicy": "FRESH_NO_HISTORY",
-            }
-        )
-    )
-
-
-def _public_compiler_state(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    plans: Sequence[Mapping[str, object]],
-) -> dict[str, object]:
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "当前项目没有 active run。")
-    input_revision_path = str(marker["inputRevisionPath"])
-    input_revision = _mapping(files, input_revision_path)
-    candidate_path = state.get("currentCandidatePath")
-    if not isinstance(candidate_path, str):
-        raise ProjectIOError(
-            "RUN_CANDIDATE_REQUIRED", str(marker["statePath"]), "pipeline 缺少 candidate。"
-        )
-    candidate = _mapping(files, candidate_path)
-    if sha256_bytes(canonical_json_bytes(candidate)) != state["currentCandidateSha256"]:
-        raise ProjectIOError(
-            "RUN_CANDIDATE_HASH_MISMATCH", candidate_path, "candidate hash 不匹配。"
-        )
-    source_records = _records_for_step(files, str(state["runId"]), plans, "SOURCE_SCAN")
-    proposal_records = _records_for_step(files, str(state["runId"]), plans, "SCOPE_PROPOSAL")
-    r1_source_records = _records_for_step(files, str(state["runId"]), plans, "R1_SOURCE_AUDIT")
-    r1_scope_records = [
-        *_records_for_step(files, str(state["runId"]), plans, "R1_SCOPE_JOIN"),
-        *_records_for_step(files, str(state["runId"]), plans, "R1_SCOPE_RECHECK"),
-    ]
-    story_records = _records_for_step(files, str(state["runId"]), plans, "STORY_AC")
-    task_records = _records_for_step(files, str(state["runId"]), plans, "TASK")
-    scope_checkpoint = _checkpoint_from_state(files, state, "SCOPE_CLOSURE")
-    story_checkpoint = _checkpoint_from_state(files, state, "STORY_AC")
-    task_checkpoint = _checkpoint_from_state(files, state, "TASK")
-    excluded_policy_ids = {
-        str(subject_id)
-        for decision in _mappings(candidate.get("decisions"))
-        if decision.get("kind") == "EXCLUDED_BY_USER"
-        for subject_id in decision.get("subjectIds", [])
-        if isinstance(subject_id, str)
-    }
-    policy_decisions = {
-        str(item["policyInstanceId"]): (
-            "EXCLUDED"
-            if str(item["policyInstanceId"]) in excluded_policy_ids
-            else "INCLUDED"
-        )
-        for item in _mappings(candidate.get("policyInstances"))
-        if isinstance(item.get("policyInstanceId"), str)
-    }
-    result: dict[str, object] = {
-        "contract": "ai-sow-scope-compiler-state-v1",
-        "runId": state["runId"],
-        "reviewSetId": f"review-{state['runId']}",
-        "reviewMode": "DELTA" if state.get("route") == "DELTA_COMPILE" else "FULL",
-        "inputRevision": input_revision,
-        "sourceContents": _source_contents_for_revision(
-            files, input_revision_path, input_revision
-        ),
-        "baseCandidate": candidate,
-        "baseCandidateSha256": state["currentCandidateSha256"],
-        "candidate": candidate,
-        "scopeCandidate": candidate,
-        "maxInitialPacketTokens": 48000,
-        "proposalMaxInitialPacketTokens": 48000,
-        "auditMaxInitialPacketTokens": 48000,
-        "maxOutputTokens": 12000,
-        "modelProfileId": "host-selected-author-v1",
-        "modelConfigSha256": _public_model_config_sha256(),
-        "acceptedRecords": [],
-        "actionRecords": source_records,
-        "proposalRecords": proposal_records,
-        "r1SourceResults": _review_wrappers(r1_source_records),
-        "sourceAuditResults": _review_wrappers(r1_source_records),
-        "r1ScopeResult": (
-            dict(r1_scope_records[-1]["submission"])
-            if r1_scope_records
-            and isinstance(r1_scope_records[-1].get("submission"), Mapping)
-            else None
-        ),
-        "scopeClosureCheckpoint": scope_checkpoint,
-        "effectivePolicyDecisions": policy_decisions,
-        "storyActionRecords": story_records,
-        "storyAcCheckpoint": story_checkpoint,
-        "taskActionRecords": task_records,
-        "taskCheckpoint": task_checkpoint,
-        "taskCatalog": load_task_standard_catalog(
-            _revision_template_path(files, input_revision_path)
-        ),
-        "taskEstimationMethodSha256": sha256_bytes(
-            (SKILL_ROOT / "references/task-authoring.md").read_bytes()
-        ),
-        "priorSowInputSha256": (
-            input_revision.get("priorSowSha256s", [])[0]
-            if input_revision.get("priorSowSha256s")
-            else "NOT_PROVIDED"
-        ),
-        "storyDesignReviewResults": _review_wrappers(
-            _records_for_step(files, str(state["runId"]), plans, "STORY_DESIGN")
-        ),
-        "storyDesignThemeJoinResults": _review_wrappers(
-            _records_for_step(files, str(state["runId"]), plans, "STORY_DESIGN_THEME_JOIN")
-        ),
-        "taskEstimationReviewResults": _review_wrappers(
-            _records_for_step(files, str(state["runId"]), plans, "TASK_ESTIMATION")
-        ),
-        "taskEstimationThemeJoinResults": _review_wrappers(
-            _records_for_step(files, str(state["runId"]), plans, "TASK_ESTIMATION_THEME_JOIN")
-        ),
-        "adjudicationResults": _review_wrappers(
-            _records_for_step(files, str(state["runId"]), plans, "ADJUDICATION")
-        ),
-        "upstreamCheckpointSha256s": [],
-    }
-    return result
-
-
-def _public_diagnostics(values: object) -> list[dict[str, object]]:
-    diagnostics: list[dict[str, object]] = []
-    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
-        return diagnostics
-    for item in values:
-        if isinstance(item, Diagnostic):
-            diagnostics.append(_diagnostic_value(item))
-        elif isinstance(item, Mapping):
-            diagnostics.append(dict(item))
-    return diagnostics
-
-
-def _public_pipeline_failure(
-    outcome: str, diagnostics: object, *, summary: str
-) -> dict[str, object]:
-    return {
-        "outcome": outcome,
-        "summary": summary,
-        "nextAction": None,
-        "diagnostics": _public_diagnostics(diagnostics),
-    }
-
-
-def _issue_public_specs(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    step: str,
-    prepared: Mapping[str, object],
-) -> dict[str, object]:
-    if prepared.get("outcome") != "ACTION_REQUIRED":
-        return _public_pipeline_failure(
-            str(prepared.get("outcome", "CONTRACT_UNSUPPORTED")),
-            prepared.get("diagnostics", ()),
-            summary=f"{step} 未能安全发放。",
-        )
-    specs = _mappings(prepared.get("specs"))
-    pending_ids = {
-        str(item)
-        for item in prepared.get("pendingLogicalShardIds", [])
-        if isinstance(item, str)
-    }
-    if pending_ids:
-        specs = [
-            spec
-            for spec in specs
-            if str(spec.get("logicalShardId")) in pending_ids
-        ]
-    specs = specs[:8]
-    if not specs:
-        return _public_pipeline_failure(
-            "CONTRACT_UNSUPPORTED", (), summary=f"{step} 未生成任何 action spec。"
-        )
-    _issue_action_group(
-        files,
-        str(state["runId"]),
-        specs,
-        max_concurrency=min(4, len(specs)),
-        group_deadline_milliseconds=600000,
-        shard_deadline_milliseconds=480000,
-        pipeline_step=step,
-    )
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "发放 action 后 run 消失。")
-    return _public_active_result(files, _recover_active_run(files, marker))
-
-
-def _seal_public_group(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    plan: Mapping[str, object],
-    model: Mapping[str, object],
-) -> None:
-    _apply_ready_group(
-        files,
-        str(state["runId"]),
-        str(plan["groupId"]),
-        model,
-    )
-
-
-def _apply_public_plan(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    plans: Sequence[Mapping[str, object]],
-    plan: Mapping[str, object],
-) -> dict[str, object] | None:
-    step = str(plan["pipelineStep"])
-    records = _plan_records(files, str(state["runId"]), plan)
-    context = _public_compiler_state(files, state, plans)
-    if step in {"SOURCE_SCAN", "SCOPE_PROPOSAL", "SCOPE_JOIN"}:
-        context["actionKind"] = step
-        if step == "SCOPE_JOIN":
-            context["proposalRecords"] = _records_for_step(
-                files, str(state["runId"]), plans, "SCOPE_PROPOSAL"
-            )
-        compiled = apply_scope_action_group(context, records)
-        if compiled.diagnostics:
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED",
-                compiled.diagnostics,
-                summary=f"{step} 结果未通过 Owner 校验。",
-            )
-        _seal_public_group(files, state, plan, compiled.model)
-        return None
-    if step == "R1_SOURCE_AUDIT":
-        prepared = prepare_r1_source_audit(context)
-        diagnostics = tuple(
-            diagnostic
-            for record in records
-            for diagnostic in validate_r1_source_audit_result(
-                context,
-                prepared,
-                str(record["logicalShardId"]),
-                record["submission"],
-            )
-        )
-        if diagnostics:
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED", diagnostics, summary="R1 Source Audit 未通过。"
-            )
-        _seal_public_group(files, state, plan, context["candidate"])
-        return None
-    if step in {"R1_SCOPE_JOIN", "R1_SCOPE_RECHECK"}:
-        prepared = prepare_r1_scope_join(context)
-        submission = records[0]["submission"]
-        diagnostics = validate_r1_scope_join_result(context, prepared, submission)
-        if diagnostics:
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED", diagnostics, summary="R1 Scope Join 未通过。"
-            )
-        _seal_public_group(files, state, plan, context["candidate"])
-        return None
-    if step == "STAGE_1_REPAIR":
-        action_ids = plan.get("actionIds")
-        if not isinstance(action_ids, list) or len(action_ids) != 1:
-            return _public_pipeline_failure(
-                "CONTRACT_UNSUPPORTED", (), summary="Stage 1 repair plan 无效。"
-            )
-        packet = _mapping(
-            files,
-            _action_paths(run_id=str(state["runId"]), action_id=str(action_ids[0]))[
-                "packet"
-            ],
-        )
-        payload = packet.get("payload")
-        if not isinstance(payload, Mapping):
-            return _public_pipeline_failure(
-                "CONTRACT_UNSUPPORTED", (), summary="Stage 1 repair packet 无效。"
-            )
-        repair_plan = payload.get("repairPlan")
-        findings = payload.get("findings")
-        if not isinstance(repair_plan, Mapping):
-            return _public_pipeline_failure(
-                "CONTRACT_UNSUPPORTED", (), summary="Stage 1 repair 缺少计划。"
-            )
-        context["baseCandidate"] = context["candidate"]
-        context["baseCandidateSha256"] = state["currentCandidateSha256"]
-        compiled = apply_scope_repair_action_group(
-            context,
-            repair_plan,
-            _mappings(findings),
-            records,
-        )
-        if compiled.diagnostics:
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED",
-                compiled.diagnostics,
-                summary="Stage 1 repair 结果未通过 Owner 校验。",
-            )
-        _seal_public_group(files, state, plan, compiled.model)
-        return None
-    if step == "STORY_AC":
-        context["baseCandidate"] = context["candidate"]
-        context["baseCandidateSha256"] = state["currentCandidateSha256"]
-        compiled = apply_story_action_group(context, records)
-        if compiled.diagnostics:
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED", compiled.diagnostics, summary="Story/AC 结果未通过。"
-            )
-        _seal_public_group(files, state, plan, compiled.model)
-        return None
-    if step == "TASK":
-        context["baseCandidate"] = context["candidate"]
-        context["baseCandidateSha256"] = state["currentCandidateSha256"]
-        compiled = apply_task_action_group(context, records)
-        if compiled.diagnostics:
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED", compiled.diagnostics, summary="Task 结果未通过。"
-            )
-        _seal_public_group(files, state, plan, compiled.model)
-        return None
-    if step in {
-        "STORY_DESIGN",
-        "STORY_DESIGN_THEME_JOIN",
-        "TASK_ESTIMATION",
-        "TASK_ESTIMATION_THEME_JOIN",
-        "ADJUDICATION",
-    }:
-        _seal_public_group(files, state, plan, context["candidate"])
-        return None
-    return _public_pipeline_failure(
-        "CONTRACT_UNSUPPORTED", (), summary=f"未知 pipeline step：{step}。"
-    )
-
-
-def _plan_exists(plans: Sequence[Mapping[str, object]], step: str) -> bool:
-    return any(plan.get("pipelineStep") == step for plan in plans)
-
-
-def _candidate_through_stage(
-    candidate: Mapping[str, object], stage: str
-) -> dict[str, object]:
-    projected = deepcopy(dict(candidate))
-    if stage == "STAGE_1":
-        collections = (
-            "stories",
-            "acceptanceCriteria",
-            "deliveryAnnotations",
-            "tasks",
-            "dependencies",
-            "effectiveStartMatches",
-            "estimationAnnotations",
-        )
-    elif stage == "STAGE_2":
-        collections = (
-            "tasks",
-            "dependencies",
-            "effectiveStartMatches",
-            "estimationAnnotations",
-        )
+def _frozen_stage_inputs(files, state, stage):
+    if stage == 'SCOPE':
+        plan, items, contexts, policy = _frozen_scope_plan(files, state)
+        return plan, items, contexts, policy, None
+    from delivery_compiler import prepare_story_inputs, build_story_work_descriptors
+    from task_compiler import prepare_task_inputs, build_task_work_descriptors
+    from stage_planner import plan_stage
+    upstream = 'SCOPE' if stage == 'STORY_AC' else 'STORY_AC'
+    checkpoint_raw = _checkpoint_bytes(files, state, upstream)
+    checkpoint = json.loads(checkpoint_raw)
+    candidate = files.read_bytes(_stage_root(state, upstream)+f"/candidates/{checkpoint['candidateSha256']}.json")
+    if stage == 'STORY_AC':
+        inputs = prepare_story_inputs(candidate, checkpoint_raw, checkpoint_sha256=sha256_bytes(checkpoint_raw))
+        builder = build_story_work_descriptors
     else:
-        raise ValueError(f"unsupported candidate projection stage: {stage}")
-    for collection in collections:
-        projected[collection] = []
-    return projected
+        scope_checkpoint = json.loads(_checkpoint_bytes(files,state,'SCOPE'))
+        prior_hash = scope_checkpoint.get('priorStateSha256')
+        prior = files.read_bytes(_stage_root(state,'SCOPE')+f'/prior-states/{prior_hash}.json') if prior_hash else None
+        scope_packet = _review_packet_for_candidate(files,state,'SCOPE',scope_checkpoint['candidateSha256'])
+        graph = canonical_json_bytes(scope_packet['workItems'][0]['payload']['changeGraph'])
+        inputs = prepare_task_inputs(candidate, checkpoint_raw, checkpoint_sha256=sha256_bytes(checkpoint_raw),
+            task_catalog=load_task_standard_catalog(_revision_template_path(files,_read_active_marker(files)['inputRevisionPath'])),
+            input_revision_bytes=files.read_bytes(_read_active_marker(files)['inputRevisionPath']),
+            prior_state_bytes=prior,prior_state_sha256=prior_hash,change_graph_bytes=graph if prior else None,
+            change_graph_sha256=sha256_bytes(graph) if prior else None)
+        builder=build_task_work_descriptors
+    existing=_one_content(files,_stage_root(state,stage)+'/plans')
+    policy_value=(_published_budget_policy(files,state['runId'],json.loads(existing)['budgetPolicySha256'])
+                  if existing else _effective_budget_policy(files,state['runId'])[1])
+    policy=_planning_policy(policy_value)
+    plan=plan_stage(stage,inputs.work_items,inputs.context_refs,builder(inputs.work_items,inputs.context_refs,policy),
+        [sha256_bytes(checkpoint_raw)],policy)
+    raw=canonical_json_bytes(plan)
+    if existing is not None and raw!=existing: raise ValueError('阶段计划不再匹配 sealed 上游。')
+    _content(files,_stage_root(state,stage)+'/plans',raw)
+    return plan,inputs.work_items,inputs.context_refs,policy,inputs
 
 
-def _plan_for_step(
-    plans: Sequence[Mapping[str, object]], step: str
-) -> Mapping[str, object]:
-    matches = [plan for plan in plans if plan.get("pipelineStep") == step]
-    if len(matches) != 1:
-        raise ProjectIOError(
-            "PIPELINE_PLAN_INVALID",
-            "",
-            f"{step} action plan 必须且只能存在一份。",
-        )
+def _step_output_hash(files, state, stage, revision, kind):
+    hashes = {event.payload['outputSha256'] for event in _read_run_events(files, state['runId'])
+        if event.type == 'DETERMINISTIC_STEP_FINISHED' and event.payload['outcome'] == 'SUCCEEDED'
+        and event.payload.get('stageKind') == stage and event.payload.get('semanticRevision') == revision
+        and event.payload['stepKind'] == kind}
+    if len(hashes) > 1:
+        raise ValueError('同一阶段 revision 的完成事件存在冲突输出。')
+    return next(iter(hashes), None)
+
+
+def _read_step_output(files, state, stage, revision, kind, directory):
+    expected = _step_output_hash(files, state, stage, revision, kind)
+    raw = _one_content(files, directory)
+    if raw is not None and (expected is None or sha256_bytes(raw) != expected):
+        raise ValueError('确定性输出未绑定实际完成事件。')
+    return raw
+
+
+def _deterministic_step(files, state, kind, operation, *, stage, revision):
+    ledger = _load_action_ledger(files, state['runId'])
+    if _active_seconds(ledger, _read_run_events(files, state['runId'])) >= _effective_budget_policy(files, state['runId'])[1]['maxActiveSeconds']:
+        raise StagePlanningBlocked('BUDGET_EXHAUSTED')
+    previous = _step_output_hash(files, state, stage, revision, kind)
+    started = datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    outcome = 'SUCCEEDED'; failure = None; digest = None
+    try:
+        raw = None
+        durable_render = stage == 'ARTIFACT' and kind == 'RENDER'
+        recovery_root = f"{RUNS_ROOT}/{state['runId']}/step-recovery/ARTIFACT/{revision}/RENDER"
+        if durable_render and previous is not None:
+            try:
+                raw = files.read_bytes(f'{recovery_root}/{previous}.json')
+            except ProjectIOError as error:
+                if error.code != 'PROJECT_PATH_MISSING':
+                    raise
+        if raw is None:
+            raw = operation()
+        digest = sha256_bytes(raw)
+        if previous is not None and digest != previous:
+            raise ValueError('恢复运算与原完成事件输出不一致。')
+        if durable_render:
+            # Office PDF font fallback is not byte deterministic across processes.
+            # Durably save the actual export before its completion event; only a
+            # matching successful event authorizes recovery of these exact bytes.
+            files.publish_new(f'{recovery_root}/{digest}.json', raw)
+        return raw
+    except Exception as error:
+        outcome = 'FAILED'; failure = type(error).__name__
+        raise
+    finally:
+        payload = {'stepKind': kind, 'outcome': outcome, 'startedAtUtc': started,
+            'endedAtUtc': datetime.now(UTC).isoformat().replace('+00:00', 'Z')}
+        if failure is not None:
+            payload['failureCode'] = failure
+        else:
+            payload.update(stageKind=stage, semanticRevision=revision, outputSha256=digest)
+        # Record the completed computation and its exact output before any output publication.
+        _append_run_event(files, state['runId'], 'DETERMINISTIC_STEP_FINISHED', payload)
+
+
+def _stage_ir(files,state,stage,plan,items,contexts,policy,inputs):
+    ledger=_load_action_ledger(files,state['runId'])
+    if stage=='SCOPE':
+        from scope_compiler import _complete_scope_results
+        refs,packets,results=_complete_scope_results(plan,items,contexts,ledger,policy)
+        scope_works={work['logicalWorkId'] for work in plan['works'] if work['packetPlan']['actionKind'].startswith('SCOPE_')}
+        consumed={key for work in plan['works'] if work['logicalWorkId'] in scope_works for key in work['packetPlan']['dependencyLogicalWorkIds']}
+        root=(scope_works-consumed).pop()
+        return packets[root],results[root]
+    from delivery_compiler import _complete_story_results
+    from task_compiler import _complete_task_results
+    from final_review import OWNER_COLLECTION
+    results=(_complete_story_results if stage=='STORY_AC' else _complete_task_results)(inputs,plan,ledger,policy)
+    packet={'workItems':[{'workItemId':item.work_item_id,'payload':item.work_item_payload} for item in items],
+        'contextRefs':[{'refId':ref.ref_id,'canonicalContent':json.loads(ref.canonical_content),'contentSha256':sha256_bytes(ref.canonical_content)} for ref in contexts]}
+    collection=OWNER_COLLECTION[stage]
+    joined={collection:[]}
+    for key,result in results:
+        for original in result[collection]:
+            row=deepcopy(original);row['localKey']=key+':'+row['localKey'];joined[collection].append(row)
+    joined[collection].sort(key=lambda row:row['localKey'])
+    return packet,joined
+
+
+def _owner_index(stage,material,packet,decisions):
+    from final_review import OWNER_COLLECTION
+    from delivery_compiler import _story_node_bindings
+    from task_compiler import _task_node_bindings
+    from sow_model import NODE_COLLECTIONS
+    model=json.loads(material.candidate_bytes)
+    paths={node[field]:'/'+collection+'/'+str(index) for collection,field in NODE_COLLECTIONS.items()
+           for index,node in enumerate(model[collection])}
+    if stage=='SCOPE':
+        return {key:{'id':value,'path':paths[value]} for key,value in sorted(material.identity_by_local_key.items())}
+    collection=OWNER_COLLECTION[stage];field='storyId' if stage=='STORY_AC' else 'taskId'
+    bindings=_story_node_bindings if stage=='STORY_AC' else _task_node_bindings
+    return {row['localKey']:{'id':node[field],'path':paths[node[field]]} for row in decisions[collection]
+            for name,node in bindings(packet,{collection:[row]}) if name==collection}
+
+
+def _review_packet_for_candidate(files,state,stage,candidate_hash):
+    root=files.resolve(_stage_root(state,stage)+'/review-inputs',expect='dir')
+    matches=[]
+    for path in root.glob('*/*.json'):
+        raw=files.read_bytes(path.relative_to(files.root).as_posix())
+        if sha256_bytes(raw)!=path.stem: raise ValueError('Review input hash 漂移。')
+        value=json.loads(raw)
+        if value['workItems'][0]['payload']['candidateSha256']==candidate_hash: matches.append(value)
+    if len(matches)!=1: raise ValueError('候选必须绑定唯一 fresh Review input。')
     return matches[0]
 
 
-def _advance_public_pipeline(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-) -> dict[str, object]:
-    run_id = str(state["runId"])
-    plans = _pipeline_plans(files, run_id)
-    unapplied = [plan for plan in plans if not _plan_applied(files, run_id, plan)]
-    if unapplied:
-        if len(unapplied) != 1:
-            raise ProjectIOError(
-                "PIPELINE_PLAN_INVALID", "", "同一 run 只能有一个待应用 action group。"
-            )
-        failure = _apply_public_plan(files, state, plans, unapplied[0])
-        if failure is not None:
-            return failure
-        marker = _read_active_marker(files)
-        if marker is None:
-            raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "应用 action 后 run 消失。")
-        state = _recover_active_run(files, marker)
-        plans = _pipeline_plans(files, run_id)
+def _control_bundle(files,state,stage,kind,subject_hash):
+    from final_review import control_identity,REVIEW_CONTRACT
+    from stage_planner import _effective_envelope,_effective_success
+    contract_id=REVIEW_CONTRACT[stage] if kind=='REVIEW' else stage+'_REPAIR-v1'
+    _,digest=action_contract_binding(SKILL_ROOT,contract_id)
+    logical,group=control_identity(stage,kind,subject_hash,digest)
+    ledger=_load_action_ledger(files,state['runId'])
+    envelope=_effective_envelope(ledger,logical)
+    if envelope is None: return logical,group,None
+    record_hash,record=_effective_success(ledger,logical)
+    return logical,group,{'envelope':envelope.value,'record':record,'recordSha256':record_hash,
+                         'result':json.loads(ledger.normalized_results[record.normalized_result_sha256])}
 
-    context = _public_compiler_state(files, state, plans)
-    if not _plan_exists(plans, "SOURCE_SCAN"):
-        return _issue_public_specs(
-            files, state, "SOURCE_SCAN", prepare_scope_action(context, "SOURCE_SCAN")
-        )
-    if not _plan_exists(plans, "SCOPE_PROPOSAL"):
-        context["actionKind"] = "SCOPE_PROPOSAL"
-        return _issue_public_specs(
-            files,
-            state,
-            "SCOPE_PROPOSAL",
-            prepare_scope_action(context, "SCOPE_PROPOSAL"),
-        )
-    if not _plan_exists(plans, "SCOPE_JOIN"):
-        context["actionKind"] = "SCOPE_JOIN"
-        return _issue_public_specs(
-            files,
-            state,
-            "SCOPE_JOIN",
-            prepare_scope_action(context, "SCOPE_JOIN"),
-        )
-    if not _plan_exists(plans, "R1_SOURCE_AUDIT"):
-        return _issue_public_specs(
-            files,
-            state,
-            "R1_SOURCE_AUDIT",
-            prepare_r1_source_audit(context),
-        )
-    if not _plan_exists(plans, "R1_SCOPE_JOIN"):
-        return _issue_public_specs(
-            files,
-            state,
-            "R1_SCOPE_JOIN",
-            prepare_r1_scope_join(context),
-        )
-    r1_scope_records = [
-        *_records_for_step(files, run_id, plans, "R1_SCOPE_JOIN"),
-        *_records_for_step(files, run_id, plans, "R1_SCOPE_RECHECK"),
-    ]
-    latest_r1_scope = (
-        r1_scope_records[-1].get("submission") if r1_scope_records else None
-    )
-    if isinstance(latest_r1_scope, Mapping) and latest_r1_scope.get("decision") != "PASS":
-        findings, finding_diagnostics = _normalize_findings(
-            _mappings(latest_r1_scope.get("findings"))
-        )
-        if finding_diagnostics:
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED",
-                finding_diagnostics,
-                summary="R1 Scope Review findingId 冲突，不能生成 repair plan。",
-            )
-        if _plan_exists(plans, "R1_SCOPE_RECHECK"):
-            return _public_pipeline_failure(
-                "OWNER_FIX_REQUIRED",
-                (),
-                summary="Stage 1 repair 后的 R1 Scope Recheck 仍未通过。",
-            )
-        if not _plan_exists(plans, "STAGE_1_REPAIR"):
-            repair_plan = build_repair_plan(context, findings)
-            prepared_repair = prepare_scope_repair_action(
-                context, repair_plan, findings
-            )
-            return _issue_public_specs(
-                files, state, "STAGE_1_REPAIR", prepared_repair
-            )
-        return _issue_public_specs(
-            files,
-            state,
-            "R1_SCOPE_RECHECK",
-            prepare_r1_scope_join(context),
-        )
-    scope_checkpoint = _checkpoint_from_state(files, state, "SCOPE_CLOSURE")
-    if scope_checkpoint is None:
-        checkpoint_context = {
-            **context,
-            "candidate": _candidate_through_stage(context["candidate"], "STAGE_1"),
-        }
-        checkpoint_result = build_scope_closure_checkpoint(checkpoint_context)
-        if checkpoint_result.get("outcome") != "READY_FOR_STORY_AC":
-            return _public_pipeline_failure(
-                str(checkpoint_result.get("outcome", "CONTRACT_UNSUPPORTED")),
-                checkpoint_result.get("diagnostics", ()),
-                summary="ScopeClosureCheckpoint 未通过。",
-            )
-        state = _persist_public_checkpoint(
-            files, state, "SCOPE_CLOSURE", checkpoint_result["checkpoint"]
-        )
-        context = _public_compiler_state(files, state, plans)
-        scope_checkpoint = context["scopeClosureCheckpoint"]
-    if not _plan_exists(plans, "STORY_AC"):
-        context["baseCandidate"] = context["candidate"]
-        context["baseCandidateSha256"] = state["currentCandidateSha256"]
-        return _issue_public_specs(
-            files,
-            state,
-            "STORY_AC",
-            prepare_delivery_action(context, "STORY_AC"),
-        )
-    story_checkpoint = _checkpoint_from_state(files, state, "STORY_AC")
-    if story_checkpoint is None:
-        story_plan = _plan_for_step(plans, "STORY_AC")
-        story_base_sha256 = str(story_plan["baseCandidateSha256"])
-        context["baseCandidate"] = _candidate_snapshot_by_sha256(
-            files, run_id, story_base_sha256
-        )
-        context["baseCandidateSha256"] = story_base_sha256
-        context["storyActionRecords"] = _records_for_step(
-            files, run_id, plans, "STORY_AC"
-        )
-        context["upstreamCheckpointSha256s"] = [
-            sha256_bytes(canonical_json_bytes(scope_checkpoint))
-        ]
-        checkpoint_context = {
-            **context,
-            "candidate": _candidate_through_stage(context["candidate"], "STAGE_2"),
-        }
-        checkpoint_result = build_story_ac_checkpoint(checkpoint_context)
-        if checkpoint_result.get("outcome") != "READY_FOR_TASK":
-            return _public_pipeline_failure(
-                str(checkpoint_result.get("outcome", "CONTRACT_UNSUPPORTED")),
-                checkpoint_result.get("diagnostics", ()),
-                summary="StoryAcCheckpoint 未通过。",
-            )
-        state = _persist_public_checkpoint(
-            files, state, "STORY_AC", checkpoint_result["checkpoint"]
-        )
-        context = _public_compiler_state(files, state, plans)
-        story_checkpoint = context["storyAcCheckpoint"]
-    if not _plan_exists(plans, "TASK"):
-        context["baseCandidate"] = context["candidate"]
-        context["baseCandidateSha256"] = state["currentCandidateSha256"]
-        return _issue_public_specs(
-            files, state, "TASK", prepare_task_action(context, "TASK")
-        )
-    task_checkpoint = _checkpoint_from_state(files, state, "TASK")
-    if task_checkpoint is None:
-        task_plan = _plan_for_step(plans, "TASK")
-        task_base_sha256 = str(task_plan["baseCandidateSha256"])
-        context["baseCandidate"] = _candidate_snapshot_by_sha256(
-            files, run_id, task_base_sha256
-        )
-        context["baseCandidateSha256"] = task_base_sha256
-        context["taskActionRecords"] = _records_for_step(files, run_id, plans, "TASK")
-        checkpoint_result = build_task_checkpoint(context)
-        if checkpoint_result.get("outcome") != "READY_FOR_REVIEW":
-            return _public_pipeline_failure(
-                str(checkpoint_result.get("outcome", "CONTRACT_UNSUPPORTED")),
-                checkpoint_result.get("diagnostics", ()),
-                summary="TaskCheckpoint 未通过。",
-            )
-        state = _persist_public_checkpoint(
-            files, state, "TASK", checkpoint_result["checkpoint"]
-        )
-        context = _public_compiler_state(files, state, plans)
 
-    review = advance_layered_review(context)
-    if review.get("outcome") == "ACTION_REQUIRED":
-        stage = str(review.get("stage"))
-        if stage == "THEME_JOIN":
-            step = f"{review['sourceReviewKind']}_THEME_JOIN"
+def _issue_control(files,state,stage,kind,subject_hash,packet):
+    from final_review import control_identity,REVIEW_CONTRACT
+    contract_id=REVIEW_CONTRACT[stage] if kind=='REVIEW' else stage+'_REPAIR-v1'
+    _,digest=action_contract_binding(SKILL_ROOT,contract_id)
+    logical,group=control_identity(stage,kind,subject_hash,digest)
+    return _issue_singleton(files,state,stage,group,logical,contract_id,canonical_json_bytes(packet))
+
+
+def _issue_singleton(files,state,stage,group,logical,contract_id,packet):
+    envelope=_envelope_for_work(files,state,stage,group,logical,contract_id,packet)
+    _persist_issued_action(files,envelope,packet)
+    updated=_write_active_state(files,_read_active_marker(files),{**state,'phase':_phase_for_action_stage(stage),
+        'wait':'MODEL','expectedActionIds':[envelope['actionId']]})
+    return _public_active_result(files,updated)
+
+
+def _prior_business_gate(files,state,plan):
+    from stage_planner import _effective_success,DependencyResultRef
+    from prior_state import resolve_prior_root,verify_prior_decision,materialize_prior_snapshot
+    works=[work for work in plan['works'] if work['packetPlan']['actionKind'] in {'PRIOR_ANALYZE','PRIOR_CONSOLIDATE'}]
+    if not works: return
+    ledger=_load_action_ledger(files,state['runId'])
+    if not is_group_ready(ledger,[work['logicalWorkId'] for work in works]): return
+    consumed={key for work in works for key in work['packetPlan']['dependencyLogicalWorkIds']}
+    root=next(work['logicalWorkId'] for work in works if work['logicalWorkId'] not in consumed)
+    digest,record=_effective_success(ledger,root)
+    reference=resolve_prior_root(plan,ledger,[DependencyResultRef(root,digest,ledger.normalized_results[record.normalized_result_sha256])])
+    revision=files.read_bytes(_read_active_marker(files)['inputRevisionPath'])
+    inventories=_prior_inventories(files,state)
+    verify_prior_decision(inventories,json.loads(reference.normalized_result),input_revision_bytes=revision)
+    # No dependent Scope action may escape this gate. Conversion belongs to MATERIALIZE.
+    return reference
+
+
+def _stage_wait(files,state,code):
+    run_id=state['runId'];wait_id='stage-wait-'+code
+    events=_read_run_events(files,run_id)
+    if not any(event.type=='WAITING_INPUT_ENTERED' and event.payload['waitId']==wait_id for event in events):
+        _append_run_event(files,run_id,'RUN_STATE_CHANGED',{'fromState':state['phase'],'toState':'WAITING_INPUT'})
+        _append_run_event(files,run_id,'WAITING_INPUT_ENTERED',{'waitId':wait_id,'reasonCode':code})
+    waiting=_write_active_state(files,_read_active_marker(files),{**state,'wait':'INPUT','expectedActionIds':[],'resumeFromPhase':state['phase']})
+    return {'outcome':'WAITING_INPUT','state':waiting,'nextAction':None,'diagnostics':[_diagnostic_value(_diagnostic(code,'阶段需要补充完整业务输入后重新启动。'))]}
+
+
+
+def _manual_repair_records(files,state,stage):
+    records={}
+    for event in _read_run_events(files,state['runId']):
+        if event.type!='OWNER_REPAIR_AUTHORIZED' or event.payload['stageKind']!=stage: continue
+        value=event.payload;digest=value['authorizationSha256']
+        raw=_one_content(files,_stage_root(state,stage)+'/manual-repairs/'+value['reviewDecisionSha256'])
+        if raw is None or sha256_bytes(raw)!=digest: raise ValueError('人工继续裁定缺少精确不可变正文。')
+        answer=json.loads(raw)
+        terminal_raw=files.read_bytes(_state_snapshot_path(state['runId'],value['terminalStateSha256']))
+        terminal=json.loads(terminal_raw)
+        if (sha256_bytes(terminal_raw)!=value['terminalStateSha256'] or answer['terminalStateSha256']!=value['terminalStateSha256']
+                or terminal.get('result')!='MANUAL_REVIEW_REQUIRED' or terminal.get('phase')!='DONE'
+                or answer['runId']!=state['runId'] or terminal['runId']!=state['runId']
+                or answer['candidateSha256']!=terminal['currentCandidateSha256']
+                or terminal['currentInputRevisionSha256']!=state['currentInputRevisionSha256']):
+            raise ValueError('人工继续裁定未绑定原始终态和冻结输入。')
+        _,_,review=_control_bundle(files,state,stage,'REVIEW',answer['candidateSha256'])
+        from final_review import validate_owner_resolution
+        if review is None: raise ValueError('人工继续缺少实际失败 Review。')
+        validate_owner_resolution(stage,review['result'],answer)
+        review_raw=_one_content(files,_stage_root(state,stage)+f'/review-inputs/{value["semanticRevision"]}')
+        if review_raw is None or json.loads(review_raw)['workItems'][0]['payload']['candidateSha256']!=answer['candidateSha256']:
+            raise ValueError('人工继续裁定必须保留真实累计候选次数。')
+        if value['reviewDecisionSha256'] in records: raise ValueError('同一 Review 只能授权一次。')
+        records[value['reviewDecisionSha256']]={'answer':answer,'event':event,'terminal':terminal}
+    from final_review import verify_manual_authorization_records
+    verify_manual_authorization_records({key:{'authorization':value['answer'],'terminalState':value['terminal']} for key,value in records.items()},
+        [run_event_value(event) for event in _read_run_events(files,state['runId'])],stage,state['runId'],state['currentInputRevisionSha256'])
+    return records
+
+
+def _stage_revision_limit(files,state,stage):
+    manual=len(_manual_repair_records(files,state,stage))
+    clarified=sum(event.type=='WAITING_INPUT_EXITED' and event.payload.get('resolutionKind')=='OWNER_CLARIFICATION'
+                  for event in _read_run_events(files,state['runId'])) if stage=='TASK' else 0
+    return 2+manual+clarified
+
+
+def _resume_manual_owner_repair(files,path):
+    from final_review import replace_owner_decisions, repair_root_keys, owner_resolution, validate_owner_resolution
+    answer=_mapping(files,_managed_request_path(files,path))
+    if validate_contract(answer,'owner-repair-authorization.schema.json',load_schema_registry(SKILL_ROOT)):
+        raise ValueError('人工继续修复合同无效。')
+    run_id=answer['runId'];stage=answer['stageKind'];root,_,binding_path=_run_paths(run_id)
+    terminal_path=_state_snapshot_path(run_id,answer['terminalStateSha256'])
+    terminal_raw=files.read_bytes(terminal_path);terminal=_validated_run_state(json.loads(terminal_raw),terminal_path)
+    if (sha256_bytes(terminal_raw)!=answer['terminalStateSha256'] or terminal['result']!='MANUAL_REVIEW_REQUIRED'
+            or terminal['currentCandidateSha256']!=answer['candidateSha256'] or terminal['runId']!=run_id):
+        raise ValueError('只可恢复明确裁定绑定的原 Manual Review 终态。')
+    marker=_read_active_marker(files)
+    if marker is not None and marker['runId']!=run_id: raise ValueError('另一个 run 已激活，不可恢复旧 run。')
+    records=_manual_repair_records(files,terminal,stage)
+    old=records.get(answer['reviewDecisionSha256'])
+    if old is not None and old['answer']!=answer: raise ValueError('同一 Review 的裁定不可回写。')
+    if old is not None and marker is not None: return
+    if marker is not None and _read_active_run(files,marker)!=terminal: raise ValueError('裁定不是当前终态。')
+    binding=_mapping(files,binding_path)
+    terminal_marker={**binding,'bindingPath':binding_path,'statePath':terminal_path,'status':'ACTIVE','stateSha256':answer['terminalStateSha256']}
+    if _read_active_run(files,terminal_marker)!=terminal: raise ValueError('终态输入绑定漂移。')
+    directory=files.resolve(_stage_root(terminal,stage)+'/review-inputs',expect='dir')
+    revisions=sorted(int(child.name) for child in directory.iterdir() if child.is_dir() and child.name.isdigit())
+    revision=revisions[-1]
+    if revision<2 or _one_content(files,_stage_root(terminal,stage)+'/checkpoints') is not None:
+        raise ValueError('只可继续尚未封存且已停止自动修复的阶段。')
+    latest=json.loads(_one_content(files,_stage_root(terminal,stage)+f'/review-inputs/{revision}'))['workItems'][0]['payload']
+    if latest['candidateSha256']!=answer['candidateSha256']: raise ValueError('裁定指向历史候选。')
+    _,_,review=_control_bundle(files,terminal,stage,'REVIEW',answer['candidateSha256'])
+    if review is None: raise ValueError('裁定缺少当前 Review。')
+    validate_owner_resolution(stage,review['result'],answer)
+    previous=json.loads(_one_content(files,_stage_root(terminal,stage)+f'/review-inputs/{revision-1}'))['workItems'][0]['payload']
+    _,_,previous_review=_control_bundle(files,terminal,stage,'REVIEW',previous['candidateSha256'])
+    _,_,previous_repair=_control_bundle(files,terminal,stage,'REPAIR',previous_review['record'].normalized_result_sha256)
+    if previous_repair is None: raise ValueError('人工继续缺少前一版实际 Repair。')
+    previous_body=json.loads(files.read_bytes(previous_repair['envelope']['packetPath']))['workItems'][0]['payload']
+    current_ir=replace_owner_decisions(stage,previous_body['ownerIR'],previous_body['reviewDecision'],previous_repair['result'],owner_resolution(previous_body))
+    keys=repair_root_keys(stage,current_ir,review['result'],answer)
+    from final_review import OWNER_COLLECTION
+    if any(not set(answer['allowedFields'])<=row.keys() for row in current_ir[OWNER_COLLECTION[stage]] if row['localKey'] in keys):
+        raise ValueError('裁定只能调整既有 Owner 字段。')
+    _,_,issued=_control_bundle(files,terminal,stage,'REPAIR',answer['reviewDecisionSha256'])
+    if issued is not None: raise ValueError('已完成裁定不可重开旧 run。')
+    raw=canonical_json_bytes(answer);digest=_content(files,_stage_root(terminal,stage)+'/manual-repairs/'+answer['reviewDecisionSha256'],raw)
+    if old is None:
+        _append_run_event(files,run_id,'OWNER_REPAIR_AUTHORIZED',{'stageKind':stage,'semanticRevision':revision,
+            'reviewDecisionSha256':answer['reviewDecisionSha256'],'authorizationSha256':digest,'terminalStateSha256':answer['terminalStateSha256']})
+    _write_active_state(files,terminal_marker,{**terminal,'phase':_phase_for_action_stage(stage),'result':None,'wait':'NONE'})
+
+def _read_owner_clarification(files,state,review_hash):
+    raw=_one_content(files,_stage_root(state,'TASK')+'/clarifications/'+review_hash)
+    return json.loads(raw) if raw is not None else None
+
+
+def _task_context_at_candidate(files,state):
+    from task_compiler import apply_task_repairs
+    from final_review import owner_resolution
+    plan,items,contexts,policy,inputs=_frozen_stage_inputs(files,state,'TASK')
+    packet,decisions=_stage_ir(files,state,'TASK',plan,items,contexts,policy,inputs)
+    for revision in range(1,_stage_revision_limit(files,state,'TASK')+1):
+        raw=_one_content(files,_stage_root(state,'TASK')+f'/review-inputs/{revision}')
+        if raw is None: break
+        body=json.loads(raw)['workItems'][0]['payload']
+        if body['candidateSha256']==state['currentCandidateSha256']:
+            return packet,decisions,inputs,revision
+        _,_,review=_control_bundle(files,state,'TASK','REVIEW',body['candidateSha256'])
+        if review is None: break
+        _,_,repair=_control_bundle(files,state,'TASK','REPAIR',review['record'].normalized_result_sha256)
+        if repair is None: break
+        payload=json.loads(files.read_bytes(repair['envelope']['packetPath']))['workItems'][0]['payload']
+        resolution=owner_resolution(payload)
+        operation=(review['result'],repair['result'],resolution) if resolution is not None else (review['result'],repair['result'])
+        packet,decisions=apply_task_repairs(packet,decisions,[operation],inputs)
+    raise ValueError('澄清候选未绑定连续的实际 Owner 修复链。')
+
+
+def _accept_owner_clarification(files,state,path):
+    from task_compiler import prepare_task_repair_packet
+    answer=_mapping(files,_managed_request_path(files,path))
+    if validate_contract(answer,'owner-clarification.schema.json',load_schema_registry(SKILL_ROOT)):
+        raise ValueError('实施澄清合同无效。')
+    prior_answer=_read_owner_clarification(files,state,answer['reviewDecisionSha256'])
+    if prior_answer==answer and any(event.type=='WAITING_INPUT_EXITED'
+        and event.payload.get('resolutionKind')=='OWNER_CLARIFICATION'
+        and event.payload['reviewDecisionSha256']==answer['reviewDecisionSha256']
+        and event.payload['clarificationSha256']==sha256_bytes(canonical_json_bytes(answer))
+        for event in _read_run_events(files,state['runId'])): return
+    if state.get('result') is not None or state['phase']!='TASK' or state.get('wait')!='INPUT':
+        raise ValueError('仅可为等待澄清的当前 Task 候选提交决定。')
+    _,_,review=_control_bundle(files,state,'TASK','REVIEW',state['currentCandidateSha256'])
+    if review is None: raise ValueError('澄清缺少当前 Review。')
+    packet,decisions,inputs,revision=_task_context_at_candidate(files,state)
+    if revision>=3: raise ValueError('本轮澄清修复已达到候选上限。')
+    prepare_task_repair_packet(packet,decisions,review['result'],inputs.story_candidate_bytes,inputs.input_revision_bytes,answer)
+    review_hash=review['record'].normalized_result_sha256
+    old=_read_owner_clarification(files,state,review_hash)
+    if old is not None and old!=answer: raise ValueError('同一 Review 的批准澄清不可回写。')
+    raw=canonical_json_bytes(answer);digest=_content(files,_stage_root(state,'TASK')+'/clarifications/'+review_hash,raw)
+    events=_read_run_events(files,state['runId']);closed={event.payload['waitId'] for event in events if event.type=='WAITING_INPUT_EXITED'}
+    waiting=next((event for event in reversed(events) if event.type=='WAITING_INPUT_ENTERED'
+        and event.payload['reasonCode']=='REVIEW_INPUT_REQUIRED' and event.payload['waitId'] not in closed),None)
+    if waiting is None: raise ValueError('澄清没有匹配的输入等待。')
+    _append_run_event(files,state['runId'],'WAITING_INPUT_EXITED',{'waitId':waiting.payload['waitId'],
+        'resolutionKind':'OWNER_CLARIFICATION','reviewDecisionSha256':review_hash,'clarificationSha256':digest})
+
+
+def _reconcile_owner_clarification(files,state):
+    if state.get('wait')!='INPUT' or state.get('result') is not None: return state
+    events=_read_run_events(files,state['runId'])
+    entered=next((event for event in reversed(events) if event.type=='WAITING_INPUT_ENTERED'),None)
+    if entered is None: return state
+    exited=next((event for event in events if event.type=='WAITING_INPUT_EXITED'
+        and event.payload['waitId']==entered.payload['waitId'] and event.payload['resolutionKind']=='OWNER_CLARIFICATION'),None)
+    if exited is None:return state
+    answer=_read_owner_clarification(files,state,exited.payload['reviewDecisionSha256'])
+    if (answer is None or sha256_bytes(canonical_json_bytes(answer))!=exited.payload['clarificationSha256']
+            or answer['candidateSha256']!=state['currentCandidateSha256']):
+        raise ValueError('澄清恢复事件未绑定该候选的不可变决定。')
+    last=next((event for event in reversed(events) if event.type=='RUN_STATE_CHANGED'),None)
+    if last is not None and last.payload['toState']=='WAITING_INPUT':
+        _append_run_event(files,state['runId'],'RUN_STATE_CHANGED',{'fromState':'WAITING_INPUT','toState':state['phase']})
+    return {**state,'wait':'NONE','resumeFromPhase':None}
+
+
+def _owner_repair_packet(stage, packet, decisions, review, inputs, resolution=None):
+    from final_review import repair_root_keys, resolution_field
+    if stage == 'TASK':
+        from task_compiler import prepare_task_repair_packet, factor_task_repair_packet
+        packet = factor_task_repair_packet(prepare_task_repair_packet(packet, decisions, review,
+            inputs.story_candidate_bytes, inputs.input_revision_bytes, resolution))
+    result = {'workItems':[{'workItemId':'repair-decisions','payload':{
+        'stageKind':stage,'reviewDecisionSha256':sha256_bytes(canonical_json_bytes(review)),
+        'reviewDecision':review,'authorizedRootKeys':repair_root_keys(stage,decisions,review,resolution),
+        'ownerIR':decisions,'ownerPacket':packet}}],'contextRefs':[]}
+    if resolution is not None: result['workItems'][0]['payload'][resolution_field(resolution)]=resolution
+    return result
+
+
+def _seal_stage(files,state,stage,plan,items,contexts,policy,inputs):
+    from final_review import REVIEW_CONTRACT,stage_checkpoint,review_route,replace_owner_decisions,review_resolution_fields
+    import scope_compiler,delivery_compiler,task_compiler
+    owner={'SCOPE':scope_compiler,'STORY_AC':delivery_compiler,'TASK':task_compiler}[stage]
+    root=_stage_root(state,stage)
+    ledger=_load_action_ledger(files,state['runId'])
+    previous_review=None;semantic_repair=None;semantic_repairs=[]
+    packet,decisions=_stage_ir(files,state,stage,plan,items,contexts,policy,inputs)
+    revision_raw=files.read_bytes(_read_active_marker(files)['inputRevisionPath'])
+    request=_mapping(files,str(Path(_read_active_marker(files)['inputRevisionPath']).parent/'request.json'))
+    for revision in range(1,_stage_revision_limit(files,state,stage)+1):
+        if stage=='TASK':
+            current_packet,merged=owner.apply_task_repairs(packet,decisions,semantic_repairs,inputs)
         else:
-            step = stage
-        return _issue_public_specs(files, state, step, review)
-    if review.get("outcome") != "READY_FOR_APPROVAL":
-        return _public_pipeline_failure(
-            str(review.get("outcome", "CONTRACT_UNSUPPORTED")),
-            review.get("diagnostics", ()),
-            summary="分层评审未通过。",
-        )
-    review_decision = review["reviewDecision"]
-    review_payload = canonical_json_bytes(review_decision)
-    review_sha256 = sha256_bytes(review_payload)
-    files.publish_new(
-        f"{RUNS_ROOT}/{run_id}/reviews/decision-{review_sha256}.json",
-        review_payload,
+            current_packet=packet
+            merged=decisions
+            for operation in semantic_repairs: merged=replace_owner_decisions(stage,merged,*operation)
+        resolution_fields=review_resolution_fields(semantic_repairs)
+        directory=root+f'/review-inputs/{revision}'
+        review_raw=_read_step_output(files,state,stage,revision,'MATERIALIZE',directory)
+        if review_raw is None:
+            def materialize():
+                current_ledger=_load_action_ledger(files,state['runId'])
+                if stage=='SCOPE':
+                    material=owner.materialize_scope_candidate(revision_raw,request,plan,items,contexts,current_ledger,policy,
+                        prior_inventories=_prior_inventories(files,state),prototype_inventory=_prototype_inventory(files,state),semantic_repairs=semantic_repairs)
+                elif stage=='TASK':
+                    material=owner.materialize_task_candidate(inputs,plan,current_ledger,policy,semantic_repairs=semantic_repairs)
+                else:
+                    material=owner.materialize_story_candidate(inputs,plan,current_ledger,policy,semantic_repairs=semantic_repairs)
+                index=_owner_index(stage,material,current_packet,merged)
+                candidate=json.loads(material.candidate_bytes)
+                from sow_model import NODE_COLLECTIONS
+                evidence=sorted({ref['blockId'] for collection in NODE_COLLECTIONS for item in candidate[collection] for ref in item.get('sourceRefs',[])})
+                obligations=list(material.review_obligations) if stage=='SCOPE' else []
+                body={'stageKind':stage,'candidateSha256':sha256_bytes(material.candidate_bytes),'candidate':candidate,
+                    'ownerIndex':index,'reviewObligations':obligations,'evidenceIds':evidence}
+                if stage=='TASK':
+                    body['taskRules']=owner.task_review_rules(candidate,inputs.task_catalog)
+                body.update(resolution_fields)
+                if stage=='SCOPE':
+                    body['changeGraph']=json.loads(material.change_graph_bytes)
+                    body['priorState']=json.loads(material.prior_state_bytes) if material.prior_state_bytes else None
+                    expected=owner.scope_review_obligations(merged,material.identity_by_local_key,contexts,current_ledger,
+                        body['priorState'],body['changeGraph'],_prior_business_gate(files,state,plan))
+                    if sorted(obligations,key=canonical_json_bytes)!=list(expected):
+                        raise ValueError('Scope candidate 缺少完整 intent/identity review obligations。')
+                    if material.prior_state_bytes:
+                        body['evidenceIds']=sorted(set(evidence)|{row['priorEvidenceId'] for row in body['priorState']['evidence']})
+                        obligations.append({'kind':'PRIOR_SOURCE_EQUIVALENCE','priorStateSha256':sha256_bytes(material.prior_state_bytes),
+                            'sourceRelations':body['priorState']['sourceRelations'], 'entities':body['priorState']['entities']})
+                review_packet={'workItems':[{'workItemId':'review-candidate','payload':body}],'contextRefs':[]}
+                raw=canonical_json_bytes(review_packet)
+                return raw
+            review_raw=_deterministic_step(files,state,'MATERIALIZE',materialize,stage=stage,revision=revision)
+            _content(files,directory,review_raw)
+        review_packet=json.loads(review_raw);body=review_packet['workItems'][0]['payload']
+        candidate_bytes=canonical_json_bytes(body['candidate']);candidate_hash=sha256_bytes(candidate_bytes)
+        if candidate_hash!=body['candidateSha256']:
+            raise ValueError('候选与 frozen Review input 不一致。')
+        state={**state,'currentCandidateSha256':candidate_hash,'currentCandidatePath':root+f'/candidates/{candidate_hash}.json'}
+        if {key:body[key] for key in ('ownerClarification','ownerRepairAuthorization') if key in body}!=resolution_fields:
+            raise ValueError('Review 未绑定该候选累计批准裁定。')
+        if stage=='SCOPE':
+            from prior_state import materialize_prior_snapshot
+            prior_root = _prior_business_gate(files,state,plan)
+            prior_decision = json.loads(prior_root.normalized_result) if prior_root else None
+            prior_state = materialize_prior_snapshot(_prior_inventories(files,state),prior_decision,
+                input_revision_bytes=revision_raw) if prior_root else None
+            if body['priorState'] != prior_state:
+                raise ValueError('Review Prior snapshot 未绑定原 inventory 和 sealed Prior root。')
+            expected_index = owner.scope_review_owner_index(candidate_bytes,merged,items,
+                prototype_inventory=_prototype_inventory(files,state),prior_decision=prior_decision,prior_state=prior_state)
+            if body['ownerIndex'] != expected_index:
+                raise ValueError('Scope Review root index 未绑定冻结 IR 的精确实体。')
+            identities = {key:value['id'] for key,value in expected_index.items()}
+            graph = owner.scope_change_graph(merged,identities,prior_decision,prior_state)
+            if body['changeGraph'] != graph:
+                raise ValueError('Review ChangeGraph 未绑定 sealed Scope/Prior decisions。')
+            expected = list(owner.scope_review_obligations(merged,identities,contexts,
+                _load_action_ledger(files,state['runId']),prior_state,graph,prior_root))
+            if prior_state is not None:
+                expected.append({'kind':'PRIOR_SOURCE_EQUIVALENCE','priorStateSha256':sha256_bytes(canonical_json_bytes(prior_state)),
+                    'sourceRelations':prior_state['sourceRelations'],'entities':prior_state['entities']})
+            if sorted(body['reviewObligations'],key=canonical_json_bytes)!=sorted(expected,key=canonical_json_bytes):
+                raise ValueError('Scope Review input 义务不完整。')
+            material=owner.ScopeMaterialization(candidate_bytes,canonical_json_bytes(graph),
+                canonical_json_bytes(prior_state) if prior_state else None,identities,tuple(expected))
+        else:
+            cls=owner.StoryMaterialization if stage=='STORY_AC' else owner.TaskMaterialization
+            upstream_bytes=inputs.scope_candidate_bytes if stage=='STORY_AC' else inputs.story_candidate_bytes
+            material=cls(candidate_bytes,candidate_hash,upstream_bytes,inputs.checkpoint_sha256,canonical_json_bytes(current_packet),canonical_json_bytes(merged))
+            if body['ownerIndex'] != _owner_index(stage,material,current_packet,merged):
+                raise ValueError('Review root index 未绑定冻结 Owner IR。')
+            if stage=='TASK' and body.get('taskRules') != owner.task_review_rules(body['candidate'],inputs.task_catalog):
+                raise ValueError('Task Review 规则未绑定当前候选与冻结模板。')
+        _content(files,root+'/candidates',candidate_bytes)
+        if stage=='SCOPE':
+            _content(files,root+'/change-graphs',material.change_graph_bytes)
+            if material.prior_state_bytes is not None:
+                _content(files,root+'/prior-states',material.prior_state_bytes)
+        validator_raw=_read_step_output(files,state,stage,revision,'VALIDATE',root+f'/validators/{revision}')
+        if validator_raw is None:
+            def validate():
+                diagnostics=(owner.validate_scope_candidate if stage=='SCOPE' else owner.validate_story_candidate if stage=='STORY_AC' else owner.validate_task_candidate)(material)
+                if diagnostics: raise ValueError('完整机械校验失败：'+','.join(item.code for item in diagnostics))
+                value={'stageKind':stage,'candidateSha256':candidate_hash,
+                    'validatorContractSha256':sha256_bytes((SKILL_ROOT/'contracts/sow-model.schema.json').read_bytes()),'diagnostics':[]}
+                return canonical_json_bytes(value)
+            validator_raw=_deterministic_step(files,state,'VALIDATE',validate,stage=stage,revision=revision)
+            _content(files,root+f'/validators/{revision}',validator_raw)
+        validator=json.loads(validator_raw)
+        if validator!={'stageKind':stage,'candidateSha256':candidate_hash,'validatorContractSha256':sha256_bytes((SKILL_ROOT/'contracts/sow-model.schema.json').read_bytes()),'diagnostics':[]}:
+            raise ValueError('完整 validator result 绑定失效。')
+        state=_write_active_state(files,_read_active_marker(files),state)
+        logical,group,bundle=_control_bundle(files,state,stage,'REVIEW',candidate_hash)
+        if bundle is None: return _issue_control(files,state,stage,'REVIEW',candidate_hash,review_packet)
+        actual_review_raw=files.read_bytes(bundle['envelope']['packetPath'])
+        if json.loads(actual_review_raw)['workItems']!=review_packet['workItems'] or bundle['envelope']['baseCandidateSha256']!=candidate_hash:
+            raise ValueError('Review 不是该候选的 fresh singleton。')
+        review=bundle['result']
+        manual=_manual_repair_records(files,state,stage).get(bundle['record'].normalized_result_sha256)
+        resolution=manual['answer'] if manual else (_read_owner_clarification(files,state,bundle['record'].normalized_result_sha256) if stage=='TASK' else None)
+        route=review_route(review,previous_review=previous_review,resolution=resolution)
+        if route=='WAITING_INPUT': return _stage_wait(files,state,'REVIEW_INPUT_REQUIRED')
+        if route in {'MANUAL_REVIEW_REQUIRED','CONTRACT_UNSUPPORTED'}:
+            return {'outcome':route,'state':_terminalize_active_run(files,_read_active_marker(files),result=route),'nextAction':None,'diagnostics':[]}
+        if route=='REPAIR':
+            review_hash=bundle['record'].normalized_result_sha256
+            logical,group,repair_bundle=_control_bundle(files,state,stage,'REPAIR',review_hash)
+            repair_packet=_owner_repair_packet(stage,current_packet,merged,review,inputs,resolution)
+            if repair_bundle is None:
+                return _issue_control(files,state,stage,'REPAIR',review_hash,repair_packet)
+            actual_repair=json.loads(files.read_bytes(repair_bundle['envelope']['packetPath']))
+            if actual_repair['workItems'] != repair_packet['workItems']:
+                raise ValueError('Repair 未绑定原 IR、影响闭包和确定性上下文。')
+            semantic_repair=(review,repair_bundle['result'],resolution) if resolution is not None else (review,repair_bundle['result'])
+            semantic_repairs.append(semantic_repair);previous_review=review
+            continue
+        upstream=[_checkpoint_bytes(files,state,'SCOPE' if stage=='STORY_AC' else 'STORY_AC')] if stage!='SCOPE' else []
+        stage_ledger=_load_action_ledger(files,state['runId'])
+        hashes=[digest for digest,record in stage_ledger.attempt_records.items()
+                if stage_ledger.envelopes_by_sha256[record.envelope_sha256].value['stageKind']==stage]
+        checkpoint=stage_checkpoint(stage,revision_raw,canonical_json_bytes(plan),upstream,candidate_bytes,validator_raw,
+            actual_review_raw,canonical_json_bytes(review),hashes,prior_state_bytes=material.prior_state_bytes if stage=='SCOPE' else None)
+        checkpoint_raw=canonical_json_bytes(checkpoint);digest=_content(files,root+'/checkpoints',checkpoint_raw)
+        kind='SCOPE_CLOSURE' if stage=='SCOPE' else stage
+        refs=[ref for ref in state['checkpointRefs'] if ref['kind']!=kind]+[{'kind':kind,'path':root+f'/checkpoints/{digest}.json','sha256':digest}]
+        state=_write_active_state(files,_read_active_marker(files),{**state,'checkpointRefs':refs,'wait':'NONE','expectedActionIds':[]})
+        return _advance_public_pipeline(files,state)
+    raise ValueError('新增候选缺少本次继续修复裁定。')
+
+
+def _advance_prototype(files,state):
+    from prototype_analysis import PrototypeError,verify_prototype_trace
+    if _prototype_inventory(files,state) is None: return None
+    bundles=_prototype_bundles(files,state)
+    if not bundles: return _issue_prototype(files,state,'PROTOTYPE_SCENARIO',1)
+    last=bundles[-1];kind=last['envelope']['actionContractId'];payload=last['packet']['workItems'][0]['payload']
+    round_number=payload['identity']['round']
+    if kind=='PROTOTYPE_SCENARIO-v1': return _issue_prototype(files,state,'PROTOTYPE_BROWSER',round_number)
+    counts,unmeasured=_prototype_execution_counts(files,state['runId'])
+    if unmeasured: return _prototype_wait(files,state,'PROTOTYPE_EXECUTION_UNMEASURED')
+    limits=_effective_budget_policy(files,state['runId'])[1]['demoLimits']
+    if any(count>limits[key] for key,count in counts.items()): return _prototype_wait(files,state,'INCOMPLETE_BUDGET')
+    if kind=='PROTOTYPE_BROWSER-v1':
+        try: verify_prototype_trace(payload['inventory'],payload['scenario']['normalizedResult'],last['normalizedResult'])
+        except PrototypeError as error:
+            if error.code not in {'INCOMPLETE_BUDGET','PROTOTYPE_UNSTABLE'}: raise
+            return _prototype_wait(files,state,error.code)
+        if last['normalizedResult']['unresolvedDiscoveries']: return _prototype_wait(files,state,'PROTOTYPE_UNRESOLVED_DISCOVERY')
+        return _issue_prototype(files,state,'PROTOTYPE_ANALYZE',round_number)
+    try: prototype=_publish_prototype_ledger(files,state)
+    except PrototypeError as error: return _prototype_wait(files,state,error.code)
+    if not prototype['value']['sealed']:
+        if round_number>=limits['maxDiscoveryRounds'] or counts['maxScenarioSteps']>=limits['maxScenarioSteps']:
+            return _prototype_wait(files,state,'INCOMPLETE_BUDGET')
+        return _issue_prototype(files,state,'PROTOTYPE_SCENARIO',round_number+1)
+    return None
+
+
+def _advance_public_pipeline(files,state):
+    from stage_planner import next_issuable_group
+    from scope_compiler import ScopeInputRequired
+    from prior_state import PriorInputRequired
+    from delivery_compiler import StoryInputRequired
+    from task_compiler import TaskInputRequired
+    try:
+        prototype=_advance_prototype(files,state)
+        if prototype is not None: return prototype
+        for stage in ('SCOPE','STORY_AC','TASK'):
+            if _one_content(files,_stage_root(state,stage)+'/checkpoints') is not None:
+                continue
+            plan,items,contexts,policy,inputs=_frozen_stage_inputs(files,state,stage)
+            if stage=='SCOPE': _prior_business_gate(files,state,plan)
+            group=next_issuable_group(plan,_load_action_ledger(files,state['runId']))
+            if group is not None: return _issue_frozen_group(files,state,plan,items,contexts,group)
+            return _seal_stage(files,state,stage,plan,items,contexts,policy,inputs)
+        state=_write_active_state(files,_read_active_marker(files),{**state,'phase':'DRAFT','wait':'NONE','expectedActionIds':[]})
+        return _advance_artifact(files,state)
+    except (ScopeInputRequired,PriorInputRequired,StoryInputRequired,TaskInputRequired) as error:
+        return _stage_wait(files,state,type(error).__name__)
+
+
+def _attempt_stop_response(
+    files: ProjectFiles, state: Mapping[str, object]
+) -> dict[str, object] | None:
+    if state.get("result") is None:
+        events = _read_run_events(files, str(state["runId"]))
+        exited = {event.payload["waitId"] for event in events if event.type == "WAITING_INPUT_EXITED"}
+        prototype_wait = next((event for event in events if event.type == "WAITING_INPUT_ENTERED" and event.payload["waitId"].startswith(("prototype-wait-", "stage-wait-")) and event.payload["waitId"] not in exited), None)
+        if prototype_wait is not None:
+            return {"outcome": "WAITING_INPUT", "state": dict(state), "nextAction": None,
+                    "diagnostics": [_diagnostic_value(_diagnostic(prototype_wait.payload["reasonCode"], "Demo 证据尚未闭合，请补充完整输入后重新启动。"))]}
+        if any(
+            event.type == "WAITING_INPUT_ENTERED"
+            and event.payload["waitId"] not in exited
+            and event.payload["reasonCode"] == "BUDGET_EXHAUSTED"
+            for event in events
+        ):
+            ledger = _load_action_ledger(files, str(state["runId"]))
+            charged, unfinished, planned = _model_token_totals(ledger)
+            active_seconds = _active_seconds(ledger, events)
+            _, policy = _effective_budget_policy(files, str(state["runId"]))
+            return {
+                "outcome": "WAITING_INPUT", "state": {**state, "wait": "INPUT", "expectedActionIds": [], "resumeFromPhase": state["phase"]}, "nextAction": None,
+                "budgetVarianceTokens": charged - planned,
+                "activeSeconds": active_seconds,
+                "diagnostics": [{
+                    **_diagnostic_value(_diagnostic("BUDGET_EXHAUSTED", "请求容量或运行预算不足；尚未发行的阶段工作或修复请求可在无损调整输入并重新通过预算检查后继续。")),
+                    "details": {"chargedTokens": charged, "unfinishedPlannedTokens": unfinished, "maxPlannedTokens": policy["maxPlannedTokens"], "activeSeconds": active_seconds, "maxActiveSeconds": policy["maxActiveSeconds"]},
+                }],
+            }
+    routes = {
+        "CONTRACT_UNSUPPORTED": ("CONTRACT_GAP", "CONTRACT_UNSUPPORTED"),
+        "MANUAL_REVIEW_REQUIRED": ("OWNER_BUG", "OWNER_FIX_REQUIRED"),
+        "SYSTEM_FAILED": ("SYSTEM", "SYSTEM_FAILED"),
+    }
+    route = (
+        ("INPUT_REQUIRED", "WAITING_INPUT")
+        if state.get("wait") == "INPUT"
+        else routes.get(state.get("result")) if state.get("phase") == "DONE" else None
     )
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "生成 artifact 前 run 消失。")
-    artifact = prepare_artifact(
-        {
-            **context,
-            "reviewDecision": review_decision,
-            "taskCheckpoint": context["taskCheckpoint"],
-        },
-        files,
-        template_path=_revision_template_path(files, str(marker["inputRevisionPath"])),
-    )
-    if artifact.get("outcome") != "REQUEST_APPROVAL":
-        return artifact
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "生成 artifact 后 run 消失。")
-    awaiting = _write_active_state(
-        files,
-        marker,
-        {
-            **state,
-            "phase": "AWAITING_APPROVAL",
-            "wait": "APPROVAL",
-            "expectedActionIds": [],
-        },
-    )
-    return {**artifact, "state": dict(awaiting)}
+    if route is None:
+        return None
+    ledger = _load_action_ledger(files, str(state["runId"]))
+    failed = [
+        record
+        for record in ledger.attempt_records.values()
+        if record.outcome == "FAILED" and record.failure_kind == route[0]
+    ]
+    if not failed:
+        return None
+    return {
+        "outcome": route[1],
+        "state": dict(state),
+        "nextAction": None,
+        "diagnostics": [
+            attempt_record_value(record)["diagnostic"]
+            for record in sorted(
+                failed,
+                key=lambda record: (
+                    record.logical_work_id,
+                    record.revision,
+                    record.attempt,
+                ),
+            )
+        ],
+    }
 
 
 def _drive_public_active(
@@ -2664,18 +1724,39 @@ def _drive_public_active(
     files = ProjectFiles.open(project_root)
     state = result["state"]
     assert isinstance(state, Mapping)
+    stopped = _attempt_stop_response(files, state)
+    if stopped is not None:
+        return stopped
     if state.get("phase") == "DONE" and isinstance(state.get("result"), str):
+        diagnostics = []
+        if state["result"] == "SYSTEM_FAILED":
+            ledger = _load_action_ledger(files, str(state["runId"]))
+            if any(
+                record.outcome == "FAILED"
+                and record.failure_kind in {"EXECUTION", "INVALID_JSON", "INVALID_IR"}
+                for record in ledger.attempt_records.values()
+            ):
+                diagnostics.append(
+                    _diagnostic_value(
+                        _diagnostic(
+                            "BUDGET_EXCEEDED", "Action 已达到重试限额或安全停止条件。"
+                        )
+                    )
+                )
         return {
             "outcome": state["result"],
             "state": dict(state),
             "nextAction": None,
-            "diagnostics": [],
+            "diagnostics": diagnostics,
         }
+    if state.get('phase') == 'AWAITING_FINAL_REVIEW' and state.get('wait') == 'APPROVAL':
+        path,manifest,digest = _active_artifact(files,state)
+        return _artifact_result(files,state,path,digest)
     if state.get("phase") == "PREPARE" and state.get("wait") == "NONE":
         return _start_public_pipeline(files, state)
     if state.get("wait") == "NONE" and state.get("result") is None:
         return _advance_public_pipeline(files, state)
-    return _public_active_result(files, state)
+    return _complete_frozen_issuance(files,state) or _public_active_result(files, state)
 
 
 def _reconcile_active_state(
@@ -2685,10 +1766,11 @@ def _reconcile_active_state(
 ) -> Mapping[str, object]:
     """Replay immutable action facts across a crash before the state pointer swap."""
 
+    _verify_completed_stages(files, state)
     run_id = str(state["runId"])
+    ledger = _load_action_ledger(files, run_id)
     reconciled = dict(state)
     changed = False
-    _materialize_pending_exclusion_transition(files, reconciled)
     if _pending_abandon_decision(files, reconciled):
         reconciled.update(
             {
@@ -2700,75 +1782,26 @@ def _reconcile_active_state(
             }
         )
         return _write_active_state(files, marker, reconciled)
-    transitions = _exclusion_transitions(files, run_id)
-    applied_transition = True
-    while applied_transition:
-        applied_transition = False
-        for transition in transitions:
-            if (
-                reconciled.get("currentCandidateSha256")
-                == transition["baseCandidateSha256"]
-            ):
-                reconciled.update(
-                    {
-                        "phase": "STORY_AC",
-                        "wait": "NONE",
-                        "result": None,
-                        "currentCandidateSha256": transition["candidateSha256"],
-                        "currentCandidatePath": transition["candidatePath"],
-                        "expectedActionIds": [],
-                        "checkpointRefs": [],
-                        "resumeFromPhase": "STORY_AC",
-                    }
-                )
-                changed = True
-                applied_transition = True
-                break
-
-    plans = _pipeline_plans(files, run_id)
-    unapplied = [plan for plan in plans if not _plan_applied(files, run_id, plan)]
-
-    if (
-        reconciled.get("wait") == "NONE"
-        and not reconciled.get("expectedActionIds")
-        and len(unapplied) == 1
-    ):
-        plan = unapplied[0]
-        action_ids = [
-            item for item in plan.get("actionIds", []) if isinstance(item, str)
-        ]
-        pending_ids = [
-            action_id
-            for action_id in action_ids
-            if _optional_json(files, _action_paths(run_id, action_id)["record"])
-            is None
-        ]
-        if pending_ids:
-            envelopes = [
-                _mapping(files, _action_paths(run_id, action_id)["envelope"])
-                for action_id in action_ids
-            ]
-            stages = {str(envelope["stage"]) for envelope in envelopes}
-            if len(stages) != 1:
-                raise ProjectIOError(
-                    "PIPELINE_PLAN_INVALID",
-                    "",
-                    "待恢复 action plan 包含多个 stage。",
-                )
-            reconciled.update(
-                {
-                    "phase": _phase_for_action_stage(stages.pop()),
-                    "wait": "MODEL",
-                    "expectedActionIds": pending_ids,
-                }
-            )
-            budget = dict(reconciled["budget"])
-            budget["modelActionsStarted"] = max(
-                int(budget["modelActionsStarted"]),
-                int(plan["sequence"]) + len(action_ids),
-            )
-            reconciled["budget"] = budget
-            changed = True
+    reconciled = _reconcile_owner_clarification(files,reconciled)
+    changed = reconciled != state
+    budget_reconciled = _reconcile_budget_wait(files, reconciled)
+    if budget_reconciled != reconciled:
+        reconciled = budget_reconciled
+        changed = True
+    if reconciled.get('result') is None and reconciled.get('wait') != 'INPUT':
+        latest = {}
+        for envelope in ledger.envelopes_by_sha256.values():
+            key=envelope.value['logicalWorkId']
+            if key not in latest or (envelope.value['revision'],envelope.value['attempt']) > (latest[key].value['revision'],latest[key].value['attempt']):
+                latest[key]=envelope
+        records={record.envelope_sha256:record for record in ledger.attempt_records.values()}
+        pending=[item for item in latest.values() if item.sha256 not in records or records[item.sha256].outcome!='SUCCEEDED']
+        if pending:
+            groups={item.value['groupId'] for item in pending}
+            if len(groups)!=1: raise ValueError('未完成工作不能越过当前 frozen group。')
+            reconciled.update(phase=_phase_for_action_stage(pending[0].value['stageKind']),wait='MODEL',
+                expectedActionIds=sorted(item.value['actionId'] for item in pending))
+            changed=reconciled!=state
 
     expected_ids = [
         item for item in reconciled.get("expectedActionIds", []) if isinstance(item, str)
@@ -2776,6 +1809,7 @@ def _reconcile_active_state(
     if reconciled.get("wait") == "MODEL" and expected_ids:
         remaining: list[str] = []
         exhausted = False
+        failure_route = None
         for action_id in expected_ids:
             record = _optional_json(files, _action_paths(run_id, action_id)["record"])
             if record is None:
@@ -2787,30 +1821,61 @@ def _reconcile_active_state(
                 raise ProjectIOError(
                     "ACTION_RECORD_INVALID",
                     _action_paths(run_id, action_id)["record"],
-                    "恢复时发现无效 ActionRecord。",
+                    "恢复时发现无效 AttemptRecord。",
                 )
-            if record.get("status") == "SUCCESS":
+            if record.get("outcome") == "SUCCEEDED":
                 changed = True
                 continue
-            if record.get("status") not in {"FAILED", "LATE"}:
+            if record.get("outcome") not in {"FAILED", "SUPERSEDED"}:
                 raise ProjectIOError(
                     "ACTION_RECORD_INVALID",
                     _action_paths(run_id, action_id)["record"],
-                    "恢复时发现未知 ActionRecord 状态。",
+                    "恢复时发现未知 AttemptRecord 状态。",
                 )
             envelope = _mapping(
                 files, _action_paths(run_id, action_id)["envelope"]
             )
-            if int(envelope["executionAttempt"]) >= 2:
+            if record["outcome"] == "FAILED" and record["failureKind"] in {
+                "INPUT_REQUIRED",
+                "CONTRACT_GAP",
+                "OWNER_BUG",
+                "SYSTEM",
+            }:
+                failure_route = record["failureKind"]
+                if failure_route == "INPUT_REQUIRED":
+                    _enter_attempt_input_wait(files, reconciled, record)
+                changed = True
+                break
+            try:
+                transition = _materialize_action_retry(
+                    files, action_id, envelope, record
+                )
+            except ValueError:
                 exhausted = True
                 changed = True
                 continue
-            transition = _materialize_action_retry(
-                files, action_id, envelope, record
-            )
-            remaining.append(str(transition["retryActionId"]))
+            remaining.append(str(transition["actionId"]))
             changed = True
-        if exhausted:
+        if failure_route is not None:
+            result_by_kind = {
+                "CONTRACT_GAP": "CONTRACT_UNSUPPORTED",
+                "OWNER_BUG": "MANUAL_REVIEW_REQUIRED",
+                "SYSTEM": "SYSTEM_FAILED",
+            }
+            reconciled.update(
+                {
+                    "phase": (
+                        reconciled["phase"]
+                        if failure_route == "INPUT_REQUIRED"
+                        else "DONE"
+                    ),
+                    "wait": "INPUT" if failure_route == "INPUT_REQUIRED" else "NONE",
+                    "result": result_by_kind.get(failure_route),
+                    "expectedActionIds": [],
+                    "resumeFromPhase": None,
+                }
+            )
+        elif exhausted:
             reconciled.update(
                 {
                     "phase": "DONE",
@@ -2823,32 +1888,6 @@ def _reconcile_active_state(
         elif remaining != expected_ids:
             reconciled["expectedActionIds"] = remaining
             reconciled["wait"] = "MODEL" if remaining else "NONE"
-
-    try:
-        records_root = files.resolve(f"{RUNS_ROOT}/{run_id}/actions", expect="dir")
-    except ProjectIOError as error:
-        if error.code != "PROJECT_PATH_MISSING":
-            raise
-    else:
-        started_count = sum(
-            1 for path in records_root.glob("*/issued.json") if path.is_file()
-        )
-        completed_count = sum(
-            1 for path in records_root.glob("*/record.json") if path.is_file()
-        )
-        budget = dict(reconciled["budget"])
-        rebuilt_started = max(int(budget["modelActionsStarted"]), started_count)
-        rebuilt_completed = max(
-            int(budget["modelActionsCompleted"]), completed_count
-        )
-        if (
-            rebuilt_started != budget["modelActionsStarted"]
-            or rebuilt_completed != budget["modelActionsCompleted"]
-        ):
-            budget["modelActionsStarted"] = rebuilt_started
-            budget["modelActionsCompleted"] = rebuilt_completed
-            reconciled["budget"] = budget
-            changed = True
 
     if not changed:
         return state
@@ -2883,166 +1922,115 @@ def _revision_template_path(files: ProjectFiles, input_revision_path: str) -> Pa
     )
 
 
-def _prepare_render_only(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    input_revision_path: str,
-    input_revision: Mapping[str, object],
-    materials: Mapping[str, object],
-) -> dict[str, object]:
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "render-only run 不存在。")
-    state = _write_active_state(
-        files,
-        marker,
-        {**state, "route": "RENDER_ONLY", "phase": "DRAFT"},
-    )
-    candidate = deepcopy(materials["candidate"])
-    if not isinstance(candidate, dict) or not isinstance(candidate.get("project"), dict):
-        raise ProjectIOError(
-            "GENERATION_PROOF_CLOSURE_INVALID",
-            str(materials.get("generationRoot", "")),
-            "已发布 generation 缺少可复用 sow-model project 绑定。",
-        )
-    source_manifest_sha256 = sha256_bytes(
-        canonical_json_bytes(
-            {
-                "sources": input_revision.get("sources", []),
-                "blocks": input_revision.get("blocks", []),
-            }
-        )
-    )
-    candidate["project"].update(
-        {
-            "inputRevisionSha256": sha256_bytes(canonical_json_bytes(input_revision)),
-            "sourceManifestSha256": source_manifest_sha256,
-            "templateSha256": input_revision["templateSha256"],
-        }
-    )
-    if validate_contract(candidate, "sow-model.schema.json", NEXT_SCHEMA_REGISTRY):
-        raise ProjectIOError(
-            "GENERATION_PROOF_CLOSURE_INVALID",
-            str(materials.get("generationRoot", "")),
-            "render-only 重绑定后的 sow-model 合同无效。",
-        )
-    snapshot = _append_candidate_snapshot(files, str(state["runId"]), candidate)
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "写入 candidate 后 run 消失。")
-    state = _recover_active_run(files, marker)
-    checkpoints = materials["checkpoints"]
-    if not isinstance(checkpoints, Mapping):
-        raise ProjectIOError(
-            "GENERATION_PROOF_CLOSURE_INVALID",
-            str(materials.get("generationRoot", "")),
-            "已发布 generation 缺少 Stage checkpoint。",
-        )
-    for kind in ("SCOPE_CLOSURE", "STORY_AC", "TASK"):
-        checkpoint = checkpoints.get(kind)
-        if not isinstance(checkpoint, Mapping):
-            raise ProjectIOError(
-                "GENERATION_PROOF_CLOSURE_INVALID",
-                str(materials.get("generationRoot", "")),
-                f"已发布 generation 缺少 {kind} checkpoint。",
-            )
-        state = _persist_public_checkpoint(files, state, kind, checkpoint)
-    review_decision = deepcopy(materials["reviewDecision"])
-    if not isinstance(review_decision, dict):
-        raise ProjectIOError(
-            "GENERATION_PROOF_CLOSURE_INVALID",
-            str(materials.get("generationRoot", "")),
-            "已发布 generation 缺少终审决定。",
-        )
-    checkpoint_refs = {
-        str(item["kind"]): str(item["sha256"])
-        for item in _mappings(state.get("checkpointRefs"))
-    }
-    review_decision.update(
-        {
-            "runId": state["runId"],
-            "candidateSha256": snapshot["sha256"],
-            "scopeClosureCheckpointSha256": checkpoint_refs["SCOPE_CLOSURE"],
-            "storyAcCheckpointSha256": checkpoint_refs["STORY_AC"],
-            "taskCheckpointSha256": checkpoint_refs["TASK"],
-        }
-    )
-    review_payload = canonical_json_bytes(review_decision)
-    review_sha256 = sha256_bytes(review_payload)
-    files.publish_new(
-        f"{RUNS_ROOT}/{state['runId']}/reviews/decision-{review_sha256}.json",
-        review_payload,
-    )
-    artifact = prepare_artifact(
-        {
-            "runId": state["runId"],
-            "candidate": candidate,
-            "inputRevision": input_revision,
-            "effectivePolicyDecisions": materials["effectivePolicyDecisions"],
-            "scopeClosureCheckpoint": checkpoints["SCOPE_CLOSURE"],
-            "storyAcCheckpoint": checkpoints["STORY_AC"],
-            "taskCheckpoint": checkpoints["TASK"],
-            "reviewDecision": review_decision,
-        },
-        files,
-        template_path=_revision_template_path(files, input_revision_path),
-    )
-    if artifact.get("outcome") != "REQUEST_APPROVAL":
-        return artifact
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "render-only 后 run 消失。")
-    state = _recover_active_run(files, marker)
-    awaiting = _write_active_state(
-        files,
-        marker,
-        {
-            **state,
-            "phase": "AWAITING_APPROVAL",
-            "wait": "APPROVAL",
-            "expectedActionIds": [],
-        },
-    )
-    return {**artifact, "state": dict(awaiting)}
-
-
-def _prepare_delta_compile(
-    files: ProjectFiles,
-    state: Mapping[str, object],
-    input_revision_path: str,
-    input_revision: Mapping[str, object],
-    materials: Mapping[str, object],
+def _budget_policy_source(
+    files: ProjectFiles, source_path: str, *, registry: Registry | None = None
 ) -> Mapping[str, object]:
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "delta run 不存在。")
-    state = _write_active_state(files, marker, {**state, "route": "DELTA_COMPILE"})
-    candidate = deepcopy(materials["candidate"])
-    if not isinstance(candidate, dict):
-        raise ProjectIOError(
-            "GENERATION_PROOF_CLOSURE_INVALID",
-            str(materials.get("generationRoot", "")),
-            "已发布 generation 缺少可复用 sow-model。",
-        )
-    revision_root = Path(input_revision_path).parent.as_posix()
-    request = _mapping(files, f"{revision_root}/request.json")
-    candidate["project"] = model_skeleton(request, input_revision)["project"]
-    if validate_contract(candidate, "sow-model.schema.json", NEXT_SCHEMA_REGISTRY):
-        raise ProjectIOError(
-            "GENERATION_PROOF_CLOSURE_INVALID",
-            str(materials.get("generationRoot", "")),
-            "delta 重绑定后的 sow-model 合同无效。",
-        )
-    _append_candidate_snapshot(files, str(state["runId"]), candidate)
-    marker = _read_active_marker(files)
-    if marker is None:
-        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "delta candidate 后 run 消失。")
-    return _recover_active_run(files, marker)
+    registry = load_schema_registry(SKILL_ROOT) if registry is None else registry
+    source = Path(source_path)
+    value = (
+        ProjectFiles.open(source.parent).read_json(source.name)
+        if source.is_absolute()
+        else files.read_json(source_path)
+    )
+    if not isinstance(value, Mapping) or validate_contract(
+        value, "run-budget-policy.schema.json", registry
+    ):
+        raise ProjectIOError("RUN_BUDGET_POLICY_INVALID", source_path, "运行预算正文无效。")
+    return value
 
 
-def start(project_root: Path, request_path: str) -> dict[str, object]:
+def _published_budget_policy(
+    files: ProjectFiles, run_id: str, digest: str, *, registry: Registry | None = None
+) -> Mapping[str, object]:
+    registry = load_schema_registry(SKILL_ROOT) if registry is None else registry
+    relative = f"{RUNS_ROOT}/{run_id}/budget-policies/{digest}.json"
+    body = _budget_policy_source(files, relative, registry=registry)
+    payload = files.read_bytes(relative)
+    if sha256_bytes(payload) != digest or canonical_json_bytes(body) != payload:
+        raise ProjectIOError("RUN_BUDGET_POLICY_HASH_INVALID", relative, "已发布预算正文 hash 不匹配。")
+    return body
+
+
+def _effective_budget_policy(
+    files: ProjectFiles, run_id: str, *, registry: Registry | None = None
+) -> tuple[str, Mapping[str, object]]:
+    registry = load_schema_registry(SKILL_ROOT) if registry is None else registry
+    selected = None
+    for event in _read_run_events(files, run_id):
+        if event.type == "RUN_BUDGET_POLICY_PUBLISHED":
+            digest = str(event.payload["budgetPolicySha256"])
+            policy = _published_budget_policy(files, run_id, digest, registry=registry)
+            if selected is not None:
+                _validate_budget_replacement(selected[1], policy)
+            selected = digest, policy
+    if selected is None:
+        raise ProjectIOError("RUN_BUDGET_POLICY_MISSING", "", "运行必须先发布显式预算。")
+    return selected
+
+
+def _budget_at_issuance(
+    files: ProjectFiles, run_id: str, action_id: str, *, registry: Registry | None = None
+) -> str:
+    registry = load_schema_registry(SKILL_ROOT) if registry is None else registry
+    _effective_budget_policy(files, run_id, registry=registry)
+    selected = None
+    for event in _read_run_events(files, run_id):
+        if event.type == "RUN_BUDGET_POLICY_PUBLISHED":
+            selected = str(event.payload["budgetPolicySha256"])
+            _published_budget_policy(files, run_id, selected, registry=registry)
+        elif event.type == "ACTION_ISSUED" and event.payload["actionId"] == action_id:
+            if selected is None:
+                raise ProjectIOError("RUN_BUDGET_POLICY_MISSING", "", "Action 发放前没有预算事件。")
+            return selected
+    raise ProjectIOError("ACTION_ISSUANCE_PROOF_INVALID", "", "Action 缺少精确发放事件。")
+
+
+def _validate_budget_replacement(previous: Mapping[str, object], policy: Mapping[str, object]) -> None:
+    variable_keys = {"maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens", "demoLimits"}
+    old_limits = [previous[key] for key in ("maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens")]
+    new_limits = [policy[key] for key in ("maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens")]
+    for key in ("maxDiscoveryRounds", "maxScenarioSteps", "maxScreenshots"):
+        old_limits.append(previous["demoLimits"][key])
+        new_limits.append(policy["demoLimits"][key])
+    if (
+        any(policy[key] != previous[key] for key in policy if key not in variable_keys)
+        or any(new < old for old, new in zip(old_limits, new_limits, strict=True))
+        or not any(new > old for old, new in zip(old_limits, new_limits, strict=True))
+    ):
+        raise ProjectIOError(
+            "RUN_BUDGET_REPLACEMENT_INVALID", "",
+            "同 run 必须严格增加至少一项 token、active time、未来请求的上下文容量或 Demo 限额；已发放 Envelope 和冻结计划保持原绑定。正文相同、降低限额或改变其它配置均拒绝，需要新 run。",
+        )
+
+
+def _publish_budget_policy(
+    files: ProjectFiles, run_id: str, policy: Mapping[str, object]
+) -> str:
+    payload = canonical_json_bytes(policy)
+    digest = sha256_bytes(payload)
+    budget_events = [
+        event for event in _read_run_events(files, run_id)
+        if event.type == "RUN_BUDGET_POLICY_PUBLISHED"
+    ]
+    if budget_events:
+        previous_digest = str(budget_events[-1].payload["budgetPolicySha256"])
+        previous = _published_budget_policy(files, run_id, previous_digest)
+        if previous_digest == digest:
+            return digest
+        _validate_budget_replacement(previous, policy)
+    files.publish_new(f"{RUNS_ROOT}/{run_id}/budget-policies/{digest}.json", payload)
+    _append_run_event(
+        files, run_id, "RUN_BUDGET_POLICY_PUBLISHED", {"budgetPolicySha256": digest}
+    )
+    return digest
+
+
+def start(
+    project_root: Path, request_path: str, budget_policy_path: str
+) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     try:
+        policy = _budget_policy_source(files, budget_policy_path)
         managed_request_path = _managed_request_path(files, request_path)
         request_sha256 = sha256_bytes(files.read_bytes(managed_request_path))
         marker = _read_active_marker(files)
@@ -3059,7 +2047,8 @@ def start(project_root: Path, request_path: str) -> dict[str, object]:
                         ),
                     ),
                 )
-            return _active_result(_recover_active_run(files, marker))
+            recovered = _recover_active_run(files, marker)
+            return _attempt_stop_response(files, recovered) or _active_result(recovered)
 
         run_id = f"run-{uuid4().hex[:12]}"
         revision = prepare_input_revision(managed_request_path, files=files)
@@ -3069,45 +2058,7 @@ def start(project_root: Path, request_path: str) -> dict[str, object]:
                 "输入未通过 Prepare 门禁，未创建 active run。",
                 diagnostics=revision.diagnostics,
             )
-        current = load_current(files)
-        render_only_materials: Mapping[str, object] | None = None
-        route_decision: RouteDecision | None = None
-        if current is not None:
-            current_manifest = _mapping(files, current.manifest_path)
-            render_only_materials = _generation_route_materials(files, current)
-            route_context = _route_context_for_revision(
-                files,
-                str(revision.path),
-                revision.value,
-                render_only_materials,
-            )
-            route_decision = plan_route(
-                route_context,
-                revision.value,
-                render_only_materials["proof"],
-            )
-            if route_decision.route == "REUSE":
-                next_action = {
-                    "contract": "ai-sow-next-action-v1",
-                    "kind": "DONE",
-                    "result": "REUSED",
-                    "generationManifestPath": current.manifest_path,
-                }
-                if validate_contract(
-                    next_action, "action.schema.json", NEXT_SCHEMA_REGISTRY
-                ):
-                    raise ProjectIOError(
-                        "NEXT_ACTION_INVALID",
-                        current.manifest_path,
-                        "精确重放的 DONE action 合同无效。",
-                    )
-                return {
-                    "outcome": "REUSED",
-                    "summary": "输入、模板与已发布 generation 完全一致，直接复用。",
-                    "generationManifestPath": current.manifest_path,
-                    "nextAction": next_action,
-                    "diagnostics": [],
-                }
+        _publish_budget_policy(files, run_id, policy)
         reservation = _active_marker_value(
             run_id=run_id,
             request_path=managed_request_path,
@@ -3137,82 +2088,92 @@ def start(project_root: Path, request_path: str) -> dict[str, object]:
                         ),
                     ),
                 )
-            return _active_result(_recover_active_run(files, marker))
+            recovered = _recover_active_run(files, marker)
+            return _attempt_stop_response(files, recovered) or _active_result(recovered)
         state = _recover_active_run(files, reservation)
-        if (
-            route_decision is not None
-            and route_decision.route == "RENDER_ONLY"
-            and render_only_materials is not None
-        ):
-            return _prepare_render_only(
-                files,
-                state,
-                str(revision.path),
-                revision.value,
-                render_only_materials,
-            )
-        if (
-            route_decision is not None
-            and route_decision.route == "DELTA_COMPILE"
-            and render_only_materials is not None
-        ):
-            state = _prepare_delta_compile(
-                files,
-                state,
-                str(revision.path),
-                revision.value,
-                render_only_materials,
-            )
         return _active_result(state)
     except ProjectIOError as error:
         return _blocked(error.code, str(error), error.relative_path)
 
 
+def _complete_frozen_issuance(files,state):
+    if not state.get('expectedActionIds'): return None
+    ledger=_load_action_ledger(files,state['runId'])
+    envelope=next((item for item in ledger.envelopes_by_sha256.values() if item.value['actionId']==state['expectedActionIds'][0]), None)
+    if envelope is None:
+        return _blocked('ACTION_ISSUANCE_PROOF_INVALID', '预期 Action 缺少有效发放证明。', state['expectedActionIds'][0])
+    stage=envelope.value['stageKind'];group_id=envelope.value['groupId']
+    raw=_one_content(files,_stage_root(state,stage)+'/plans')
+    if raw is None: return None
+    group=next((item for item in json.loads(raw)['groups'] if item['groupId']==group_id),None)
+    if group is None: return None
+    issued={item.value['logicalWorkId'] for item in ledger.envelopes_by_sha256.values()}
+    if set(group['requiredLogicalWorkIds'])<=issued: return None
+    plan,items,contexts,policy,inputs=_frozen_stage_inputs(files,state,stage)
+    return _issue_frozen_group(files,state,plan,items,contexts,group)
+
+
+def _recover_group_before_budget_replacement(files,state):
+    # Complete physical Envelopes with their original policy before publishing a replacement.
+    root=files.ensure_dir(f"{RUNS_ROOT}/{state['runId']}/actions")
+    ledger=_load_action_ledger(files,state['runId'])
+    for path in root.glob('*/envelope.json'):
+        value=json.loads(path.read_bytes())
+        if sha256_bytes(path.read_bytes()) not in ledger.envelopes_by_sha256:
+            _persist_issued_action(files,value,files.read_bytes(value['packetPath']))
+    if state.get('wait')!='INPUT': _complete_frozen_issuance(files,state)
+
+
 def resume(
     project_root: Path,
-    request_path: str | None = None,
+    replacement_budget_policy_path: str | None = None,
+    owner_clarification_path: str | None = None,
 ) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     try:
+        if owner_clarification_path is not None:
+            answer=_mapping(files,_managed_request_path(files,owner_clarification_path))
+            if answer.get('contract')=='ai-sow-owner-repair-authorization-v1':
+                _resume_manual_owner_repair(files,owner_clarification_path)
+                owner_clarification_path=None
+            elif answer.get('contract')=='ai-sow-artifact-repair-authorization-v1':
+                _resume_artifact_repair(files,owner_clarification_path)
+                owner_clarification_path=None
         marker = _read_active_marker(files)
         if marker is None:
-            if request_path is not None:
-                return start(project_root, request_path)
             return _blocked("RUN_NOT_ACTIVE", "当前项目没有 active run。")
-        if request_path is not None:
-            managed_request_path = _managed_request_path(files, request_path)
-            request_sha256 = sha256_bytes(files.read_bytes(managed_request_path))
-            if request_sha256 != marker["requestSha256"]:
-                revision = prepare_input_revision(managed_request_path, files=files)
-                if revision.value is None or revision.sha256 is None:
-                    return _result(
-                        "BLOCKED",
-                        "新输入未通过 Prepare 门禁；现有 run 保持 active。",
-                        diagnostics=revision.diagnostics,
-                    )
-                state = dict(
-                    _recover_active_run(files, marker, verify_request=False)
-                )
-                active = _read_active_marker(files)
-                if active is None or active["runId"] != marker["runId"]:
-                    raise ProjectIOError(
-                        "ACTIVE_RUN_MARKER_MISSING",
-                        ACTIVE_RUN_PATH,
-                        "切换 Input Revision 前 active run 意外缺失。",
-                    )
-                terminal_state = {
-                    **state,
-                    "phase": "DONE",
-                    "wait": "NONE",
-                    "result": "ABANDONED",
-                    "expectedActionIds": [],
-                    "resumeFromPhase": None,
-                }
-                _write_active_state(files, active, terminal_state)
-                active_payload = files.read_bytes(ACTIVE_RUN_PATH)
-                files.unlink_exact(ACTIVE_RUN_PATH, expected_payload=active_payload)
-                return start(project_root, managed_request_path)
-        return _active_result(_recover_active_run(files, marker))
+        _, previous_policy = _effective_budget_policy(files, str(marker["runId"]))
+        if replacement_budget_policy_path is not None:
+            policy = _budget_policy_source(files, replacement_budget_policy_path)
+            _validate_budget_replacement(previous_policy, policy)
+            try:
+                state = _recover_active_run(files, marker)
+            except StagePlanningBlocked as error:
+                state = _read_active_run(files, marker)
+                if error.reason_code != "BUDGET_EXHAUSTED" or state.get("wait") != "INPUT" or state.get("expectedActionIds"):
+                    raise
+                # An unissued retry may exceed the old capacity. Publish the
+                # explicit increase before retrying, retaining every issued byte.
+            if state.get('phase') == 'DONE':
+                return _attempt_stop_response(files, state) or _active_result(state)
+            _recover_group_before_budget_replacement(files, state)
+            digest = _publish_budget_policy(files, str(marker["runId"]), policy)
+            _exit_budget_wait(files, digest)
+            marker = _read_active_marker(files)
+        recovered = _recover_active_run(files, marker)
+        if recovered.get('phase') == 'DONE':
+            return _attempt_stop_response(files, recovered) or _active_result(recovered)
+        if owner_clarification_path is not None:
+            _accept_owner_clarification(files,recovered,owner_clarification_path)
+            recovered = _recover_active_run(files, marker)
+        if replacement_budget_policy_path is None:
+            _resume_fitting_unissued_retry(files,recovered)
+            recovered = _recover_active_run(files, marker)
+            _resume_fitting_unissued_plan(files,recovered)
+            recovered = _recover_active_run(files, marker)
+            _resume_fitting_owner_repair(files,recovered)
+            recovered = _recover_active_run(files, marker)
+        return _attempt_stop_response(files, recovered) or _active_result(recovered)
     except ProjectIOError as error:
         return _blocked(error.code, str(error), error.relative_path)
 
@@ -3302,113 +2263,6 @@ def _existing_nonapproval_decision(
     return matches[0] if matches else None
 
 
-def _prepare_exclusion_delta(
-    files: ProjectFiles,
-    *,
-    artifact_root: str,
-    manifest: Mapping[str, object],
-    decision: Mapping[str, object],
-    decision_sha256: str,
-) -> dict[str, str]:
-    candidate_value = files.read_json(f"{artifact_root}/sow-model.json")
-    policy_value = files.read_json(
-        f"{artifact_root}/effective-policy-decision.json"
-    )
-    if not isinstance(candidate_value, Mapping) or not isinstance(
-        policy_value, Mapping
-    ):
-        raise ProjectIOError(
-            "ARTIFACT_INPUT_INVALID",
-            artifact_root,
-            "artifact model or effective policy decision is invalid",
-        )
-    excluded_ids = sorted(
-        str(value) for value in decision["excludedPolicyInstanceIds"]
-    )
-    policy_instances = {
-        str(item.get("policyInstanceId")): item
-        for item in candidate_value.get("policyInstances", [])
-        if isinstance(item, Mapping)
-        and isinstance(item.get("policyInstanceId"), str)
-    }
-    invalid_ids = [
-        policy_id
-        for policy_id in excluded_ids
-        if policy_id not in policy_instances
-        or policy_instances[policy_id].get("inclusionPolicy")
-        != "DEFAULT_INCLUDED"
-        or policy_value.get(policy_id) != "INCLUDED"
-    ]
-    if invalid_ids:
-        raise ProjectIOError(
-            "POLICY_EXCLUSION_INVALID",
-            artifact_root,
-            "only currently included DEFAULT_INCLUDED policies may be excluded",
-        )
-
-    next_policy = {str(key): value for key, value in policy_value.items()}
-    for policy_id in excluded_ids:
-        next_policy[policy_id] = "EXCLUDED"
-    next_policy = {key: next_policy[key] for key in sorted(next_policy)}
-
-    next_candidate = dict(candidate_value)
-    for collection in (
-        "stories",
-        "acceptanceCriteria",
-        "deliveryAnnotations",
-        "tasks",
-        "dependencies",
-        "effectiveStartMatches",
-        "estimationAnnotations",
-    ):
-        next_candidate[collection] = []
-    prior_decisions = [
-        dict(item)
-        for item in candidate_value.get("decisions", [])
-        if isinstance(item, Mapping)
-    ]
-    next_candidate["decisions"] = [
-        *prior_decisions,
-        {
-            "decisionId": f"decision-excluded-{decision_sha256[:16]}",
-            "kind": "EXCLUDED_BY_USER",
-            "subjectIds": excluded_ids,
-            "decisionSha256": decision_sha256,
-        },
-    ]
-    diagnostics = validate_contract(
-        next_candidate,
-        "sow-model.schema.json",
-        NEXT_SCHEMA_REGISTRY,
-    )
-    if diagnostics:
-        raise ProjectIOError(
-            "POLICY_EXCLUSION_DELTA_INVALID",
-            artifact_root,
-            "excluded policy delta does not satisfy the sow-model contract",
-        )
-
-    revision_root = (
-        f"{RUNS_ROOT}/{manifest['runId']}/revisions/"
-        f"exclusion-{decision_sha256}"
-    )
-    candidate_path = f"{revision_root}/sow-model.json"
-    policy_path = f"{revision_root}/effective-policy-decision.json"
-    decision_path = f"{revision_root}/exclusion-decision.json"
-    candidate_payload = canonical_json_bytes(next_candidate)
-    policy_payload = canonical_json_bytes(next_policy)
-    files.publish_new(candidate_path, candidate_payload)
-    files.publish_new(policy_path, policy_payload)
-    files.publish_new(decision_path, canonical_json_bytes(decision))
-    return {
-        "candidatePath": candidate_path,
-        "candidateSha256": sha256_bytes(candidate_payload),
-        "effectivePolicyDecisionPath": policy_path,
-        "effectivePolicyDecisionSha256": sha256_bytes(policy_payload),
-        "exclusionDecisionPath": decision_path,
-    }
-
-
 def _terminalize_active_run(
     files: ProjectFiles,
     marker: Mapping[str, object],
@@ -3429,6 +2283,8 @@ def _terminalize_active_run(
             ACTIVE_RUN_PATH,
             "终态切换期间 active run 已变化。",
         )
+    if result == "ABANDONED":
+        _close_attempt_input_wait(files, str(state["runId"]))
     terminal_state = _write_active_state(
         files,
         current_marker,
@@ -3450,7 +2306,7 @@ def _active_artifact(
     files: ProjectFiles,
     state: Mapping[str, object],
 ) -> tuple[str, Mapping[str, object], str] | None:
-    if state.get("phase") != "AWAITING_APPROVAL":
+    if state.get("phase") != "AWAITING_FINAL_REVIEW":
         return None
     root_path = f"{RUNS_ROOT}/{state['runId']}/artifacts"
     try:
@@ -3577,7 +2433,7 @@ def approve(
                 raise ProjectIOError(
                     "ARTIFACT_MANIFEST_STALE",
                     existing_path,
-                    "artifact already has a different terminal or exclusion decision",
+                    "artifact already has a different terminal decision",
                 )
         marker = _read_active_marker(files)
         if marker is not None and marker.get("runId") != manifest["runId"]:
@@ -3589,11 +2445,31 @@ def approve(
         active_decision_state: Mapping[str, object] | None = None
         if marker is not None:
             active_decision_state = _recover_active_run(files, marker)
+            if existing_nonapproval is not None:
+                if (
+                    decision["decision"] == "ABANDON"
+                    and active_decision_state.get("phase") == "DONE"
+                    and active_decision_state.get("result") == "ABANDONED"
+                ):
+                    return {
+                        "outcome": "ABANDONED",
+                        "state": dict(active_decision_state),
+                        "decisionPath": existing_nonapproval[0],
+                        "nextAction": None,
+                        "diagnostics": [],
+                    }
+            published_replay = (
+                decision["decision"] == "APPROVE"
+                and active_decision_state.get("phase") == "DONE"
+                and active_decision_state.get("result") == "PUBLISHED"
+                and _optional_json(files, approval_path) == decision
+            )
             if (
-                active_decision_state.get("phase") != "AWAITING_APPROVAL"
-                or active_decision_state.get("currentCandidateSha256")
-                != manifest["candidateSha256"]
-            ):
+                active_decision_state.get("phase") != "AWAITING_FINAL_REVIEW"
+                and not published_replay
+            ) or active_decision_state.get("currentCandidateSha256") != manifest[
+                "candidateSha256"
+            ]:
                 raise ProjectIOError(
                     "ARTIFACT_MANIFEST_STALE",
                     manifest_path,
@@ -3604,7 +2480,7 @@ def approve(
                 raise ProjectIOError(
                     "ARTIFACT_MANIFEST_STALE",
                     existing_nonapproval[0],
-                    "excluded or abandoned artifact cannot be approved",
+                    "abandoned artifact cannot be approved",
                 )
             files.publish_new(approval_path, decision_payload)
             publication = promote(
@@ -3641,67 +2517,6 @@ def approve(
             return result
         decision_sha256 = sha256_bytes(decision_payload)
         run_root = f"{RUNS_ROOT}/{manifest['runId']}"
-        if decision["decision"] == "EXCLUDE_DEFAULT_AUTOMATION":
-            record_path = (
-                f"{run_root}/decisions/exclusion-{decision_sha256}.json"
-            )
-            delta = _prepare_exclusion_delta(
-                files,
-                artifact_root=artifact_root,
-                manifest=manifest,
-                decision=decision,
-                decision_sha256=decision_sha256,
-            )
-            files.publish_new(record_path, decision_payload)
-            if marker is not None:
-                suffix_steps = {
-                    "STORY_AC",
-                    "TASK",
-                    "STORY_DESIGN",
-                    "STORY_DESIGN_THEME_JOIN",
-                    "TASK_ESTIMATION",
-                    "TASK_ESTIMATION_THEME_JOIN",
-                    "ADJUDICATION",
-                }
-                invalidated_group_ids = [
-                    str(plan["groupId"])
-                    for plan in _pipeline_plans(files, str(manifest["runId"]))
-                    if plan.get("pipelineStep") in suffix_steps
-                ]
-                transition = {
-                    "contract": "ai-sow-exclusion-transition-v1",
-                    "runId": manifest["runId"],
-                    "decisionSha256": decision_sha256,
-                    "artifactManifestSha256": artifact_manifest_sha256,
-                    "baseCandidateSha256": manifest["candidateSha256"],
-                    "candidatePath": delta["candidatePath"],
-                    "candidateSha256": delta["candidateSha256"],
-                    "invalidatedGroupIds": invalidated_group_ids,
-                }
-                files.publish_new(
-                    f"{run_root}/invalidations/exclusion-{decision_sha256}.json",
-                    canonical_json_bytes(transition),
-                )
-                current_marker = _read_active_marker(files)
-                if current_marker is None:
-                    raise ProjectIOError(
-                        "RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "排除迁移期间 run 消失。"
-                    )
-                transitioned = _recover_active_run(files, current_marker)
-                return _drive_public_active(
-                    project_root,
-                    _active_result(transitioned),
-                )
-            return {
-                "outcome": "READY_FOR_STORY_AC",
-                "nextPhase": "STORY_AC",
-                "invalidated": ["STORY_AC", "TASK", "REVIEW", "ARTIFACT"],
-                "decisionPath": record_path,
-                **delta,
-                "lowestRecoveryStage": "STAGE_2",
-                "nextAction": None,
-                "diagnostics": [],
-            }
         record_path = f"{run_root}/decisions/abandon-{decision_sha256}.json"
         files.publish_new(record_path, decision_payload)
         result: dict[str, object] = {
@@ -3726,6 +2541,8 @@ def abandon(project_root: Path) -> dict[str, object]:
         if marker is None:
             return _blocked("RUN_NOT_ACTIVE", "当前项目没有 active run。")
         state = dict(_recover_active_run(files, marker))
+        if state.get("phase") == "DONE" and state.get("result") == "ABANDONED":
+            return {"outcome": "ABANDONED", "state": state, "diagnostics": []}
         active_artifact = _active_artifact(files, state)
         decision_path: str | None = None
         if active_artifact is not None:
@@ -3849,19 +2666,19 @@ def _action_paths(run_id: str, action_id: str) -> dict[str, str]:
         "root": root,
         "envelope": f"{root}/envelope.json",
         "packet": f"{root}/packet.json",
-        "progress": f"{root}/progress.json",
+        "normalized": f"{root}/normalized-result.json",
+        "raw": f"{root}/raw-output.bin",
+        "hydrations": f"{root}/hydrations",
         "output": f"{root}/submission.json",
         "record": f"{root}/record.json",
-        "issued": f"{root}/issued.json",
-        "retry": f"{root}/retry.json",
     }
 
 
-def _estimate_tokens(payload: bytes) -> int:
-    return (len(payload) + 3) // 4
-
-
 def _phase_for_action_stage(stage: object) -> str:
+    if stage == "SCOPE":
+        return "EPIC_FEATURE"
+    if stage == "ARTIFACT":
+        return "DRAFT"
     if stage in {"EPIC_FEATURE", "STORY_AC", "TASK", "REPAIR"}:
         return str(stage)
     if stage in {
@@ -3876,402 +2693,745 @@ def _phase_for_action_stage(stage: object) -> str:
     raise ProjectIOError("ACTION_STAGE_INVALID", str(stage), "action stage 不受支持。")
 
 
-def _persist_issued_action(
-    files: ProjectFiles,
-    envelope: Mapping[str, object],
-    packet_payload: bytes,
-) -> None:
-    run_id = str(envelope["runId"])
-    action_id = str(envelope["actionId"])
-    paths = _action_paths(run_id, action_id)
-    envelope_payload = canonical_json_bytes(envelope)
-    envelope_diagnostics = validate_contract(
-        envelope, "action.schema.json", NEXT_SCHEMA_REGISTRY
-    )
-    if envelope_diagnostics:
-        raise ProjectIOError(
-            "ACTION_ENVELOPE_INVALID",
-            paths["envelope"],
-            "action envelope 合同无效。",
-        )
-    packet_sha256 = sha256_bytes(packet_payload)
-    if envelope["packetSha256"] != packet_sha256:
-        raise ProjectIOError(
-            "ACTION_PACKET_HASH_MISMATCH",
-            paths["packet"],
-            "action packet hash 与 envelope 不一致。",
-        )
-    issued = {
-        "runId": run_id,
-        "actionId": action_id,
-        "logicalShardId": envelope["logicalShardId"],
-        "groupId": envelope["group"]["groupId"],
-        "envelopeSha256": sha256_bytes(envelope_payload),
-        "packetSha256": packet_sha256,
-        "inputRevisionSha256": envelope["inputRevisionSha256"],
-        "baseCandidateSha256": envelope["baseCandidateSha256"],
-        "resultPath": envelope["outputPath"],
-    }
-    progress = {
-        "runId": run_id,
-        "actionId": action_id,
-        "envelopeSha256": issued["envelopeSha256"],
-        "executionAttempt": envelope["executionAttempt"],
-        "hydrationLog": [],
-        "executionFacts": None,
-    }
-    files.publish_new(paths["packet"], packet_payload)
-    files.publish_new(paths["envelope"], envelope_payload)
-    files.publish_new(paths["issued"], canonical_json_bytes(issued))
-    files.publish_new(paths["progress"], canonical_json_bytes(progress))
-
-
-def _skill_file_binding(relative_path: object) -> dict[str, str]:
-    if not isinstance(relative_path, str):
-        raise ProjectIOError(
-            "ACTION_INSTRUCTION_PATH_INVALID", str(relative_path), "instruction path 必须是字符串。"
-        )
-    skill_files = ProjectFiles.open(SKILL_ROOT)
-    payload = skill_files.read_bytes(relative_path)
-    return {"path": relative_path, "sha256": sha256_bytes(payload)}
-
-
-def _instruction_manifest(spec: Mapping[str, object]) -> dict[str, object]:
-    reference_paths = spec.get("referencePaths")
-    if not isinstance(reference_paths, list) or not all(
-        isinstance(item, str) for item in reference_paths
-    ):
-        raise ProjectIOError(
-            "ACTION_INSTRUCTION_PATH_INVALID", "", "referencePaths 必须是字符串数组。"
-        )
-    if len(set(reference_paths)) != len(reference_paths):
-        raise ProjectIOError(
-            "ACTION_INSTRUCTION_PATH_INVALID", "", "referencePaths 不得重复。"
-        )
-    return {
-        "executionEnvelope": _skill_file_binding(
-            "prompts/fragments/execution-envelope.md"
-        ),
-        "prompt": _skill_file_binding(spec.get("promptPath")),
-        "references": [_skill_file_binding(path) for path in reference_paths],
-    }
-
-
-def _verify_instruction_manifest(envelope: Mapping[str, object]) -> bool:
-    manifest = envelope.get("instructionManifest")
-    if not isinstance(manifest, Mapping):
-        return False
+def _read_run_events(files: ProjectFiles, run_id: str) -> list[RunEvent]:
+    root = f"{RUNS_ROOT}/{run_id}/events"
     try:
-        expected = {
-            "executionEnvelope": _skill_file_binding(
-                "prompts/fragments/execution-envelope.md"
-            ),
-            "prompt": _skill_file_binding(envelope.get("promptPath")),
-            "references": [
-                _skill_file_binding(path)
-                for path in envelope.get("referencePaths", [])
-            ],
-        }
-    except (ProjectIOError, TypeError):
-        return False
-    return manifest == expected
-
-
-def _envelope_for_spec(
-    *,
-    run_id: str,
-    action_id: str,
-    input_revision_sha256: str,
-    base_candidate_sha256: str,
-    group: Mapping[str, object],
-    spec: Mapping[str, object],
-    packet_sha256: str,
-    execution_attempt: int,
-) -> dict[str, object]:
-    paths = _action_paths(run_id, action_id)
-    return {
-        "contract": "ai-sow-action-envelope-v1",
-        "runId": run_id,
-        "actionId": action_id,
-        "logicalShardId": spec["logicalShardId"],
-        "kind": "MODEL_ACTION",
-        "stage": spec["stage"],
-        "role": spec["role"],
-        "executionAttempt": execution_attempt,
-        "group": dict(group),
-        "inputRevisionSha256": input_revision_sha256,
-        "baseCandidateSha256": base_candidate_sha256,
-        "promptId": spec["promptId"],
-        "promptPath": spec["promptPath"],
-        "packetPath": paths["packet"],
-        "packetSha256": packet_sha256,
-        "outputPath": paths["output"],
-        "recordPath": paths["record"],
-        "resultSchema": "contracts/action.schema.json",
-        "resultPayloadSchema": spec["resultPayloadSchema"],
-        "referencePaths": list(spec["referencePaths"]),
-        "instructionManifest": _instruction_manifest(spec),
-        "evidenceAllowlist": [
-            {
-                "evidenceId": item["evidenceId"],
-                "sha256": item["sha256"],
-                "locator": item["locator"],
-            }
-            for item in spec["evidenceCatalog"]
-        ],
-        "executionPolicy": {
-            "contextPolicy": "FRESH_NO_HISTORY",
-            "inheritConversation": False,
-            "contextReuseScope": "WITHIN_ACTION_TOOL_LOOP_ONLY",
-            "modelProfileId": spec["modelProfileId"],
-            "modelConfigSha256": spec["modelConfigSha256"],
-            "tokenAccountingRequirement": "LOCAL_ESTIMATE_MINIMUM",
-            "maxOutputTokens": spec["maxOutputTokens"],
-            "maxHydrationRounds": 2,
-        },
-        "hydrateOperation": {"name": "hydrate", "actionId": action_id},
-        "submitOperation": {
-            "name": "submit",
-            "actionId": action_id,
-            "resultPath": paths["output"],
-        },
-    }
-
-
-def _validated_action_spec(spec: Mapping[str, object]) -> tuple[dict[str, object], bytes]:
-    required = {
-        "logicalShardId",
-        "stage",
-        "role",
-        "promptId",
-        "promptPath",
-        "resultPayloadSchema",
-        "referencePaths",
-        "evidenceCatalog",
-        "packet",
-        "modelProfileId",
-        "modelConfigSha256",
-        "maxOutputTokens",
-    }
-    if set(spec) != required:
-        raise ProjectIOError(
-            "ACTION_SPEC_INVALID", "", "action spec 字段集合与冻结接口不一致。"
-        )
-    catalog = spec["evidenceCatalog"]
-    if not isinstance(catalog, list):
-        raise ProjectIOError(
-            "ACTION_SPEC_INVALID", "", "evidenceCatalog 必须是数组。"
-        )
-    evidence_ids: set[str] = set()
-    normalized_catalog: list[dict[str, object]] = []
-    for item in catalog:
-        if not isinstance(item, Mapping) or set(item) != {
-            "evidenceId",
-            "locator",
-            "content",
-            "sha256",
-        }:
+        directory = files.resolve(root, expect="dir")
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            return []
+        raise
+    events = []
+    for path in sorted(directory.glob("*.json")):
+        value = _mapping(files, f"{root}/{path.name}")
+        if value.get("runId") != run_id:
             raise ProjectIOError(
-                "ACTION_SPEC_INVALID", "", "evidenceCatalog item 结构无效。"
+                "ACTION_ISSUANCE_PROOF_INVALID", f"{root}/{path.name}",
+                "运行事件不属于当前 run，不能授权发放或恢复。",
             )
-        evidence_id = item.get("evidenceId")
-        content = item.get("content")
-        if (
-            not isinstance(evidence_id, str)
-            or evidence_id in evidence_ids
-            or not isinstance(content, str)
-            or item.get("sha256") != sha256_bytes(content.encode("utf-8"))
-        ):
-            raise ProjectIOError(
-                "ACTION_EVIDENCE_INVALID", "", "evidence 内容、ID 或 hash 无效。"
+        events.append(
+            RunEvent(
+                value["runId"],
+                value["sequence"],
+                value["type"],
+                value["occurredAtUtc"],
+                value["payload"],
             )
-        evidence_ids.add(evidence_id)
-        normalized_catalog.append(dict(item))
-    packet = {
-        "logicalShardId": spec["logicalShardId"],
-        "payload": spec["packet"],
-        "evidenceCatalog": normalized_catalog,
-    }
-    return dict(spec), canonical_json_bytes(packet)
+        )
+    validate_run_event_log(events)
+    return events
 
 
-def _issue_action_group(
-    files: ProjectFiles,
-    run_id: str,
-    specs: Sequence[Mapping[str, object]],
-    *,
-    max_concurrency: int,
-    group_deadline_milliseconds: int,
-    shard_deadline_milliseconds: int,
-    pipeline_step: str | None = None,
-) -> dict[str, object]:
-    marker = _read_active_marker(files)
-    if marker is None or marker["runId"] != run_id:
-        raise ProjectIOError(
-            "RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "action 只能发给当前 active run。"
-        )
-    state = dict(_recover_active_run(files, marker))
-    if (
-        state.get("result") is not None
-        or state.get("wait") != "NONE"
-        or state.get("expectedActionIds")
-    ):
-        raise ProjectIOError(
-            "RUN_NOT_READY_FOR_ACTION",
-            str(marker["statePath"]),
-            "run 当前不能发放新的模型 action。",
-        )
-    base_candidate_sha256 = state.get("currentCandidateSha256")
-    if not isinstance(base_candidate_sha256, str):
-        raise ProjectIOError(
-            "RUN_CANDIDATE_REQUIRED",
-            str(marker["statePath"]),
-            "发放模型 action 前必须先有基础 candidate。",
-        )
-    if not specs or len(specs) > 8:
-        raise ProjectIOError("ACTION_GROUP_INVALID", "", "action group 大小必须为 1 到 8。")
-    if (
-        not isinstance(max_concurrency, int)
-        or isinstance(max_concurrency, bool)
-        or max_concurrency < 1
-        or max_concurrency > len(specs)
-    ):
-        raise ProjectIOError(
-            "ACTION_GROUP_INVALID", "", "maxConcurrency 超出 action group 边界。"
-        )
-    if group_deadline_milliseconds < 1 or shard_deadline_milliseconds < 1:
-        raise ProjectIOError("ACTION_GROUP_INVALID", "", "action deadline 必须为正数。")
-
-    prepared = [_validated_action_spec(spec) for spec in specs]
-    logical_shard_ids = [str(spec["logicalShardId"]) for spec, _ in prepared]
-    if len(set(logical_shard_ids)) != len(logical_shard_ids):
-        raise ProjectIOError(
-            "ACTION_GROUP_INVALID", "", "logical shard ID 在 group 内必须唯一。"
-        )
-    stage = prepared[0][0]["stage"]
-    if any(spec["stage"] != stage for spec, _ in prepared):
-        raise ProjectIOError(
-            "ACTION_GROUP_INVALID", "", "同一 action group 必须属于同一 stage。"
-        )
-    group_id = f"group-{uuid4().hex[:12]}"
-    group = {
-        "groupId": group_id,
-        "requiredLogicalShardIds": logical_shard_ids,
-        "maxConcurrency": max_concurrency,
-        "groupDeadlineMilliseconds": group_deadline_milliseconds,
-        "shardDeadlineMilliseconds": shard_deadline_milliseconds,
-    }
-    envelopes: list[dict[str, object]] = []
-    for spec, packet_payload in prepared:
-        action_id = f"action-{uuid4().hex[:12]}"
-        envelope = _envelope_for_spec(
-            run_id=run_id,
-            action_id=action_id,
-            input_revision_sha256=str(state["currentInputRevisionSha256"]),
-            base_candidate_sha256=base_candidate_sha256,
-            group=group,
-            spec=spec,
-            packet_sha256=sha256_bytes(packet_payload),
-            execution_attempt=1,
-        )
-        _persist_issued_action(files, envelope, packet_payload)
-        envelopes.append(envelope)
-
-    if pipeline_step is not None:
-        plan = {
-            "contract": "ai-sow-pipeline-action-plan-v1",
-            "pipelineStep": pipeline_step,
-            "sequence": int(state["budget"]["modelActionsStarted"]),
-            "groupId": group_id,
-            "baseCandidateSha256": base_candidate_sha256,
-            "actionIds": [item["actionId"] for item in envelopes],
-            "logicalShardIds": logical_shard_ids,
-        }
-        files.publish_new(
-            f"{RUNS_ROOT}/{run_id}/groups/{group_id}/plan.json",
-            canonical_json_bytes(plan),
-        )
-
-    state.update(
-        {
-            "phase": _phase_for_action_stage(stage),
-            "wait": "MODEL",
-            "expectedActionIds": [item["actionId"] for item in envelopes],
-        }
+def _append_run_event(
+    files: ProjectFiles, run_id: str, event_type: str, payload: Mapping[str, object]
+) -> None:
+    events = _read_run_events(files, run_id)
+    event = RunEvent(
+        run_id,
+        len(events) + 1,
+        event_type,
+        datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        payload,
     )
-    budget = dict(state["budget"])
-    budget["modelActionsStarted"] = int(budget["modelActionsStarted"]) + len(envelopes)
-    state["budget"] = budget
+    validate_run_event_log([*events, event])
+    files.publish_new(
+        f"{RUNS_ROOT}/{run_id}/events/{event.sequence:06d}.json",
+        canonical_json_bytes(run_event_value(event)),
+    )
+
+
+def _enter_attempt_input_wait(
+    files: ProjectFiles, state: Mapping[str, object], record: Mapping[str, object]
+) -> None:
+    run_id = str(state["runId"])
+    wait_id = "wait-" + sha256_bytes(canonical_json_bytes(record))
+    events = _read_run_events(files, run_id)
+    if any(
+        event.type == "WAITING_INPUT_ENTERED" and event.payload["waitId"] == wait_id
+        for event in events
+    ):
+        return
+    latest_state = next(
+        (
+            event.payload["toState"]
+            for event in reversed(events)
+            if event.type == "RUN_STATE_CHANGED"
+        ),
+        None,
+    )
+    if latest_state != "WAITING_INPUT":
+        _append_run_event(
+            files,
+            run_id,
+            "RUN_STATE_CHANGED",
+            {"fromState": state["phase"], "toState": "WAITING_INPUT"},
+        )
+    _append_run_event(
+        files,
+        run_id,
+        "WAITING_INPUT_ENTERED",
+        {"waitId": wait_id, "reasonCode": record["diagnostic"]["code"]},
+    )
+
+
+def _close_attempt_input_wait(files: ProjectFiles, run_id: str) -> None:
+    events = _read_run_events(files, run_id)
+    exited = {
+        event.payload["waitId"]
+        for event in events
+        if event.type == "WAITING_INPUT_EXITED"
+    }
+    open_waits = [
+        event.payload["waitId"]
+        for event in events
+        if event.type == "WAITING_INPUT_ENTERED"
+        and event.payload["waitId"] not in exited
+    ]
+    if open_waits:
+        _append_run_event(
+            files,
+            run_id,
+            "WAITING_INPUT_EXITED",
+            {"waitId": open_waits[0], "resolutionKind": "ABANDONED"},
+        )
+        _append_run_event(
+            files,
+            run_id,
+            "RUN_STATE_CHANGED",
+            {"fromState": "WAITING_INPUT", "toState": "ABANDONED"},
+        )
+
+
+def _wait_for_budget(files: ProjectFiles) -> dict[str, object]:
     marker = _read_active_marker(files)
     if marker is None:
-        raise ProjectIOError(
-            "ACTIVE_RUN_MARKER_MISSING", ACTIVE_RUN_PATH, "active run marker 意外缺失。"
-        )
-    _write_active_state(files, marker, state)
-    if len(envelopes) == 1:
-        return envelopes[0]
-    result = {
-        "contract": "ai-sow-next-action-v1",
-        "kind": "MODEL_ACTION_GROUP",
-        "groupId": group_id,
-        "maxConcurrency": max_concurrency,
-        "groupDeadlineMilliseconds": group_deadline_milliseconds,
-        "actions": envelopes,
-    }
-    if validate_contract(result, "action.schema.json", NEXT_SCHEMA_REGISTRY):
-        raise ProjectIOError(
-            "ACTION_GROUP_INVALID", "", "生成的 action group 合同无效。"
-        )
-    return result
+        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "预算等待缺少active run。")
+    state = _read_active_run(files, marker)
+    stopped = _attempt_stop_response(files, state)
+    if stopped is not None:
+        return stopped
+    run_id = str(state["runId"])
+    events = _read_run_events(files, run_id)
+    wait_id = "wait-budget-" + sha256_bytes(canonical_json_bytes({"runId": run_id, "sequence": len(events) + 1}))
+    _append_run_event(files, run_id, "RUN_STATE_CHANGED", {"fromState": state["phase"], "toState": "WAITING_INPUT"})
+    _append_run_event(files, run_id, "WAITING_INPUT_ENTERED", {"waitId": wait_id, "reasonCode": "BUDGET_EXHAUSTED"})
+    waiting = _write_active_state(files, marker, {
+        **state, "wait": "INPUT", "expectedActionIds": [], "resumeFromPhase": state["phase"],
+    })
+    return _attempt_stop_response(files, waiting)
 
 
-def _load_action_bundle(
-    files: ProjectFiles,
-    action_id: str,
-) -> tuple[
-    Mapping[str, object],
-    Mapping[str, object],
-    Mapping[str, object],
-    Mapping[str, object],
-    Mapping[str, object],
-]:
+def _resume_fitting_unissued_retry(files,state):
+    if state.get('wait')!='INPUT' or state.get('result') is not None: return
+    events=_read_run_events(files,state['runId'])
+    closed={event.payload['waitId'] for event in events if event.type=='WAITING_INPUT_EXITED'}
+    waiting=next((event for event in reversed(events) if event.type=='WAITING_INPUT_ENTERED'
+        and event.payload['reasonCode']=='BUDGET_EXHAUSTED' and event.payload['waitId'] not in closed),None)
+    if waiting is None: return
+    ledger=_load_action_ledger(files,state['runId'])
+    earlier={event.payload['actionId'] for event in events if event.type=='ACTION_ISSUED' and event.sequence<waiting.sequence}
+    for digest,record in ledger.attempt_records.items():
+        original=ledger.envelopes_by_sha256[record.envelope_sha256].value
+        if (record.outcome!='FAILED' or record.failure_kind not in {'INVALID_JSON','INVALID_IR'}
+                or record.revision!=1 or original['actionId'] not in earlier): continue
+        later=[env for env in ledger.envelopes_by_sha256.values() if env.value['logicalWorkId']==record.logical_work_id
+            and (env.value['revision'],env.value['attempt'])>(record.revision,record.attempt)]
+        if any(env.value['actionId'] in earlier or any(item.envelope_sha256==env.sha256
+                for item in ledger.attempt_records.values()) for env in later): continue
+        retry=_materialize_action_retry(files,original['actionId'],original,attempt_record_value(record))
+        _append_run_event(files,state['runId'],'WAITING_INPUT_EXITED',{
+            'waitId':waiting.payload['waitId'],'resolutionKind':'FITTING_UNISSUED_RETRY',
+            'actionId':retry['actionId'],'envelopeSha256':sha256_bytes(canonical_json_bytes(retry)),
+            'failedAttemptRecordSha256':digest})
+        return
+
+
+def _resume_fitting_unissued_plan(files, state):
+    from stage_planner import next_issuable_group
+    if state.get('wait')!='INPUT' or state.get('result') is not None: return
+    stage={'PREPARE':'SCOPE','EPIC_FEATURE':'SCOPE','SCOPE':'SCOPE','STORY_AC':'STORY_AC','TASK':'TASK'}.get(state['phase'])
+    if stage is None: return
+    events=_read_run_events(files,state['runId'])
+    closed={event.payload['waitId'] for event in events if event.type=='WAITING_INPUT_EXITED'}
+    waiting=next((event for event in reversed(events) if event.type=='WAITING_INPUT_ENTERED'
+        and event.payload['reasonCode']=='BUDGET_EXHAUSTED' and event.payload['waitId'] not in closed),None)
+    if waiting is None: return
+    earlier={event.payload['actionId'] for event in events if event.type=='ACTION_ISSUED' and event.sequence<waiting.sequence}
+    ledger=_load_action_ledger(files,state['runId'])
+    if any(env.value['actionId'] in earlier and env.value['stageKind']==stage
+           and not env.value['actionContractId'].startswith('PROTOTYPE_')
+           for env in ledger.envelopes_by_sha256.values()): return
+    if _one_content(files,_stage_root(state,stage)+'/checkpoints') is not None: return
+    plan,items,contexts,policy,inputs=_frozen_stage_inputs(files,state,stage)
+    group=next_issuable_group(plan,ledger)
+    if group is None: return
+    # Guard and publish this exact first group before recording recovery. Any
+    # interrupted issuance is reconstructed from the same immutable plan.
+    _issue_frozen_group(files,state,plan,items,contexts,group)
+    _append_run_event(files,state['runId'],'WAITING_INPUT_EXITED',{
+        'waitId':waiting.payload['waitId'],'resolutionKind':'FITTING_UNISSUED_PLAN',
+        'stageKind':stage,'stagePlanSha256':sha256_bytes(canonical_json_bytes(plan)),
+        'groupId':group['groupId']})
+
+
+def _resume_fitting_owner_repair(files, state):
+    from final_review import control_identity
+    if state.get('wait') != 'INPUT' or state.get('result') is not None or state['phase'] not in {'SCOPE','STORY_AC','TASK'}: return
+    events = _read_run_events(files,state['runId'])
+    closed = {event.payload['waitId'] for event in events if event.type=='WAITING_INPUT_EXITED'}
+    waiting = next((event for event in reversed(events) if event.type=='WAITING_INPUT_ENTERED'
+        and event.payload['reasonCode']=='BUDGET_EXHAUSTED' and event.payload['waitId'] not in closed),None)
+    if waiting is None or not state.get('currentCandidateSha256'): return
+    stage=state['phase']
+    _,_,review=_control_bundle(files,state,stage,'REVIEW',state['currentCandidateSha256'])
+    if review is None or review['result']['decision']!='REPAIRABLE_SEMANTIC': return
+    ledger=_load_action_ledger(files,state['runId'])
+    earlier={event.payload['actionId'] for event in events if event.type=='ACTION_ISSUED' and event.sequence<waiting.sequence}
+    if any(env.value['actionId'] in earlier and env.value['stageKind']==stage
+           and env.value['actionContractId'].endswith('_REPAIR-v1') for env in ledger.envelopes_by_sha256.values()): return
+    plan,items,contexts,planning,inputs=_frozen_stage_inputs(files,state,stage)
+    packet,decisions=_stage_ir(files,state,stage,plan,items,contexts,planning,inputs)
+    raw=canonical_json_bytes(_owner_repair_packet(stage,packet,decisions,review['result'],inputs))
+    contract_id=stage+'_REPAIR-v1';_,digest=action_contract_binding(SKILL_ROOT,contract_id)
+    logical,group=control_identity(stage,'REPAIR',review['record'].normalized_result_sha256,digest)
+    envelope=_envelope_for_work(files,state,stage,group,logical,contract_id,raw)
+    prepared=ActionEnvelope(envelope,_action_paths(state['runId'],envelope['actionId'])['envelope'],sha256_bytes(canonical_json_bytes(envelope)))
+    _guard_action_budget(ledger,events,_effective_budget_policy(files,state['runId'])[1],[prepared])
+    # Publishing the guarded Action before closing the wait makes interrupted
+    # recovery use the exact existing Envelope, with no new budget or retry.
+    _persist_issued_action(files,envelope,raw)
+    _append_run_event(files,state['runId'],'WAITING_INPUT_EXITED',{
+        'waitId':waiting.payload['waitId'],'resolutionKind':'FITTING_UNISSUED_REPAIR',
+        'actionId':envelope['actionId'],'envelopeSha256':prepared.sha256})
+
+
+def _exit_budget_wait(files: ProjectFiles, policy_sha256: str) -> None:
+    marker = _read_active_marker(files)
+    if marker is None:
+        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "预算恢复缺少active run。")
+    state = _read_active_run(files, marker)
+    reconciled = _reconcile_budget_wait(files, state)
+    if reconciled != state:
+        _write_active_state(files, marker, reconciled)
+
+
+def _reconcile_budget_wait(
+    files: ProjectFiles, state: Mapping[str, object]
+) -> dict[str, object]:
+    """Finish only budget-wait transitions already authorized by run events."""
+    run_id = str(state["runId"])
+    events = _read_run_events(files, run_id)
+    entered = next((event for event in reversed(events) if event.type == "WAITING_INPUT_ENTERED"), None)
+    if entered is None or entered.payload["reasonCode"] != "BUDGET_EXHAUSTED" or state.get("result") is not None:
+        return dict(state)
+    exited = next((event for event in events if event.type == "WAITING_INPUT_EXITED" and event.payload["waitId"] == entered.payload["waitId"]), None)
+    replacement = next((event for event in reversed(events) if event.type == "RUN_BUDGET_POLICY_PUBLISHED" and event.sequence > entered.sequence), None)
+    if exited is None and replacement is None:
+        return {**state, "wait": "INPUT", "expectedActionIds": [], "resumeFromPhase": state["phase"]}
+    if exited is None:
+        _append_run_event(files, run_id, "WAITING_INPUT_EXITED", {
+            "waitId": entered.payload["waitId"], "resolutionKind": "BUDGET_POLICY", "budgetPolicySha256": replacement.payload["budgetPolicySha256"],
+        })
+    elif exited.payload["resolutionKind"] == "FITTING_UNISSUED_REPAIR":
+        issuance = next((event for event in events if event.type=='ACTION_ISSUED'
+            and event.payload['actionId']==exited.payload['actionId']
+            and event.payload['envelopeSha256']==exited.payload['envelopeSha256']
+            and entered.sequence < event.sequence < exited.sequence),None)
+        if issuance is None: raise ValueError('容量恢复缺少等待期间实际发行的 Repair 证明。')
+        action=_mapping(files,_action_paths(run_id,exited.payload['actionId'])['envelope'])
+        if not action['actionContractId'].endswith('_REPAIR-v1'):
+            raise ValueError('容量恢复只能复用尚未发行的 Owner Repair。')
+    elif exited.payload["resolutionKind"] == "FITTING_UNISSUED_RETRY":
+        ledger=_load_action_ledger(files,run_id)
+        record=ledger.attempt_records.get(exited.payload['failedAttemptRecordSha256'])
+        issuance=next((event for event in events if event.type=='ACTION_ISSUED'
+            and event.payload['actionId']==exited.payload['actionId']
+            and event.payload['envelopeSha256']==exited.payload['envelopeSha256']
+            and entered.sequence<event.sequence<exited.sequence),None)
+        if record is None or issuance is None or record.outcome!='FAILED' or record.failure_kind not in {'INVALID_JSON','INVALID_IR'}:
+            raise ValueError('IR 修复容量恢复缺少原失败或等待期间的发行证明。')
+        original=ledger.envelopes_by_sha256[record.envelope_sha256].value
+        retry=_mapping(files,_action_paths(run_id,exited.payload['actionId'])['envelope'])
+        if (retry['logicalWorkId']!=record.logical_work_id or retry['revision']!=record.revision+1 or retry['attempt']!=1
+                or retry['actionContractSha256']!=original['actionContractSha256']
+                or sha256_bytes(canonical_json_bytes(retry))!=exited.payload['envelopeSha256']):
+            raise ValueError('IR 修复容量恢复改变了逻辑工作、合同或累计 revision。')
+        packet=_mapping(files,retry['packetPath'])
+        prior=_mapping(files,original['packetPath'])
+        ref=build_attempt_repair_context(record.logical_work_id,exited.payload['failedAttemptRecordSha256'],
+            ledger.attempt_records,ledger.raw_outputs,envelopes_by_sha256=ledger.envelopes_by_sha256)
+        prior['contextRefs'].append({'refId':ref.ref_id,'canonicalContent':json.loads(ref.canonical_content),'contentSha256':sha256_bytes(ref.canonical_content)})
+        if packet!=prior: raise ValueError('IR 修复容量恢复不得改变原 packet 或丢失失败输出。')
+    elif exited.payload["resolutionKind"] == "FITTING_UNISSUED_PLAN":
+        stage=exited.payload['stageKind']
+        raw=_one_content(files,_stage_root(state,stage)+'/plans')
+        if raw is None or sha256_bytes(raw)!=exited.payload['stagePlanSha256']:
+            raise ValueError('规划容量恢复缺少精确冻结计划。')
+        plan=json.loads(raw)
+        groups=[group for group in plan['groups'] if group['groupId']==exited.payload['groupId']]
+        if plan['stageKind']!=stage or len(groups)!=1:
+            raise ValueError('规划容量恢复未绑定该阶段工作组。')
+        issued=[event for event in events if event.type=='ACTION_ISSUED' and entered.sequence<event.sequence<exited.sequence]
+        actual=[]
+        for event in issued:
+            envelope=_mapping(files,_action_paths(run_id,event.payload['actionId'])['envelope'])
+            if sha256_bytes(canonical_json_bytes(envelope))!=event.payload['envelopeSha256']:
+                raise ValueError('规划容量恢复发行摘要漂移。')
+            if envelope['stageKind']==stage and envelope['groupId']==groups[0]['groupId']:
+                actual.append(envelope['logicalWorkId'])
+        if sorted(actual)!=sorted(groups[0]['requiredLogicalWorkIds']):
+            raise ValueError('规划容量恢复缺少等待期间实际发行的完整组。')
+    elif exited.payload["resolutionKind"] != "BUDGET_POLICY":
+        return dict(state)
+    latest_state = next((event for event in reversed(events) if event.type == "RUN_STATE_CHANGED"), None)
+    if latest_state is not None and latest_state.payload["toState"] == "WAITING_INPUT":
+        _append_run_event(files, run_id, "RUN_STATE_CHANGED", {"fromState": "WAITING_INPUT", "toState": state["phase"]})
+    if state.get("wait") == "INPUT":
+        return {**state, "wait": "NONE", "resumeFromPhase": None}
+    return dict(state)
+
+
+def _issued_action_events(files: ProjectFiles, run_id: str) -> dict[str, RunEvent]:
+    issued: dict[str, RunEvent] = {}
+    hashes: set[str] = set()
+    for event in _read_run_events(files, run_id):
+        if event.type != "ACTION_ISSUED":
+            continue
+        action_id = str(event.payload["actionId"])
+        digest = str(event.payload["envelopeSha256"])
+        if event.run_id != run_id or action_id in issued or digest in hashes:
+            raise ProjectIOError(
+                "ACTION_ISSUANCE_PROOF_INVALID",
+                "",
+                "Action 必须有唯一且属于本 run 的发行事件。",
+            )
+        issued[action_id] = event
+        hashes.add(digest)
+    return issued
+
+
+def _load_action_ledger(files: ProjectFiles, run_id: str) -> ActionLedger:
+    registry = load_schema_registry(SKILL_ROOT)
+    _effective_budget_policy(files, run_id, registry=registry)
+    issued = _issued_action_events(files, run_id)
+    root = f"{RUNS_ROOT}/{run_id}/actions"
+    try:
+        directory = files.resolve(root, expect="dir")
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING" and not issued:
+            return ActionLedger()
+        raise
+    envelopes, records, raw_outputs, normalized_results = {}, {}, {}, {}
+    loaded_actions: set[str] = set()
+    for path in sorted(directory.iterdir()):
+        paths = _action_paths(run_id, path.name)
+        value = _optional_json(files, paths["envelope"])
+        event = issued.get(path.name)
+        if event is None or value is None:
+            for name in ("record", "raw", "normalized"):
+                try:
+                    files.resolve(paths[name], expect="file")
+                except ProjectIOError as error:
+                    if error.code != "PROJECT_PATH_MISSING":
+                        raise
+                else:
+                    raise ProjectIOError(
+                        "ACTION_ISSUANCE_PROOF_INVALID",
+                        paths[name],
+                        "已有结果事实缺少精确发行证明，不能作为未完成发行忽略。",
+                    )
+            if event is not None:
+                raise ProjectIOError(
+                    "ACTION_ISSUANCE_PROOF_INVALID",
+                    paths["envelope"],
+                    "发行事件缺少 Envelope。",
+                )
+            # Unissued physical content is not an authorized ledger fact.
+            continue
+        payload = files.read_bytes(paths["envelope"])
+        digest = sha256_bytes(payload)
+        if canonical_json_bytes(value) != payload:
+            raise ValueError("Envelope 必须保存 canonical bytes。")
+        if (
+            not isinstance(value, Mapping)
+            or value.get("runId") != run_id
+            or value.get("actionId") != path.name
+            or event.payload
+            != {
+                "actionId": value.get("actionId"),
+                "logicalWorkId": value.get("logicalWorkId"),
+                "envelopeSha256": digest,
+            }
+        ):
+            raise ProjectIOError(
+                "ACTION_ISSUANCE_PROOF_INVALID",
+                paths["envelope"],
+                "ACTION_ISSUED 与 Envelope 不匹配。",
+            )
+        envelope = ActionEnvelope(value, paths["envelope"], digest)
+        if value["budgetPolicySha256"] != _budget_at_issuance(files, run_id, path.name, registry=registry):
+            raise ProjectIOError(
+                "ACTION_BUDGET_POLICY_MISMATCH", paths["envelope"],
+                "Envelope 必须绑定其发放事件之前的 effective budget policy。",
+            )
+        envelopes[digest] = envelope
+        loaded_actions.add(path.name)
+        record_value = _optional_json(files, paths["record"])
+        if record_value is None:
+            continue
+        record = attempt_record_from_value(record_value)
+        record_payload = files.read_bytes(paths["record"])
+        if canonical_json_bytes(record_value) != record_payload:
+            raise ValueError("AttemptRecord 必须保存 canonical bytes。")
+        records[sha256_bytes(record_payload)] = record
+        if record.raw_sha256 is not None:
+            raw_outputs[record.raw_sha256] = files.read_bytes(paths["raw"])
+        if record.normalized_result_sha256 is not None:
+            normalized_results[record.normalized_result_sha256] = files.read_bytes(
+                paths["normalized"]
+            )
+    if set(issued) != loaded_actions:
+        raise ProjectIOError(
+            "ACTION_ISSUANCE_PROOF_INVALID", root, "发行事件未唯一解析到 action 文件。"
+        )
+    ledger = ActionLedger(envelopes, records, raw_outputs, normalized_results)
+    for envelope in envelopes.values():
+        packet_payload = files.read_bytes(str(envelope.value["packetPath"]))
+        if sha256_bytes(packet_payload) != envelope.value["packetSha256"]:
+            raise ProjectIOError(
+                "ACTION_BINDING_INVALID", str(envelope.value["packetPath"]),
+                "恢复时发现 Envelope packet hash 不匹配。",
+            )
+        policy = _published_budget_policy(files, run_id, str(envelope.value["budgetPolicySha256"]), registry=registry)
+        if validate_action_envelope(
+            envelope.value, packet_payload=packet_payload, skill_root=SKILL_ROOT,
+            effective_budget_policy=policy, registry=registry,
+        ):
+            raise ProjectIOError("ACTION_ENVELOPE_INVALID", envelope.path, "发行账本的 Envelope 估值或合同绑定无效。")
+        _validate_attempt_repair_packet(
+            envelope.value, json.loads(packet_payload), ledger
+        )
+    return ledger
+
+
+def _validate_attempt_repair_packet(
+    envelope: Mapping[str, object], packet: Mapping[str, object], ledger: ActionLedger
+) -> None:
+    repair_refs = [
+        item
+        for item in packet["contextRefs"]
+        if str(item.get("refId", "")).startswith("repair-from-attempt-")
+    ]
+    if envelope["revision"] == 2:
+        contract, contract_hash = action_contract_binding(
+            SKILL_ROOT, envelope["actionContractId"]
+        )
+        if (
+            contract["executionKind"] != "MODEL_PROVIDER"
+            or contract_hash != envelope["actionContractSha256"]
+        ):
+            raise ValueError("只有精确绑定的 MODEL_PROVIDER 允许 revision 2 repair。")
+        if len(repair_refs) != 1:
+            raise ValueError("revision 2 必须绑定唯一 attempt repair context。")
+        ref = repair_refs[0]
+        content = canonical_json_bytes(ref.get("canonicalContent"))
+        if (
+            set(ref) != {"refId", "canonicalContent", "contentSha256"}
+            or sha256_bytes(content) != ref["contentSha256"]
+        ):
+            raise ValueError("repair context content hash 无效。")
+        validate_attempt_repair_context(
+            ContextRefDescriptor(ref["refId"], content),
+            str(envelope["logicalWorkId"]),
+            ledger.attempt_records,
+            envelopes_by_sha256=ledger.envelopes_by_sha256,
+        )
+    elif repair_refs:
+        raise ValueError("revision 1 不允许 attempt repair context。")
+
+
+def _active_seconds(ledger: ActionLedger, events: Sequence[RunEvent]) -> float:
+    intervals = [
+        (datetime.fromisoformat(record.timing.started_at_utc), datetime.fromisoformat(record.timing.ended_at_utc))
+        for record in ledger.attempt_records.values() if record.timing.started_at_utc is not None
+    ]
+    intervals.extend(
+        (datetime.fromisoformat(str(event.payload["startedAtUtc"])), datetime.fromisoformat(str(event.payload["endedAtUtc"])))
+        for event in events if event.type == "DETERMINISTIC_STEP_FINISHED"
+    )
+    total = 0.0
+    previous_end = None
+    for start, end in sorted(intervals):
+        if end < start:
+            raise ProjectIOError("RUN_ACTIVE_INTERVAL_INVALID", "", "active区间结束时间不得早于开始时间。")
+        if previous_end is None or start > previous_end:
+            total += (end - start).total_seconds()
+        elif end > previous_end:
+            total += (end - previous_end).total_seconds()
+        previous_end = max(previous_end, end) if previous_end is not None else end
+    return total
+
+
+def _model_token_totals(ledger: ActionLedger) -> tuple[int, int, int]:
+    records = {record.envelope_sha256: record for record in ledger.attempt_records.values()}
+    charged, unfinished, planned = 0, 0, 0
+    for digest, envelope in ledger.envelopes_by_sha256.items():
+        contract, _ = action_contract_binding(SKILL_ROOT, str(envelope.value["actionContractId"]))
+        if contract["executionKind"] != "MODEL_PROVIDER":
+            continue
+        estimate = sum(int(value) for value in envelope.value["executionLimits"].values())
+        planned += estimate
+        record = records.get(digest)
+        if record is None:
+            unfinished += estimate
+        else:
+            charged += record.usage.input_tokens + record.usage.output_tokens
+    return charged, unfinished, planned
+
+
+def _guard_action_budget(
+    ledger: ActionLedger, events: Sequence[RunEvent], policy: Mapping[str, object], envelopes: Sequence[ActionEnvelope]
+) -> None:
+    if any(envelope.sha256 not in ledger.envelopes_by_sha256 for envelope in envelopes):
+        if _active_seconds(ledger, events) >= policy["maxActiveSeconds"]:
+            raise StagePlanningBlocked("BUDGET_EXHAUSTED")
+    new_model_actions = []
+    for envelope in envelopes:
+        if envelope.sha256 in ledger.envelopes_by_sha256:
+            continue
+        contract, _ = action_contract_binding(SKILL_ROOT, str(envelope.value["actionContractId"]))
+        if contract["executionKind"] == "MODEL_PROVIDER":
+            if envelope.value["executionLimits"]["estimatedInputTokens"] > usable_action_input_tokens(policy):
+                raise StagePlanningBlocked("BUDGET_EXHAUSTED", {
+                    "reason":"ACTION_CONTEXT_CAPACITY", "actionContractId":envelope.value["actionContractId"],
+                    "estimatedInputTokens":envelope.value["executionLimits"]["estimatedInputTokens"],
+                    "usableInputTokens":usable_action_input_tokens(policy),
+                    "modelContextLimitTokens":policy["modelContextLimitTokens"],
+                    "outputReserveTokens":policy["outputReserveTokens"],
+                    "hydrateReserveTokens":policy["hydrateReserveTokens"],
+                    "safetyMarginTokens":policy["safetyMarginTokens"]})
+            new_model_actions.append(envelope)
+    if not new_model_actions:
+        return
+    charged, unfinished, _ = _model_token_totals(ledger)
+    planned = sum(sum(int(value) for value in item.value["executionLimits"].values()) for item in new_model_actions)
+    maximum = int(policy["maxPlannedTokens"])
+    if charged >= maximum or charged + unfinished + planned > maximum:
+        raise StagePlanningBlocked("BUDGET_EXHAUSTED")
+
+
+def _persist_issued_action(
+    files: ProjectFiles, envelope: Mapping[str, object], packet_payload: bytes
+) -> None:
+    run_id, action_id = str(envelope["runId"]), str(envelope["actionId"])
+    paths = _action_paths(run_id, action_id)
+    payload = canonical_json_bytes(envelope)
+    prepared = ActionEnvelope(envelope, paths["envelope"], sha256_bytes(payload))
+    ledger = _load_action_ledger(files, run_id)
+    effective_budget = (
+        _budget_at_issuance(files, run_id, action_id)
+        if prepared.sha256 in ledger.envelopes_by_sha256
+        else _effective_budget_policy(files, run_id)[0]
+    )
+    policy = _published_budget_policy(files, run_id, effective_budget)
+    diagnostics = validate_action_envelope(
+        envelope,
+        packet_payload=packet_payload,
+        skill_root=SKILL_ROOT,
+        effective_budget_policy=policy,
+    )
+    if diagnostics:
+        if all(item.code == "ACTION_INPUT_CAPACITY_EXCEEDED" for item in diagnostics):
+            _guard_action_budget(ledger, _read_run_events(files, run_id), policy, [prepared])
+        raise ValueError("Action Envelope 合同或 packet 绑定无效。")
+    _validate_attempt_repair_packet(envelope, json.loads(packet_payload), ledger)
+    issue_attempt(ledger, prepared)
+    _guard_action_budget(ledger, _read_run_events(files, run_id), policy, [prepared])
+    files.publish_new(paths["packet"], packet_payload)
+    files.publish_new(paths["envelope"], payload)
+    events = _read_run_events(files, run_id)
+    prior = [
+        event
+        for event in events
+        if event.type == "ACTION_ISSUED" and event.payload["actionId"] == action_id
+    ]
+    if prior:
+        if prior[0].payload["envelopeSha256"] != prepared.sha256:
+            raise ValueError("Action 已签发为不同 Envelope。")
+        return
+    event = RunEvent(
+        run_id,
+        len(events) + 1,
+        "ACTION_ISSUED",
+        datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        {
+            "actionId": action_id,
+            "logicalWorkId": envelope["logicalWorkId"],
+            "envelopeSha256": prepared.sha256,
+        },
+    )
+    files.publish_new(
+        f"{RUNS_ROOT}/{run_id}/events/{event.sequence:06d}.json",
+        canonical_json_bytes(run_event_value(event)),
+    )
+
+    _load_action_ledger(files, run_id)
+
+
+def _load_action_bundle(files: ProjectFiles, action_id: str):
     marker = _read_active_marker(files)
     if marker is None:
         raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "当前项目没有 active run。")
-    state = _recover_active_run(files, marker)
+    state = _read_active_run(files, marker)
     paths = _action_paths(str(marker["runId"]), action_id)
     envelope = _mapping(files, paths["envelope"])
-    issued = _mapping(files, paths["issued"])
-    packet = _mapping(files, paths["packet"])
-    progress = _mapping(files, paths["progress"])
-    envelope_payload = files.read_bytes(paths["envelope"])
     packet_payload = files.read_bytes(paths["packet"])
     if (
-        envelope.get("contract") != "ai-sow-action-envelope-v1"
-        or validate_contract(envelope, "action.schema.json", NEXT_SCHEMA_REGISTRY)
-        or issued.get("envelopeSha256") != sha256_bytes(envelope_payload)
-        or issued.get("packetSha256") != sha256_bytes(packet_payload)
-        or envelope.get("packetSha256") != issued.get("packetSha256")
-        or envelope.get("actionId") != action_id
+        envelope.get("actionId") != action_id
         or envelope.get("runId") != marker["runId"]
-        or progress.get("envelopeSha256") != issued.get("envelopeSha256")
-        or not _verify_instruction_manifest(envelope)
+        or validate_action_envelope(
+            envelope,
+            packet_payload=packet_payload,
+            skill_root=SKILL_ROOT,
+            effective_budget_policy=_published_budget_policy(
+                files, str(marker["runId"]),
+                _budget_at_issuance(files, str(marker["runId"]), action_id),
+            ),
+        )
     ):
         raise ProjectIOError(
-            "ACTION_BINDING_INVALID", paths["envelope"], "action 文件绑定无效或已被修改。"
+            "ACTION_BINDING_INVALID",
+            paths["envelope"],
+            "action 文件绑定无效或已被修改。",
         )
-    return state, envelope, issued, packet, progress
+    ledger = _load_action_ledger(files, str(marker["runId"]))
+    digest = sha256_bytes(files.read_bytes(paths["envelope"]))
+    if digest not in ledger.envelopes_by_sha256:
+        raise ProjectIOError(
+            "ACTION_ISSUANCE_PROOF_INVALID", paths["envelope"], "请求的 action 尚未签发。"
+        )
+    state = _recover_active_run(files, marker)
+    return state, envelope, json.loads(packet_payload)
+
+
+def read_provider_request(project_root: Path, action_id: str) -> bytes:
+    files = ProjectFiles.open(project_root)
+    marker = _read_active_marker(files)
+    if marker is None:
+        raise ProjectIOError("RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "当前项目没有 active run。")
+    state = _read_active_run(files, marker)
+    run_id = str(marker["runId"])
+    ledger = _load_action_ledger(files, run_id)
+    matches = [
+        envelope.value for envelope in ledger.envelopes_by_sha256.values()
+        if envelope.value["actionId"] == action_id
+    ]
+    if len(matches) != 1:
+        raise ProjectIOError("ACTION_ISSUANCE_PROOF_INVALID", "", "请求的Action没有唯一发行证明。")
+    envelope = matches[0]
+    policy = _published_budget_policy(files, run_id, _budget_at_issuance(files, run_id, action_id))
+    packet = files.read_bytes(str(envelope["packetPath"]))
+    if validate_action_envelope(
+        envelope, packet_payload=packet, skill_root=SKILL_ROOT, effective_budget_policy=policy,
+    ):
+        raise ProjectIOError("ACTION_BINDING_INVALID", "", "provider request绑定无效。")
+    return action_provider_request(
+        SKILL_ROOT, str(envelope["actionContractId"]), packet,
+        budget_policy=policy, max_output_tokens=int(envelope["executionLimits"]["maxOutputTokens"]),
+        hydration_responses=_read_hydrations(files, state, envelope, json.loads(packet)),
+    )
+
+
+def _hydrate_evidence(files, state, packet, requested):
+    """Resolve only source/rule references present in the immutable Action packet."""
+    revision_path = _read_active_marker(files)['inputRevisionPath']
+    revision = _mapping(files, revision_path)
+    sources = {row['sourceId']: row for row in revision['sources']}
+    blocks = {row['blockId']: row for row in revision['blocks']}
+    references, declared, catalog = {}, set(), None
+
+    def visit(value):
+        nonlocal catalog
+        if isinstance(value, list):
+            for row in value: visit(row)
+        elif isinstance(value, dict):
+            declared.update(value.get('evidenceIds', []))
+            if value.get('kind') == 'TASK_CATALOG': catalog = value
+            ref = value.get('sourceRef')
+            if isinstance(ref, dict) and 'blockId' in ref:
+                references[value.get('evidenceId', ref['blockId'])] = ref
+            if {'sourceId', 'blockId', 'sha256', 'locator'}.issubset(value):
+                references[value['blockId']] = {key: value[key] for key in ('sourceId', 'blockId', 'sha256', 'locator')}
+            for row in value.values(): visit(row)
+    visit(packet)
+    for key in declared.intersection(blocks):
+        block = blocks[key]
+        references.setdefault(key, {'sourceId': block['sourceId'], 'blockId': key,
+            'sha256': block['contentSha256'], 'locator': block['locator']})
+    result = {}
+    for key in requested:
+        if key.startswith('task-rule:') and catalog is not None:
+            selected = key.removeprefix('task-rule:')
+            rows = {row['workTypeId']: row for row in catalog['rows']}
+            if selected not in rows: continue
+            from task_standard_catalog import decision_catalog, hydrate as hydrate_rules
+            template = load_task_standard_catalog(_revision_template_path(files, revision_path))
+            if (template.template_sha256 != catalog['templateSha256']
+                    or template.task_catalog_semantic_sha256 != catalog['catalogSemanticSha256']):
+                raise ValueError('hydrate 模板与冻结 Task catalog 不一致。')
+            selected_rows = hydrate_rules(template, [selected], rows[selected]['name']).rows
+            rules = {row['workTypeId']: row for row in decision_catalog(template)}
+            content = {'kind': 'TASK_RULES', 'templateSha256': catalog['templateSha256'],
+                'catalogSemanticSha256': catalog['catalogSemanticSha256'],
+                'rows': [rules[row['工作类型ID']] for row in selected_rows]}
+        elif key in references:
+            ref = references[key]
+            source = sources.get(ref['sourceId'])
+            block = blocks.get(ref['blockId'])
+            if source is None or source['status'] == 'REFERENCE_ONLY': continue
+            if block is not None:
+                if (block['sourceId'], block['contentSha256'], block['locator']) != (ref['sourceId'], ref['sha256'], ref['locator']):
+                    raise ValueError('hydrate SourceRef 未绑定本轮原文。')
+                raw = _mapping(files, str(Path(revision_path).parent/'blocks'/f"{ref['blockId']}.json"))['content'].encode('utf-8')
+            elif source['role'] == 'DEMO' and ref['locator'] == 'file:' + source['path']:
+                raw = files.read_bytes(source['path'])
+            else: continue
+            if sha256_bytes(raw) != ref['sha256']: raise ValueError('hydrate 原文 hash 漂移。')
+            content = {'kind': 'SOURCE_EVIDENCE', 'sourceRef': ref, 'content': raw.decode('utf-8')}
+        else: continue
+        result[key] = {'refId': key, 'canonicalContent': content,
+            'contentSha256': sha256_bytes(canonical_json_bytes(content))}
+    return result
+
+
+def _read_hydrations(files, state, envelope, packet):
+    path = _action_paths(envelope['runId'], envelope['actionId'])['hydrations']
+    try:
+        directory = files.resolve(path, expect='dir')
+    except ProjectIOError as error:
+        if error.code == 'PROJECT_PATH_MISSING': return []
+        raise
+    responses, seen = [], set()
+    for index, file in enumerate(sorted(directory.glob('*.json')), 1):
+        response = _mapping(files, f'{path}/{file.name}')
+        ids = response.get('evidenceIds', [])
+        allowed = _hydrate_evidence(files, state, packet, ids)
+        if (index > 2 or file.name != f'{index:02d}.json' or not ids or seen.intersection(ids)
+                or len(set(ids)) != len(ids) or set(ids) != set(allowed)
+                or response != {'outcome': 'HYDRATED', 'actionId': envelope['actionId'],
+                    'evidenceIds': ids, 'evidence': [allowed[key] for key in ids], 'diagnostics': []}):
+            raise ValueError('hydration response 与已签发 packet 不匹配。')
+        seen.update(ids)
+        responses.append(response)
+    return responses
 
 
 def hydrate(
-    project_root: Path,
-    action_id: str,
-    evidence_ids: Sequence[str],
+    project_root: Path, action_id: str, evidence_ids: Sequence[str]
 ) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     try:
-        started = time.monotonic_ns()
-        state, envelope, _, packet, progress_value = _load_action_bundle(files, action_id)
+        state, envelope, packet = _load_action_bundle(files, action_id)
         if action_id not in state.get("expectedActionIds", []):
             return _blocked(
                 "ACTION_NOT_EXPECTED", "该 action 不是当前等待的动作。", "/actionId"
@@ -4280,27 +3440,20 @@ def hydrate(
             return _blocked(
                 "ACTION_HYDRATION_EMPTY", "hydrate 必须请求至少一个 evidence ID。"
             )
-        allowlist = {
-            str(item["evidenceId"]): item
-            for item in _mappings(envelope.get("evidenceAllowlist"))
-        }
         requested = list(dict.fromkeys(evidence_ids))
-        unknown = [item for item in requested if item not in allowlist]
-        if unknown:
+        catalog = _hydrate_evidence(files, state, packet, requested)
+        if any(item not in catalog for item in requested):
             return _blocked(
                 "ACTION_EVIDENCE_NOT_ALLOWED",
-                "hydrate 请求包含 envelope allowlist 外的 evidence ID。",
+                "hydrate 请求包含 allowlist 外的 evidence ID。",
                 "/evidenceIds",
             )
-        progress = dict(progress_value)
-        hydration_log = [dict(item) for item in _mappings(progress.get("hydrationLog"))]
-        returned_before = {
-            str(evidence_id)
-            for item in hydration_log
-            for evidence_id in item.get("returnedEvidenceIds", [])
-            if isinstance(evidence_id, str)
+        paths = _action_paths(str(envelope["runId"]), action_id)
+        responses = _read_hydrations(files, state, envelope, packet)
+        previous = {
+            item["refId"] for response in responses for item in response["evidence"]
         }
-        new_ids = [item for item in requested if item not in returned_before]
+        new_ids = [item for item in requested if item not in previous]
         if not new_ids:
             return {
                 "outcome": "REUSED",
@@ -4309,282 +3462,53 @@ def hydrate(
                 "evidence": [],
                 "diagnostics": [],
             }
-        max_rounds = int(envelope["executionPolicy"]["maxHydrationRounds"])
-        if len(hydration_log) >= max_rounds:
+        if len(responses) >= 2:
             return _blocked(
                 "ACTION_HYDRATION_LIMIT_EXCEEDED",
                 "该 action 已达到 hydration 轮数上限。",
-                "/hydrationLog",
+                "/hydrations",
             )
-        catalog = {
-            str(item["evidenceId"]): item
-            for item in _mappings(packet.get("evidenceCatalog"))
-        }
-        evidence: list[dict[str, object]] = []
-        for evidence_id in new_ids:
-            item = catalog.get(evidence_id)
-            if item is None or item.get("sha256") != allowlist[evidence_id].get("sha256"):
-                raise ProjectIOError(
-                    "ACTION_EVIDENCE_BINDING_INVALID",
-                    str(envelope["packetPath"]),
-                    "packet evidence 与 envelope allowlist 不一致。",
-                )
-            content = item.get("content")
-            if not isinstance(content, str) or sha256_bytes(content.encode("utf-8")) != item.get(
-                "sha256"
-            ):
-                raise ProjectIOError(
-                    "ACTION_EVIDENCE_BINDING_INVALID",
-                    str(envelope["packetPath"]),
-                    "packet evidence 内容 hash 无效。",
-                )
-            evidence.append(dict(item))
+        evidence = [dict(catalog[item]) for item in new_ids]
         response = {
-            "actionId": action_id,
-            "round": len(hydration_log) + 1,
-            "evidence": evidence,
-        }
-        response_payload = canonical_json_bytes(response)
-        hydration_log.append(
-            {
-                "round": len(hydration_log) + 1,
-                "requestedEvidenceIds": requested,
-                "returnedEvidenceIds": new_ids,
-                "responseSha256": sha256_bytes(response_payload),
-                "bytes": len(response_payload),
-                "tokens": _estimate_tokens(response_payload),
-                "wallMilliseconds": max(0, (time.monotonic_ns() - started) // 1_000_000),
-            }
-        )
-        progress["hydrationLog"] = hydration_log
-        paths = _action_paths(str(envelope["runId"]), action_id)
-        files.write_atomic(paths["progress"], canonical_json_bytes(progress))
-        return {
             "outcome": "HYDRATED",
             "actionId": action_id,
             "evidenceIds": new_ids,
             "evidence": evidence,
             "diagnostics": [],
         }
+        payload = canonical_json_bytes(response)
+        from provider_adapter import estimate_canonical_transport, estimate_provider_request
+
+        policy = _published_budget_policy(files, str(envelope["runId"]), str(envelope["budgetPolicySha256"]))
+        total_tokens = sum(
+            estimate_canonical_transport(str(policy["modelProfileId"]), str(policy["estimatorVersion"]), canonical_json_bytes(item))
+            for item in [*responses, response]
+        )
+        request = action_provider_request(SKILL_ROOT, envelope['actionContractId'], canonical_json_bytes(packet),
+            budget_policy=policy, max_output_tokens=envelope['executionLimits']['maxOutputTokens'],
+            hydration_responses=[*responses, response])
+        request_tokens = estimate_provider_request(policy['modelProfileId'], policy['estimatorVersion'], request)
+        if (total_tokens > envelope["executionLimits"]["maxHydrateTokens"]
+                or request_tokens + envelope['executionLimits']['maxOutputTokens'] + policy['safetyMarginTokens'] > policy['modelContextLimitTokens']):
+            return _blocked(
+                "ACTION_HYDRATION_LIMIT_EXCEEDED",
+                "该 action 已达到 hydration token 上限。",
+                "/executionLimits/maxHydrateTokens",
+            )
+        if _active_seconds(_load_action_ledger(files, state['runId']), _read_run_events(files, state['runId'])) >= _effective_budget_policy(files, state['runId'])[1]['maxActiveSeconds']:
+            return _wait_for_budget(files)
+        files.publish_new(
+            f"{paths['hydrations']}/{len(responses) + 1:02d}.json", payload
+        )
+        return response
     except ProjectIOError as error:
         return _blocked(error.code, str(error), error.relative_path)
+    except (ValueError, KeyError, TypeError) as error:
+        return _blocked("ACTION_BINDING_INVALID", str(error), "/hydrations")
 
 
 def _is_non_negative_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
-def _validate_execution_facts(facts: Mapping[str, object]) -> None:
-    if set(facts) != {
-        "status",
-        "failure",
-        "timing",
-        "modelAttempts",
-        "toolAttempts",
-        "usage",
-        "controlPlaneTokens",
-    }:
-        raise ProjectIOError(
-            "ACTION_EXECUTION_FACTS_INVALID", "", "execution facts 字段集合无效。"
-        )
-    timing = facts.get("timing")
-    usage = facts.get("usage")
-    if (
-        facts.get("status") not in {"SUCCESS", "FAILED", "LATE"}
-        or not isinstance(timing, Mapping)
-        or set(timing)
-        != {"queueMilliseconds", "executionMilliseconds", "actionMilliseconds"}
-        or not all(_is_non_negative_int(value) for value in timing.values())
-        or not _is_non_negative_int(facts.get("modelAttempts"))
-        or int(facts["modelAttempts"]) not in {1, 2}
-        or not _is_non_negative_int(facts.get("toolAttempts"))
-        or not _is_non_negative_int(facts.get("controlPlaneTokens"))
-        or not isinstance(usage, Mapping)
-        or set(usage)
-        != {
-            "accountingMode",
-            "inputTokens",
-            "cachedInputTokens",
-            "outputTokens",
-            "reasoningTokens",
-            "tokenizerId",
-            "tokenizerVersion",
-        }
-        or not all(
-            _is_non_negative_int(usage.get(field))
-            for field in ("inputTokens", "cachedInputTokens", "outputTokens")
-        )
-    ):
-        raise ProjectIOError(
-            "ACTION_EXECUTION_FACTS_INVALID", "", "execution facts 值无效。"
-        )
-    mode = usage.get("accountingMode")
-    failure = facts.get("failure")
-    if facts.get("status") == "SUCCESS":
-        if failure is not None:
-            raise ProjectIOError(
-                "ACTION_EXECUTION_FACTS_INVALID", "", "成功 action 的 failure 必须为 null。"
-            )
-    elif (
-        not isinstance(failure, Mapping)
-        or set(failure) != {"code", "message"}
-        or not all(isinstance(failure.get(field), str) and failure.get(field) for field in ("code", "message"))
-    ):
-        raise ProjectIOError(
-            "ACTION_EXECUTION_FACTS_INVALID", "", "失败或迟到 action 必须记录结构化 failure。"
-        )
-    if mode == "PROVIDER_REPORTED":
-        if usage.get("tokenizerId") is not None or usage.get("tokenizerVersion") is not None:
-            raise ProjectIOError(
-                "ACTION_EXECUTION_FACTS_INVALID", "", "provider usage 不得声明本地 tokenizer。"
-            )
-        reasoning = usage.get("reasoningTokens")
-        if reasoning is not None and not _is_non_negative_int(reasoning):
-            raise ProjectIOError(
-                "ACTION_EXECUTION_FACTS_INVALID", "", "reasoning token 值无效。"
-            )
-    elif mode == "LOCALLY_ESTIMATED":
-        if (
-            usage.get("reasoningTokens") is not None
-            or not isinstance(usage.get("tokenizerId"), str)
-            or not usage.get("tokenizerId")
-            or not isinstance(usage.get("tokenizerVersion"), str)
-            or not usage.get("tokenizerVersion")
-        ):
-            raise ProjectIOError(
-                "ACTION_EXECUTION_FACTS_INVALID",
-                "",
-                "本地估算必须声明 tokenizer 且 hidden reasoning 为 null。",
-            )
-    else:
-        raise ProjectIOError(
-            "ACTION_EXECUTION_FACTS_INVALID", "", "usage accountingMode 无效。"
-        )
-
-
-def _record_action_execution(
-    files: ProjectFiles,
-    action_id: str,
-    facts: Mapping[str, object],
-) -> None:
-    _, envelope, _, _, progress_value = _load_action_bundle(files, action_id)
-    _validate_execution_facts(facts)
-    progress = dict(progress_value)
-    existing = progress.get("executionFacts")
-    if existing is not None and existing != facts:
-        raise ProjectIOError(
-            "ACTION_EXECUTION_FACTS_CONFLICT",
-            _action_paths(str(envelope["runId"]), action_id)["progress"],
-            "execution facts 已封存为不同内容。",
-        )
-    if existing == facts:
-        return
-    progress["executionFacts"] = dict(facts)
-    files.write_atomic(
-        _action_paths(str(envelope["runId"]), action_id)["progress"],
-        canonical_json_bytes(progress),
-    )
-
-
-def record_execution(
-    project_root: Path,
-    action_id: str,
-    facts: Mapping[str, object],
-) -> dict[str, object]:
-    files = ProjectFiles.open(project_root)
-    try:
-        _record_action_execution(files, action_id, facts)
-        return {"outcome": "RECORDED", "actionId": action_id, "diagnostics": []}
-    except ProjectIOError as error:
-        return _blocked(error.code, str(error), error.relative_path)
-
-
-def _action_record_value(
-    files: ProjectFiles,
-    envelope: Mapping[str, object],
-    issued: Mapping[str, object],
-    progress: Mapping[str, object],
-    *,
-    submission: Mapping[str, object] | None,
-    submission_sha256: str | None,
-) -> dict[str, object]:
-    execution_facts = progress["executionFacts"]
-    if not isinstance(execution_facts, Mapping):
-        raise ProjectIOError(
-            "ACTION_EXECUTION_FACTS_MISSING", "", "action 尚未记录执行事实。"
-        )
-    packet_payload = files.read_bytes(str(envelope["packetPath"]))
-    return {
-        "contract": "ai-sow-action-record-v1",
-        "runId": envelope["runId"],
-        "actionId": envelope["actionId"],
-        "logicalShardId": envelope["logicalShardId"],
-        "envelopeSha256": issued["envelopeSha256"],
-        "packetSha256": envelope["packetSha256"],
-        "inputRevisionSha256": envelope["inputRevisionSha256"],
-        "baseCandidateSha256": envelope["baseCandidateSha256"],
-        "modelProfileId": envelope["executionPolicy"]["modelProfileId"],
-        "modelConfigSha256": envelope["executionPolicy"]["modelConfigSha256"],
-        "executionAttempt": envelope["executionAttempt"],
-        "status": execution_facts["status"],
-        "timing": execution_facts["timing"],
-        "modelAttempts": execution_facts["modelAttempts"],
-        "toolAttempts": execution_facts["toolAttempts"],
-        "initialPacket": {
-            "bytes": len(packet_payload),
-            "tokens": _estimate_tokens(packet_payload),
-        },
-        "hydrationLog": progress["hydrationLog"],
-        "usage": execution_facts["usage"],
-        "controlPlaneTokens": execution_facts["controlPlaneTokens"],
-        "resultPath": envelope["outputPath"],
-        "submissionSha256": submission_sha256,
-        "failure": execution_facts["failure"],
-        "completedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-    }
-
-
-def _seal_failed_action(files: ProjectFiles, action_id: str) -> Mapping[str, object]:
-    _, envelope, issued, _, progress = _load_action_bundle(files, action_id)
-    paths = _action_paths(str(envelope["runId"]), action_id)
-    existing = _optional_json(files, paths["record"])
-    if existing is not None:
-        if not isinstance(existing, Mapping) or existing.get("status") not in {
-            "FAILED",
-            "LATE",
-        }:
-            raise ProjectIOError(
-                "ACTION_RECORD_CONFLICT", paths["record"], "action 已封存为非失败结果。"
-            )
-        return existing
-    execution_facts = progress.get("executionFacts")
-    if not isinstance(execution_facts, Mapping):
-        raise ProjectIOError(
-            "ACTION_EXECUTION_FACTS_MISSING",
-            paths["progress"],
-            "retry 前必须记录失败 action 的执行事实。",
-        )
-    _validate_execution_facts(execution_facts)
-    if execution_facts.get("status") not in {"FAILED", "LATE"}:
-        raise ProjectIOError(
-            "ACTION_EXECUTION_NOT_FAILED",
-            paths["progress"],
-            "retry 只能消费 FAILED 或 LATE action。",
-        )
-    record = _action_record_value(
-        files,
-        envelope,
-        issued,
-        progress,
-        submission=None,
-        submission_sha256=None,
-    )
-    if validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY):
-        raise ProjectIOError(
-            "ACTION_RECORD_INVALID", paths["record"], "失败 ActionRecord 合同无效。"
-        )
-    files.publish_new(paths["record"], canonical_json_bytes(record))
-    return record
 
 
 def _materialize_action_retry(
@@ -4593,334 +3517,180 @@ def _materialize_action_retry(
     envelope: Mapping[str, object],
     failed_record: Mapping[str, object],
 ) -> Mapping[str, object]:
-    """Idempotently bind one failed attempt to its deterministic retry action."""
-
     run_id = str(envelope["runId"])
+    ledger = _load_action_ledger(files, run_id)
     paths = _action_paths(run_id, action_id)
-    record_payload = files.read_bytes(paths["record"])
-    failed_record_sha256 = sha256_bytes(record_payload)
-    if failed_record != json.loads(record_payload.decode("utf-8")):
-        raise ProjectIOError(
-            "ACTION_RECORD_INVALID", paths["record"], "失败 record 复读不一致。"
+    revision, attempt = int(envelope["revision"]), int(envelope["attempt"])
+    packet = json.loads(files.read_bytes(paths["packet"]))
+    if failed_record["failureKind"] in {"INVALID_JSON", "INVALID_IR"}:
+        revision, attempt = revision + 1, 1
+        digest = sha256_bytes(canonical_json_bytes(failed_record))
+        ref = build_attempt_repair_context(
+            str(envelope["logicalWorkId"]),
+            digest,
+            ledger.attempt_records,
+            ledger.raw_outputs,
+            envelopes_by_sha256=ledger.envelopes_by_sha256,
         )
-    attempt = int(envelope["executionAttempt"])
-    if attempt >= 2 or failed_record.get("status") not in {"FAILED", "LATE"}:
-        raise ProjectIOError(
-            "ACTION_RETRY_INVALID", paths["record"], "当前 attempt 不允许创建 retry。"
-        )
-    retry_identity = {
-        "contract": "ai-sow-action-retry-identity-v1",
+        packet["contextRefs"] = [
+            *packet["contextRefs"],
+            {
+                "refId": ref.ref_id,
+                "canonicalContent": json.loads(ref.canonical_content),
+                "contentSha256": sha256_bytes(ref.canonical_content),
+            },
+        ]
+    else:
+        attempt += 1
+    identity = {
         "runId": run_id,
-        "actionId": action_id,
-        "failedRecordSha256": failed_record_sha256,
-        "executionAttempt": attempt + 1,
+        "logicalWorkId": envelope["logicalWorkId"],
+        "revision": revision,
+        "attempt": attempt,
     }
-    retry_action_id = (
-        "action-" + sha256_bytes(canonical_json_bytes(retry_identity))[:12]
-    )
-    retry_paths = _action_paths(run_id, retry_action_id)
-    retry_envelope = {
+    retry_id = "action-" + sha256_bytes(canonical_json_bytes(identity))[:12]
+    retry_paths = _action_paths(run_id, retry_id)
+    packet_payload = canonical_json_bytes(packet)
+    limits = {
+        **envelope["executionLimits"],
+        "estimatedInputTokens": estimate_action_input_tokens(
+            SKILL_ROOT, str(envelope["actionContractId"]), packet_payload,
+            budget_policy=_effective_budget_policy(files, run_id)[1],
+            max_output_tokens=int(envelope["executionLimits"]["maxOutputTokens"]),
+        ),
+    }
+    retry = {
         **envelope,
-        "actionId": retry_action_id,
-        "executionAttempt": attempt + 1,
+        "budgetPolicySha256": _effective_budget_policy(files, run_id)[0],
+        "revision": revision,
+        "attempt": attempt,
+        "actionId": retry_id,
         "packetPath": retry_paths["packet"],
-        "outputPath": retry_paths["output"],
-        "recordPath": retry_paths["record"],
-        "hydrateOperation": {"name": "hydrate", "actionId": retry_action_id},
-        "submitOperation": {
-            "name": "submit",
-            "actionId": retry_action_id,
-            "resultPath": retry_paths["output"],
-        },
+        "packetSha256": sha256_bytes(packet_payload),
+        "resultPath": retry_paths["output"],
+        "executionLimits": limits,
     }
-    packet_payload = files.read_bytes(paths["packet"])
-    _persist_issued_action(files, retry_envelope, packet_payload)
-    transition = {
-        "contract": "ai-sow-action-retry-v1",
-        "runId": run_id,
-        "actionId": action_id,
-        "failedRecordSha256": failed_record_sha256,
-        "retryActionId": retry_action_id,
-        "retryEnvelopeSha256": sha256_bytes(canonical_json_bytes(retry_envelope)),
-        "executionAttempt": attempt + 1,
-    }
-    transition_payload = canonical_json_bytes(transition)
-    files.publish_new(paths["retry"], transition_payload)
-    stored = _mapping(files, paths["retry"])
-    if stored != transition:
-        raise ProjectIOError(
-            "ACTION_RETRY_CONFLICT", paths["retry"], "retry transition 绑定冲突。"
-        )
-    return transition
+    _persist_issued_action(files, retry, packet_payload)
+    return retry
 
 
 def submit(
-    project_root: Path,
-    action_id: str,
-    result_path: str,
+    project_root: Path, action_id: str, completion: AttemptCompletion
 ) -> dict[str, object]:
     files = ProjectFiles.open(project_root)
     try:
-        state, envelope, issued, _, progress = _load_action_bundle(files, action_id)
-        paths = _action_paths(str(envelope["runId"]), action_id)
-        if result_path != envelope.get("outputPath") or result_path != issued.get(
-            "resultPath"
-        ):
-            return _blocked(
-                "ACTION_RESULT_PATH_MISMATCH",
-                "submit 只能读取 envelope 锁定的 result path。",
-                "/resultPath",
-            )
-        submission_payload = files.read_bytes(result_path)
-        submission_sha256 = sha256_bytes(submission_payload)
-        existing_record = _optional_json(files, paths["record"])
-        if existing_record is not None:
-            if isinstance(existing_record, Mapping) and existing_record.get("status") in {
-                "FAILED",
-                "LATE",
-            }:
-                return _blocked(
-                    "ACTION_NOT_EXPECTED",
-                    "失败或迟到 attempt 已封存，后续 submission 不再接受。",
-                    "/actionId",
-                )
-            if (
-                not isinstance(existing_record, Mapping)
-                or existing_record.get("submissionSha256") != submission_sha256
-                or validate_contract(
-                    existing_record, "action.schema.json", NEXT_SCHEMA_REGISTRY
-                )
-            ):
-                return _blocked(
-                    "ACTION_SUBMISSION_CONFLICT",
-                    "该 action 已封存为不同 submission。",
-                    result_path,
-                )
-            return {
-                "outcome": "RECORDED",
-                "record": dict(existing_record),
-                "diagnostics": [],
-            }
+        if not isinstance(completion, AttemptCompletion):
+            raise ValueError("submit 必须接收 AttemptCompletion。")
+        state, value, packet = _load_action_bundle(files, action_id)
+        run_id = str(value["runId"])
+        paths = _action_paths(run_id, action_id)
+        ledger = _load_action_ledger(files, run_id)
+        digest = sha256_bytes(files.read_bytes(paths["envelope"]))
+        envelope = ledger.envelopes_by_sha256[digest]
+        validator = None
+        if value["actionContractId"] in {"PROTOTYPE_SCENARIO-v1", "PROTOTYPE_BROWSER-v1", "PROTOTYPE_ANALYZE-v1"}:
+            from prototype_analysis import validate_bound_prototype_context, validate_bound_prototype_result
 
-        binding_diagnostics = validate_action_binding(
-            envelope,
-            action_id=action_id,
-            envelope_sha256=str(issued["envelopeSha256"]),
-            input_revision_sha256=str(state["currentInputRevisionSha256"]),
-            base_candidate_sha256=str(state["currentCandidateSha256"]),
-            result_path=result_path,
-            expected_action_ids=tuple(state.get("expectedActionIds", [])),
-        )
-        if binding_diagnostics:
-            return _result(
-                "BLOCKED",
-                "action submit 绑定已过期。",
-                diagnostics=binding_diagnostics,
+            payload = packet["workItems"][0]["payload"]
+            validate_bound_prototype_context(payload["identity"]["actionKind"], payload)
+
+            def validator(normalized_result: bytes) -> None:
+                validate_bound_prototype_result(payload["identity"]["actionKind"], payload, normalized_result)
+
+        elif value['actionContractId'] in {'SOURCE_SCAN-v1','SOURCE_AUDIT-v1','SCOPE_SYNTHESIS-v1','SCOPE_PROPOSAL-v1','SCOPE_JOIN-v1'}:
+            from scope_compiler import validate_bound_scope_context, validate_bound_scope_result
+            kind = value['actionContractId'][:-3]
+            validate_bound_scope_context(kind, packet)
+            validator = lambda normalized: validate_bound_scope_result(kind, packet, normalized)
+        elif value['actionContractId'] in {'PRIOR_ANALYZE-v1','PRIOR_CONSOLIDATE-v1'}:
+            from prior_state import validate_bound_prior_context, validate_bound_prior_result
+            kind = value['actionContractId'][:-3]
+            inventories = _prior_inventories(files, state)
+            revision = files.read_bytes(_read_active_marker(files)['inputRevisionPath'])
+            validate_bound_prior_context(kind, packet, inventories=inventories, input_revision_bytes=revision)
+            validator = lambda normalized: validate_bound_prior_result(kind, packet, normalized, inventories=inventories, input_revision_bytes=revision)
+        elif value['actionContractId'] == 'STORY_AC-v1':
+            from delivery_compiler import validate_bound_story_context, validate_bound_story_result
+            validate_bound_story_context(packet)
+            validator = lambda normalized: validate_bound_story_result(packet, normalized)
+        elif value['actionContractId'] == 'TASK-v1':
+            from task_compiler import validate_bound_task_context, validate_bound_task_result
+            validate_bound_task_context(packet)
+            validator = lambda normalized: validate_bound_task_result(packet, normalized)
+        elif value['actionContractId'] == 'ARTIFACT_VISUAL_REVIEW-v1':
+            from package_renderer import validate_visual_result
+            body = packet['workItems'][0]['payload']
+            for ref in [body['workbook'], *body['renders']]:
+                if sha256_bytes(files.read_bytes(ref['path'])) != ref['sha256']:
+                    raise ValueError('Visual Review frozen file hash drift')
+            validator = lambda normalized: validate_visual_result(packet,normalized)
+        elif value['actionContractId'] in {'SOURCE_SCOPE-v1','STORY_DESIGN-v1','TASK_ESTIMATION-v1'}:
+            from final_review import validate_bound_review_result
+            validator=lambda normalized:validate_bound_review_result(packet,normalized)
+        elif value['actionContractId'] in {'SCOPE_REPAIR-v1','STORY_AC_REPAIR-v1','TASK_REPAIR-v1'}:
+            from final_review import replace_owner_decisions, owner_resolution
+            from contracts import InvalidActionResult
+            body=packet['workItems'][0]['payload'];stage=body['stageKind'];owner_packet=body['ownerPacket']
+            if stage=='SCOPE':
+                from scope_compiler import validate_bound_scope_context,validate_bound_scope_result
+                validate_bound_scope_context('SCOPE_SYNTHESIS',owner_packet)
+                bound=lambda raw:validate_bound_scope_result('SCOPE_SYNTHESIS',owner_packet,raw)
+            elif stage=='STORY_AC':
+                from delivery_compiler import validate_bound_story_context,validate_bound_story_result
+                validate_bound_story_context(owner_packet);bound=lambda raw:validate_bound_story_result(owner_packet,raw)
+            else:
+                from task_compiler import validate_bound_task_context,validate_bound_task_result,expand_task_repair_packet
+                owner_packet=expand_task_repair_packet(owner_packet)
+                validate_bound_task_context(owner_packet);bound=lambda raw:validate_bound_task_result(owner_packet,raw)
+            def validator(normalized):
+                try:
+                    replacement=json.loads(normalized)
+                    if stage=='TASK':
+                        from task_compiler import verify_task_replacement_ac_scope
+                        verify_task_replacement_ac_scope(body['ownerIR'],body['reviewDecision'],replacement,owner_resolution(body))
+                    merged=replace_owner_decisions(stage,body['ownerIR'],body['reviewDecision'],replacement,owner_resolution(body))
+                except ValueError as error: raise InvalidActionResult(str(error)) from error
+                bound(canonical_json_bytes(merged))
+        ledger, record = finish_attempt(ledger, envelope, completion, bound_result_validator=validator)
+        record_value = attempt_record_value(record)
+        if record.raw_sha256 is not None:
+            files.publish_new(paths["raw"], ledger.raw_outputs[record.raw_sha256])
+        if record.normalized_result_sha256 is not None:
+            files.publish_new(
+                paths["normalized"],
+                ledger.normalized_results[record.normalized_result_sha256],
             )
-        try:
-            submission = json.loads(submission_payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            return _blocked(
-                "ACTION_SUBMISSION_INVALID", "submission 不是有效 UTF-8 JSON。", result_path
-            )
-        payload_schema = str(envelope.get("resultPayloadSchema", ""))
-        if payload_schema == "contracts/action.schema.json":
-            submission_invalid = (
-                not isinstance(submission, Mapping)
-                or submission.get("contract") != "ai-sow-stage-result-v1"
-                or bool(
-                    validate_contract(
-                        submission, "action.schema.json", NEXT_SCHEMA_REGISTRY
-                    )
-                )
-            )
-        elif payload_schema == "contracts/review-repair.schema.json":
-            submission_invalid = (
-                not isinstance(submission, Mapping)
-                or submission.get("contract") != "ai-sow-review-result-v1"
-                or bool(
-                    validate_contract(
-                        submission,
-                        "review-repair.schema.json",
-                        NEXT_SCHEMA_REGISTRY,
-                    )
-                )
-            )
-        else:
-            submission_invalid = True
-        if submission_invalid:
-            return _blocked(
-                "ACTION_SUBMISSION_INVALID",
-                "submission 未通过 envelope 锁定的结果合同。",
-                result_path,
-            )
-        execution_facts = progress.get("executionFacts")
-        if not isinstance(execution_facts, Mapping):
-            return _blocked(
-                "ACTION_EXECUTION_FACTS_MISSING",
-                "submit 前必须记录模型执行事实。",
-                paths["progress"],
-            )
-        _validate_execution_facts(execution_facts)
-        if execution_facts.get("status") != "SUCCESS":
-            return _blocked(
-                "ACTION_EXECUTION_NOT_SUCCESSFUL",
-                "只有成功执行的 action 可以封存 submission。",
-                paths["progress"],
-            )
-        record = _action_record_value(
-            files,
-            envelope,
-            issued,
-            progress,
-            submission=submission,
-            submission_sha256=submission_sha256,
-        )
-        if validate_contract(record, "action.schema.json", NEXT_SCHEMA_REGISTRY):
-            raise ProjectIOError(
-                "ACTION_RECORD_INVALID", paths["record"], "ActionRecord 合同无效。"
-            )
-        files.publish_new(paths["record"], canonical_json_bytes(record))
+        files.publish_new(paths["record"], canonical_json_bytes(record_value))
         marker = _read_active_marker(files)
-        if marker is None:
-            raise ProjectIOError(
-                "ACTIVE_RUN_MARKER_MISSING", ACTIVE_RUN_PATH, "active run marker 意外缺失。"
-            )
-        next_state = dict(state)
-        remaining = [
-            item for item in state.get("expectedActionIds", []) if item != action_id
-        ]
-        next_state["expectedActionIds"] = remaining
-        next_state["wait"] = "MODEL" if remaining else "NONE"
-        budget = dict(next_state["budget"])
-        budget["modelActionsCompleted"] = int(budget["modelActionsCompleted"]) + 1
-        next_state["budget"] = budget
-        _write_active_state(files, marker, next_state)
-        return {"outcome": "RECORDED", "record": record, "diagnostics": []}
+        if marker is not None:
+            _recover_active_run(files, marker)
+        return {"outcome": "RECORDED", "record": record_value, "diagnostics": []}
     except ProjectIOError as error:
         return _blocked(error.code, str(error), error.relative_path)
+    except (ValueError, KeyError, TypeError) as error:
+        return _blocked("ACTION_COMPLETION_INVALID", str(error), "/completion")
 
 
 def _retry_action(files: ProjectFiles, action_id: str) -> dict[str, object]:
-    state, envelope, _, _, _ = _load_action_bundle(files, action_id)
-    paths = _action_paths(str(envelope["runId"]), action_id)
-    record = _optional_json(files, paths["record"])
-    if action_id in state.get("expectedActionIds", []):
-        record = _seal_failed_action(files, action_id)
-        marker = _read_active_marker(files)
-        if marker is None:
-            raise ProjectIOError(
-                "ACTIVE_RUN_MARKER_MISSING",
-                ACTIVE_RUN_PATH,
-                "active run marker 意外缺失。",
-            )
-        state = _recover_active_run(files, marker)
-    elif not isinstance(record, Mapping) or record.get("status") not in {
-        "FAILED",
-        "LATE",
-    }:
-        raise ProjectIOError(
-            "ACTION_NOT_EXPECTED", "/actionId", "只能重试当前等待或已封存失败的 action。"
-        )
-
-    if state.get("phase") == "DONE" and state.get("result") == "SYSTEM_FAILED":
-        return _result(
-            "SYSTEM_FAILED",
-            "action 已耗尽 execution attempt 预算。",
-            diagnostics=(
-                _diagnostic(
-                    "BUDGET_EXCEEDED",
-                    "该 logical shard 已达到两次 execution attempt 上限。",
-                    "/executionAttempt",
-                ),
-            ),
-        )
-    transition = _optional_json(files, paths["retry"])
-    if not isinstance(transition, Mapping):
-        raise ProjectIOError(
-            "ACTION_RETRY_MISSING", paths["retry"], "失败 action 缺少 retry transition。"
-        )
-    retry_action_id = str(transition.get("retryActionId", ""))
-    if retry_action_id not in state.get("expectedActionIds", []):
-        raise ProjectIOError(
-            "ACTION_RETRY_CONFLICT", paths["retry"], "retry action 未绑定当前 state。"
-        )
-    return dict(
-        _mapping(
-            files,
-            _action_paths(str(envelope["runId"]), retry_action_id)["envelope"],
-        )
+    state, envelope, _ = _load_action_bundle(files, action_id)
+    ledger = _load_action_ledger(files, str(envelope["runId"]))
+    latest = max(
+        (
+            item
+            for item in ledger.envelopes_by_sha256.values()
+            if item.value["logicalWorkId"] == envelope["logicalWorkId"]
+        ),
+        key=lambda item: (item.value["revision"], item.value["attempt"]),
     )
-
-
-def _apply_ready_group(
-    files: ProjectFiles,
-    run_id: str,
-    group_id: str,
-    model: Mapping[str, object],
-) -> dict[str, object]:
-    marker = _read_active_marker(files)
-    if marker is None or marker["runId"] != run_id:
-        raise ProjectIOError(
-            "RUN_NOT_ACTIVE", ACTIVE_RUN_PATH, "group 只能应用到当前 active run。"
-        )
-    state = _recover_active_run(files, marker)
-    if state.get("expectedActionIds") or state.get("wait") != "NONE":
-        raise ProjectIOError(
-            "ACTION_GROUP_INCOMPLETE", str(marker["statePath"]), "仍有必需 action 未封存。"
-        )
-    run_root, _, _ = _run_paths(run_id)
-    actions_root = f"{run_root}/actions"
-    action_directory = files.resolve(actions_root, expect="dir")
-    required_ids: list[str] | None = None
-    records: dict[str, tuple[str, Mapping[str, object]]] = {}
-    for child in action_directory.iterdir():
-        paths = _action_paths(run_id, child.name)
-        envelope = _mapping(files, paths["envelope"])
-        group = envelope.get("group")
-        if not isinstance(group, Mapping) or group.get("groupId") != group_id:
-            continue
-        current_required = list(group.get("requiredLogicalShardIds", []))
-        if required_ids is None:
-            required_ids = current_required
-        elif required_ids != current_required:
-            raise ProjectIOError(
-                "ACTION_GROUP_BINDING_INVALID", paths["envelope"], "group shard 清单不一致。"
-            )
-        record = _optional_json(files, paths["record"])
-        if isinstance(record, Mapping) and record.get("status") == "SUCCESS":
-            record_payload = files.read_bytes(paths["record"])
-            records[str(envelope["logicalShardId"])] = (
-                sha256_bytes(record_payload),
-                record,
-            )
-    if required_ids is None or set(records) != set(required_ids):
-        raise ProjectIOError(
-            "ACTION_GROUP_INCOMPLETE", actions_root, "group 缺少必需 logical shard record。"
-        )
-    model_payload = canonical_json_bytes(model)
-    model_sha256 = sha256_bytes(model_payload)
-    apply_path = f"{run_root}/groups/{group_id}/applied.json"
-    existing = _optional_json(files, apply_path)
-    if existing is not None:
-        if not isinstance(existing, Mapping) or existing.get("modelSha256") != model_sha256:
-            raise ProjectIOError(
-                "ACTION_GROUP_APPLY_CONFLICT", apply_path, "group 已应用为不同模型。"
-            )
-        return {
-            "path": existing["candidatePath"],
-            "sha256": existing["candidateSha256"],
-        }
-    candidate = _append_candidate_snapshot(files, run_id, model)
-    applied = {
-        "groupId": group_id,
-        "modelSha256": model_sha256,
-        "recordSha256s": [records[item][0] for item in required_ids],
-        "candidatePath": candidate["path"],
-        "candidateSha256": candidate["sha256"],
-    }
-    files.publish_new(apply_path, canonical_json_bytes(applied))
-    return candidate
+    if latest.value["actionId"] != action_id:
+        return dict(latest.value)
+    return _result(
+        "SYSTEM_FAILED",
+        "Action 已停止重试。",
+        diagnostics=(
+            _diagnostic("BUDGET_EXCEEDED", "Action 已达到重试限额或安全停止条件。"),
+        ),
+    )
 
 
 def status(project_root: Path) -> dict[str, object]:
@@ -4934,7 +3704,7 @@ def status(project_root: Path) -> dict[str, object]:
             next_action = {
                 "contract": "ai-sow-next-action-v1",
                 "kind": "DONE",
-                "result": "REUSED",
+                "result": "PUBLISHED",
                 "generationManifestPath": current.manifest_path,
             }
             if validate_contract(next_action, "action.schema.json", NEXT_SCHEMA_REGISTRY):
@@ -4946,7 +3716,12 @@ def status(project_root: Path) -> dict[str, object]:
                 "nextAction": next_action,
                 "diagnostics": [],
             }
-        return _active_result(_recover_active_run(files, marker))
+        recovered = _read_active_run(files, marker)
+        _verify_completed_stages(files, recovered)
+        response = _attempt_stop_response(files, recovered) or _active_result(recovered)
+        ledger = _load_action_ledger(files, str(marker["runId"]))
+        charged, _, planned = _model_token_totals(ledger)
+        return {**response, "budgetVarianceTokens": charged - planned, "activeSeconds": _active_seconds(ledger, _read_run_events(files, str(marker["runId"])))}
     except ProjectIOError as error:
         return _blocked(error.code, str(error), error.relative_path)
 
@@ -4956,6 +3731,7 @@ def run_mode(
     mode: str,
     *,
     request: str | None = None,
+    budget_policy: str | None = None,
     action_id: str | None = None,
     result: str | None = None,
     execution: str | None = None,
@@ -4966,6 +3742,7 @@ def run_mode(
     try:
         supplied = {
             "request": request,
+            "budget_policy": budget_policy,
             "action_id": action_id,
             "result": result,
             "execution": execution,
@@ -4973,23 +3750,23 @@ def run_mode(
             "decision": decision,
         }
         if mode == "start":
-            if request is None or any(
+            if request is None or budget_policy is None or any(
                 value is not None
                 for name, value in supplied.items()
-                if name != "request"
+                if name not in {"request", "budget_policy"}
             ) or evidence_ids:
-                return _blocked("CLI_ARGUMENTS_INVALID", "start 只接受 --request。")
-            return _drive_public_active(project_root, start(project_root, request))
+                return _blocked("CLI_ARGUMENTS_INVALID", "start 必须提供 --request 和 --budget-policy。")
+            return _drive_public_active(project_root, start(project_root, request, budget_policy))
         if mode == "resume":
             if any(
                 value is not None
                 for name, value in supplied.items()
-                if name != "request"
-            ) or evidence_ids:
+                if name not in {"budget_policy","decision"}
+            ) or evidence_ids or budget_policy is not None and decision is not None:
                 return _blocked(
-                    "CLI_ARGUMENTS_INVALID", "resume 只可选接受 --request。"
+                    "CLI_ARGUMENTS_INVALID", "resume 可选接受 --budget-policy 或绑定当前 Review 的 --decision 实施澄清。"
                 )
-            return _drive_public_active(project_root, resume(project_root, request))
+            return _drive_public_active(project_root, resume(project_root, budget_policy, decision))
         if mode == "hydrate":
             if action_id is None or any(
                 value is not None
@@ -5006,6 +3783,7 @@ def run_mode(
                 action_id is None
                 or execution is None
                 or request is not None
+                or budget_policy is not None
                 or artifact_manifest_sha256 is not None
                 or decision is not None
                 or evidence_ids
@@ -5016,32 +3794,85 @@ def run_mode(
                 )
             files = ProjectFiles.open(project_root)
             execution_path = _managed_request_path(files, execution)
-            execution_facts = files.read_json(execution_path)
-            if not isinstance(execution_facts, Mapping):
+            value = files.read_json(execution_path)
+            if not isinstance(value, Mapping) or set(value) != {
+                "failureKind",
+                "diagnostic",
+                "usage",
+                "timing",
+            }:
                 return _blocked(
-                    "ACTION_EXECUTION_FACTS_INVALID",
-                    "execution facts 必须是 JSON object。",
+                    "ACTION_COMPLETION_INVALID",
+                    "execution 文件必须是唯一 Completion metadata。",
                     execution_path,
                 )
-            recorded = record_execution(project_root, action_id, execution_facts)
-            if recorded.get("outcome") == "BLOCKED":
-                return recorded
-            if execution_facts.get("status") in {"FAILED", "LATE"}:
-                if result is not None:
-                    return _blocked(
-                        "CLI_ARGUMENTS_INVALID",
-                        "失败或迟到执行只提交 --action-id 和 --execution，不读取 result。",
+            usage, timing, diagnostic = (
+                value["usage"],
+                value["timing"],
+                value["diagnostic"],
+            )
+            if (
+                not isinstance(usage, Mapping)
+                or set(usage)
+                != {
+                    "provenance",
+                    "inputTokens",
+                    "outputTokens",
+                    "cachedInputTokens",
+                    "reasoningTokens",
+                }
+                or not isinstance(timing, Mapping)
+                or set(timing) != {"startedAtUtc", "endedAtUtc"}
+                or (
+                    diagnostic is not None
+                    and (
+                        not isinstance(diagnostic, Mapping)
+                        or set(diagnostic) != {"code", "path", "subjectIds"}
                     )
-                retry = _retry_action(files, action_id)
-                if retry.get("outcome") == "SYSTEM_FAILED":
-                    return retry
-                return _drive_public_active(project_root, status(project_root))
-            if result is None:
-                return _blocked(
-                    "CLI_ARGUMENTS_INVALID",
-                    "成功执行必须提供 envelope 锁定的 --result。",
                 )
-            submitted = submit(project_root, action_id, result)
+            ):
+                return _blocked(
+                    "ACTION_COMPLETION_INVALID",
+                    "Completion usage/timing/diagnostic 字段无效。",
+                    execution_path,
+                )
+            raw = None
+            if result is not None:
+                marker = _read_active_marker(files)
+                if marker is None:
+                    return _blocked("RUN_NOT_ACTIVE", "当前项目没有 active run。")
+                envelope = _mapping(
+                    files, _action_paths(str(marker["runId"]), action_id)["envelope"]
+                )
+                if result != envelope["resultPath"]:
+                    return _blocked(
+                        "ACTION_RESULT_PATH_MISMATCH",
+                        "submit 只能读取 Envelope 锁定的 result path。",
+                        "/result",
+                    )
+                raw = files.read_bytes(result)
+            completion = AttemptCompletion(
+                raw,
+                value["failureKind"],
+                (
+                    None
+                    if diagnostic is None
+                    else AttemptDiagnostic(
+                        diagnostic["code"],
+                        diagnostic["path"],
+                        tuple(diagnostic["subjectIds"]),
+                    )
+                ),
+                Usage(
+                    usage["provenance"],
+                    usage["inputTokens"],
+                    usage["outputTokens"],
+                    usage["cachedInputTokens"],
+                    usage["reasoningTokens"],
+                ),
+                AttemptTiming(timing["startedAtUtc"], timing["endedAtUtc"]),
+            )
+            submitted = submit(project_root, action_id, completion)
             if submitted.get("outcome") != "RECORDED":
                 return submitted
             return _drive_public_active(project_root, status(project_root))
@@ -5049,6 +3880,7 @@ def run_mode(
             if (
                 artifact_manifest_sha256 is None
                 or request is not None
+                or budget_policy is not None
                 or action_id is not None
                 or result is not None
                 or execution is not None
@@ -5070,8 +3902,14 @@ def run_mode(
         if mode == "status":
             if any(value is not None for value in supplied.values()) or evidence_ids:
                 return _blocked("CLI_ARGUMENTS_INVALID", "status 不接受工件参数。")
-            return _drive_public_active(project_root, status(project_root))
+            return status(project_root)
         return _blocked("CLI_MODE_INVALID", "不支持的运行模式。")
+    except StagePlanningBlocked as error:
+        response = _wait_for_budget(ProjectFiles.open(project_root))
+        if error.details:
+            response['diagnostics'][0]['details'].update(error.details)
+            response['diagnostics'][0]['message']='单次请求超过上下文容量；需无损减少未发行输入或核实并增加模型容量，增加总 token 预算无效。'
+        return response
     except ProjectIOError as error:
         return _blocked(error.code, str(error), error.relative_path)
     except (OSError, ValueError, KeyError, TypeError):
@@ -5100,6 +3938,7 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--request")
+    parser.add_argument("--budget-policy")
     parser.add_argument("--action-id")
     parser.add_argument("--result")
     parser.add_argument("--execution")
@@ -5127,6 +3966,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             root,
             arguments.mode,
             request=arguments.request,
+            budget_policy=arguments.budget_policy,
             action_id=arguments.action_id,
             result=arguments.result,
             execution=arguments.execution,
