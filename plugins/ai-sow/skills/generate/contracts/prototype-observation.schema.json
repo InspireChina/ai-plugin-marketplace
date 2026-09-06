@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:prototype-observation:1",
+  "description": "本轮新增 PrototypeAnalyzeResultIR；只声明目标业务/UI证据，不证明生产As-Is。",
+  "$ref": "#/$defs/prototypeAnalyzeResult",
+  "$defs": {
+    "prototypeAnalyzeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observations"
+      ],
+      "properties": {
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "localKey",
+              "behavior",
+              "evidenceIds",
+              "interactionIds",
+              "scopeRelation",
+              "runtimeStatus",
+              "relatedFactIds"
+            ],
+            "properties": {
+              "localKey": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "behavior": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "page",
+                  "trigger",
+                  "resultingState"
+                ],
+                "properties": {
+                  "page": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  },
+                  "trigger": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  },
+                  "resultingState": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  },
+                  "precondition": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  }
+                }
+              },
+              "evidenceIds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                }
+              },
+              "interactionIds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                }
+              },
+              "scopeRelation": {
+                "enum": [
+                  "CONFIRMS",
+                  "SUPPLEMENTS",
+                  "ADDITIONAL",
+                  "NON_SCOPE",
+                  "CONFLICT",
+                  "UNCERTAIN"
+                ]
+              },
+              "runtimeStatus": {
+                "enum": [
+                  "OBSERVED",
+                  "CODE_ONLY",
+                  "BROKEN",
+                  "NOT_EXERCISED"
+                ]
+              },
+              "relatedFactIds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

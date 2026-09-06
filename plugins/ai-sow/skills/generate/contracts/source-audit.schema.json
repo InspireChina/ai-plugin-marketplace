@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:source-audit:1",
+  "description": "逐覆盖根独立复核六类来源语义，仅引用对应 Scan fact key。",
+  "$ref": "#/$defs/sourceAudit",
+  "$defs": {
+    "sourceAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checks"
+      ],
+      "properties": {
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "coverageRootId",
+              "category",
+              "decision",
+              "relatedFactKeys",
+              "evidenceIds"
+            ],
+            "properties": {
+              "coverageRootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "category": {
+                "enum": [
+                  "THRESHOLD",
+                  "NEGATION",
+                  "EXCLUSION",
+                  "EXCEPTION",
+                  "ROLE",
+                  "TIME"
+                ]
+              },
+              "decision": {
+                "enum": [
+                  "COVERED",
+                  "MISSING",
+                  "NOT_APPLICABLE"
+                ]
+              },
+              "relatedFactKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "uniqueItems": true
+              },
+              "evidenceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "uniqueItems": true,
+                "minItems": 1
+              },
+              "reason": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "decision": {
+                      "enum": [
+                        "MISSING",
+                        "NOT_APPLICABLE"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decision": {
+                      "const": "COVERED"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "relatedFactKeys": {
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 6,
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

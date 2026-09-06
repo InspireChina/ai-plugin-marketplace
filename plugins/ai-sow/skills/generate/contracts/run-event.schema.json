@@ -1,0 +1,851 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:run-event:1",
+  "description": "不可变运行事件与按事件类型封闭的内嵌事实。",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "RUN_BUDGET_POLICY_PUBLISHED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "budgetPolicySha256"
+          ],
+          "properties": {
+            "budgetPolicySha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "ACTION_ISSUED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "actionId",
+            "logicalWorkId",
+            "envelopeSha256"
+          ],
+          "properties": {
+            "actionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "logicalWorkId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "envelopeSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "INPUT_REVISION_CREATED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "inputRevisionSha256"
+          ],
+          "properties": {
+            "inputRevisionSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "WAITING_INPUT_ENTERED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "waitId",
+            "reasonCode"
+          ],
+          "properties": {
+            "waitId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reasonCode": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "WAITING_INPUT_EXITED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "waitId",
+            "resolutionKind",
+            "budgetPolicySha256"
+          ],
+          "properties": {
+            "waitId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resolutionKind": {
+              "const": "BUDGET_POLICY"
+            },
+            "budgetPolicySha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "WAITING_INPUT_EXITED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "waitId",
+            "resolutionKind"
+          ],
+          "properties": {
+            "waitId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resolutionKind": {
+              "const": "ABANDONED"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "DETERMINISTIC_STEP_FINISHED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stepKind",
+            "outcome",
+            "startedAtUtc",
+            "endedAtUtc"
+          ],
+          "properties": {
+            "stepKind": {
+              "enum": [
+                "MATERIALIZE",
+                "VALIDATE",
+                "OFFICE",
+                "OFFICE_REFERENCE",
+                "RENDER",
+                "FINAL_VALIDATE"
+              ]
+            },
+            "outcome": {
+              "const": "SUCCEEDED"
+            },
+            "startedAtUtc": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            "endedAtUtc": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            "stageKind": {
+              "enum": [
+                "SCOPE",
+                "STORY_AC",
+                "TASK",
+                "ARTIFACT"
+              ]
+            },
+            "semanticRevision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "outputSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "dependentRequired": {
+            "stageKind": [
+              "semanticRevision",
+              "outputSha256"
+            ],
+            "semanticRevision": [
+              "stageKind",
+              "outputSha256"
+            ],
+            "outputSha256": [
+              "stageKind",
+              "semanticRevision"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "DETERMINISTIC_STEP_FINISHED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stepKind",
+            "outcome",
+            "failureCode",
+            "startedAtUtc",
+            "endedAtUtc"
+          ],
+          "properties": {
+            "stepKind": {
+              "enum": [
+                "MATERIALIZE",
+                "VALIDATE",
+                "OFFICE",
+                "OFFICE_REFERENCE",
+                "RENDER",
+                "FINAL_VALIDATE"
+              ]
+            },
+            "outcome": {
+              "const": "FAILED"
+            },
+            "failureCode": {
+              "type": "string",
+              "minLength": 1
+            },
+            "startedAtUtc": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            "endedAtUtc": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "RUN_STATE_CHANGED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fromState",
+            "toState"
+          ],
+          "properties": {
+            "fromState": {
+              "type": "string",
+              "minLength": 1
+            },
+            "toState": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "WAITING_INPUT_EXITED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "waitId",
+            "resolutionKind",
+            "actionId",
+            "envelopeSha256"
+          ],
+          "properties": {
+            "waitId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resolutionKind": {
+              "const": "FITTING_UNISSUED_REPAIR"
+            },
+            "actionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "envelopeSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "WAITING_INPUT_EXITED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "waitId",
+            "resolutionKind",
+            "reviewDecisionSha256",
+            "clarificationSha256"
+          ],
+          "properties": {
+            "waitId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resolutionKind": {
+              "const": "OWNER_CLARIFICATION"
+            },
+            "reviewDecisionSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "clarificationSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "OWNER_REPAIR_AUTHORIZED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stageKind": {
+              "enum": [
+                "SCOPE",
+                "STORY_AC",
+                "TASK"
+              ]
+            },
+            "semanticRevision": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "reviewDecisionSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "authorizationSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "terminalStateSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "stageKind",
+            "semanticRevision",
+            "reviewDecisionSha256",
+            "authorizationSha256",
+            "terminalStateSha256"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "ARTIFACT_REPAIR_AUTHORIZED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "artifactRevision": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "previousArtifactRevision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "authorizationSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "artifactRevision",
+            "previousArtifactRevision",
+            "authorizationSha256"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "WAITING_INPUT_EXITED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "waitId",
+            "resolutionKind",
+            "stageKind",
+            "stagePlanSha256",
+            "groupId"
+          ],
+          "properties": {
+            "waitId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resolutionKind": {
+              "const": "FITTING_UNISSUED_PLAN"
+            },
+            "stageKind": {
+              "enum": [
+                "SCOPE",
+                "STORY_AC",
+                "TASK"
+              ]
+            },
+            "stagePlanSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "groupId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "WAITING_INPUT_EXITED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "waitId",
+            "resolutionKind",
+            "actionId",
+            "envelopeSha256",
+            "failedAttemptRecordSha256"
+          ],
+          "properties": {
+            "waitId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resolutionKind": {
+              "const": "FITTING_UNISSUED_RETRY"
+            },
+            "actionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "envelopeSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "failedAttemptRecordSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,442 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:scope-decision:1",
+  "description": "源事实到语义边界的窄 Scope 决策；最终节点、身份与引用由 Scope Owner 生成。",
+  "$ref": "#/$defs/scopeDecision",
+  "$defs": {
+    "scopeDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decisions"
+      ],
+      "properties": {
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "localKey",
+              "decisionKind",
+              "factIds",
+              "priorEntityIds",
+              "boundaryEvidence",
+              "relations"
+            ],
+            "properties": {
+              "localKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "decisionKind": {
+                "enum": [
+                  "EPIC",
+                  "FEATURE",
+                  "DESIGN_ITEM",
+                  "INTEGRATION",
+                  "NFR",
+                  "POLICY_INSTANCE",
+                  "EXCLUDE",
+                  "RETIRE"
+                ]
+              },
+              "factIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "minItems": 0,
+                "uniqueItems": true
+              },
+              "priorEntityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "minItems": 0,
+                "uniqueItems": true
+              },
+              "boundaryEvidence": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "classification",
+                  "evidenceIds",
+                  "facetFacts",
+                  "observationKeys"
+                ],
+                "properties": {
+                  "responsibilityBoundaryIds": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "name": {
+                    "type": "string",
+                    "pattern": "\\S"
+                  },
+                  "classification": {
+                    "enum": [
+                      "AUDIT",
+                      "AVAILABILITY",
+                      "BUSINESS",
+                      "CAPACITY",
+                      "COMPONENT",
+                      "DATA",
+                      "DELIVERY",
+                      "DISPOSITION",
+                      "EXTERNAL",
+                      "FLOW",
+                      "INFRASTRUCTURE",
+                      "INTERNAL",
+                      "OBSERVABILITY",
+                      "PERFORMANCE",
+                      "PRIVACY",
+                      "QUALITY",
+                      "RECOVERY",
+                      "SECURITY",
+                      "TECHNICAL",
+                      "policy-data-migration",
+                      "policy-go-live",
+                      "policy-sit-automation",
+                      "policy-uat-automation"
+                    ]
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "facetFacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "role",
+                        "factId"
+                      ],
+                      "properties": {
+                        "role": {
+                          "enum": [
+                            "DIRECTION",
+                            "TRIGGER",
+                            "PURPOSE",
+                            "DATA_CATEGORY",
+                            "TARGET"
+                          ]
+                        },
+                        "factId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        }
+                      }
+                    },
+                    "minItems": 0,
+                    "uniqueItems": true
+                  },
+                  "observationKeys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "minItems": 0,
+                    "uniqueItems": true
+                  }
+                }
+              },
+              "relations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "targetLocalKeys",
+                    "evidenceIds"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "PARENT",
+                        "APPLIES_TO",
+                        "DESIGN",
+                        "POLICY",
+                        "REUSE_DEPENDENCY",
+                        "ADJUST",
+                        "SPLIT",
+                        "MERGE",
+                        "UNCHANGED_IDENTITY"
+                      ]
+                    },
+                    "targetLocalKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    }
+                  }
+                },
+                "minItems": 0,
+                "uniqueItems": true
+              },
+              "exclusionReason": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "uncertainty": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "EPIC"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "BUSINESS",
+                            "DELIVERY",
+                            "TECHNICAL"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "FEATURE"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "BUSINESS",
+                            "DELIVERY",
+                            "TECHNICAL"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "DESIGN_ITEM"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "COMPONENT",
+                            "DATA",
+                            "FLOW",
+                            "INFRASTRUCTURE",
+                            "QUALITY"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "INTEGRATION"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "EXTERNAL",
+                            "INTERNAL"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "NFR"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "AUDIT",
+                            "AVAILABILITY",
+                            "CAPACITY",
+                            "OBSERVABILITY",
+                            "PERFORMANCE",
+                            "PRIVACY",
+                            "RECOVERY",
+                            "SECURITY"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "POLICY_INSTANCE"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "policy-data-migration",
+                            "policy-go-live",
+                            "policy-sit-automation",
+                            "policy-uat-automation"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "EXCLUDE"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "DISPOSITION"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "const": "RETIRE"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "boundaryEvidence": {
+                      "properties": {
+                        "classification": {
+                          "enum": [
+                            "DISPOSITION"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "decisionKind": {
+                      "enum": [
+                        "EXCLUDE",
+                        "RETIRE"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "exclusionReason"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "exclusionReason"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

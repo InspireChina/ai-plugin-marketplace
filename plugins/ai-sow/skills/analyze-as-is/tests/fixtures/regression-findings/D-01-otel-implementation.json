@@ -1,1 +1,0 @@
-{"findingId":"D-01","category":"D","expectedLayer":"opus","codexRoute":"gpt-5.6-sol/max","path":"/commitments/0/implementationStatus","text":"OpenTelemetry 已实现；需联合 Helm 注释态、inject-java=false 与构建依赖判断。"}

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:task-decision:1",
+  "description": "仅选择已封存技术对象、模板目录和证据；最终 Task 与计算由程序及模板拥有。",
+  "$ref": "#/$defs/taskDecision",
+  "$defs": {
+    "taskDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tasks"
+      ],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "localKey",
+              "storyLocalKey",
+              "acceptanceCriterionKeys",
+              "workTypeId",
+              "technicalTarget",
+              "deliverableBoundary",
+              "workModeDecision",
+              "complexityDecision",
+              "evidenceIds"
+            ],
+            "properties": {
+              "localKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "storyLocalKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "acceptanceCriterionKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "workTypeId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "technicalTarget": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "deliverableBoundary": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "workModeDecision": {
+                "enum": [
+                  "新建",
+                  "调整",
+                  "接入复用"
+                ]
+              },
+              "complexityDecision": {
+                "enum": [
+                  "S",
+                  "M",
+                  "L"
+                ]
+              },
+              "evidenceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

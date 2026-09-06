@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:validation-campaign:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "campaignId",
+    "validationLockPath",
+    "validationLockSha256",
+    "implementationPaths",
+    "worktreeAllowlist",
+    "commands"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-validation-campaign-manifest-v1"},
+    "campaignId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "validationLockPath": {"$ref": "#/$defs/path"},
+    "validationLockSha256": {"$ref": "#/$defs/sha256"},
+    "implementationPaths": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/path"}
+    },
+    "worktreeAllowlist": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/command"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "commandId",
+        "scenarioId",
+        "sampleIndex",
+        "cacheMode",
+        "checkpointId",
+        "argv"
+      ],
+      "properties": {
+        "kind": {"enum": ["COMMAND", "USER_CHECKPOINT"]},
+        "commandId": {"type": "string", "minLength": 1},
+        "scenarioId": {"type": "string", "minLength": 1},
+        "sampleIndex": {"type": "integer", "minimum": 0},
+        "cacheMode": {"enum": ["NONE", "COLD", "WARM"]},
+        "checkpointId": {"type": "string", "minLength": 1},
+        "argv": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "expectedExitCodes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer"}
+        },
+        "expectedOutcomes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "stateSnapshotPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/path"}
+        },
+        "artifactPath": {"$ref": "#/$defs/path"},
+        "requiredReceiptContract": {"type": "string", "minLength": 1},
+        "receiptPath": {"$ref": "#/$defs/path"}
+      }
+    }
+  }
+}

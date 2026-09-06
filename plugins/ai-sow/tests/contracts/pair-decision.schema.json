@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:pair-decision:1",
+  "description": "一次共同评审的封闭批准或否决决定。",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "pairReviewManifestSha256",
+        "decision"
+      ],
+      "properties": {
+        "contract": {
+          "const": "ai-sow-pair-decision-v1"
+        },
+        "pairReviewManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "decision": {
+          "const": "APPROVE"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "pairReviewManifestSha256",
+        "decision",
+        "side",
+        "feedbackInputPath"
+      ],
+      "properties": {
+        "contract": {
+          "const": "ai-sow-pair-decision-v1"
+        },
+        "pairReviewManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "decision": {
+          "const": "REJECT"
+        },
+        "side": {
+          "enum": [
+            "GREENFIELD",
+            "BROWNFIELD"
+          ]
+        },
+        "feedbackInputPath": {
+          "type": "string",
+          "pattern": "^pair-feedback/request-[0-9a-f]{64}\\.json$",
+          "description": "正文为完整规范化v3 request，文件名中的SHA256使决定直接绑定反馈全文。"
+        }
+      }
+    }
+  ]
+}

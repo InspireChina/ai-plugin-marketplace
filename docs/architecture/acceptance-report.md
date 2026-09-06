@@ -1,4 +1,9 @@
-# AI SOW 新版本多 Session E2E 阶段汇总报告
+# 已取代：AI SOW 多 Session E2E 阶段汇总报告
+
+> 历史说明：本报告记录 2026-08-30 至 2026-08-31 的预发布多阶段原型，不能作为当前命令、路径、
+> 兼容承诺或验收状态使用。该原型已于 2026-09-02 被唯一入口 `ai-sow:generate`、三份稳定 Bundle、
+> 自动终审和不可变 generation 架构整体取代。当前合同见
+> [AI SOW 插件方案](../../plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md)。
 
 - 报告性质：中期验收报告
 - Run ID：`2026-08-30-codex-v2`

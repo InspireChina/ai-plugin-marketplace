@@ -6,17 +6,27 @@
 
 ## 开发环境
 
-本节只适用于仓库贡献者。普通插件用户由 `setup` 自动准备隔离运行时，不需要执行这些命令。
-贡献者安装 Git、Python 3.12 和 uv 0.11.7 后运行：
+本节只适用于仓库贡献者。普通插件用户由 `ai-sow:generate` 的 bootstrap 自动准备隔离运行时，不需要执行这些命令。
+贡献者安装 Git、Python 3.12、uv 0.11.7 和 LibreOffice 后运行：
 
 ```text
 uv sync --project plugins/ai-sow --locked
 ```
 
+SOW 正式工作簿必须由真实 LibreOffice 重新计算并复读，不能用合成缓存或跳过测试代替。
+系统会优先读取 `AI_SOW_OFFICE_BIN` 指定的 `soffice`/`libreoffice` 可执行文件，其次从
+`PATH` 自动发现。CI 在 Linux、macOS 和 Windows 上均安装 LibreOffice，并显式设置该变量。
+
 每个插件都必须自包含，不得依赖自身安装目录以外的文件。实现行为变更前先添加测试，
 并保持 manifest、合同版本、文档和发布说明一致。
 
-## 必需检查
+## 每 Task 验收与最终验证
+
+每个 Task 仅验证本次新增/修复行为和直接受影响的契约、调用边界，不默认运行整文件、整插件或完整端到端。
+单元、局部集成和完整端到端使用独立 pytest markers；命令与层级说明见
+[插件测试指南](plugins/ai-sow/tests/README.md)。已有测试的重复内容应合并并说明承接断言，保留关键失败与边界回归。
+
+以下为计划最终集成/交付门禁，不是每个 Task 的默认检查：
 
 ```text
 uv run --project plugins/ai-sow --locked python -m unittest discover -s tests -v
@@ -25,11 +35,14 @@ uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml
 uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
 ```
 
-提交 Pull Request 前请在本地运行全部检查。Pull Request 应说明问题、选定边界、用户可见
+提交 Pull Request 前请在安装真实 LibreOffice 的环境中运行全部检查，确认 Office 往返测试
+实际执行而不是被跳过。Pull Request 应说明问题、选定边界、用户可见
 行为、测试结果，以及任何隐私或兼容性影响。提交应保持小而聚焦。
 
-冒烟命令只把插件包复制到独立临时目录，在该目录之外创建用户项目：先建立复制插件的 `.venv`，
-再通过该 Python 运行 setup、复核 fixture 中五份 Owner 0.3 receipt，并生成确定性交付包。它不重放
-Owner 专业 validator；这些规则由前一条全量 pytest 覆盖。最终 JSON 报告会包含临时工作目录，便于检查。
+冒烟命令把插件包复制到独立临时目录，并在其外创建用户项目，通过 Python `NextAction` API 验证
+Greenfield、Brownfield、同 run 恢复、abandon/start，以及相同输入、模板变化和业务变化时的新 run 完整编译。
+每轮都必须完成三阶段 fresh Review。它同时检查不可变输入和输出、工作簿 Table/公式、last-known-good，
+并用读取守卫证明运行时不访问复制插件或测试项目之外的文件。完整发布 smoke 在最终集成门禁执行；
+失败保留 work-dir、failure receipt 和 worker stdout/stderr，成功报告包含临时工作目录。
 
 提交贡献即表示你同意该贡献采用 Apache License 2.0。

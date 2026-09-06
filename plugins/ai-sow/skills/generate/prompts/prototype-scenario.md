@@ -1,0 +1,18 @@
+# Demo 场景
+
+MODEL_PROVIDER：读取 packet 中 inventory 与累计 prototypeLedger，按 prototype-scenario.schema.json 输出本轮有序场景。
+只引用 inventory 已声明 interactionId；场景必须包含操作、DOM assertion 与必要截图，不创建运行时新identity。
+每步必填page，表示操作发生的已知route（navigate表示目标route）。准备/导航/等待可使用interactionId:null，不计覆盖；场景interactionIds精确等于非null步骤ID集合。覆盖步骤必须匹配inventory的page和selector。
+navigate的唯一目标由page指定，value只能为null或与page完全相同；不支持第二套路由重写。HOST从实际URL/route采集page，不回显模型目标。
+操作与目标事件候选关系固定为navigate/navigate、click/click、fill/input、select/input或change、check/input或change或click、press/keydown或keyup；wait仅作null准备。候选关系不证明事件实际发生。
+demoLimits 是同run全局限额，demoRemaining 是本Action发行时冻结的剩余step/screenshot空间；关键路径标记critical并为必需双跑计入最低成本。普通稳定场景只跑一次，不假定未来不稳定。不得超出冻结剩余空间或token预算。
+Scenario与steps有执行顺序，不重排；不要猜测宿主实际安装的浏览器版本。
+Demo 是目标业务/UI 补充范围证据，不代表生产 As-Is，不决定后端设计或估算分类。
+禁止外网、依赖安装、构建或修改 Demo；浏览器由宿主执行。
+
+HOST_BROWSER：不输出模型Scenario。执行packet绑定的Scenario，按prototype-trace.schema.json返回实际typed trace；插件不安装或执行浏览器。
+填写真实且完整browserProfile（版本、viewport、DPR、locale、timezone、干净profile、空storage、时钟/随机策略、稳定等待规则），同run后续执行严格复用browserProfileSource绑定的首个授权profile。
+每个critical场景执行两次；普通场景首次不稳定才重放一次，重放紧跟该场景。每次实际操作、DOM assertion和截图引用均须保留，重放也计入step/screenshot限额；不足以完成必需重放时保留不完整事实，不伪称完整观察。
+逐步报告真实page与必填eventObserved:boolean。覆盖步骤须实际捕获绑定inventory交互在该目标元素发生的预期事件；navigate须实际到达目标route。不得因API返回成功就填true（check可能已勾选而无事件）；未发生填false，保留为BROKEN执行事实。null准备固定false，不产生交互覆盖。插件仅验证typed事实，真实宿主验收另行证明采集。
+绑定原bundle/scenario/每个源码文件hash，externalRequestCount必须为0。截图hash须对应真实截图字节，后续宿主验收会复读文件与执行事实；仅相同元数据字符串不证明运行真实发生。
+unresolvedDiscoveries始终必填（无发现时[]）。无法解析为inventory交互的真实发现使用精确六字段page/selector/event/sourceEvidenceIds/domExcerpt/screenshotSha256保留来源、DOM与本trace截图绑定，不分配interactionId；发现非空会等待，不绕过为下一轮已知ID计划。

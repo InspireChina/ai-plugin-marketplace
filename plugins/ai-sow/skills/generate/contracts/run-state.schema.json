@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:run-state:1",
+  "description": "记录只绑定一个显式输入 revision 的 FULL_COMPILE run；仅恢复本 run 的阶段与检查点，预算从发行账本和事件派生。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "runId",
+    "requestSha256",
+    "route",
+    "phase",
+    "wait",
+    "result",
+    "currentInputRevisionSha256",
+    "currentCandidateSha256",
+    "currentCandidatePath",
+    "expectedActionIds",
+    "checkpointRefs",
+    "resumeFromPhase"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-run-state-v3"},
+    "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+    "requestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "route": {"const": "FULL_COMPILE"},
+    "phase": {
+      "enum": [
+        "PREPARE",
+        "EPIC_FEATURE",
+        "STORY_AC",
+        "TASK",
+        "REVIEW",
+        "REPAIR",
+        "DRAFT",
+        "AWAITING_FINAL_REVIEW",
+        "PROMOTE",
+        "DONE"
+      ]
+    },
+    "wait": {"enum": ["NONE", "MODEL", "INPUT", "APPROVAL"]},
+    "result": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "enum": [
+            "PUBLISHED",
+            "MANUAL_REVIEW_REQUIRED",
+            "CONTRACT_UNSUPPORTED",
+            "SYSTEM_FAILED",
+            "ABANDONED"
+          ]
+        }
+      ]
+    },
+    "currentInputRevisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "currentCandidateSha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+      ]
+    },
+    "currentCandidatePath": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"}
+      ]
+    },
+    "expectedActionIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
+    "checkpointRefs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/checkpointRef"}
+    },
+    "resumeFromPhase": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "enum": [
+            "PREPARE",
+            "EPIC_FEATURE",
+            "STORY_AC",
+            "TASK",
+            "REVIEW",
+            "REPAIR",
+            "DRAFT"
+          ]
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "checkpointRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "sha256"],
+      "properties": {
+        "kind": {"enum": ["SCOPE_CLOSURE", "STORY_AC", "TASK"]},
+        "path": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+        "sha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "phase": {"const": "DONE"},
+            "wait": {"const": "NONE"},
+            "result": {"type": "string"},
+            "expectedActionIds": {"maxItems": 0}
+          }
+        },
+        {
+          "properties": {
+            "phase": {"not": {"const": "DONE"}},
+            "wait": {"const": "MODEL"},
+            "result": {"type": "null"},
+            "expectedActionIds": {"minItems": 1}
+          }
+        },
+        {
+          "properties": {
+            "phase": {"not": {"const": "DONE"}},
+            "wait": {"enum": ["INPUT", "APPROVAL"]},
+            "result": {"type": "null"},
+            "expectedActionIds": {"maxItems": 0}
+          }
+        },
+        {
+          "properties": {
+            "phase": {"not": {"const": "DONE"}},
+            "wait": {"const": "NONE"},
+            "result": {"type": "null"},
+            "expectedActionIds": {"maxItems": 0}
+          }
+        }
+      ]
+    }
+  ]
+}

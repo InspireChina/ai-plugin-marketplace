@@ -1,0 +1,68 @@
+{
+  "contract": "ai-sow-validation-campaign-manifest-v1",
+  "campaignId": "batch8-e2e-v7",
+  "validationLockPath": "plugins/ai-sow/tests/validation/e2e-validation-lock.json",
+  "validationLockSha256": "842f017de8087444de213892092d8282be7aeff83157d2676c9437909409f99d",
+  "implementationPaths": [
+    "plugins/ai-sow/runtime/project_io.py",
+    "plugins/ai-sow/skills/generate/scripts/orchestrator.py",
+    "plugins/ai-sow/skills/generate/scripts/scope_compiler.py",
+    "plugins/ai-sow/skills/generate/scripts/delivery_compiler.py",
+    "plugins/ai-sow/skills/generate/scripts/task_compiler.py",
+    "plugins/ai-sow/skills/generate/scripts/final_review.py",
+    "plugins/ai-sow/skills/generate/scripts/sow_model.py",
+    "plugins/ai-sow/skills/generate/scripts/generation_store.py",
+    "plugins/ai-sow/skills/generate/prompts/repair-stage1.md",
+    "plugins/ai-sow/skills/generate/tests/regressions/test_e2e_regressions.py"
+  ],
+  "worktreeAllowlist": [
+    ".gitignore",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "docs/architecture/ai-plugin-marketplace-design.md",
+    "plugins/ai-sow/**",
+    "scripts/validate_repository.py",
+    "tests/test_repository_layout.py",
+    "tests/test_repository_validator.py",
+    "tests/test_smoke_plugin.py"
+  ],
+  "commands": [
+    {
+      "kind": "COMMAND",
+      "commandId": "next-action-e2e",
+      "scenarioId": "pipeline",
+      "sampleIndex": 0,
+      "cacheMode": "NONE",
+      "checkpointId": "pipeline-complete",
+      "argv": ["uv", "run", "--project", "plugins/ai-sow", "--locked", "pytest", "-c", "plugins/ai-sow/pyproject.toml", "plugins/ai-sow/skills/generate/tests/test_e2e.py", "-x", "--maxfail=1", "-q"],
+      "expectedExitCodes": [0],
+      "expectedOutcomes": [],
+      "stateSnapshotPaths": []
+    },
+    {
+      "kind": "COMMAND",
+      "commandId": "copy-plugin-smoke",
+      "scenarioId": "installed-copy",
+      "sampleIndex": 0,
+      "cacheMode": "NONE",
+      "checkpointId": "copy-smoke-complete",
+      "argv": ["uv", "run", "--project", "plugins/ai-sow", "--locked", "pytest", "-c", "plugins/ai-sow/pyproject.toml", "plugins/ai-sow/tests/test_generate_e2e.py", "-x", "--maxfail=1", "-q"],
+      "expectedExitCodes": [0],
+      "expectedOutcomes": [],
+      "stateSnapshotPaths": []
+    },
+    {
+      "kind": "COMMAND",
+      "commandId": "root-copy-smoke-retention",
+      "scenarioId": "root-smoke",
+      "sampleIndex": 0,
+      "cacheMode": "NONE",
+      "checkpointId": "root-smoke-complete",
+      "argv": ["uv", "run", "--project", "plugins/ai-sow", "--locked", "python", "-m", "unittest", "tests.test_smoke_plugin", "-v"],
+      "expectedExitCodes": [0],
+      "expectedOutcomes": [],
+      "stateSnapshotPaths": []
+    }
+  ]
+}

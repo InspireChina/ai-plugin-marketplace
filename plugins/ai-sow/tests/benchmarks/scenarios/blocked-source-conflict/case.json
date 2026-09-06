@@ -1,0 +1,38 @@
+{
+  "contract": "ai-sow-benchmark-case-v1",
+  "scenarioId": "blocked-source-conflict",
+  "class": "BLOCKED",
+  "privacy": "ANONYMOUS_SYNTHETIC",
+  "mode": "GREENFIELD",
+  "title": "订阅退款处理",
+  "objective": "确认选定来源对退款期限和批准规则存在未裁决冲突时，流程只提出输入缺口而不擅自选边。",
+  "sources": [
+    {
+      "sourceId": "PRD-401",
+      "type": "PRD",
+      "status": "APPROVED",
+      "content": "订阅付款后14天内可申请退款；所有退款必须由客服经理批准；批准后原路退款并记录理由。"
+    },
+    {
+      "sourceId": "HLD-401",
+      "type": "HLD",
+      "status": "APPROVED",
+      "content": "退款服务通过支付适配器执行原路退款；请求使用付款号作为幂等键；审批决定和渠道回执写入不可变审计日志；灰度发布支持关闭自动处理。"
+    },
+    {
+      "sourceId": "DEMO-401",
+      "type": "DEMO",
+      "status": "SELECTED",
+      "content": "选定原型显示付款后30天内退款，金额不超过200元时系统自动批准，超过200元才进入经理队列。"
+    }
+  ],
+  "expected": {
+    "terminal": "BLOCKED",
+    "blockerCode": "SOURCE_CONFLICT_UNRESOLVED",
+    "requiredInput": "由业务负责人裁决退款期限以及小额退款是否允许自动批准，并更新权威来源。"
+  },
+  "scaleExpectations": {
+    "requiresModelSharding": false,
+    "minimumLogicalThemes": 1
+  }
+}

@@ -1,0 +1,515 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:action:1",
+  "description": "定义 fresh-context 模型动作、严格结果、执行收据和宿主下一动作联合。",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/actionEnvelope"
+    },
+    {
+      "$ref": "#/$defs/attemptRecord"
+    },
+    {
+      "$ref": "#/$defs/nextAction"
+    }
+  ],
+  "$defs": {
+    "attemptRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalWorkId",
+        "revision",
+        "attempt",
+        "envelopeSha256",
+        "outcome",
+        "failureKind",
+        "diagnostic",
+        "rawSha256",
+        "normalizedResultSha256",
+        "usage",
+        "timing"
+      ],
+      "properties": {
+        "logicalWorkId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "envelopeSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "outcome": {
+          "enum": [
+            "SUCCEEDED",
+            "FAILED",
+            "SUPERSEDED"
+          ]
+        },
+        "failureKind": {
+          "enum": [
+            null,
+            "EXECUTION",
+            "INVALID_JSON",
+            "INVALID_IR",
+            "INPUT_REQUIRED",
+            "CONTRACT_GAP",
+            "OWNER_BUG",
+            "SYSTEM"
+          ]
+        },
+        "diagnostic": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/attemptDiagnostic"
+            }
+          ]
+        },
+        "rawSha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+            }
+          ]
+        },
+        "normalizedResultSha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+            }
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/attemptUsage"
+        },
+        "timing": {
+          "$ref": "#/$defs/attemptTiming"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "failureKind": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "SUCCEEDED",
+                  "SUPERSEDED"
+                ]
+              },
+              "diagnostic": {
+                "type": "null"
+              },
+              "rawSha256": {
+                "type": "string"
+              },
+              "normalizedResultSha256": {
+                "type": "string"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "FAILED",
+                  "SUPERSEDED"
+                ]
+              },
+              "diagnostic": {
+                "type": "object"
+              },
+              "normalizedResultSha256": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "attemptDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "path",
+        "subjectIds"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string"
+        },
+        "subjectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "attemptTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAtUtc",
+        "endedAtUtc"
+      ],
+      "properties": {
+        "startedAtUtc": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "endedAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        }
+      }
+    },
+    "attemptUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenance",
+        "inputTokens",
+        "outputTokens",
+        "cachedInputTokens",
+        "reasoningTokens"
+      ],
+      "properties": {
+        "provenance": {
+          "enum": [
+            "PROVIDER_REPORTED",
+            "LOCALLY_ESTIMATED"
+          ]
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cachedInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasoningTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "actionPacket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workItems",
+        "contextRefs"
+      ],
+      "properties": {
+        "workItems": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "contextRefs": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "actionEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "runId",
+        "actionId",
+        "logicalWorkId",
+        "revision",
+        "attempt",
+        "stageKind",
+        "groupId",
+        "inputRevisionSha256",
+        "upstreamCheckpointSha256s",
+        "baseCandidateSha256",
+        "actionContractId",
+        "actionContractSha256",
+        "packetPath",
+        "packetSha256",
+        "resultPath",
+        "validatorVersion",
+        "budgetPolicySha256",
+        "executionLimits"
+      ],
+      "properties": {
+        "contract": {
+          "const": "ai-sow-action-v3"
+        },
+        "runId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "actionId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "logicalWorkId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "stageKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "groupId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "inputRevisionSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "upstreamCheckpointSha256s": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256Array"
+        },
+        "baseCandidateSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "actionContractId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "actionContractSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "packetPath": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"
+        },
+        "packetSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "resultPath": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"
+        },
+        "validatorVersion": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "budgetPolicySha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        },
+        "executionLimits": {
+          "$ref": "#/$defs/executionLimits"
+        }
+      }
+    },
+    "executionLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estimatedInputTokens",
+        "maxOutputTokens",
+        "maxHydrateTokens"
+      ],
+      "properties": {
+        "estimatedInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxHydrateTokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "nextAction": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/modelActionGroup"
+        },
+        {
+          "$ref": "#/$defs/inputNextAction"
+        },
+        {
+          "$ref": "#/$defs/approvalNextAction"
+        },
+        {
+          "$ref": "#/$defs/doneNextAction"
+        }
+      ]
+    },
+    "modelActionGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "kind",
+        "groupId",
+        "maxConcurrency",
+        "groupDeadlineMilliseconds",
+        "actions"
+      ],
+      "properties": {
+        "contract": {
+          "const": "ai-sow-next-action-v1"
+        },
+        "kind": {
+          "const": "MODEL_ACTION_GROUP"
+        },
+        "groupId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "maxConcurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "groupDeadlineMilliseconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/actionEnvelope"
+          }
+        }
+      }
+    },
+    "inputNextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "kind",
+        "questions"
+      ],
+      "properties": {
+        "contract": {
+          "const": "ai-sow-next-action-v1"
+        },
+        "kind": {
+          "const": "REQUEST_INPUT"
+        },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "urn:ai-sow:generate:next:common:1#/$defs/question"
+          }
+        }
+      }
+    },
+    "approvalNextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "kind",
+        "artifactManifestPath",
+        "artifactManifestSha256"
+      ],
+      "properties": {
+        "contract": {
+          "const": "ai-sow-next-action-v1"
+        },
+        "kind": {
+          "const": "REQUEST_APPROVAL"
+        },
+        "artifactManifestPath": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"
+        },
+        "artifactManifestSha256": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
+        }
+      }
+    },
+    "doneNextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "kind",
+        "result",
+        "generationManifestPath"
+      ],
+      "properties": {
+        "contract": {
+          "const": "ai-sow-next-action-v1"
+        },
+        "kind": {
+          "const": "DONE"
+        },
+        "result": {
+          "enum": [
+            "REUSED",
+            "PUBLISHED",
+            "MANUAL_REVIEW_REQUIRED",
+            "CONTRACT_UNSUPPORTED",
+            "SYSTEM_FAILED",
+            "ABANDONED"
+          ]
+        },
+        "generationManifestPath": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

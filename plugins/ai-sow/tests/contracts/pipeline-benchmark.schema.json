@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:pipeline-benchmark:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "baselineCommit",
+    "implementationSha256",
+    "execution",
+    "comparisonInterval",
+    "scenarios",
+    "samples",
+    "receiptIndex",
+    "summaries",
+    "summarySha256"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-pipeline-benchmark-v1"},
+    "baselineCommit": {"const": "75970b2cadd6c298443b1d6016f99b34c8e3b25a"},
+    "implementationSha256": {"$ref": "#/$defs/sha256"},
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostProtocol",
+        "runtimeDependency",
+        "modelProfileId",
+        "model",
+        "reasoningEffort",
+        "environmentSha256",
+        "toolVersions",
+        "maxConcurrency",
+        "office",
+        "cacheModes",
+        "cacheProtocol",
+        "accountingMode",
+        "repetitionsPerScenario"
+      ],
+      "properties": {
+        "hostProtocol": {"const": "EXTERNAL_FRESH_WORKER"},
+        "runtimeDependency": {"const": "NONE"},
+        "modelProfileId": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "reasoningEffort": {"type": "string", "minLength": 1},
+        "environmentSha256": {"$ref": "#/$defs/sha256"},
+        "toolVersions": {
+          "type": "object",
+          "minProperties": 3,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        },
+        "maxConcurrency": {"type": "integer", "minimum": 1},
+        "office": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version", "binarySha256"],
+          "properties": {
+            "name": {"const": "LibreOffice"},
+            "version": {"type": "string", "minLength": 1},
+            "binarySha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "cacheModes": {
+          "type": "array",
+          "prefixItems": [{"const": "COLD"}, {"const": "WARM"}],
+          "items": false
+        },
+        "cacheProtocol": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["COLD", "WARM"],
+          "properties": {
+            "COLD": {"$ref": "#/$defs/coldCacheProtocol"},
+            "WARM": {"$ref": "#/$defs/warmCacheProtocol"}
+          }
+        },
+        "accountingMode": {
+          "enum": ["PROVIDER_REPORTED", "LOCALLY_ESTIMATED"]
+        },
+        "repetitionsPerScenario": {"type": "integer", "minimum": 5}
+      }
+    },
+    "comparisonInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startProbe",
+        "baselineEndProbe",
+        "candidateEndProbe",
+        "includedBaselinePublishSegments",
+        "excludedAfterApprovalSegments"
+      ],
+      "properties": {
+        "startProbe": {"const": "INPUT_REVISION_ACCEPTED"},
+        "baselineEndProbe": {"const": "PUBLISHED_OFFICE_VERIFIED"},
+        "candidateEndProbe": {"const": "AWAITING_APPROVAL"},
+        "includedBaselinePublishSegments": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["RENDER", "OFFICE_RECALCULATION", "OFFICE_REREAD"]
+          }
+        },
+        "excludedAfterApprovalSegments": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["USER_WAIT", "ATOMIC_PROMOTE", "CURRENT_SWAP"]}
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenarioId", "class", "casePath", "caseSha256"],
+        "properties": {
+          "scenarioId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "class": {"enum": ["SUCCESS", "BLOCKED"]},
+          "casePath": {"$ref": "#/$defs/path"},
+          "caseSha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "minItems": 32,
+      "items": {"$ref": "#/$defs/sample"}
+    },
+    "receiptIndex": {
+      "type": "array",
+      "minItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"$ref": "#/$defs/path"},
+          "sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "summaries": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenarioId",
+          "cacheMode",
+          "sampleCount",
+          "p50Milliseconds",
+          "rangeMilliseconds",
+          "failureRate"
+        ],
+        "properties": {
+          "scenarioId": {"type": "string", "minLength": 1},
+          "cacheMode": {"enum": ["COLD", "WARM"]},
+          "sampleCount": {"type": "integer", "minimum": 1},
+          "p50Milliseconds": {"type": "number", "minimum": 0},
+          "rangeMilliseconds": {
+            "type": "array",
+            "prefixItems": [
+              {"type": "number", "minimum": 0},
+              {"type": "number", "minimum": 0}
+            ],
+            "items": false
+          },
+          "p95Milliseconds": {"type": ["number", "null"], "minimum": 0},
+          "failureRate": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "summarySha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+    "coldCacheProtocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostPrewarm", "namespaceMode", "providerCacheObservation"],
+      "properties": {
+        "hostPrewarm": {"const": "NONE"},
+        "namespaceMode": {"const": "SAMPLE_UNIQUE"},
+        "providerCacheObservation": {"const": "RECORDED_NOT_ASSUMED_ZERO"}
+      }
+    },
+    "warmCacheProtocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostPrewarm", "namespaceMode", "providerCacheObservation"],
+      "properties": {
+        "hostPrewarm": {"const": "PRIOR_MEASURED_COLD_RUNS"},
+        "namespaceMode": {"const": "SCENARIO_STABLE"},
+        "providerCacheObservation": {"const": "RECORDED_NOT_REQUIRED"}
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleId",
+        "scenarioId",
+        "scenarioClass",
+        "cacheMode",
+        "repetition",
+        "status",
+        "receiptSha256s",
+        "failureCount"
+      ],
+      "properties": {
+        "sampleId": {"type": "string", "minLength": 1},
+        "scenarioId": {"type": "string", "minLength": 1},
+        "scenarioClass": {"enum": ["SUCCESS", "BLOCKED"]},
+        "cacheMode": {"enum": ["COLD", "WARM"]},
+        "repetition": {"type": "integer", "minimum": 1},
+        "status": {"enum": ["COMPLETED", "FAILED_CLASSIFIED"]},
+        "receiptSha256s": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/sha256"}
+        },
+        "failureCount": {"type": "integer", "minimum": 0},
+        "readyForApprovalMilliseconds": {"type": "number", "minimum": 0},
+        "timeToInputGapMilliseconds": {"type": "number", "minimum": 0},
+        "timeToFailureMilliseconds": {"type": "number", "minimum": 0}
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "status": {"const": "COMPLETED"},
+            "scenarioClass": {"const": "SUCCESS"}
+          },
+          "required": ["readyForApprovalMilliseconds"]
+        },
+        {
+          "properties": {
+            "status": {"const": "COMPLETED"},
+            "scenarioClass": {"const": "BLOCKED"}
+          },
+          "required": ["timeToInputGapMilliseconds"]
+        },
+        {
+          "properties": {"status": {"const": "FAILED_CLASSIFIED"}},
+          "required": ["timeToFailureMilliseconds"]
+        }
+      ]
+    }
+  }
+}

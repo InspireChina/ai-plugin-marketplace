@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:pair-review-manifest:1",
+  "description": "精确绑定两份可共同评审工作簿及其来源。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "status",
+    "green",
+    "brown",
+    "brownTemplatePath",
+    "brownTemplateSha256"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-pair-review-manifest-v1"
+    },
+    "status": {
+      "const": "READY_FOR_REVIEW"
+    },
+    "green": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectRoot",
+        "runId",
+        "requestPath",
+        "requestSha256",
+        "budgetPolicyPath",
+        "budgetPolicySha256",
+        "artifactManifestPath",
+        "artifactManifestSha256",
+        "workbookPath",
+        "workbookSha256"
+      ],
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "budgetPolicyPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budgetPolicySha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "artifactManifestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "workbookPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workbookSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "brown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectRoot",
+        "runId",
+        "requestPath",
+        "requestSha256",
+        "budgetPolicyPath",
+        "budgetPolicySha256",
+        "artifactManifestPath",
+        "artifactManifestSha256",
+        "workbookPath",
+        "workbookSha256"
+      ],
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "budgetPolicyPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budgetPolicySha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "artifactManifestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "workbookPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workbookSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "brownTemplatePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "brownTemplateSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

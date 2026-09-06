@@ -1,24 +1,60 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ai-sow:tests:case-manifest:1",
+  "$id": "urn:ai-sow:tests:case-manifest:2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["entries"],
+  "required": [
+    "contract",
+    "cases"
+  ],
   "properties": {
-    "entries": {
+    "contract": {
+      "const": "ai-sow-e2e-case-manifest-v1"
+    },
+    "cases": {
       "type": "array",
-      "minItems": 5,
-      "maxItems": 5,
+      "minItems": 2,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["ownerSkill", "path", "sha256"],
+        "required": [
+          "caseId",
+          "mode",
+          "fixtureRootPath",
+          "requiredActionContracts"
+        ],
         "properties": {
-          "ownerSkill": {"enum": ["analyze-as-is", "analyze-requirement", "generate-design", "generate-story", "generate-task"]},
-          "path": {"type": "string", "minLength": 1},
-          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          "caseId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "mode": {
+            "enum": [
+              "GREENFIELD",
+              "BROWNFIELD"
+            ]
+          },
+          "fixtureRootPath": {
+            "$ref": "#/$defs/path"
+          },
+          "requiredActionContracts": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z_]+-v1$"
+            }
+          }
         }
       }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\.\\.).+$"
     }
   }
 }

@@ -1,0 +1,21 @@
+{
+  "tasks": [
+    {
+      "localKey": "query-view",
+      "storyLocalKey": "story:story-query",
+      "acceptanceCriterionKeys": [
+        "ac:ac-success",
+        "ac:ac-empty"
+      ],
+      "workTypeId": "FE-VIEW",
+      "technicalTarget": "target:story-query",
+      "deliverableBoundary": "一张订单查询页面",
+      "workModeDecision": "新建",
+      "complexityDecision": "M",
+      "evidenceIds": [
+        "evidence-a",
+        "evidence-b"
+      ]
+    }
+  ]
+}

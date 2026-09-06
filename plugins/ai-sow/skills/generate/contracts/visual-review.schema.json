@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:visual-review:1",
+  "$ref": "#/$defs/visualReviewDecision",
+  "$defs": {
+    "visualReviewDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sheets",
+        "overallDecision"
+      ],
+      "properties": {
+        "sheets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sheetKey",
+              "checks",
+              "decision",
+              "findings"
+            ],
+            "properties": {
+              "sheetKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "checks": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "clipping",
+                  "readability",
+                  "unexpectedBlank",
+                  "styleLoss"
+                ],
+                "properties": {
+                  "clipping": {
+                    "enum": [
+                      "PASS",
+                      "FAIL"
+                    ]
+                  },
+                  "readability": {
+                    "enum": [
+                      "PASS",
+                      "FAIL"
+                    ]
+                  },
+                  "unexpectedBlank": {
+                    "enum": [
+                      "PASS",
+                      "FAIL"
+                    ]
+                  },
+                  "styleLoss": {
+                    "enum": [
+                      "PASS",
+                      "FAIL"
+                    ]
+                  }
+                }
+              },
+              "decision": {
+                "enum": [
+                  "PASS",
+                  "FAIL"
+                ]
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "overallDecision": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        }
+      }
+    }
+  },
+  "description": "逐个可见工作表及整体工作簿的独立视觉评审结果。"
+}

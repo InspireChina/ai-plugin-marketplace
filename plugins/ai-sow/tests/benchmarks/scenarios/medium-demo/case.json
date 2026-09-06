@@ -1,0 +1,39 @@
+{
+  "contract": "ai-sow-benchmark-case-v1",
+  "scenarioId": "medium-demo",
+  "class": "SUCCESS",
+  "privacy": "ANONYMOUS_SYNTHETIC",
+  "mode": "GREENFIELD",
+  "title": "区域培训报名平台",
+  "objective": "交付多地区课程发布、报名、候补、签到与运营报表，并把选定原型中的交互作为增量需求。",
+  "sources": [
+    {
+      "sourceId": "PRD-101",
+      "type": "PRD",
+      "status": "APPROVED",
+      "content": "运营人员按地区发布课程、容量和报名截止时间；员工报名后占用名额，满额进入候补；取消后按候补时间顺序自动递补；讲师扫码签到；运营报表按地区、课程和状态导出。地区管理员只能管理所属地区，所有导出记录审计日志。"
+    },
+    {
+      "sourceId": "HLD-101",
+      "type": "HLD",
+      "status": "APPROVED",
+      "content": "前端经企业身份平台登录；课程服务与报名服务分离；报名服务用数据库事务保证容量与候补顺序；通知事件写入队列后由邮件适配器消费；报表从只读副本生成；监控覆盖队列积压、报名错误率和报表时延；分阶段按地区上线并可回退。"
+    },
+    {
+      "sourceId": "DEMO-101",
+      "type": "DEMO",
+      "status": "SELECTED",
+      "content": "选定原型增加日历视图、课程卡片剩余名额、报名二次确认、取消原因必填和签到失败后的人工补签入口；未展示的社交分享不在范围内。"
+    }
+  ],
+  "expected": {
+    "terminal": "PUBLISHED",
+    "successProbe": "PUBLISHED_OFFICE_VERIFIED",
+    "minimumFeatures": 4,
+    "requiredCoverageRoots": ["课程发布", "容量与候补", "取消递补", "签到补签", "报表导出", "地区权限", "审计与监控"]
+  },
+  "scaleExpectations": {
+    "requiresModelSharding": false,
+    "minimumLogicalThemes": 3
+  }
+}

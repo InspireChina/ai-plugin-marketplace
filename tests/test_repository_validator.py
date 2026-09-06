@@ -11,11 +11,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.validate_repository import (
+    RENDERER_FINGERPRINT_FILES,
     validate_ai_sow_release,
     validate_claude_marketplace,
-    validate_generator_contract_consistency,
+    validate_renderer_contract_consistency,
     validate_marketplace,
     validate_marketplace_parity,
+    validate_model_efficiency_gate,
     validate_plugin_manifest,
     validate_plugin_manifest_parity,
     validate_publisher_identity,
@@ -23,12 +25,69 @@ from scripts.validate_repository import (
 )
 
 
+AI_SOW_DESCRIPTION = '每次仅根据明确提供的 PRD、HLD 和适用往期 SOW，完整编译并逐阶段评审可追溯的 SOW 工作簿，经 LibreOffice 双复读和全部可见 Sheet 视觉评审后请求批准发布。'
+
 AI_SOW_ENTRY = {
     "name": "ai-sow",
+    "description": AI_SOW_DESCRIPTION,
     "source": {"source": "local", "path": "./plugins/ai-sow"},
     "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
     "category": "Productivity",
 }
+
+AI_SOW_GENERATE_SUPPORT_FILES = (
+    "skills/generate/contracts/action.schema.json",
+    "skills/generate/contracts/artifact-approval.schema.json",
+    "skills/generate/contracts/common.schema.json",
+    "skills/generate/contracts/current.schema.json",
+    "skills/generate/contracts/generation-manifest.schema.json",
+    "skills/generate/contracts/input-revision.schema.json",
+    "skills/generate/contracts/request.schema.json",
+    "skills/generate/contracts/review-repair.schema.json",
+    "skills/generate/contracts/run-state.schema.json",
+    "skills/generate/contracts/sow-model.schema.json",
+    "skills/generate/contracts/stage-checkpoint.schema.json",
+    "skills/generate/references/acceptance-criteria.md",
+    "skills/generate/references/delivery-decomposition.md",
+    "skills/generate/references/delivery-lifecycle-policy.md",
+    "skills/generate/references/delivery-work-classification.md",
+    "skills/generate/references/effective-start-matching.md",
+    "skills/generate/references/epic-authoring.md",
+    "skills/generate/references/feature-authoring.md",
+    "skills/generate/references/layered-review.md",
+    "skills/generate/references/source-authority.md",
+    "skills/generate/references/story-authoring.md",
+    "skills/generate/references/task-authoring.md",
+    "skills/generate/references/technical-work-classification.md",
+)
+AI_SOW_SCHEMA_IDS = {'owner-repair-authorization.schema.json': 'urn:ai-sow:generate:next:owner-repair-authorization:1',
+ 'owner-clarification.schema.json': 'urn:ai-sow:generate:next:owner-clarification:1',
+ 'artifact-repair-authorization.schema.json': 'urn:ai-sow:generate:next:artifact-repair-authorization:1',
+ 'action.schema.json': 'urn:ai-sow:generate:next:action:1',
+ 'artifact-approval.schema.json': 'urn:ai-sow:generate:next:artifact-approval:1',
+ 'change-graph.schema.json': 'urn:ai-sow:generate:next:change-graph:1',
+ 'common.schema.json': 'urn:ai-sow:generate:next:common:1',
+ 'current.schema.json': 'urn:ai-sow:generate:next:current:1',
+ 'fact-decision.schema.json': 'urn:ai-sow:generate:next:fact-decision:1',
+ 'generation-manifest.schema.json': 'urn:ai-sow:generate:next:generation-manifest:1',
+ 'input-revision.schema.json': 'urn:ai-sow:generate:next:input-revision:1',
+ 'prior-state-decision.schema.json': 'urn:ai-sow:generate:next:prior-state-decision:1',
+ 'prior-state-snapshot.schema.json': 'urn:ai-sow:generate:next:prior-state-snapshot:1',
+ 'prototype-observation.schema.json': 'urn:ai-sow:generate:next:prototype-observation:1',
+ 'prototype-scenario.schema.json': 'urn:ai-sow:generate:next:prototype-scenario:1',
+ 'prototype-trace.schema.json': 'urn:ai-sow:generate:next:prototype-trace:1',
+ 'request.schema.json': 'urn:ai-sow:generate:next:request:1',
+ 'review-repair.schema.json': 'urn:ai-sow:generate:next:review-repair:1',
+ 'run-budget-policy.schema.json': 'urn:ai-sow:generate:next:run-budget-policy:1',
+ 'run-event.schema.json': 'urn:ai-sow:generate:next:run-event:1',
+ 'run-state.schema.json': 'urn:ai-sow:generate:next:run-state:1',
+ 'scope-decision.schema.json': 'urn:ai-sow:generate:next:scope-decision:1',
+ 'source-audit.schema.json': 'urn:ai-sow:generate:next:source-audit:1',
+ 'sow-model.schema.json': 'urn:ai-sow:generate:next:sow-model:1',
+ 'stage-checkpoint.schema.json': 'urn:ai-sow:generate:next:stage-checkpoint:1',
+ 'story-ac-decision.schema.json': 'urn:ai-sow:generate:next:story-ac-decision:1',
+ 'task-decision.schema.json': 'urn:ai-sow:generate:next:task-decision:1',
+ 'visual-review.schema.json': 'urn:ai-sow:generate:visual-review:1'}
 
 
 def claude_entry(entry: dict[str, object]) -> dict[str, object]:
@@ -38,7 +97,7 @@ def claude_entry(entry: dict[str, object]) -> dict[str, object]:
     return {
         "name": entry["name"],
         "source": path,
-        "description": f"{entry['name']} 插件",
+        "description": str(entry.get("description") or f"{entry['name']} 插件"),
     }
 
 
@@ -66,58 +125,105 @@ def write_plugin(root: Path, name: str, version: str) -> Path:
 
 
 def write_valid_ai_sow_release(root: Path) -> Path:
-    plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.1")
+    plugin_root = write_plugin(root, "ai-sow", "0.1.0-beta.2")
+    codex_manifest = json.loads(
+        (plugin_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    codex_manifest["description"] = AI_SOW_DESCRIPTION
+    codex_manifest["interface"] = {
+        "developerName": "Inspire",
+        "shortDescription": "一次输入材料，自动生成和增量更新 SOW。",
+        "longDescription": "一次提供 PRD、HLD 和适用的往期 SOW，自动完成范围编译、交付分解和终审，并用 LibreOffice 回算、复读后发布可追溯 SOW。",
+        "defaultPrompt": [
+            "使用 ai-sow:generate，根据 PRD 和 HLD 创建 Greenfield SOW。",
+            "使用 ai-sow:generate，根据 PRD、HLD 和往期 SOW 创建 Brownfield SOW。",
+            "使用 ai-sow:generate，用补充输入增量更新现有 SOW。",
+        ],
+    }
+    write_json(plugin_root / ".codex-plugin/plugin.json", codex_manifest)
+    claude_manifest = json.loads(
+        (plugin_root / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    claude_manifest["description"] = AI_SOW_DESCRIPTION
+    write_json(plugin_root / ".claude-plugin/plugin.json", claude_manifest)
     for relative in (
+        "skills/generate/SKILL.md",
+        "skills/generate/scripts/bootstrap.sh",
+        "skills/generate/scripts/bootstrap.ps1",
+        "skills/generate/scripts/orchestrator.py",
+        "skills/generate/assets/sow-template.xlsx",
         "tests/support/smoke_plugin.py",
+        "tests/contracts/case-manifest.schema.json",
+        "tests/fixtures/explicit-architecture/case-manifest.json",
         "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
         "docs/reference/SOW估算与生成示例_v1.3.xlsx",
+        *AI_SOW_GENERATE_SUPPORT_FILES,
     ):
         path = plugin_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
-    write_json(
-        plugin_root / "skills/generate-sow/fixtures/project/.ai-sow/project.json",
-        {
-            "projectId": "validator-fixture",
-            "name": "Validator Fixture",
-            "pluginVersion": "0.1.0-beta.1",
-            "sowStandardVersion": "1.3",
-        },
-    )
     (plugin_root / "pyproject.toml").write_text(
-        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
+        '[project]\nname = "ai-sow-plugin-runtime"\nversion = "0.1.0b2"\n',
         encoding="utf-8",
     )
     (plugin_root / "uv.lock").write_text(
         'version = 1\nrevision = 3\n\n[[package]]\n'
-        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b1"\n',
+        'name = "ai-sow-plugin-runtime"\nversion = "0.1.0b2"\n',
         encoding="utf-8",
     )
-    generator_root = plugin_root / "skills/generate-sow"
-    generator_payloads = {
-        "scripts/generate_sow.py": b"generate sow\n",
+    write_json(
+        plugin_root / "tests/benchmarks/model-efficiency-policy-v1.json",
+        {
+            "pairedBenchmarkGate": {
+                "status": "REQUIRED_NOT_SATISFIED",
+                "claimStatus": "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS",
+                "baselineManifest": None,
+                "candidateManifest": None,
+                "comparisonReceipt": None,
+            }
+        },
+    )
+    generator_root = plugin_root / "skills/generate"
+    renderer_payloads = {
+        "scripts/package_renderer.py": b"render package\n",
         "scripts/workbook.py": b"render workbook\n",
+        "scripts/office_engine.py": b"run office engine\n",
+        "scripts/story_notes.py": b"project story notes\n",
     }
-    for relative, payload in generator_payloads.items():
+    for relative, payload in renderer_payloads.items():
         path = generator_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
-    write_json(
-        generator_root / "contracts/manifest.schema.json",
-        {
+    for name, schema_id in AI_SOW_SCHEMA_IDS.items():
+        value: dict[str, object] = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": schema_id,
             "type": "object",
-            "properties": {
-                "generatorContract": {"const": "receipt-only-v2"},
-            },
-        },
-    )
+        }
+        if name == "generation-manifest.schema.json":
+            value["required"] = [
+                "sowModelSha256",
+                "stageCheckpointSha256s",
+                "reviewDecisionSha256",
+                "artifactManifestSha256",
+                "approvalSha256",
+                "templateSha256",
+                "effectivePolicyDecisionSha256",
+                "workbookSha256",
+                "notesSha256",
+            ]
+            value["properties"] = {
+                "rendererContract": {"const": "generation-renderer-v8"}
+            }
+        write_json(generator_root / "contracts" / name, value)
+    (generator_root / "scripts/generation_store.py").touch()
     write_json(
-        generator_root / "contracts/generator-fingerprint-baseline.json",
+        generator_root / "contracts/renderer-fingerprint-baseline.json",
         {
-            "generatorContract": "receipt-only-v2",
+            "rendererContract": "generation-renderer-v8",
             "files": {
                 relative: hashlib.sha256(payload).hexdigest()
-                for relative, payload in generator_payloads.items()
+                for relative, payload in renderer_payloads.items()
             },
         },
     )
@@ -146,31 +252,95 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
-    def test_generator_fingerprint_matches_the_current_contract(self) -> None:
+    def test_satisfied_model_efficiency_gate_requires_real_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_root = Path(temp_dir) / "plugins/ai-sow"
+            write_json(
+                plugin_root / "tests/benchmarks/model-efficiency-policy-v1.json",
+                {
+                    "pairedBenchmarkGate": {
+                        "status": "SATISFIED",
+                        "claimStatus": "ALLOWED_AFTER_TARGET_EVALUATION",
+                        "baselineManifest": "tests/benchmarks/baseline/manifest.json",
+                        "candidateManifest": "tests/benchmarks/candidate/manifest.json",
+                        "comparisonReceipt": {
+                            "path": "tests/benchmarks/comparison.json",
+                            "sha256": "a" * 64,
+                        },
+                    }
+                },
+            )
+
+            errors = validate_model_efficiency_gate(plugin_root)
+
+            self.assertIn(
+                "model efficiency baselineManifest evidence is missing", errors
+            )
+            self.assertIn(
+                "model efficiency candidateManifest evidence is missing", errors
+            )
+            self.assertIn(
+                "model efficiency comparisonReceipt evidence is missing", errors
+            )
+
+    def test_repository_validator_uses_generate_renderer_baseline(self) -> None:
+        self.assertEqual(
+            RENDERER_FINGERPRINT_FILES,
+            (
+                "scripts/package_renderer.py",
+                "scripts/workbook.py",
+                "scripts/office_engine.py",
+                "scripts/story_notes.py",
+            ),
+        )
+
+    def test_ai_sow_release_rejects_staged_manifest_prompts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            initialize_repository(root, [AI_SOW_ENTRY])
+            manifest_path = plugin_root / ".codex-plugin/plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["interface"]["longDescription"] = "七阶段生成 SOW。"
+            manifest["interface"]["defaultPrompt"][0] = "请指导我进入下一阶段。"
+            write_json(manifest_path, manifest)
+
+            errors = validate_ai_sow_release(root, plugin_root)
+
+            self.assertIn(
+                "AI SOW longDescription must advertise one automatic generate flow",
+                errors,
+            )
+            self.assertIn(
+                "AI SOW defaultPrompt must only advertise ai-sow:generate",
+                errors,
+            )
+
+    def test_renderer_fingerprint_matches_the_current_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plugin_root = write_valid_ai_sow_release(root)
 
             self.assertEqual(
-                validate_generator_contract_consistency(root, plugin_root),
+                validate_renderer_contract_consistency(root, plugin_root),
                 [],
             )
 
-    def test_generator_fingerprint_rejects_changed_projection_bytes(self) -> None:
+    def test_renderer_fingerprint_rejects_changed_projection_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plugin_root = write_valid_ai_sow_release(root)
             workbook = (
-                plugin_root / "skills/generate-sow/scripts/workbook.py"
+                plugin_root / "skills/generate/scripts/workbook.py"
             )
             workbook.write_bytes(workbook.read_bytes() + b"changed projection\n")
 
-            errors = validate_generator_contract_consistency(root, plugin_root)
+            errors = validate_renderer_contract_consistency(root, plugin_root)
 
             self.assertTrue(
                 any(
-                    "generator fingerprint mismatch for "
-                    "plugins/ai-sow/skills/generate-sow/scripts/workbook.py"
+                    "renderer fingerprint mismatch for "
+                    "plugins/ai-sow/skills/generate/scripts/workbook.py"
                     in error
                     for error in errors
                 ),
@@ -320,7 +490,7 @@ class RepositoryValidatorTests(unittest.TestCase):
 
             self.assertEqual(validate_plugin_manifest(root, plugin_root), [])
             self.assertIn(
-                "AI SOW plugin version in .codex-plugin/plugin.json must be 0.1.0-beta.1",
+                "AI SOW plugin version in .codex-plugin/plugin.json must be 0.1.0-beta.2",
                 validate_ai_sow_release(root, plugin_root),
             )
 
@@ -343,24 +513,6 @@ class RepositoryValidatorTests(unittest.TestCase):
                 ".codex-plugin/plugin.json",
                 b"\xff",
                 "invalid AI SOW plugin manifest .codex-plugin/plugin.json:",
-            ),
-            (
-                "fixture missing",
-                "skills/generate-sow/fixtures/project/.ai-sow/project.json",
-                None,
-                "invalid AI SOW fixture project:",
-            ),
-            (
-                "fixture malformed",
-                "skills/generate-sow/fixtures/project/.ai-sow/project.json",
-                "{",
-                "invalid AI SOW fixture project:",
-            ),
-            (
-                "fixture non-UTF-8",
-                "skills/generate-sow/fixtures/project/.ai-sow/project.json",
-                b"\xff",
-                "invalid AI SOW fixture project:",
             ),
             (
                 "pyproject missing",
@@ -427,6 +579,69 @@ class RepositoryValidatorTests(unittest.TestCase):
             self.assertIn(
                 "missing release file: plugins/ai-sow/tests/support/smoke_plugin.py",
                 validate_ai_sow_release(root, plugin_root),
+            )
+
+    def test_ai_sow_release_requires_cutover_contracts_and_references(self) -> None:
+        for relative in AI_SOW_GENERATE_SUPPORT_FILES:
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                plugin_root = write_valid_ai_sow_release(root)
+                (plugin_root / relative).unlink()
+
+                self.assertIn(
+                    f"missing release file: plugins/ai-sow/{relative}",
+                    validate_ai_sow_release(root, plugin_root),
+                )
+
+    def test_ai_sow_release_requires_exact_cutover_schema_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            path = plugin_root / "skills/generate/contracts/action.schema.json"
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema["$id"] = "urn:ai-sow:generate:action:legacy"
+            write_json(path, schema)
+
+            self.assertIn(
+                "AI SOW contract action.schema.json must use $id "
+                "urn:ai-sow:generate:next:action:1",
+                validate_ai_sow_release(root, plugin_root),
+            )
+
+    def test_ai_sow_release_requires_generation_proof_closure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            path = plugin_root / "skills/generate/contracts/generation-manifest.schema.json"
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema["required"].remove("approvalSha256")
+            write_json(path, schema)
+
+            self.assertIn(
+                "generation manifest must require the v2 self-contained proof closure",
+                validate_ai_sow_release(root, plugin_root),
+            )
+
+    def test_ai_sow_release_rejects_legacy_schema_or_extra_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_root = write_valid_ai_sow_release(root)
+            legacy = plugin_root / "skills/setup/SKILL.md"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("legacy", encoding="utf-8")
+            write_json(
+                plugin_root / "skills/generate/contracts/run-plan.schema.json",
+                {"$id": "urn:ai-sow:generate:run-plan:1"},
+            )
+
+            errors = validate_ai_sow_release(root, plugin_root)
+
+            self.assertIn(
+                "AI SOW public skills must be exactly ['generate'], found ['generate', 'setup']",
+                errors,
+            )
+            self.assertTrue(
+                any(error.startswith("AI SOW contract set must be") for error in errors)
             )
 
 

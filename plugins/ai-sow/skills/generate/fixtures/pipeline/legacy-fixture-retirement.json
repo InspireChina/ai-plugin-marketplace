@@ -1,0 +1,75 @@
+{
+  "contract": "ai-sow-legacy-fixture-retirement-v1",
+  "entries": [
+    {
+      "legacyPath": "fixtures/greenfield/request.json",
+      "legacySha256": "410e3c77c5193f7deb906aa475f2bbfe395d54470557a674de9b769c0649973e",
+      "replacementPath": "fixtures/pipeline/input-revisions/greenfield.json",
+      "replacementSha256": "edbb0765895c8a33225c63d12e3fb5f49ab1e70bf534fb601f87b50e4bf37cb8",
+      "replacementTest": "test_intake.py::test_input_revision_is_immutable_and_atomically_accepted"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/input-manifest.json",
+      "legacySha256": "78db24ef9fd8356e0c61815f60a5e8ecd2cff02230130f86535009f2bc215201",
+      "replacementPath": "fixtures/pipeline/input-revisions/greenfield.json",
+      "replacementSha256": "edbb0765895c8a33225c63d12e3fb5f49ab1e70bf534fb601f87b50e4bf37cb8",
+      "replacementTest": "test_contracts.py::test_pipeline_input_revision_fixtures_match_strict_contract"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/scope.json",
+      "legacySha256": "2c141ed50af121a057ca91b63afffbfdcb341fe8699a44f3f6a19131622c1e09",
+      "replacementPath": "fixtures/pipeline/stage1/scope-decision-results.json",
+      "replacementSha256": "3753a1f42008ffd560eb86097ff84b0013f002e867b165c96ceb4520c68b2a9c",
+      "replacementTest": "test_scope_compiler.py::test_scope_decision_ir_closes_fact_handles_and_checks_relations_before_waiting"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/delivery.json",
+      "legacySha256": "c4f4052be1981892e401a4245858243c3e8b037cde5d488615dc94a6bdd273b8",
+      "replacementPath": "fixtures/pipeline/stage2/story-ac-decision-results.json",
+      "replacementSha256": "a4e7a1e33974e7d5fd2aaf2924ec410b0b0f65691daaf6e76a5ecd4f4143a9b5",
+      "replacementTest": "test_delivery_compiler.py::test_story_ac_materialize_once_per_revision_waits_for_siblings_and_preserves_order"
+    },
+    {
+      "legacyPath": "fixtures/greenfield/final-review.json",
+      "legacySha256": "8f19ab6fbac32421bb67d7bbde7d7c870be8dca91c1c6f612832864a99d329",
+      "replacementPath": "fixtures/pipeline/stage1/review-decision.json",
+      "replacementSha256": "91f40448548ce30ff77f0bfa1db0aeff832dc95eabcb4c9314194167eaf6695a",
+      "replacementTest": "test_final_review.py::test_checkpoint_deep_binding_complete_real_chain"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/request.json",
+      "legacySha256": "bd77a9b83a0e5defe2d6ef9f53b3590dc9b495b286a42058e9b6086d92940797",
+      "replacementPath": "fixtures/pipeline/input-revisions/brownfield.json",
+      "replacementSha256": "1a9e2ef70e6a27112ce8055673a6f1b683e0b8de89edb1ef120163ea39c277ce",
+      "replacementTest": "test_intake.py::test_brownfield_without_prior_sow_records_not_provided"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/input-manifest.json",
+      "legacySha256": "26ddd03ae50c09f68d38c4202c75b10592ee180a716131f4ba365c4970080e7c",
+      "replacementPath": "fixtures/pipeline/input-revisions/brownfield.json",
+      "replacementSha256": "1a9e2ef70e6a27112ce8055673a6f1b683e0b8de89edb1ef120163ea39c277ce",
+      "replacementTest": "test_contracts.py::test_pipeline_input_revision_fixtures_match_strict_contract"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/scope.json",
+      "legacySha256": "0f641eb800f114f368b6be8901f67cf500687fb9eb0aec709dd745da49d0dbcf",
+      "replacementPath": "fixtures/pipeline/stage1/source-scan-decision-results.json",
+      "replacementSha256": "87ccce8dbdf87630b47afcf9b9899448f42e839975375ad7de3401b1f175c052",
+      "replacementTest": "test_scope_compiler.py::test_source_scan_coverage_root_seals_only_facts_and_explicit_no_relevance"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/delivery.json",
+      "legacySha256": "d0e80a21d402850f7d842d65e169c8a99f0cf0b4a6d65b545347e13ca2b9baa2",
+      "replacementPath": "fixtures/pipeline/stage3/task-decision-results.json",
+      "replacementSha256": "d4402ef50d42a4cf1ba286ccc251901efe691a4c809930dea4645df95a3e51e2",
+      "replacementTest": "test_task_compiler.py::test_task_materialize_once_per_revision_complete_ledger_identity_immutable_publication"
+    },
+    {
+      "legacyPath": "fixtures/brownfield/final-review.json",
+      "legacySha256": "fb0c5115da1ca7586854ec523a1e858a1a471ca415bf61a5fd33467209b04be0",
+      "replacementPath": "fixtures/pipeline/stage1/source-audit-decision-results.json",
+      "replacementSha256": "12632635a1d583e4664568a2e94b21101fa722af92d102686aab0db29f95857e",
+      "replacementTest": "test_scope_compiler.py::test_independent_source_audit_requires_every_category_and_bound_fact_keys"
+    }
+  ]
+}

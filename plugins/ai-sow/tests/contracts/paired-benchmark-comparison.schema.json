@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:tests:paired-benchmark-comparison:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "policySha256",
+    "baselineManifestSha256",
+    "candidateManifestSha256",
+    "sampleMatrixSha256",
+    "executionProfileSha256",
+    "metrics",
+    "targets",
+    "checks",
+    "verdict",
+    "failureCodes"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-paired-benchmark-comparison-v1"},
+    "policySha256": {"$ref": "#/$defs/sha256"},
+    "baselineManifestSha256": {"$ref": "#/$defs/sha256"},
+    "candidateManifestSha256": {"$ref": "#/$defs/sha256"},
+    "sampleMatrixSha256": {"$ref": "#/$defs/sha256"},
+    "executionProfileSha256": {"$ref": "#/$defs/sha256"},
+    "metrics": {"$ref": "#/$defs/metrics"},
+    "targets": {"$ref": "#/$defs/ratios"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sameExecutionProfile",
+        "exactSampleMatrix",
+        "completeReceiptGranularities",
+        "allReceiptsUsable",
+        "fullCompileTokenTarget",
+        "fullCompileP50WallTarget",
+        "postReviewP50WallTarget",
+        "reviewTokenGuard"
+      ],
+      "properties": {
+        "sameExecutionProfile": {"type": "boolean"},
+        "exactSampleMatrix": {"type": "boolean"},
+        "completeReceiptGranularities": {"type": "boolean"},
+        "allReceiptsUsable": {"type": "boolean"},
+        "fullCompileTokenTarget": {"type": "boolean"},
+        "fullCompileP50WallTarget": {"type": "boolean"},
+        "postReviewP50WallTarget": {"type": "boolean"},
+        "reviewTokenGuard": {"type": "boolean"}
+      }
+    },
+    "verdict": {"enum": ["PASS", "FAIL"]},
+    "failureCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "PASS"}}},
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "sameExecutionProfile": {"const": true},
+              "exactSampleMatrix": {"const": true},
+              "completeReceiptGranularities": {"const": true},
+              "allReceiptsUsable": {"const": true},
+              "fullCompileTokenTarget": {"const": true},
+              "fullCompileP50WallTarget": {"const": true},
+              "postReviewP50WallTarget": {"const": true},
+              "reviewTokenGuard": {"const": true}
+            }
+          },
+          "metrics": {"$ref": "#/$defs/ratios"},
+          "failureCodes": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "FAIL"}}},
+      "then": {
+        "properties": {"failureCodes": {"minItems": 1}},
+        "not": {
+          "properties": {
+            "checks": {
+              "properties": {
+                "sameExecutionProfile": {"const": true},
+                "exactSampleMatrix": {"const": true},
+                "completeReceiptGranularities": {"const": true},
+                "allReceiptsUsable": {"const": true},
+                "fullCompileTokenTarget": {"const": true},
+                "fullCompileP50WallTarget": {"const": true},
+                "postReviewP50WallTarget": {"const": true},
+                "reviewTokenGuard": {"const": true}
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fullCompileTokenRatio",
+        "fullCompileP50WallRatio",
+        "postReviewP50WallRatio",
+        "reviewTokenRatio"
+      ],
+      "properties": {
+        "fullCompileTokenRatio": {"type": ["number", "null"], "minimum": 0},
+        "fullCompileP50WallRatio": {"type": ["number", "null"], "minimum": 0},
+        "postReviewP50WallRatio": {"type": ["number", "null"], "minimum": 0},
+        "reviewTokenRatio": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "ratios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fullCompileTokenRatio",
+        "fullCompileP50WallRatio",
+        "postReviewP50WallRatio",
+        "reviewTokenRatio"
+      ],
+      "properties": {
+        "fullCompileTokenRatio": {"type": "number", "minimum": 0},
+        "fullCompileP50WallRatio": {"type": "number", "minimum": 0},
+        "postReviewP50WallRatio": {"type": "number", "minimum": 0},
+        "reviewTokenRatio": {"type": "number", "minimum": 0}
+      }
+    }
+  }
+}

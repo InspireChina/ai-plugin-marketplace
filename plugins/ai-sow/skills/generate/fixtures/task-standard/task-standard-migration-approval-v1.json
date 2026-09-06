@@ -1,0 +1,1490 @@
+{
+  "schemaVersion": "task-standard-migration-approval-v1",
+  "decision": "APPROVED_FOR_IMPLEMENTATION",
+  "reviewMethod": "DETERMINISTIC_EXHAUSTIVE_ROW_AUDIT",
+  "humanRowReviewClaimed": false,
+  "checkpointResolution": {
+    "plannedReview": "HUMAN_ROW_BY_ROW",
+    "performedReview": "DETERMINISTIC_EXHAUSTIVE_ROW_AUDIT",
+    "continuationAuthority": "USER_STANDING_DIRECTION",
+    "humanReviewClaimed": false
+  },
+  "userAuthorization": {
+    "mode": "STANDING_CONTINUE_DIRECTION",
+    "instructionSha256": "7d8add27f42526e14ac8d508ab076298dc0a822c5c452d6aa1d4a39cdc6cb147",
+    "reviewClaimed": false,
+    "approvedPacketSha256": "d46f441a82d55078df3d4d08e09649f1995dbd259f78b3564684a9c9e974a8ce"
+  },
+  "bindings": {
+    "sourceCommit": "0d0982fb7787fdcdc9bcfbcbbe46928ca8f9c7fd",
+    "sources": [
+      {
+        "path": "docs/reference/研发全生命周期标准人天基准表_v6.0_讨论稿.md",
+        "gitBlobSha1": "d93f0d02bcbde4c2415bd8d6795677eaef3606d8",
+        "contentSha256": "37d26828303569fef1639683c33d4a801a32f71e81a30fd64e3b86fd23e3db42"
+      },
+      {
+        "path": "docs/reference/研发全生命周期标准人天基准表_v6.0_复杂度标准设计.md",
+        "gitBlobSha1": "161988351e81154ec1d748ed7729bfa3a1315ede",
+        "contentSha256": "76f47a14f2848d8f5be6712d4ccab7fac2953f161e8efb3d5d71edb35fa62c7a"
+      },
+      {
+        "path": "docs/reference/研发全生命周期标准人天基准表_v6.0_复杂度案例复核.md",
+        "gitBlobSha1": "d1e7e10414582c368c9acdf881fc296654d7c5f5",
+        "contentSha256": "abed7186f00ebdd7f718bee382392046a56b2bb72b80c0bbca1d2eed0c414605"
+      },
+      {
+        "path": "docs/reference/研发全生命周期标准人天基准表_v6.0_权威依据.md",
+        "gitBlobSha1": "bebe253b6635939e916572087ba2292e4101df3c",
+        "contentSha256": "9fe31cb80ec511b96b18d16ec12f9f2f2fb2b7af23b8a825296503e2d5a56e45"
+      }
+    ],
+    "ledgerSha256": "d8ef533e058ad8efa476673ef21499cea8700730564443f0f1bad824b680ca0f",
+    "templateSha256": "43058a761a3d5ea2e71e779b1600aa159258f732b1cb5c60d491051540454041",
+    "officeRoundtrip": {
+      "engineName": "LibreOffice",
+      "engineVersion": "LibreOfficeDev 26.8.0.0.alpha0 2c87e51eeaa2b413ff4ae097b2705eea1995d8e5",
+      "templateInputSha256": "43058a761a3d5ea2e71e779b1600aa159258f732b1cb5c60d491051540454041",
+      "spikeInputSha256": "687e49a91aa34378085713f9fd48607be9d60f1592ae349b54cf269c7ddaaad6",
+      "calculatedSha256": "ef98ae9242debd46e1bbc0a0a789be036bde3f4ef3c987e257445661fa43abb7",
+      "formulaErrorCount": 0,
+      "formulaErrors": [],
+      "calculatedValues": {
+        "directDays": 3.6,
+        "internalSitDays": 0.3,
+        "externalSitDays": 0.6,
+        "separatelyRoundedSitDays": 1.5,
+        "uatDays": 0.0,
+        "totalDays": 5.1
+      }
+    },
+    "renderedAudit": {
+      "renderer": "@oai/artifact-tool",
+      "sheet": "90-估算标准",
+      "range": "A1:AL92",
+      "width": 7383,
+      "height": 8589,
+      "sha256": "0962ea72ba35bae2b8da0f7ac02df6ed76db47800fcd8cd9aadb51c2073cc77a",
+      "taskSheet": {
+        "sheet": "02-任务清单",
+        "range": "A1:N5",
+        "width": 3299,
+        "height": 266,
+        "sha256": "c2b5ddaaffe1032740bbbfb2df2f68366bd028f4d964a230ed45e1735180a9cd"
+      },
+      "formulaErrorSearchMatches": 0
+    }
+  },
+  "rowApprovals": [
+    {
+      "sequence": 1,
+      "workTypeId": "AN-IMPACT",
+      "sourceBaseRowSha256": "7dee1c5cda7fa8b0dc2ec116957474866dbd3fc4d81d8c1cfb641dd3c6888de5",
+      "sourceComplexityRowSha256": "238535d42f499ebc49ad15d956f90e30c739f3382f21b9916dfb7b1ef850125e",
+      "targetRowSha256": "b6e9b57e5a6f86db0e75164d8b348d1092d4ada409a897c297096e04e7d60e3c",
+      "rowSemanticSha256": "0ce84b16a94bc960d6436bd699449e715b5557f29d4d96c6726a81f66b525480",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 2,
+      "workTypeId": "AN-DESIGN",
+      "sourceBaseRowSha256": "33f5d0faf4b002cb7feeaf7ebe9c76b01505a0a4ba370fa45ac18b225fc18b15",
+      "sourceComplexityRowSha256": "a1690d05de2ea5ebbf58aa9b5ef653e4d05803ed1ede532e5c7f0114dd1d09f5",
+      "targetRowSha256": "e431c0f4950d31293b2a110dbb6b7aa8d2209f70fa33ee80de69d26fc152507f",
+      "rowSemanticSha256": "21d13039e76b1827165ca6c734c72ac4c1a96c6a3d429a01405723de10192fe9",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 3,
+      "workTypeId": "AN-ADR",
+      "sourceBaseRowSha256": "6474f8a6658734ad15a51a4faad54b4dc640b488ec60fcde5ff16c161fd98035",
+      "sourceComplexityRowSha256": "8e80cca3a959de3252964e2acae16ddd6607851b9bab5afc6e5aa63d48e5a6da",
+      "targetRowSha256": "0f6f5608ef2cccb67fd3495379342f4a6c07ab89554ffbf9eea234da8b179acf",
+      "rowSemanticSha256": "0ebb9cd7f105c1c0e22be82b54a0ff71a54469432d0a31917178a6a88ce9aabd",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 4,
+      "workTypeId": "AN-SPIKE",
+      "sourceBaseRowSha256": "3bac944a3e0fbaa5371f26f9c64aebb541933993bccc26aaaba522eb42f39837",
+      "sourceComplexityRowSha256": "b87b88646fe0876365bb6a533dfe04d5c8576d15318c37963c8e16f660e2c9fd",
+      "targetRowSha256": "1da45f49e53843d0d947e71a569f772ab763b39bedf4d304cf5d0e48930c32e9",
+      "rowSemanticSha256": "0f6090754953f64aa1b212242e4d3613b0ecea3a38f689266cc8576de023aa52",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 5,
+      "workTypeId": "AN-POC",
+      "sourceBaseRowSha256": "df857618e906d89e35772632338418b5600fa81bc9c8aac5f2d0b76729f62ffc",
+      "sourceComplexityRowSha256": "ef76f521a396adf8de2ccb4d2c2a2cf5afffa72dce5090a17b337dd5859184be",
+      "targetRowSha256": "6d275d7e82ad1e18c993ebcabb3fbc0499d8035308f2b79575e5f89e94afd0fc",
+      "rowSemanticSha256": "bca82d69e8e0e8b5bf3445a3073638300b0daa505cdd763591d4f30e91ee9d8b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 6,
+      "workTypeId": "FE-VIEW",
+      "sourceBaseRowSha256": "1eb5e75bd8689dd0809a872c735a4b9ee2422797b244ae6020977542f2468608",
+      "sourceComplexityRowSha256": "ff29e114eb46fd2ac70ad3bf9a36ccf61c0f30ee43513a396ede75b9264a2ee8",
+      "targetRowSha256": "58704e42b6cadec40494b132630eb4b13588ff618f42c939c7875410935fbe49",
+      "rowSemanticSha256": "e3c2ecefc88fec454dc52d47349bb799bedb5a2302971a0cf030952d983deb07",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 7,
+      "workTypeId": "FE-EDIT",
+      "sourceBaseRowSha256": "9312b29d6bd4855fa6dd376cd4072ff4ab12561ce0ad287642fa40d77caacab3",
+      "sourceComplexityRowSha256": "9fbbf9e58a658669620c2b778682bf1fef6e681b594137af608e9864a7778112",
+      "targetRowSha256": "a13b2fd90a7d8349c111303799e9a9de73c1566048d614ffc53283e07d0f2131",
+      "rowSemanticSha256": "177b3bf5610b47fdc663256c16c24befb335652a9656379f13e946be63420298",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 8,
+      "workTypeId": "FE-FLOW",
+      "sourceBaseRowSha256": "65131a2e2e195a49a5154cad61ede39d48cfe12fae635dac9ce2192f0df4788f",
+      "sourceComplexityRowSha256": "c16231d39c2b39acb5a8cf1555c18cfdd1ce8c368b2454e95f19e2d6c0e6205c",
+      "targetRowSha256": "00446b56efe2dfe03a3b1df80b907d424d06d27383e92438348cdee20d55d647",
+      "rowSemanticSha256": "786837c6b0ff62f16d2a8100aea3355e643717e714badb875befcb2350ce0808",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 9,
+      "workTypeId": "FE-DASHBOARD",
+      "sourceBaseRowSha256": "e01093f349d5b2086acec2b801cacf971fd4e414c977d69b15febf813effa4ce",
+      "sourceComplexityRowSha256": "b2c0290b9d2d2844d71b981b1fda8eb345e7025c32a31cc1eee5170be2bdb0d4",
+      "targetRowSha256": "f877c37d5812241afa8d15fa7ed84292847819f44af551bc134b7512e8c135bc",
+      "rowSemanticSha256": "369962b448b2ed110e9e8874e2745eba6777877c842ef76429a7b95a98392a1b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 10,
+      "workTypeId": "FE-UI-COMPONENT",
+      "sourceBaseRowSha256": "a7d5317741d4b1bf94e63e6d17db9dd6876077ff25f542dba109364ec773ddd6",
+      "sourceComplexityRowSha256": "432c1b6d3e9126f89399ac3c133026d1248ce3d19cd69b3a17799cfd409e06a8",
+      "targetRowSha256": "85b4dc1d73023665a1a7c4d8263a466901b93b9cbcc11397320d8df054b05a60",
+      "rowSemanticSha256": "4006cc9350ed20ee176129f8a01ebacdaa2fa4ea41d2dacca8f9d25ef70d1877",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 11,
+      "workTypeId": "FE-QUERY-API",
+      "sourceBaseRowSha256": "28c0eefbf582d62f416ba6bcc472a14ab98f5e10f73ee8a58dea986b5eafd071",
+      "sourceComplexityRowSha256": "4f8e593bc27b934386b89965110a1cf63324c2eca4b6197289dd01e84006c695",
+      "targetRowSha256": "87f649b009fa1dc1bcaa05fa42f187be1aed6ed4d317340ca1e32b6c3aaa49a4",
+      "rowSemanticSha256": "7c4790ae7f16c724ed7ad0852620ff8ce25d306a723d8c8489a8b1d14a187b50",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 12,
+      "workTypeId": "FE-COMMAND-API",
+      "sourceBaseRowSha256": "cea61a9006c453d19f1cb324f07bcdc4b2f97f6c84f6244022af9c2fc097f208",
+      "sourceComplexityRowSha256": "73762a4542bb42db8c765f793df92f289a33c5bbef2b90593290832a27bd3fa1",
+      "targetRowSha256": "4726d0c7c003d01ed450e76f2a6e341d0061ba7bae3c2a621cca059cacb5666d",
+      "rowSemanticSha256": "b995bbc0c5c71408602697d1f352a4fb8fcfd845614998adcaef2ee2a19e0316",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 13,
+      "workTypeId": "FE-FILE-TRANSFER",
+      "sourceBaseRowSha256": "bd1a834d2173ceb91cd2939f6f39860e60fcb6e075b3dfed85e631738404e932",
+      "sourceComplexityRowSha256": "f15cebf2689ff2d92194307a9ceb78153d262ac22a424e9da1985c63b2acbf3b",
+      "targetRowSha256": "047d54b11dfd033e43163065d6421be2638d9e481438cb182ca507f26a9f2fd2",
+      "rowSemanticSha256": "fa7ca15e1e443060c733b68aa4ca5b7292c90fbe894f8ad39358768df7ab0556",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 14,
+      "workTypeId": "FE-MESSAGE-FLOW",
+      "sourceBaseRowSha256": "d0ee29197320c21dc1eff4e19314a0db68b6f94bf3d46db4a479d9aeca02bf5e",
+      "sourceComplexityRowSha256": "33418cedf1901ce21b5ab3641a4f5d42448ad6a5e2663c7f5174c70b37cff47f",
+      "targetRowSha256": "c3387c00a26afbeb7bd1789a6b14cf9638c21b6998bc560876d70e864f5fe7b3",
+      "rowSemanticSha256": "0761437580d6e1d03a3b0ae69344bb42bd909f8cb88c75218ed287ee0452bcb1",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 15,
+      "workTypeId": "FE-COMPENSATION",
+      "sourceBaseRowSha256": "dcd01eee8928a5f78f7a406b7c952cfc5dc348028f12677f5db8f2a4d1db8498",
+      "sourceComplexityRowSha256": "9225a70f901211a02727f505fbd7de2669658c98e5704340ae2adddd43ce9496",
+      "targetRowSha256": "916504b913f4c527c0f462b56634c7dbcd08c3a981d6271b9164e28cdb22d1dc",
+      "rowSemanticSha256": "f060ff3011c56132d472c70f88129e6a1d458c180aad98d15b295f9179f0d606",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 16,
+      "workTypeId": "FE-BATCH",
+      "sourceBaseRowSha256": "164a1c7b15b6313cf636f1126fb0842e300c9a5f514497570b6cac36b8c534f7",
+      "sourceComplexityRowSha256": "56427d56a31e7a25637e8cc32fe3f307224a77f5e6eebdeb0c3adbce36200aa5",
+      "targetRowSha256": "64364300f14bc2970e018bc8b61fab0b2120a961bfb2380368cc40edf40425f9",
+      "rowSemanticSha256": "5ddb6e66ef09942599e8550e568681c15312c598a4ef25fd69a2cba6143b9ccd",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 17,
+      "workTypeId": "IN-INTEGRATION",
+      "sourceBaseRowSha256": "8e57ccaf2d2bb22ee2932a7726c572aa1e21617601621aa4b7e9026ff9068488",
+      "sourceComplexityRowSha256": "0fc3815cbb41c9570cd251f33d26457ecf1cf511ea03ecd030e673f4de7bec1b",
+      "targetRowSha256": "7fe647b989c9a2ea90211d84642713fb574fc4a67715d39165469e23fb41d5a3",
+      "rowSemanticSha256": "6c8adcc6eb92a63cbf93a0f3b29b9b2f384f77168271cf9555cde1f2a31cc9c5",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 18,
+      "workTypeId": "IN-IDENTITY",
+      "sourceBaseRowSha256": "f2eb96c4b50ce584251697173b8ce969903767b35393959b9e5e4bb6bf5974cf",
+      "sourceComplexityRowSha256": "c6aa4245a9212c015397fe544e4230ba1aa7542dad609971949dd33aa062f473",
+      "targetRowSha256": "e26551d6c4735c3c222612b48a3d13f3729e78a0a64da9d2f5b0762a544634f7",
+      "rowSemanticSha256": "6689cd08e99174bce8056625c7bca5000576e0f1b5b9116dfc07fc4c787905e2",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 19,
+      "workTypeId": "CO-I18N",
+      "sourceBaseRowSha256": "80230be589254f71c25e3305526085ef5d68261345f79296a1876a2b211c45a0",
+      "sourceComplexityRowSha256": "a6a55210aa399fe89bd407f2e0eb5a8b88d3b2cd4a8359bba0d50a63c2d47b2a",
+      "targetRowSha256": "83db4ae0bb93a628d7d012a7646ce7f37ba9888c085a43d821115df74723900b",
+      "rowSemanticSha256": "dd77838f6fa56a2bf8391edde57498d0243a6eac27386950dae1fd4a03a64822",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 20,
+      "workTypeId": "CO-CONFIG",
+      "sourceBaseRowSha256": "044e42222478442e2b9bf5eeb172bc735cb6505f4d414cd463684ea810dd80ad",
+      "sourceComplexityRowSha256": "006ea6c08b36cb63b28c08cbe3abf6883c8fc58196f62ed73a346fdca5993343",
+      "targetRowSha256": "cf142ff29c61fe5037a08b0930af7123bf2866ac5e0555716c049eced839d211",
+      "rowSemanticSha256": "32c01f3f8f1cfbeae9fa15b04a16a9a742030429eb6abf7ef596df346af6c219",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 21,
+      "workTypeId": "CO-ACCESSIBILITY",
+      "sourceBaseRowSha256": "cb0b515034f87689e55ea2e41684e66a0a634122ca62267577d254d71203145e",
+      "sourceComplexityRowSha256": "89016f6003df37ba54e1b09791234276bc81cca1ca9aa903863dd8b445308006",
+      "targetRowSha256": "8817b8c657dc64bbc2ee712d7a29893d2188a96f070a76755795768e8a191119",
+      "rowSemanticSha256": "1ff8477a768ef4e073279f4367b18b81859023d84fdbe53b98440914eb74d088",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 22,
+      "workTypeId": "CO-PERF-RELIABILITY",
+      "sourceBaseRowSha256": "3edc0e34e0f4bfd857a80c8337442ec7ba7dabe1161a1e71e769be7a6429c74d",
+      "sourceComplexityRowSha256": "7776481b11d838d636fe45dd994dd6521d6c5a0ccd0202d0da4ba6f74d7cdd67",
+      "targetRowSha256": "a2f898d9ceaa8ee20900c26ac53ae697cfa5af08820ccecca7868c7ecb408e9b",
+      "rowSemanticSha256": "977e322c085c585b044f41fefccf9ec5e733ac900907e476d28fc874cc25c153",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 23,
+      "workTypeId": "CO-BCDR",
+      "sourceBaseRowSha256": "bbf40ff2a6f4ae0c13605aac7252bbfd6a65b01fcc578ac062f81dd340a80c48",
+      "sourceComplexityRowSha256": "b5f6b329270a03947439a000f8572bfcb92400091d97df959ae77a8d806f190e",
+      "targetRowSha256": "7a5daab224b9c75e2b4af1f88daf5bcd81a01c548f06ba38d082c3989c37948d",
+      "rowSemanticSha256": "6254bb19f94a0422edfb5f1dfd00811564c195bccf289354f7ee3ab89b6de435",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 24,
+      "workTypeId": "CO-SECURITY-PRIVACY",
+      "sourceBaseRowSha256": "c1e116c6c29769bbd9972fd02c3bb54f6e6872db7fa38a73ce7bd4fd16ee628e",
+      "sourceComplexityRowSha256": "94cf2290da7863d76028123d50547d69da3fa45ff6d06741bdbdaccd032d4642",
+      "targetRowSha256": "1f169838dae78882d1236e18365d58b4def8943f21b6e5f916771ea6a54edd43",
+      "rowSemanticSha256": "700fc54a12c3489beb3dc2e884ce33b9612910f1477238cb47508d06c649f8b1",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 25,
+      "workTypeId": "CO-MULTITENANCY",
+      "sourceBaseRowSha256": "fede7522b44ef99c2ad677d7b10841570f315158994322bfee929ca8146582a2",
+      "sourceComplexityRowSha256": "c998a9339a1356228852bfcae261ce735144669c10346ee7bfa15248123e9562",
+      "targetRowSha256": "33fd11520febe006ea7d3668342093387043d463b88ceaee6d21e3c65a878ed7",
+      "rowSemanticSha256": "0d85424932179ccdd6c7fe2a4aa946620510e8fd1e2f33a99c072065a686da8b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 26,
+      "workTypeId": "DATA-IMPORT",
+      "sourceBaseRowSha256": "2bf18a10c3ddc6eac6a3893dfd5376de07b03c58054cb86a1c4a7338d989bb5c",
+      "sourceComplexityRowSha256": "74f1e7e51cc66836010fe7375db2e9944b409d6a1f23e226e7fb86291cdc470a",
+      "targetRowSha256": "6af92c40e632d3de2b3b87f46f7c6efcb13054ff7d1ebb9a461f7348c641420a",
+      "rowSemanticSha256": "1d69a9e5ee486c81ca38783bbd1f4c7b9deb4844e8de0e1a6177a8fe9856baa1",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 27,
+      "workTypeId": "DATA-EXPORT",
+      "sourceBaseRowSha256": "3cdc9183181e2c557c74dc0d4ce6bc4bb0161fcd2874e08d4733958f2970bff2",
+      "sourceComplexityRowSha256": "e72569c8556de5e69e132098907b87613c95d7cfc890e43452393b70704916eb",
+      "targetRowSha256": "34730da5a0770bd0dc621535440e6ccaff128baffe46cc689f8b2417ae290e5c",
+      "rowSemanticSha256": "7fad43738671ee2b1da30548de77a41538cd1e1d96f93f6c8f73fd56e94fd2c4",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 28,
+      "workTypeId": "DATA-SYNC",
+      "sourceBaseRowSha256": "74922621f04c8886e937a27ed4dcd7bc3894431d98f94428e4ca7a52f817e03a",
+      "sourceComplexityRowSha256": "431d9be8d8540075bf7a2e25620230695eded8accbbb9c9a07afdb9ea275a120",
+      "targetRowSha256": "7e33740998e50931299f163f883ff37ffec0b26c4eceeb14462351da575c7bb8",
+      "rowSemanticSha256": "af097672e2b7497537df6988c031ac35fb4bf31142e2735ab566c4d9a758d061",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 29,
+      "workTypeId": "DATA-TRANSFORM",
+      "sourceBaseRowSha256": "a4dd08018de895137854a8317e5d905ad9cc7b4e2cd17d364c159bfd50f3da52",
+      "sourceComplexityRowSha256": "1b56b830ac1c547a37c8ea875584d78fe698cd2fc7d0ee4d1b03620e680baaaf",
+      "targetRowSha256": "b929ebc6a88af2f762f9b4f07f365c9a2bcbe8b6f6f49faa33b5d1702e62c897",
+      "rowSemanticSha256": "00e32641cddb6706f82324b5b99648315abe74e959853b4b6eb4b9261b222ed9",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 30,
+      "workTypeId": "DATA-CONTRACT",
+      "sourceBaseRowSha256": "a26a95ecc56bbe9391a15dae3aa2f0c8e7586220637e827e374b8574f377677a",
+      "sourceComplexityRowSha256": "5602cfe7f5473480d43f28d9e6c34daa983a2dbfe735b0f0ca3821a8d019d56c",
+      "targetRowSha256": "e47154a68b72efaa270c85f3fb34bbf28e9b66065b64545d82a7b259c0520f7d",
+      "rowSemanticSha256": "2c95da10d82a1bb3c6a7fe45fbb2da62a2fa15647f2cc7928dee41571daf7a4e",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 31,
+      "workTypeId": "DATA-LIFECYCLE",
+      "sourceBaseRowSha256": "cb6c2481c002ce9e5c245a631583550c772cf2320956503123d768ceeabdb8c3",
+      "sourceComplexityRowSha256": "cbff5aa9a6d58fa9f92e5a62a82d7dd61ee3a7e349c11a34dc1cef737eaf07ef",
+      "targetRowSha256": "eed26fc28488316b50954c1d281e8a0b4cc46aca6f413d3eb021915c6f584d05",
+      "rowSemanticSha256": "0a4239519d646c1c478529e6757c4b307860df0c379d5a4e15416ad76cdea3d6",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 32,
+      "workTypeId": "DATA-MIGRATION",
+      "sourceBaseRowSha256": "3d826671597a9f14016b5b58dd5d8dc5d4102db4a4def5b7d70d8a7fa3e721ef",
+      "sourceComplexityRowSha256": "9254859e98540f59138f3b086feb3f5e8fef3f82bebec7a44dc3bef2c3bbb7eb",
+      "targetRowSha256": "1984051a196f5227624dd87f80bcfc576e2d359986247905c2301b4df5a489c8",
+      "rowSemanticSha256": "6d53d82c16a7589a06631dfa03ab0c6e5560baac0335055db590347276020d6f",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 33,
+      "workTypeId": "DATA-RECON",
+      "sourceBaseRowSha256": "468e22f6fe0d6f995a3e2a0de6baf376ad6adacf3f1084624a8ac4f9ee92d3fe",
+      "sourceComplexityRowSha256": "53997c3565ca5929532b9df6d8f1697fe1b6e742112f6774f64f22524a5b3bdd",
+      "targetRowSha256": "0558be00ffff54d5d0037cc55756f72d9f1904373665c70e48776ab438a30cb9",
+      "rowSemanticSha256": "f6161d33ddf1ebb1ad29812d695e7664ef09de07649ea6d7bbbf98f5535e8ee1",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 34,
+      "workTypeId": "DATA-REPAIR",
+      "sourceBaseRowSha256": "de0393b04ada687ccace983b01bf1c4f1d6e58d35bab8d43bfc4cb312c92371e",
+      "sourceComplexityRowSha256": "bc6593703f652eb858a529a6b69af3e34aa79478f810beb7bb8100d96b5ca821",
+      "targetRowSha256": "a7c0f712dd0768d7f07e3104c4ad582177ac6d194d5ac01e9db7d8417e9b5de8",
+      "rowSemanticSha256": "b4507b7ad2f8fb3a6867715ff31721efad8f6c4c134985d81bc4472dd0eafb9b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 35,
+      "workTypeId": "DATA-REPORT",
+      "sourceBaseRowSha256": "b4f2f97ef599411b5ca96622ff0ae5f1b5d28054837dd2f12a25a0de27dc3e28",
+      "sourceComplexityRowSha256": "03e0beb42bca064ba3fd353992bc706b8b19837f06a6fc1ffff1d543b0b828fc",
+      "targetRowSha256": "6bf4ccb79c3637378187a6120318c87fd6141b40003363a8d0768095e0f9c340",
+      "rowSemanticSha256": "144f2d5b213c7847af01bacc6f736b8fca10d9fdb9ec471a080efd9a1159b825",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 36,
+      "workTypeId": "DATA-DOCUMENT",
+      "sourceBaseRowSha256": "bb5ae8d48e9b41079e030c2cb368b1c04b7bec52253a703d651db111cd4e09ad",
+      "sourceComplexityRowSha256": "63e7879e6a7c46979c2f3bc16cfb5b661190a36de534623a813532b6aded2575",
+      "targetRowSha256": "fbf8a5b95be8f5ce879dec620b598e84d7199ab2d3e269d37b72326835b0a9e6",
+      "rowSemanticSha256": "662e1f02868d686826b859bfffcddfa6c1b24200a015474e12624b94f865036b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 37,
+      "workTypeId": "DATA-METRIC",
+      "sourceBaseRowSha256": "b971e1373a0d99aaaee109b933f2ec5b448b86a4501e262e24568b434d1064a4",
+      "sourceComplexityRowSha256": "d5aac8defb127f75e8a0a11df1a90cc4e3285c674ece62122dc36169ab5f85ba",
+      "targetRowSha256": "db4e47a6c114a472c7f7e123b90cc4b5eb068f498ef9fd18713898c3a7e662bf",
+      "rowSemanticSha256": "ce1d43af5c302f6fba8ec4bc7c5cac030412b8b9b40f81571e47d8e1822a85fc",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 38,
+      "workTypeId": "DATA-CATALOG",
+      "sourceBaseRowSha256": "addc44500596958cbd19f5ed7edb51db9393e5f5d1c359736d54297c65fb090f",
+      "sourceComplexityRowSha256": "4fd88521c87c88ca777504d70da2445512111d29425e3d23be9d5c8b62b0946d",
+      "targetRowSha256": "b7134d4fe45ac98794f40b7ba21b28a32bb70438cee46c4535e7d7c05f39e21b",
+      "rowSemanticSha256": "32c1eb33b17d15a6f386707ff03b33123f3727808da4d85077b7b95ed994836d",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 39,
+      "workTypeId": "GOV-FUNCTION-ACCESS",
+      "sourceBaseRowSha256": "2cfbc7a99eda9a2ea9b727c950af0d277ff855a5189f6ec1438ad4f033410a4c",
+      "sourceComplexityRowSha256": "dc6b947ef9f5b969a9d682e95f0bcee5ad50b46cc8138363eea314610c33e134",
+      "targetRowSha256": "2fd3a793a9fd478bd79598754f03440d4af7c4bac2eede7d95c74371b343be93",
+      "rowSemanticSha256": "3036a0a340448211b04569a162b8254d1c57098bb7fa06eeafcc1f0943c437f4",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 40,
+      "workTypeId": "GOV-DATA-ACCESS",
+      "sourceBaseRowSha256": "2babb9e959b788189581fed7bd93fcd327d51055ecaab96c931308353eae9eb8",
+      "sourceComplexityRowSha256": "5e430775ac008e41584e253f9a034ec630812fb70d7e90f56b3ce5ae673c6f0b",
+      "targetRowSha256": "809a050a1d6aa5a9d56f42b2eed164e04de35835d7d24556bba64a6904219239",
+      "rowSemanticSha256": "6371b899ff8c12c9e00a0cd862643ff0f652b72f9f7f4ae0ac750cc988c6ecde",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 41,
+      "workTypeId": "GOV-DATA-SECURITY",
+      "sourceBaseRowSha256": "297d5ed591db1fd6ba4cac823c2e006ba1c177e5758ddecc157d1c127f05dcd4",
+      "sourceComplexityRowSha256": "e1bb2c269244a8e7db94416fb36aaa1b06672ca992d16093c3e56a6baf6491d9",
+      "targetRowSha256": "ab027d459cfa60ae6101a65d5acd2795416a70e8c94da1253268282b53d8bf3e",
+      "rowSemanticSha256": "7ce4483ec00abef53547f0ca3ae2fe216b7a4d51a3aa94dde557eee86ef7517f",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 42,
+      "workTypeId": "GOV-AUDIT",
+      "sourceBaseRowSha256": "2f810d70ba0471e039820b41e4aa00a305d7ea8ceb94c69a92b58e5f13e0e48b",
+      "sourceComplexityRowSha256": "84789e855edfa2acb78f4620c3115803dd791ebb5199998b7a330e0d6b7ed328",
+      "targetRowSha256": "6b0fb0d1f1864c525cebce4ad929eb3f943e12127963e5a6b33ea75aecc6be2d",
+      "rowSemanticSha256": "a9634b2a2d4731e2f6937edd37e89a1a79c918929b05b2152b5b3841577fc6a1",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 43,
+      "workTypeId": "TEST-API",
+      "sourceBaseRowSha256": "af5463b487dccbaabde7bc120a77082379cc4baaca0a92630f8307b0cc7a6e41",
+      "sourceComplexityRowSha256": "18423c5a36a6939456767fb47143e2284a1b891534e01bbc133656c138cea365",
+      "targetRowSha256": "79ac8c435e236ff589779e7629b0c266c19c434350d9ae3e2131919fbdf8fc6e",
+      "rowSemanticSha256": "133ee1b22466a50a5453965abeb9e05b684a676d1707edebdd4442517371eb3a",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 44,
+      "workTypeId": "TEST-UI-E2E",
+      "sourceBaseRowSha256": "c1d6b648dca1cfc5d4216d65e363a33c26cb9666894af30ce3c9c5b2fab9761a",
+      "sourceComplexityRowSha256": "8f71d6f14b906f657c12b009f32f7eeabf73ef5766f1350dd3b38b8d9991aa9d",
+      "targetRowSha256": "7c8f3ca148c621879e5c3e7b74b04e2cd613002e6b5768ee88caacb3e04f20d0",
+      "rowSemanticSha256": "cff5ec9bb50382b988b7fbf3c339b759cbc409b788252366ab32e1ff56ae77a8",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 45,
+      "workTypeId": "TEST-CONTRACT",
+      "sourceBaseRowSha256": "2f02f33e5ed4f6e94c33f37628c41381df7f4d3e61bd718aee57c6a461190046",
+      "sourceComplexityRowSha256": "3d1b169b48090171beab0a87d82759beecad04162ee7f3a2a1da44f25776ae66",
+      "targetRowSha256": "eddf12bbcf26611bf0f76345ee41a061f21bad8cbc42cee2f6c515d840d05031",
+      "rowSemanticSha256": "bf77bc78b14cf019f8a33eeb16de3cedf5f95c52cebb543d8fabd20c42a36109",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 46,
+      "workTypeId": "TEST-SUPPORT-ASSET",
+      "sourceBaseRowSha256": "6f9b61c01d58adc6b311cd459502c2d26f7826153245f0f3908a5fd6bdf7d79f",
+      "sourceComplexityRowSha256": "03196c1624bfb8293b127b7dec873b97e7d81aa57ee0e1758db05c39dbf69d59",
+      "targetRowSha256": "c8788e4fd5d5f8f1690b9131b789e33de6b43ff3c40dfbda9bd5b73cd36fdca9",
+      "rowSemanticSha256": "67f85bf5a7579640a605c61c63b1a899ca0cca283b316be9db30c78d723a46d3",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 47,
+      "workTypeId": "TEST-PERF",
+      "sourceBaseRowSha256": "6614eb016244d47fe84f2b416d582a6bdf184e79cc6af62aadb69defdd66ec88",
+      "sourceComplexityRowSha256": "46a390ada478185410c919dd5a05c7134a6ebac7d027aab2dd143c5923c484a8",
+      "targetRowSha256": "bff9e509cc5d0f126a916589df460ab729ca23917ca65c89c8f8fec8924e6504",
+      "rowSemanticSha256": "f639ab94401c1118399087b1449dcda67e4afc89987b0328d64b521d1defd68a",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 48,
+      "workTypeId": "TEST-DR",
+      "sourceBaseRowSha256": "ec9ac26755c584a8b723343d88afecc18a3a1b944d9f36457ef9164953b3f157",
+      "sourceComplexityRowSha256": "6035b6a72dc1a98e046c90b01772c2425ede5e95b4804622e9a8f58604f293c8",
+      "targetRowSha256": "ee8ff77198c8e5d86b9c520b2b5abcc5860b889829de278cd013b187c2c8d1d5",
+      "rowSemanticSha256": "762c4861e4bd593ea58076f579365e2d0879597b2c2f2f7e88923116d232afbf",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 49,
+      "workTypeId": "TEST-SECURITY",
+      "sourceBaseRowSha256": "95363e7495d1cecf6d080a5ead92638d710630065bf62611f7542825483c6b52",
+      "sourceComplexityRowSha256": "1d6964990dc222beeaf047c35de8a7a230675eba46153489e1ff0e82f99f6785",
+      "targetRowSha256": "632d760e28b4ee55a36025b46495104fa3162689679bfdf0b5fa12ea4481d8a3",
+      "rowSemanticSha256": "a1f73c6e31214824d14fb650c7db62c02b2403a1c4a95a9b27154f3e2eb98a13",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 50,
+      "workTypeId": "TEST-COMPAT-A11Y",
+      "sourceBaseRowSha256": "4784328adb3afce1451bb72e0c43a2a91485b288f0dc5134bab6b117887ef88f",
+      "sourceComplexityRowSha256": "cdb86c8a4541e99bef3e9bf4a4544db66e60a310c79379f3470d765936e95c33",
+      "targetRowSha256": "2362ead631dacd06298c7e392d19a99cf142280af51b9e69390ac4342c629ca2",
+      "rowSemanticSha256": "5b77db86802b9ce7685e6f6b4a7bbbc608c40a5688d404e45ef0089395b04b21",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 51,
+      "workTypeId": "TEST-INTEGRATION",
+      "sourceBaseRowSha256": "88cecac59d7d4af8218c087700ff263b48e5609506c6480389b473210cb0c6e7",
+      "sourceComplexityRowSha256": "2ab870b244312cd4da280df3c71abec5decbd6b6c5a2f0b750fd3fc62f23b821",
+      "targetRowSha256": "666817fa0cd5cf856a257e18cf7f14de188b286f2f1add8e3373b397da1501d9",
+      "rowSemanticSha256": "aed358c901ace95ab6de3b81e83c6284cc464d28e5cd439431a844eca8c874a6",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 52,
+      "workTypeId": "ENG-BOOTSTRAP",
+      "sourceBaseRowSha256": "529baada8be3d377e12ce4163a72922ff9ffe3bbe234872de5da70aa53ec64da",
+      "sourceComplexityRowSha256": "3c72137e6ea5b2e30d06adde9f68420180d4e9ad4135fbf77a1f3896bb65b173",
+      "targetRowSha256": "7655825f925d1a45155e6994103c9750fa5f60e72c35b68f77776508f9c3fadf",
+      "rowSemanticSha256": "2490d2bcf88780509b48d3c359c24e4a0a22932e6c12dbb8048b684d4b6b64e7",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 53,
+      "workTypeId": "ENG-STACK-UPGRADE",
+      "sourceBaseRowSha256": "574cac91a7442e4aa67b7062f23090f704e341131ae7c498762c1f9a3779406e",
+      "sourceComplexityRowSha256": "647385429dfa836be5f6753fa6df4750eafcd1cf91ab105a774f45b2b91a516e",
+      "targetRowSha256": "410a1618254f6bc42e6a74c7750316130c2a5b38ac5f1a4eaa921fd8a44efbea",
+      "rowSemanticSha256": "37e61c4f0e38ee80c21299ff673dd3cb02c5df86b3a7200493a77f19fed3b14b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 54,
+      "workTypeId": "ENG-REFACTOR",
+      "sourceBaseRowSha256": "a34b364ea5120359b2d9f9ad36adbe5baee52318e7be021fd9285d1012ef2aef",
+      "sourceComplexityRowSha256": "d96e140cc2a1fb359b81e7dd40551579873702e2e86137eb61bb500b3c129a48",
+      "targetRowSha256": "7ff5471042ba6fce43ebda80e630fd334355fc09434c21aae53dbe812d942373",
+      "rowSemanticSha256": "97f6ed36b53c05848a2671a9e787bd347eb612a347f5af9d810638a0408b2bc1",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 55,
+      "workTypeId": "ENG-PIPELINE",
+      "sourceBaseRowSha256": "31cdd6b8c22c14fbe4b12b8ff5afe188b26f1f0267d4326e913d2a20644065e5",
+      "sourceComplexityRowSha256": "edd9f86277d8490d0168849433459a987eff7cb1dbd9ae20a6bb0096099aa18b",
+      "targetRowSha256": "bdced5988604bc955d96da5b277f8b8c6c34d2ec7ab3b6df1a2320d97c443270",
+      "rowSemanticSha256": "02e68b89e17093f19e10b0af542fa5c51d05f423fa4d6e318be1f571273f163d",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 56,
+      "workTypeId": "ENG-IAC",
+      "sourceBaseRowSha256": "0b6bf89e18014e28b057bdb02934543f1f20667ed2e0f8364793543603b04b8f",
+      "sourceComplexityRowSha256": "d0edbf5622540b2ca587594603c5aeff1787df41a2d1447742082c6e6f1e1f38",
+      "targetRowSha256": "d10e94f68ce0392a3ea5b6a33589e92e60d8f5fa2e125e3d99945680b1cecc61",
+      "rowSemanticSha256": "9597a93f2a13805e9f60b5891f4560e605f767725ee8057ffb61a9a4990f28d2",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 57,
+      "workTypeId": "ENG-INFRA-STACK",
+      "sourceBaseRowSha256": "1f9dcba3624738678c332075bcf5c44b00c036cf00042c5832d76049e74c54c7",
+      "sourceComplexityRowSha256": "d5021cfb43af564ba76cbf496338b390cdf2306d0825a37a122609e54a72b338",
+      "targetRowSha256": "532567f9853468c7cb91c0514e7b73046ad4211330781ecd65da7dcc9de6e917",
+      "rowSemanticSha256": "15b5c5f267d409c2bb1e6c78d3a96d988b5ec6042c5772b5731a0771b644fb0b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 58,
+      "workTypeId": "ENG-PLATFORM",
+      "sourceBaseRowSha256": "8d93092b1f24fa06da1dfbc092f3ccdd6b5be6c614f21baeb08b1e2f1aba211f",
+      "sourceComplexityRowSha256": "1b1dd64eafb629dd87f7b4845a96aa9f42ff7a975a9ec47390425aa995c03a22",
+      "targetRowSha256": "a6bbfed71d1a98992de469087eb1762eae652533ddfc03dbe58e9593c04693d8",
+      "rowSemanticSha256": "2e7cd9852f64bfd25506741a2f1b8c97dcc87b6caaa17fe889de66553d8e8dc9",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 59,
+      "workTypeId": "ENG-RUNTIME",
+      "sourceBaseRowSha256": "0351083641bd4d997786677d40ff99d810305495410efab69f4dce186ac47b0b",
+      "sourceComplexityRowSha256": "02b23d794bf100c8be96ebbf542fc3873cf613fa7024cf5bf6425f4b001490dd",
+      "targetRowSha256": "8274f16f5f2b17ee340948ccd11b0534b2881908b6dfc6ead11b00a37240b9ce",
+      "rowSemanticSha256": "6dba28a0b3dbf16b0a4d596103dffad34fc134bf6ae322f571e5589cf5966024",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 60,
+      "workTypeId": "ENG-OBSERVABILITY",
+      "sourceBaseRowSha256": "c53ccb91b5021c971f73fe23cac02543a87f2edefb6077e32d0a723f2205dc75",
+      "sourceComplexityRowSha256": "67bfaf33573a441b796c044fcadfc1fa79849d40d462d4e490e55fd98db7388a",
+      "targetRowSha256": "98694e50fcb50379775588fb216c27dbb2cdc8803d071925a0994e03d27a8460",
+      "rowSemanticSha256": "2464ac1a5afa6032d6e2068365fdf64ff2efbb3154d360b143219b464300cc64",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 61,
+      "workTypeId": "ENG-ALERT",
+      "sourceBaseRowSha256": "3dc8e2f91209a8fce0d7815dc7266c0b8f4cedc1fd8395a70946035e341645f2",
+      "sourceComplexityRowSha256": "917fb836c501cd9b1331dbeb3f07ad3da440f93dae1b993866702fa7770003b7",
+      "targetRowSha256": "327c2eb3a6de5ee8468e3b8c4a1dcbb360fc78250c3ea533d8d4ec8913348251",
+      "rowSemanticSha256": "a19ef1e2468557499787fa62ecfdc7c7df602e74073aaaa616c65148b0fea21e",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 62,
+      "workTypeId": "REL-PLAN",
+      "sourceBaseRowSha256": "897e1a54afb3278acede8c2b9a031eccd977c0b414b89f01e8cddfca7aa30b31",
+      "sourceComplexityRowSha256": "a759dcfacf2743c6f447953ee0da909133908edd0cc9ab2c4b359a0b6b542a1f",
+      "targetRowSha256": "6a8185da643d3410080ca09d6607ece74712bb6e63e7c27ea8f509907c765ef8",
+      "rowSemanticSha256": "a8e8ac43d5d89d312dc0da7bd76f0cfec1c48d950e3c513c38ee12d7ac9a677f",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 63,
+      "workTypeId": "REL-REHEARSAL",
+      "sourceBaseRowSha256": "6a437f15d68073c1c98adef880b1a9f60ebaa8d20eae55354518150044159753",
+      "sourceComplexityRowSha256": "da99bc82347c73ae35a153f283007ba89d93a7164bbef2c1ff5f6961d1092161",
+      "targetRowSha256": "bc35fac40a68c8fa8e3618ff366d188659da523abcc9414b6a4725bc928104e5",
+      "rowSemanticSha256": "55cc64dcc104543fec42cca72514e04db344eda17bbf82398d63e6eabf325039",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 64,
+      "workTypeId": "REL-MIGRATION-DRYRUN",
+      "sourceBaseRowSha256": "31bf95a6a1f9aa162e314f37bc12dadb62b03fb82da4921a41f6f036ec140ccb",
+      "sourceComplexityRowSha256": "186cff365891b3753932ee58228a15e9a5dadf59b23deeee74d78a6da8f7642e",
+      "targetRowSha256": "1082707cd1508378ab6b072236adc8ca0c61691fe5ea8743b36e05e785869061",
+      "rowSemanticSha256": "8c060670196277bfc647fc96c373d798794c0360e96c8015a263ef42e2af2090",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 65,
+      "workTypeId": "REL-EXECUTION",
+      "sourceBaseRowSha256": "5a05a8132d23cfab9b75130cf46210519d7a188695a74cabafe7d69bdc3f4e1d",
+      "sourceComplexityRowSha256": "eb3e783e0b964711ab0275c2ae63082e8c22da05c36ab6e93c7b46584ad4d49a",
+      "targetRowSha256": "f7992ac58c88da8c5c32e0c62b6e3d44f88113ab2767498d06cccadcde9ecb39",
+      "rowSemanticSha256": "2a192f331d9f1d3c6a3f11107f7a83d6a3432c353fc9bfbe4def29ba12b1e298",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 66,
+      "workTypeId": "REL-MIGRATION-EXECUTION",
+      "sourceBaseRowSha256": "303f34d3010320a5c36fef8f2613863685a48ebd47dbb022a329d5b76859cb64",
+      "sourceComplexityRowSha256": "c4fb261ea958419e80fc658d0e32d9647663a67a29ba0c868ef38eb582b0a924",
+      "targetRowSha256": "62664893f828ae07f67387d24d5b85137a11d6bfe8f079903cbcd99cddbc8fa4",
+      "rowSemanticSha256": "be6ec6cbe4ec991d0985f686a68a27086358bea2f3747613a4f806878ed2563d",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 67,
+      "workTypeId": "REL-REVIEW",
+      "sourceBaseRowSha256": "69d2c452f9564879306a8ebf8b52346a735bdc9beab1081f1548534e6c0d026f",
+      "sourceComplexityRowSha256": "52ab13005213b814005fe53cd03c996f47537ae22166cf0994c8bbe4758684e1",
+      "targetRowSha256": "078cda71986e591ed1edd732298ab76d1404a07a6f1e95830dfb960dbd55e43b",
+      "rowSemanticSha256": "1f30e86141298a53c409fbed2591a6c4339d8215f8c35f19b4638f44a02bae5e",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 68,
+      "workTypeId": "OPS-INCIDENT-RECOVERY",
+      "sourceBaseRowSha256": "09e1688bae1dc9572e6f5f50f06afdd83b7b67d96ece92dc1bb8c09fcf6d3acd",
+      "sourceComplexityRowSha256": "1c39b3c55aae65c32f2606f0840d4a7cb80523a32e7fc3422f991a05eae4cfd0",
+      "targetRowSha256": "e47e40e01406a4fb4b820a90e27f19f137c9992bd68a4e6d17e039d414ae58d9",
+      "rowSemanticSha256": "aa501f9baa8206fc3f15d99ac99da210e3afda8228bc3c396ef68815062d43b8",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 69,
+      "workTypeId": "OPS-RCA",
+      "sourceBaseRowSha256": "d8544b817a5231bada317710b64286744ee41e69fcbb5a9d119ed7a555a170af",
+      "sourceComplexityRowSha256": "8ca8bc0ad23b8e96a30f51629471ec10925d7eb60c5b7b1624c892ab0d240747",
+      "targetRowSha256": "686235a52ddb2b25640a8da47451967bcdcd5edf20709ea2d3822e06f4de96d3",
+      "rowSemanticSha256": "543887ee5c03984e6baccf12b7b277845656d0c094030969deb8fad05020b6ad",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 70,
+      "workTypeId": "OPS-RETIREMENT",
+      "sourceBaseRowSha256": "baf7cddc1e630f4ed2ac8bb63c7a29927bb7dc654acea71bbbcdec63b0f3be36",
+      "sourceComplexityRowSha256": "65bf766ebeef143dc0fb04d4c9eda832c03bd6098b1a362cc734fc8cb1d7d96b",
+      "targetRowSha256": "0e541db37f3a63fa37db85574b90963e1932f8bb1459d16d69d9f31fee1c77de",
+      "rowSemanticSha256": "7e4548d8edbb6ca880cf0924daf9609a791207a543fed8bd935b5f55919a6d2a",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 71,
+      "workTypeId": "HAND-RUNBOOK",
+      "sourceBaseRowSha256": "0387b63660ab0d2f35e18fe74bed249422255026c88eab38ec460e0dadc1b25d",
+      "sourceComplexityRowSha256": "60bfc27f270c0b618e3f63075bdc13b702d9cdb73fe9efab4649219cb4948a23",
+      "targetRowSha256": "07db57e4cd5c7b6654e677243df7edd5d4ca40bf66b95d9e48242f959b568c0f",
+      "rowSemanticSha256": "a266c139987c50b7faf05fc32defcffaddcaf428a9ae922a500c1174d8bba52c",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 72,
+      "workTypeId": "HAND-KT",
+      "sourceBaseRowSha256": "45c8b88eccbdb026533ad468e9f9517c7a459f67c0a19f68238cf0f4a20d930e",
+      "sourceComplexityRowSha256": "41b212b4d4c985550676f4f78acd2c10f425d55c04f2167387e55ea60be06642",
+      "targetRowSha256": "f24e6a2cf2c23aaf518012dc54a1fafabf2c9a75d074e5359e441cb1cf0b11dd",
+      "rowSemanticSha256": "da1dc986f91e84830112d442872f189f58626aa655230a2134e16199cbb1b34d",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 73,
+      "workTypeId": "DATA-MODEL-STORAGE",
+      "sourceBaseRowSha256": "0d08b076176827deccf21d27891dd2df2e5b0bb76b0bd9421194e9e43175d1b6",
+      "sourceComplexityRowSha256": "626728bdd9ee330326742b275f7f128c04f3f23a646929150cf88f41e7842f98",
+      "targetRowSha256": "3bc1c1d97f391777c1823c9f336cf2a56825bc4e17e3a5d69ae91ec81e30a8bc",
+      "rowSemanticSha256": "6b206d355f26838f522b4be5cf09e56fa6bdfd4e4affa815366904887e280e2c",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 74,
+      "workTypeId": "TEST-MANUAL",
+      "sourceBaseRowSha256": "0648cc4103a62543cb944c0190d33e40736f5622d5fd847eb895831a9aa5e6b8",
+      "sourceComplexityRowSha256": "adbfa5b4c767facc2b0533575debfad459156cbaa3f750d2c45c454d31cfbe3a",
+      "targetRowSha256": "b1bcce7f095cdcb680858a00d2d53830e212b6ab0882485ad6a36dfd67f353c4",
+      "rowSemanticSha256": "68d8a46ca22d1ebb7d787f048b85de42370eebef5d9002414675a20bc513a972",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 75,
+      "workTypeId": "HAND-USER-ENABLEMENT",
+      "sourceBaseRowSha256": "f5b1a6145c44e983eaf1373ac2dd0618dc6cd4dd7d7e89215e8a076ab8c38feb",
+      "sourceComplexityRowSha256": "3de6c164e0efd46d34dbfd50216d724bc48d26656e940990828f605c262b9f42",
+      "targetRowSha256": "4521bf0ff0cd5861380052c53728300b4c94121fd76b7a21af3934e22c2b2d40",
+      "rowSemanticSha256": "7b1a6a0480c62741a24e2b90dad026d0d1599f3ad2ff3320f958a2c702ea2e98",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 76,
+      "workTypeId": "CO-TECH-COMPONENT",
+      "sourceBaseRowSha256": "c11a11ad768be065c2c7a0dea06e1496889a91dc634cbfb9246c87bc6628e63e",
+      "sourceComplexityRowSha256": "43b39f288910fe0fcc907945bfabbf301589e7a8c317990449bf025ece347e56",
+      "targetRowSha256": "0111ac274cf6b04d1fceb7ee1e558611faf5ee3122c7fc361a1766e3437a336e",
+      "rowSemanticSha256": "6b1a9ef1671bfb6bed1daac389be0c37eb32a50fcb52dfba6f66191fd1dde116",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 77,
+      "workTypeId": "FE-RULE-WORKFLOW",
+      "sourceBaseRowSha256": "a6d7c765e22b05f2434ed7d08bef8b88eecc273327c5453059c084fd8dac2ad6",
+      "sourceComplexityRowSha256": "020dbc3fadeaa68ed668412017f88862e837231c25700f4c922d48396aee07d7",
+      "targetRowSha256": "e8971365ec43e4f22de3f5eda4e9297e29f6d9775967bc68959e0539d7d601ec",
+      "rowSemanticSha256": "f7b1aa0e2116498f418165d143fa2cdef61980ddd3a57dd93d9008afec0a1991",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 78,
+      "workTypeId": "HAND-TECH-REFERENCE",
+      "sourceBaseRowSha256": "919e3f4f4f0ed0a7408b838dbd7984d1f8e5a1128c23e4d57c0c7f9c7c12046b",
+      "sourceComplexityRowSha256": "f5eb940c42453f11f737088dceee2b7328689147c51aacb05665c990155c0403",
+      "targetRowSha256": "e9dc18f9934db465fe1b6891011e3a861bc327c8bb9369f6ede2c62e4ddfe450",
+      "rowSemanticSha256": "9e518d45b44b6d64cc88081a24fa30938b027d678064d2618fcc3d6e36e2030f",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 79,
+      "workTypeId": "HAND-USER-REFERENCE",
+      "sourceBaseRowSha256": "8f7ca3c69d2bf6cba5f078ef6da669a3d8f38da2594dbed23536afc756a6b594",
+      "sourceComplexityRowSha256": "24e8922b0c784be5b956a27c2c024bce6ef0ad1df1e578f306dde35eed846a34",
+      "targetRowSha256": "2bdf0a464c818af6ef713e4356d307d8061be6853962ddade62c5a9f03f6b098",
+      "rowSemanticSha256": "909ef5a195898b116acc9c10430369dd0410dc85959fbac638ec2668a60b603b",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 80,
+      "workTypeId": "ENG-AI4SE-EXTENSION",
+      "sourceBaseRowSha256": "63e7b0645f83b49ed6f2d1f9e7cf904165b8a214fd37bf69751f5399e8988162",
+      "sourceComplexityRowSha256": "1b526de147ee06fe3b70683b7ab142142bc5b1c9580ffdc7ff7a5c47f705058b",
+      "targetRowSha256": "8f193671b602692b8a59384a3b0791d8866b4959142090d7203032d3cb6384a5",
+      "rowSemanticSha256": "11d451fede4f9ca322040cda81137709177c358e1fd5af69a4a4ab079773b173",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 81,
+      "workTypeId": "ENG-AI4SE-SKILL",
+      "sourceBaseRowSha256": "16a53e0c148a3993b0c88a569495c8ea9c7d067d79eb625d3c90f318925bf9db",
+      "sourceComplexityRowSha256": "b068dab4dfa7b27e8186b9b75a497b094722cd177adfa15eac945842daed3730",
+      "targetRowSha256": "52a6b643da859798347cbfaae57e5db40a1a062ed78da22b03faed6a7c3bbeb7",
+      "rowSemanticSha256": "b0a0333bb6ace6750258be9835773d8e27c3692fcb670a81dbdabcf3b5a7e5e0",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 82,
+      "workTypeId": "ENG-AI4SE-CONTEXT",
+      "sourceBaseRowSha256": "807affeb1aa3b4cad14fa479af855d3b33ac68c4f764966c500001aefcd329ad",
+      "sourceComplexityRowSha256": "04a2ce3498e24d3bdde942eebc9f3a8fb52f19b0ebb0a625da0b3f1aca531d33",
+      "targetRowSha256": "01f47027fe9f53f669cfdb9845ac3a886de5485a2e87d7ce696ee171f8803101",
+      "rowSemanticSha256": "2891324111e4479549260ffbf4b7a5f56d676eedea8afd556682c112050c8927",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 83,
+      "workTypeId": "ENG-AI4SE-WORKFLOW",
+      "sourceBaseRowSha256": "11460da3e607538ff6448eaec7b34134d263e16d097da57dfbc6457176796c7a",
+      "sourceComplexityRowSha256": "e6e2ac648f9968d4816be4f8b55cf34a0905079c6c2d0ea8dfd2604ec7696b83",
+      "targetRowSha256": "939722e425af63cccc60567ec43ad081d854bf9f7aa15c8e4d12350248add8e1",
+      "rowSemanticSha256": "5a09ff75a445fb5a5b412c44c1ae3e97705fd669c592e09f11ad625fdb71e743",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 84,
+      "workTypeId": "AI-CAPABILITY",
+      "sourceBaseRowSha256": "f163e00960d788d8ac86508c978be0ec64c27aa5947602e4eb124204e3125373",
+      "sourceComplexityRowSha256": "187ac814dd14378765960f54aa2766a820e16bc5bd222c41460f20aa3bdc08d0",
+      "targetRowSha256": "7d213f829d2152984d16b0e623a7ee78335ecfe140fcf3c06b1bc158c0b04892",
+      "rowSemanticSha256": "1fd0435d92c7b586fd647cf4ade1f9b89d9396bbdb3eec72eb491501334ca927",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 85,
+      "workTypeId": "AI-KNOWLEDGE",
+      "sourceBaseRowSha256": "4a53f733005dd9f87e3d093311842f24a12ce9d04cd38c2b28d810538db2085c",
+      "sourceComplexityRowSha256": "4b49f7c8f640da7c2b9955602569550cef20f2cd5cb8811f503ebb9025560faf",
+      "targetRowSha256": "5bacf0dd9cf4c7e90e802942bd93ad24ebdad48e3b8121bc4286dfda5c6a9e35",
+      "rowSemanticSha256": "042fcb0a9dc5f60f537dcd24f97eccabb536ff16a9857fee8c5f5908793ade00",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 86,
+      "workTypeId": "AI-WORKFLOW",
+      "sourceBaseRowSha256": "021742fe861783587c75c56e9c232f3943f9d70f456be42e1c431743e4f5e5b8",
+      "sourceComplexityRowSha256": "4e11b090b82f709d13014aaa1a698dbf2947e2f6710d4ac2aeb160ea23cc13a3",
+      "targetRowSha256": "606f62d8dfda63744b61b7afa3d1e98e7d02eb5fc8c34003db719282499d46a2",
+      "rowSemanticSha256": "6f559237fbb8160990a541d51da6cfaf29b1248ad726d400031d9f15e9d076f6",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 87,
+      "workTypeId": "AI-EVALUATION",
+      "sourceBaseRowSha256": "180bcdac7fdb9e8e0c269a2edfb74615da2f2ee429ad88c24e5fa038eebc4849",
+      "sourceComplexityRowSha256": "cc11d8211ee5f603a52f017fa4635cac8f0532e62262fc51afd015642195bfd7",
+      "targetRowSha256": "684b92b8f59200b54393332aaea4ed66dd53ce109e0e06b26036cac7db29d171",
+      "rowSemanticSha256": "61fecefe402ddf84bbbdc98765d72d3a292c69f038ffd03c7130686e4147ee43",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    },
+    {
+      "sequence": 88,
+      "workTypeId": "GOV-SAFETY-ASSURANCE",
+      "sourceBaseRowSha256": "50a590801ecbcf55fca93435676417a96c501ae9ccb59bd0f3d741f4171d69aa",
+      "sourceComplexityRowSha256": "02e577f1fb15ab08fa1f2d393231836cc173ff16622a0a719d0316f34c0b41c1",
+      "targetRowSha256": "ef572bacb3b573d9a2bb7dc1c73a68fae34f03fd33f1b2079470faac9afd78f7",
+      "rowSemanticSha256": "28bcf0f2721c5dfa8b9a931340a34a3de43b28c4676f9294d587e10a1ad1302a",
+      "checks": [
+        "BASE_FIELDS_EXACT",
+        "MODE_AND_COMPLETION_EXACT",
+        "COMPLEXITY_FIELDS_EXACT",
+        "NORMALIZED_BOUNDARIES_AUDITED",
+        "TARGET_HASHES_RECOMPUTED"
+      ],
+      "decision": "PASS"
+    }
+  ],
+  "reviewerSha256": "05aeb4e59cb6ff2da94947cb4febd7b976d2b1390d0e5409fded357a028a1169",
+  "packetSha256": "d46f441a82d55078df3d4d08e09649f1995dbd259f78b3564684a9c9e974a8ce"
+}

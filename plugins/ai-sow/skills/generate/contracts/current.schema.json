@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:current:1",
+  "description": "以最小原子指针指向最后一个完整且不可变的 generation manifest。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "generationId", "generationManifestPath", "generationManifestSha256"],
+  "properties": {
+    "contract": {"const": "ai-sow-current-v2"},
+    "generationId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+    "generationManifestPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+    "generationManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+  }
+}

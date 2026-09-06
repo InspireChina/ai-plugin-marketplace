@@ -1,0 +1,32 @@
+{
+  "contract": "ai-sow-benchmark-case-v1",
+  "scenarioId": "blocked-missing-design",
+  "class": "BLOCKED",
+  "privacy": "ANONYMOUS_SYNTHETIC",
+  "mode": "GREENFIELD",
+  "title": "合作方即时结算",
+  "objective": "确认当业务需求涉及资金、外部接口和上线恢复但没有已批准设计基线时，流程会在正式 SOW 前阻断。",
+  "sources": [
+    {
+      "sourceId": "PRD-301",
+      "type": "PRD",
+      "status": "APPROVED",
+      "content": "合作方提交结算后调用外部支付渠道即时付款；支持撤销、失败重试、日终对账、金额阈值审批和财务审计；要求给出上线切换和故障恢复范围。"
+    },
+    {
+      "sourceId": "HLD-301",
+      "type": "HLD",
+      "status": "MISSING",
+      "content": "未提供已批准的系统边界、支付接口、幂等与账务一致性、部署或恢复设计。"
+    }
+  ],
+  "expected": {
+    "terminal": "BLOCKED",
+    "blockerCode": "DESIGN_BASELINE_INCOMPLETE",
+    "requiredInput": "提供并批准覆盖支付接口、账务一致性、部署和恢复边界的HLD或等价技术基线。"
+  },
+  "scaleExpectations": {
+    "requiresModelSharding": false,
+    "minimumLogicalThemes": 1
+  }
+}

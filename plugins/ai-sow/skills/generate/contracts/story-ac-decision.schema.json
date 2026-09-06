@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:story-ac-decision:1",
+  "description": "只描述 Story 的交付结果和可观察规则；最终身份、父子引用和证据由 Delivery Owner 注入。",
+  "$ref": "#/$defs/storyAcDecision",
+  "$defs": {
+    "storyAcDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stories"
+      ],
+      "properties": {
+        "stories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "localKey",
+              "scopeDecisionKeys",
+              "actorKey",
+              "deliverableOutcome",
+              "sourceFactIds",
+              "acceptanceCriteria"
+            ],
+            "properties": {
+              "localKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "scopeDecisionKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "actorKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "deliverableOutcome": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "sourceFactIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "acceptanceCriteria": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "localKey",
+                    "condition",
+                    "observableResult",
+                    "sourceFactIds"
+                  ],
+                  "properties": {
+                    "localKey": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "condition": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    },
+                    "observableResult": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    },
+                    "sourceFactIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    }
+                  }
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            }
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

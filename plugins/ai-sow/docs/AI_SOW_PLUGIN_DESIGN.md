@@ -1,270 +1,272 @@
 # AI SOW 插件方案
 
 - 状态：当前正式合同
-- SOW 标准：v1.3
-- 插件合同版本：0.1.0-beta.1
-- 适用宿主：Codex 与 Claude Code；支持 macOS、Linux 和 Windows 11 x64
+- 插件版本：`0.1.0-beta.2`
+- SOW 标准：`1.3`
+- 适用宿主：Codex、Claude Code、CI 与自定义本机宿主
+- 公开入口：`ai-sow:generate`
 - 领域语义：[CONTEXT.md](CONTEXT.md)
-- 计算权威：[sow-template.xlsx](../skills/setup/assets/sow-template.xlsx)
+- 计算权威：[sow-template.xlsx](../skills/generate/assets/sow-template.xlsx)
 - 运行时合同：[插件运行时环境合同](../references/runtime-environment.md)
 
-本插件通过七个阶段 Skill，把来源材料和现状证据转换为可评审的专业成果、六份稳定交接数据和
-一份权威 XLSX 交付包；另提供一个不属于业务阶段的 `reconcile` 维护 Skill，在已有下游产物后用
-一次整体评审协调上游修正的固定影响后缀。
+## 1. 设计目标
 
-## 1. 流程与原则
+AI SOW 用一个公开 Skill 完成首次生成、输入更新、执行恢复、候选批准与不可变发布。用户只提供项目
+资料和必要决策；内部阶段、action group、checkpoint、hash 和 reviewer shard 都是可测试 seam，不是
+额外用户命令。
 
-```text
-setup
-  -> analyze-requirement
-  -> analyze-as-is
-  -> generate-design
-  -> generate-story
-  -> generate-task
-  -> generate-sow
-```
+核心原则：
 
-1. 五个专业 Owner 都在 work 目录先形成 candidate、评审预览和风险摘要，由当前 Stage Agent 直接运行 Owner-local 确定性 validator、一个完整 fresh-context Reviewer 审查精确 packet、用户批准 packet hash 后执行原字节发布。Reviewer 有 findings 时只用字段 patch 修复，并由一个新的轻量 fresh-context Reviewer 对 patch diff 与影响闭包复审；普通路径不创建 Worker 或 Validator 叶子 Agent，稳定 JSON 在所有路径上都只能于用户批准后发布。
-2. `analyze-requirement` 独占 BUSINESS，`generate-design` 独占 TECHNICAL。
-3. 每项稳定事实只有一个 Owner；下游只匹配内容寻址 handoff receipt，并验证自己创建的引用，不重放上游业务 validator。
-4. BUSINESS 与 TECHNICAL requirements 仅在内存中联合。
-5. XLSX 是任务规则、基础人天、复杂度、SIT、UAT、风险、公式和取整的唯一计算权威。
-6. 每个 Skill 独立拥有稳定领域合同、专业 renderer、测试和工作目录；插件级 runtime 复用 Owner-agnostic 的项目 I/O、handoff、claim、patch、诊断、控制项和机械评审门禁。HLD/Go-live 语义仍由 `generate-design` 独占并在本 Skill 校验，下游只验证其 receipt。
-7. Owner 表示专业规则、稳定路径和写权限，不等于独立 session。普通主线逐阶段运行；已有完整
-   产物后的修正由 `reconcile` 的当前 Stage 在批准前完成固定后缀的 Owner staged pass、package 和
-   packet，只保留一个完整闭包 Reviewer；批准后只做确定性 check/publish。
+1. PRD 决定业务结果，HLD/ADR 决定高层技术边界，往期 SOW 只提供可验证的 Brownfield 合同起点；
+2. 一份 reviewed `SOW Model` 是范围、设计、Story/AC、Task 与估算输入的唯一稳定业务真相；
+3. 模型只提交 hash-bound typed result，固定实现拥有静态字段、引用、checkpoint、事务和发布；
+4. 每个模型 action 都使用 `FRESH_NO_HISTORY`，不继承主对话、兄弟 action 或前序阶段历史；
+5. 不完整输入、失败 action、Schema/hash 漂移或 Office 验证失败都 fail closed，并保留 last-known-good；
+6. Excel 模板是任务目录、基础人天、复杂度、SIT、UAT、公式和取整的唯一计算权威；
+7. 用户只批准已通过评审和 Office 复读的精确 artifact manifest；自动生成不等于客户签署。
 
-## 2. Skill 包结构
+## 2. 包结构与独立安装边界
 
 ```text
 plugins/ai-sow/
 ├── .codex-plugin/plugin.json
+├── .claude-plugin/plugin.json
 ├── pyproject.toml
 ├── uv.lock
-├── references/output-language.md
-├── contracts/review-claims.schema.json
-├── contracts/review-premises.schema.json
-├── runtime/claims.py
-├── runtime/controls.py
-├── runtime/diagnostics.py
-├── runtime/fact_source.py
-├── runtime/findings.py
-├── runtime/project_io.py
-├── runtime/handoff.py
-├── runtime/patch.py
-├── runtime/review_checks.py
-├── runtime/text_gates.py
-└── skills/
-    ├── setup/
-    ├── analyze-requirement/
-    ├── analyze-as-is/
-    ├── generate-design/
-    ├── generate-story/
-    ├── generate-task/
-    ├── generate-sow/
-    └── reconcile/
+├── runtime/
+├── references/
+├── docs/
+├── tests/
+└── skills/generate/
+    ├── SKILL.md
+    ├── assets/
+    ├── contracts/
+    ├── fixtures/
+    ├── prompts/
+    ├── references/
+    ├── scripts/
+    └── tests/
 ```
 
-每个 Skill 只创建实际需要的 `contracts/`、`scripts/`、`fixtures/`、`tests/`、`references/` 或 `assets/`。脚本不跨 Skill import，不调用其他 Skill 脚本，也不读取其他 Skill 的 schema、fixture、test、reference 或 asset。插件整体安装，因此通用机械门禁由 `runtime/` 单点实现：claims 投影与缓存、数量/绝对化/隐私 lint、唯一事实源、字段 patch/引用闭包、Finding 路由元数据、Owner 控制项、diagnostics、handoff 和 project I/O。公共 runtime 不拥有六份稳定业务 JSON，不读取 Skill-local 资产，也不编译任何 Owner 业务成果。`reconcile` 的 Agent 可按其合同读取受影响 Owner 的 `SKILL.md` 和项目 artifact，但其 Python 发布器仍只处理技术 manifest。
+`runtime/` 只提供业务无关的诊断和安全项目 I/O。`generate` 独占 SOW Model、Action、Run State、Stage
+Checkpoint、Review/Repair、Artifact Approval、Generation Manifest 等业务合同，以及编译器、模板、
+renderer、fixture 和测试。运行时不得读取插件目录之外的实现文件，也不得依赖 marketplace 根目录。
 
-跨 Owner 停止点统一输出 `LOCAL / UPSTREAM / DECISION / MECHANICAL` 四类 Finding，至少点名
-`findingId`、发现 Owner、修正 Owner、受影响 subject 和用户决策要求。Finding 只用于机械路由；
-涉及范围、责任、验收结果、商业承诺或服务容量时必须为 `DECISION`，不能伪装为可自动上游修正。
-它不新增稳定 JSON，也不启用自动 reconciliation。
+内部模块所有权：
 
-## 3. 项目 seam
+| Module | 所有权与边界 |
+|---|---|
+| `intake` | cheap gate、格式校验、来源 block、不可变 input revision 与模板快照 |
+| `scope_compiler` | Stage 1 的 InputItem、Scope Closure、Epic/Feature、Design/Integration/NFR/Policy、PriorStateSnapshot、ChangeGraph 与返修 |
+| `delivery_compiler` | Stage 2 的 Story/AC，不能反向改变 Stage 1 |
+| `task_compiler` | Stage 3 的 Task、Dependency、Effective Start Match 与 Estimation Annotation |
+| `final_review` | fresh Review/条件 Repair、定向 root 修复与 StageCheckpoint 证明 |
+| `sow_model` | 唯一模型的结构、引用、Owner 写集合与 checkpoint 闭包 |
+| `package_renderer` | 从 reviewed SOW Model 与 revision 模板确定性渲染 Package |
+| `generation_store` | 独立复核暂存件、批准绑定、不可变 generation 与原子 current 切换 |
+
+`orchestrator` 只维护公开状态机、FULL_COMPILE 与本轮恢复、action 发放和事务，不拥有业务判断。
+
+## 3. 宿主中立 NextAction 协议
+
+公共操作固定为 `start / submit / hydrate / resume / approve / abandon / status`。bootstrap 只是准备隔离
+Python 环境并调用同一个 orchestrator；运行时不调用 Codex CLI、Claude Code CLI 或其他代理产品命令。
+
+宿主循环按 `nextAction.kind` 处理：
+
+1. `MODEL_ACTION_GROUP`：在 `maxConcurrency` 内运行一个或多个 action。每个 worker 只读取 envelope
+   指定的 `promptPath`、`packetPath`、`referencePaths` 与本 action hydrate 返回的证据；
+2. worker 把唯一 typed result 写入锁定的 `resultPath`。宿主另写 execution JSON，记录 provider/model、
+   工具、耗时、尝试次数和真实 token usage；无法取得 usage 时必须显式标记本地估算；
+3. `submit` 校验 result、execution、packet 与 action hash，并封存不可变 record。只有整组必需 shard
+   全部完成，`resume` 才一次应用，绝不部分推进；
+4. `WAITING_INPUT` 集中展示最少问题。业务输入变化先 abandon，再以完整新 request start；
+5. `REQUEST_APPROVAL` 展示不可变候选包与可读文件。用户批准精确
+   `artifactManifestSha256` 后才允许发布；
+6. `DONE` 报告 `PUBLISHED` 或安全终态并停止。
+
+同一 worker 只在单个 action 的工具往返中复用上下文。action record 不复制 submission、证据正文或
+完整工具输出，只保存项目相对结果路径和 SHA-256；需要重建时从不可变文件复读并验 hash。
+
+## 4. 输入合同与不可变 revision
+
+PRD、DEMO、HLD、ADR、PRIOR_SOW、SUPPLEMENT 和 QUESTION_ANSWER 都进入统一来源 inventory：
+
+| 输入角色 | 支持格式与规则 |
+|---|---|
+| PRD/HLD/ADR | UTF-8 Markdown |
+| DEMO | 无需构建的静态 HTML/CSS/JavaScript bundle，入口与所有文件均显式声明 |
+| SUPPLEMENT | UTF-8 文本、Markdown、HTML、TypeScript/TSX 或 XLSX |
+| PRIOR_SOW | XLSX；由 Scope 按计划生效日形成合同推定的生产 As-Is |
+| QUESTION_ANSWER | 绑定当前完整问题包 hash 的精确用户答案 |
+
+Greenfield 不继承历史合同能力。Brownfield 可以提供适用往期 SOW；未提供时记录
+`priorSowState = NOT_PROVIDED` 并建立新基线，不虚构历史承诺。若缺口会改变范围、责任或估算，流程
+返回 `REQUEST_INPUT` 或安全终态。
+
+intake 先完成格式、路径、必需字段、来源状态和模板 Table 的 cheap gate，然后创建不可变 revision：
+
+```text
+.ai-sow/inputs/revisions/<revision>/
+├── manifest.json
+├── sow-template.xlsx
+└── sources/
+```
+
+manifest 绑定 request、模板、Delivery Policy、Execution Policy、prior SOW、source 和无损 block hash。
+模型不读取原始聊天历史，来源证据由 packet inventory 与 `hydrate` 精确提供。
+
+## 5. 三阶段 SOW Model 编译
+
+唯一 `ai-sow-model-v1` 同时保存：
+
+- `inputItems` 与逐项 `scopeClosure`；
+- `epics / features / designItems / integrations / nfrs / policyInstances`；
+- `stories / acceptanceCriteria`；
+- `tasks / dependencies / effectiveStartMatches`；
+- 各 Owner annotations 与结构化 decisions。
+
+阶段顺序和写集合固定：
+
+```text
+Scope StagePlan → materialize → validate → fresh Review → ScopeCheckpoint
+Story/AC StagePlan → materialize → validate → fresh Review → StoryAcCheckpoint
+Task StagePlan → materialize → validate → fresh Review → TaskCheckpoint
+```
+
+各 Owner 只接收窄 IR，由程序注入稳定 ID 和节点引用；全部 sibling 工作成功后才整体物化。Review 需要语义修复时最多增加一个 Owner IR revision，并重新完整验证和 fresh Review。三个 checkpoint 关闭后交给工作簿与发布后缀；完整生成的 Office、批准发布验收独立进行。
+
+Story 必须是 Feature 下单一、可独立移交、验收和关闭的具体结果。每个 Story 至少一条完整关闭义务的可观察 AC（不按固定数量凑数）、最多
+四个 Task。Task 一行只对应模板目录中的一个计数对象、一种工作模式和一个 S/M/L 复杂度；模板语义不
+允许由 Python 或模型复制计算。
+
+## 6. 阶段自动封存与返修
+
+每个 Owner 的完整 StagePlan 全部成功后，只物化一次当前 sealed IR，并执行完整机械验证，再发行独立 fresh Review。Review 只读候选、证据、root localKey 索引和 obligations；只有 REPAIRABLE_SEMANTIC 触发同一 Owner 窄 IR 的完整 root replacement。第二版重新物化、验证和 Review；后继 PASS 关闭前一版全部 findings，非 PASS 不关闭。不存在通用 PATCH、Theme Join 或 Adjudication 路由。
+
+完整字段、精确控制身份、Prior/CODE_ONLY 审查义务、实际容量与恢复证明见[阶段自动封存](../skills/generate/references/stage-seal.md)。StageCheckpoint 绑定 plan、实际 Attempt chain、候选、validator、fresh Review packet/PASS 及上游 checkpoint；Scope 有 Prior 时另绑定 snapshot。PASS 自动继续，无阶段批准。
+
+## 7. 新 run 与恢复
+
+公开 start 只执行 FULL_COMPILE，不读取旧 generation 决定业务内容。同一未完成 run 从自己的不可变 StagePlan、Attempt 和 checkpoint 恢复；已完成的物化/校验不重做。业务输入变化先 abandon，再以完整新 request 启动。政策只允许至少一项 token、active-time、未来请求的上下文容量或 Demo 限额严格增加，其余值保持原值；正文相同也拒绝。替换只发布 content-addressed policy 和 RunEvent，不创建业务 revision 或重排冻结计划。Brownfield 只消费本次明列的 PRIOR_SOW 与 declaredChangeContext。
+
+只保留 FULL_COMPILE 与同 run 恢复。
+
+## 8. 项目事务与不可变发布
 
 ```text
 .ai-sow/
-├── project.json
-├── inputs/
-│   ├── analyze-requirement/
-│   └── analyze-as-is/prior-sows/
-├── templates/sow-template.xlsx
-├── work/<owner-skill>/
-├── reviews/
-│   ├── analyze-requirement-questionnaire.md
-│   └── <owner-skill>.md
-├── data/
-│   ├── analyze-requirement/requirements.json
-│   ├── analyze-as-is/asis.json
-│   ├── generate-design/design.json
-│   ├── generate-design/requirements.json
-│   ├── generate-story/delivery.json
-│   └── generate-task/estimate.json
-├── validation/<owner-skill>.json
-└── outputs/<package-id>/
+├── current.json
+├── inputs/revisions/<revision>/
+├── generations/<generation>/
+│   ├── manifest.json
+│   ├── data/sow-model.json
+│   └── output/{sow.xlsx,sow-notes.md}
+└── work/
+    ├── active-run.json
+    └── runs/<run>/{actions,groups,candidates,checkpoints,reviews,artifacts}
 ```
 
-`project.json` 只有 `projectId`、`name`、`pluginVersion`、`sowStandardVersion`。代码库、往期 SOW、模式与其他现状证据属于 As-Is `analysisScope`。五个 Owner Skill 的成功 validation report 包含 `ai-sow-owner-v1`、validator contract `0.3` 的 named input/review/output receipt；下游只接受当前字节与 receipt 完全匹配的 handoff。
+一个项目同一时间只有一个 active run。request、input revision、run state、candidate、action、result、
+execution、record、完整 StagePlan、checkpoint、review decision 和 artifact manifest 都用项目相对路径与 hash
+闭合。crash 后 `status/resume` 从这些文件恢复，不依赖聊天上下文。
 
-六份 JSON 是全部稳定交接数据。`analyze-requirement-questionnaire.md` 是受控人类决策 seam：不增加稳定文件，也不改变 BUSINESS requirements 的四个顶级数组；默认项进入稳定数据的唯一方式是由 `generate-story` 编译为 delivery Assumption。`generate-design.md` 是批准合同而非第七份稳定 JSON：其中精确的 `HLD Coverage: PASSED`、`Go-live Assessment: PASSED` 和固定十项上线矩阵只由 `generate-design` validator 判断并绑定到 receipt；下游不重放这些门禁。
+artifact 先在 work 中渲染并由 Office 回算复读；用户批准后，`generation_store` 再独立验证 SOW Model、
+模板、renderer、workbook/notes 和批准绑定，发布新 generation，最后原子替换 `current.json`。批准前、
+失败、崩溃、输入等待或手工放弃都不会覆盖 last-known-good。
 
-## 4. 七个阶段 Skill 与一个维护 Skill
+## 9. Package 与工作簿
 
-### setup
+当前只支持 XLSX 模板。每个 input revision 保存 `sow-template.xlsx` 本轮专用副本；Task 编译、评审、
+渲染和复读始终使用同一份不可变模板。正式工作簿固定为 `01-需求故事`、`02-任务清单`、
+`03-工作量汇总`、`90-估算标准` 四个 Sheet 和五个命名 Table。
 
-当前 Stage Agent 只调用一次平台对应的确定性 bootstrap：macOS/Linux 使用 `bootstrap.sh`，Windows
-使用 `bootstrap.ps1`。它只复用精确 uv 0.11.7；缺失或版本不同时以 Astral 官方固定版本 standalone
-installer 安装到插件安装副本；随后复用或自动安装 managed Python 3.12，以锁定文件创建插件 `.venv`
-并复核依赖，再用该 Python 调用 setup Module。用户无需管理员权限、终端操作或技术安装步骤；网络/
-权限不足时在任何项目写入前 fail closed，并由 Stage 通过宿主权限机制自动重试。后续 Skill 直接使用
-该 `.venv` 的跨平台 Python，不依赖 shell profile 或 PATH 中的 uv。setup Module 写四个必填身份字段及可选 Owner 控制项、
-复制模板、创建固定父目录，并在返回前复读 Project Schema 与模板 round-trip；不为同一机械结果派发
-或重复运行叶子 Agent。完整项目只读复用；不完整或冲突项目 `BLOCKED`。setup 不提供 repair、不自动
-迁移已有项目，也不接收代码库、往期 SOW 或模式。
+Python 只投影业务文本与关系并保留公式、Table 计算列、样式、行高、筛选、验证、保护和打印设置。
+LibreOffice 在项目内隔离临时目录真实回算；随后分别复读公式与缓存值，并核对全部输入行、目录、参数、
+公式错误和汇总恒等关系。`generation-renderer-v12` 在现有汇总 Sheet 追加可见实体 ID 与公开 SourceRef 追溯区，并经真实只读 Prior adapter 验证往返。
 
-### analyze-requirement
+Office identity 只保存 executable basename、可执行文件 SHA-256、完整 version、platform、无路径的 normalizedArguments 和零 exit code。所有可见 Sheet 按工作簿顺序由真实 LibreOffice 导出 PDF；隐藏 Sheet 不要求 render。单个 `ARTIFACT_VISUAL_REVIEW` 使用模型 REVIEW Attempt，窄 IR 仅包含逐 Sheet checks/decision/findings 与 overallDecision；Sheet 和 render 顺序保留，不作为集合排序。
 
-登记原始需求来源，只产出 BUSINESS Epic/Feature。完整来源中每条会影响业务或方案/交付边界的明确陈述先进入 work-only `source-disposition.json`，唯一分类为 `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`；确定性 context 与 review packet 绑定该清单，正式 review 投影完整处置结果，但稳定 requirements 的四个顶级数组不变。`DESIGN_INPUT` 只保留来源定位和摘要供设计阶段回读原文，不创建 TECHNICAL 需求；跨域 `SCOPE_BOUNDARY` 必须映射全部受影响的 BUSINESS Epic/Feature。信息单薄、冲突或歧义会影响业务结论时，生成可回填 Markdown 问卷；关键问题关闭后才能批准稳定需求。需求评审声明问卷路径或 `Questionnaire: NOT_REQUIRED`。每个 `APPROVED_DEFAULT` 保留用户 Answer、决策日期、状态证据和 `ASSUMPTION_CANDIDATE` 处置。
+`ai-sow-artifact-manifest-v2` 深绑定唯一 SOW Model、三个 StageCheckpoint 及完整 Attempt/packet/result/实际步骤事件证明、可选 Prior、模板/renderer、Office、公式/结构复读、全部 renders 和最终 XLSX。visualReview 只保存成功 AttemptRecord hash。最终 XLSX 通过 `publish_new` 冻结后只读；所有验证与视觉 PASS 完成后才进入 `AWAITING_FINAL_REVIEW`。generation 携带完整离线证明闭包，批准和复读均不需要原 run 或输入目录。
 
-五个专业 Owner 共享同一 candidate-first 生命周期，但不共享业务编译器：各自的 `prepare_context.py` 只投影本阶段必要闭包，`render_review.py` 确定性投影专业评审，`validate.py --mode review` 生成 `ai-sow-owner-review-packet-v1` packet。输入 fragment 使用固定 32768-byte / 8192-token 上限分页，manifest 绑定页序、页 hash、预算与截断恢复协议；被截断 page 视为未读，只从同一 manifest 的首个未读页恢复。`claims.json` 不属于输入 fragments：candidate 不存在时只记录 `PENDING_CANDIDATE` 且不写空 claims，candidate 形成后才以独立 `reviewClaims.fragment` 绑定。完整 Reviewer 只返回 `PASS` 或 findings，findings 由 Owner-local `apply_patch.py` 形成字段 diff 与引用闭包审计，再交给新的轻量 Reviewer 复审。引用闭包只在当前 Owner 文档实际拥有的对象间传递，外部上游 ID 是叶子引用；`PATCH_CLOSURE_UNSYNCED` 原子拒绝不写 candidate/audit，也不消耗一次成功 patch 轮次，Stage 可在 packet 与 finding 不变时按诊断补齐精确确认后重试一次。成功 patch 把 candidate、audit、context、review projection、机械 post-check 与新 diff packet 作为一个 staging 事务，只有整体提交才返回 `patchRoundConsumed: true`；失败保持当前工作集原字节。轻量复审只读取 `diffReview` 的变更值、一跳直接闭包、相关 AC→Story→Feature 映射与 packet 绑定，硬上限 65536 bytes。任何新 packet 原子归档旧 packet/reviewer/approval 到按旧 packet hash 命名的目录，并从当前路径撤销旧授权。Reviewer 的第一次 `PASS/BLOCKED` 通过 Owner-local `record-reviewer` 按 packet SHA-256 冻结；同一 packet 不能无新证据翻转，`PASS` 同时写入 `ai-sow-owner-reviewer-v1` sidecar。用户批准由 `write-approval` 写入 `ai-sow-owner-approval-v1` sidecar；两个授权 sidecar 绑定同一 packet SHA-256，`publish-approved` 复算全部绑定后才发布正式 review、稳定输出与 receipt `0.3`。Validator 同时输出 candidate-derived `artifactMetrics`，阶段摘要不得由模型手算对象数量。Stage 不手写 reviewer、judgment 或 approval JSON；任一输入、candidate、context、review 或风险摘要字节变化都使 Reviewer 与批准失效。
+普通文本以 `= / + / - / @` 开头时仍按文本写入。`sow-notes.md` 必须披露输入边界、关键解释、假设、
+责任、排除项、待设计事项、风险和变更触发条件；不能只存在于执行日志。
 
-评审加速保持同一批准边界：Stage 先机械闭环，再把 `claims.json` 按 anchor 分片。只有有 anchor 的 FACTUAL claim 编译为 `FACT_VERIFIER_LOW`；其他 claim 固定为 `JUDGMENT_REVIEWER_DEEP`，结构完整性留给机械 validator。Claude 路由为 Haiku 4.5（逐条事实）、Sonnet 5（diff 与前提证伪）、Opus（充分性、设计与完备性）；Codex 只增加等价映射，分别为 `gpt-5.6-luna/low`、`gpt-5.6-terra/high`、`gpt-5.6-sol/max`。事实 PASS 必须带原文行号，深度 Reviewer 随机复验 10%，一次假阴性即整批升级。已验证 claim 的正文与 anchor hash 均未变化时写入 receipt `verifiedClaims` 并复用；context manifest 同时绑定 `claimMetrics` 与当前 Owner control。项目可选 `ownerControls` 的 `investigationMode / reviewDepth / tokenBudget`，未配置时使用逐 Owner 默认值；预算耗尽必须报告按路由分组的剩余 claim，不能静默通过。
+## 10. 运行时、跨平台与隐私
 
-新 session 已携带 Owner 与完整 packet SHA-256 的精确批准时走固定快速路径：Stage 依次调用 Owner-local `write-approval` 与一次 `publish-approved`。前者只校验批准参数并在固定 work-only 路径确定性写 canonical approval sidecar，不读取 candidate、上游或 Schema；后者承担全部 hash 发布前复核。Stage 不手写 approval JSON，不搜索 Skill，不枚举或预读项目 artifact，不运行 `--help`、closure、renderer、额外 `check`，也不重新进入专业分析或 Reviewer。
+平台 bootstrap 在插件安装副本内准备 uv 0.11.7、managed Python 3.12、锁定依赖和 `.venv`。普通用户
+无需预装 Python/uv，也无需激活虚拟环境：
 
-普通 Owner 的直接上游或已绑定输入变化但专业结论不变时，仍走同一 candidate-first packet：review
-声明 `Impact: NO_CHANGE`，candidate 必须与当前稳定输出原字节一致，至少一项 receipt 绑定输入必须变化，
-并由 `publish-approved` 在精确 packet 批准后只更新正式 review 与 receipt。该路径不使用 legacy
-`publish/rebind`，也不得把语义变化伪装成 `NO_CHANGE`。
+- macOS/Linux：`bootstrap.sh` 与 `.venv/bin/python`；
+- Windows 11 x64：`bootstrap.ps1` 与 `.venv/Scripts/python.exe`。
 
-### analyze-as-is
+所有公开结果是唯一 UTF-8 JSON。Windows PowerShell 5.1 的脚本编码、`PSModulePath` 和长路径预算由
+运行时合同约束；插件不会静默修改机器级策略。正式发布仍需可执行 LibreOffice。
 
-先用只读 `upstream-check` 匹配 Requirement receipt；该门禁不需要 As-Is candidate，也不写工作产物。通过后按需登记代码库、往期 SOW、配置和部署证据，确定模式并调查九个 Topic。仓库快照路径只允许项目根或其相对子目录；外部代码库以经授权的项目内只读快照登记，避免稳定数据保存绝对路径或通过间接链接越界。CodeGraph 路径为 MCP → 已有 CLI → `.ai-sow/work/analyze-as-is/tooling/` 项目局部安装和索引 → 已记录静态回退。默认不启动服务；运行验证只回答重要且静态证据无法解决的问题。每条 Uncertainty 结构化标记是否影响估算；`review/publish-approved` 在 As-Is Owner 内阻断任何仍为 `affectsEstimate = true` 的 Uncertainty，要求证据或问卷已形成 answer、owner 与 closure 后才允许 Design 启动。离线 review 对 Commitment、Uncertainty 和 Evidence 同时投影稳定 ID 与 `name`；Owner validator 逐条核对候选映射，防止结构化名称只存在于 JSON 而未进入人工评审面。
+`.ai-sow/` 包含客户原文和衍生数据，应默认被版本控制忽略。稳定 SOW Model、generation manifest 和
+action record 不保存凭据、私有源码、完整工具输出或本机绝对路径。项目 I/O 拒绝绝对路径、上跳、
+符号链接穿越和插件外写入。插件不执行 Git 网络、历史改写、提交、推送或发布。
 
-### generate-design
+## 11. 历史 benchmark（已取代）与验证边界
 
-第一条项目命令直接运行 Owner-local `prepare_context.py`，同时匹配 Requirement 与 As-Is receipt；不得先枚举 `.ai-sow`、探测 Git 或复读完整上游数据。closure 成功后只读取 manifest 点名的 Requirements、As-Is Coverage、Uncertainty、Effective Start、来源 anchor 与必要原文。As-Is 的仓库 `DOCUMENT` Evidence 按登记 repoId 把逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的真实项目相对路径；source anchor 同时保留追溯用 `reference` 与 Stage 读取用 `resolvedPath`，并包含 repository/prior SOW snapshot，Stage 不猜测磁盘位置。BUSINESS Epic/Feature、Effective Start/Item/Commitment、source/Evidence/snapshot 各自在唯一 fragment 投影，不重复加载同一集合。两份 candidate Schema 由 Skill 公布精确路径，Stage 不通过目录枚举寻找合同。随后形成目标设计、Architecture Delta、Scope Decision 和全部 TECHNICAL Epic/Feature。`SOURCE_INPUT` 追溯来源文档及锚点；`DESIGN_DERIVED` 追溯设计决策、产生原因和缺失影响。`IN_SCOPE` 必须有 Design Item 覆盖；两个 `IN_SCOPE` TECHNICAL Feature 的 Design Item 集合相同或包含时，work-only `featureBoundaryReview` 逐对说明可独立验收的非重叠结果；每个 TECHNICAL Feature 与 `relatedBusinessFeatureIds` 的配对由 renderer 投影 BUSINESS/TECHNICAL boundary matrix，同一配对不能同时声明两个 `END_TO_END` Owner；`FULLY_COVERED` 由 Effective Start、Evidence 和具体理由证明，BUSINESS 还要求同组 Effective Start 的 COMPLETE Coverage。Task 反馈的实现机制缺口优先细化已有 Decision、Design Item 或职责相同的 TECHNICAL Feature；没有新的用户批准交付结果时，不新增 Feature，也不反向要求修改 Story/AC。设计评审声明 HLD 门禁，并用固定七列矩阵处置生产范围、环境、切换回滚、数据迁移、生产验证、可观测性、运维移交、上线后支持、用户赋能和遗留退役十项 Concern。review-source 的专业摘要不手工维护候选对象数量；`render_review.py` 从两份当前 candidate 确定性投影唯一 `Structure Counts` 声明，并拒绝摘要中的重复手写计数，保证一次整体修正后评审与 candidate 不会因旧数量漂移。
+验证覆盖合同/Owner 单测、公共 NextAction E2E、锁定输入的 fail-fast validation campaign、性能/Token
+benchmark，以及独立复制插件 smoke。配对 benchmark 只有在 `compare` 机械验证精确 32 样本矩阵、
+必需 ACTION/STAGE 覆盖、按 policy 重算全部 ACTION/STAGE/RUN 收据 outcome、ACTION→STAGE→RUN
+计量聚合、收据哈希/签名、相同输入/环境/cache namespace、同执行配置和全部目标，并生成 PASS
+comparison receipt 后，才允许声明数值改善；仓库验证器
+会按 receipt 绑定的 policy 与两份 manifest 重新求值，不能仅靠路径或 hash 字符串把门禁改成
+`SATISFIED`。copy smoke 直接使用 Python API，覆盖 Greenfield、Brownfield、
+同 run 恢复、新输入完整编译与逐阶段 fresh Review；读取守卫
+证明 marketplace 零读取，失败收据与 worker stdout/stderr 在清理前保留。
 
-### generate-story
+历史提交 `75970b2` 只保留了聚合指标和匿名缺陷分类，没有逐样本收据、完整执行配置或可靠冷热配对，
+因此被登记为 `PARTIAL_BASELINE_CHECKPOINT`，只可用于根因定位和修复排序。它不能证明任何候选版本的
+相对性能。数值改善结论必须由两个通过 `pipeline-benchmark.schema.json` 校验的完整 manifest 支持：每个
+manifest 至少 32 个样本，三种成功规模分别执行五次 `COLD` 和五次 `WARM`，另含两个阻断场景，并保持
+模型、reasoning、工具、Office、计量和 cache protocol 一致。门禁未满足时，70% 目标只能作为政策目标，
+不能表述为已达成结果。
 
-在内存中联合两份 requirements；先验证 Requirement、As-Is 与 Design 的当前 handoff，再把每个 `IN_SCOPE` Feature 相对 Effective Start 的差值直接分解为 Story 和 AC，`FULLY_COVERED` 不生成 Story。Delivery 不再保存中间 Gap 实体：Story 直接引用唯一 `featureId`，每条 AC 用 `gapRationale` 引用 Effective Start 或明确有效起点缺失，并用 `carryForwardCommitmentIds` 逐条承接往期承诺。closure 的 Design fragment 同时投影已选 Feature 相关的 Scope Decision 与 Design Decision，使 AC 和 Integration 只引用真实批准 ID；有类型化 Design Decision 时只允许引用关联当前 Story Feature 的决策，纯实现集成可用空 `decisionIds` 与非空 `decisionRationale` 说明无需类型化批准。关联范围内 Feature 的 `OPERATIONAL_THRESHOLD` 必须在进入 Task 前具有量化阈值、明确结果责任方，并由对应 AC 引用；Owner validator 连同 Effective Start 差值和既有支持边界门禁一起检查 Task-readiness。As-Is 的仓库 `DOCUMENT` Evidence 使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，确保 Story 与 Design 消费同一 handoff 语义。Stage 从 Skill 公布的 `contracts/delivery.schema.json` 精确路径读取一次合同，不通过目录枚举、fixture 或 test 猜 Schema。Story/AC 获批后是业务交付合同；若 Design 只因 Task 可实施性反馈细化实现机制而交付结果未变，`generate-story` 保持稳定 Delivery 原字节并走 packet-bound `NO_CHANGE` 发布，不为实现机制新增 Story 或 AC。它不重新执行 Design 的 HLD/Go-live validator。读取可选需求问卷；问卷缺失或状态不完整时阻塞，每个 `APPROVED_DEFAULT` 恰好编译为一个 Assumption，并在 review 中保留 `Question ID -> assumptionId -> storyIds`。已折入 BUSINESS requirements 的 `CLOSED` 答案不重复消费。Integration 是顶级权威；每个声明非 `NONE` 集成边界的 Story 必须有边界一致的 Integration，不能只由共享使能 Story代替。带 `relatedBusinessFeatureIds` 的横切 TECHNICAL Feature 只有在共享边界或控制结果可独立验收、估算时才拥有单独 Story；该 Story 的 Integration 面向单一项目侧适配器/控制端口，机械门禁拒绝聚合两个或更多相关 BUSINESS Story 已登记 target 的重复端到端 Integration。提供方映射、业务幂等、重试、异常处置和核对仍由首次拥有该结果的 producing Story 负责，其他 AC 必须显式引用它。Assumption/Risk 每个语义只保存一次；需要表达不确定性的 Story 最多保存一个 `assumptionId`，同一条记录可被多个 Story 引用。
+本版本明确不提供：Codex/Claude CLI 运行时依赖、旧命令兼容、旧业务数据迁移、字段级未校验 patch、
+Python 公式执行、PDF/Word/PPT 解析、自动 Git 操作或客户签署判断。CI 的 Linux/macOS/Windows 矩阵
+证明协议与路径实现可移植，不等同于物理设备或 Excel Desktop 的实机认证。
 
-Story review renderer 对每条 Integration 确定性投影 `deliveryBoundary` 与 `targetKind`，使离线 Reviewer
-无需回读 candidate 即可核对 `END_TO_END / PORT_ONLY` 和 `PROVIDER / SYSTEM / ADAPTER / PORT`
-边界；Decision 引用与可选 `decisionRationale` 仍在同一行显示。
+内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
+pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，
+只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
+都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
 
-### generate-task
+Scope 独占 PriorStateSnapshot 与 ChangeGraph，唯一 stable_ids 实现受控身份。snapshot 绑定显式 revision 原字节；
+无 Prior 时 checkpoint 省略 priorStateSha256，有 Prior 时 Story/Task 只消费该 hash，不能重新解析工作簿。
+相同 workbook 的不同 sourceId 保留分别的 audit evidence；DUPLICATE 组件只取 canonical source 进入 effective view。
+visiblePriorId 必须是源单元格中的精确完整 ID，且语义唯一、不变、一对一匹配经 Scope fresh Review 验证；
+重复引用同一实体可以保留，歧义、split/merge 不继承。Brownfield 仅从转交 XLSX 恢复这些事实。
 
-按模板计数口径把 Story 拆为一实例一行的基础单元 Task。从单张配置表读取 37 项基础单元、13 个任务族、三个工作模式的人天列和逐单元 S/M/L 标准，并从项目参数读取复杂度系数；Task 保存基础单元、工作模式、复杂度、理由、Effective Start 引用、`调整 / 接入复用` 的结构化 `workModeEvidence` 和必要的 `integrationId`。接入复用的项目侧工作类型确定性生成标准正向交付承诺和工作模式理由，避免用自由文本推断责任。发布计划与实际切换合并为每 Story 至多一个发布切换 Task，数据迁移独立；问题诊断与根因整改不得重复计价；用户培训使用专门基础单元，未明确购买的上线后支持不得生成。任务族由模板带出，不使用活动、数量、固定任务对或统一工作模式倍率。
+当前来源合同：DEMO 是无需构建的静态 HTML/CSS/JavaScript bundle。HOST_BROWSER 报告实际 browserProfile，
+同 run 所有 trace 精确匹配；关键 scenario 两次，实际不稳定结果必须一次 bounded replay。预算跨全部 rounds/replays 累计。
+Scope 消费所有轮次的 ObservationIR。采用的 CODE_ONLY candidate、source evidence 和 round/Attempt 绑定进入唯一 Scope Review packet；
+ReviewDecisionIR 的 PASS 显式确认完整 intent obligations，缺项或 stale/unrelated proof 不能封 checkpoint。
 
-Task candidate 在 Reviewer 前按 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER` 归一化潜在基础单元碰撞：同一实例只由 producing Story 计价；同一 API 下可独立验收的外部业务操作、数据模型/索引/访问层、读模型投影等分别选择真实基础单元；消费方只有存在可独立估算的项目侧接入工作时才生成 `接入复用` Task。Renderer 确定性列出“相同基础单元 + 相同 Effective Start”的潜在碰撞组供 Reviewer 判定，不把候选组机械等同为重复。去重后没有独立 Task 的 Story 由 Task Owner 返回 `STORY_OWNER_RETURN_REQUIRED`，交给 `generate-story` 删除或合并；Task Owner 不以人工测试或空壳 Task 填充，也不越权修改 Delivery。
+宿主读取 read_provider_request 的 canonical messages/maxOutputTokens。host-canonical-messages-v1 与 utf8-bytes-v1
+只定义规划表示和 UTF-8 byte-count；它们不证明真实 tokenizer、模型容量或 provider 用量。宿主必须验证实际 fresh invocation、
+最终请求与输出上限；实际 benchmark 用量来自 completion。不能把估算、fixture usage、线程多调用合计当作单次 provider 事实。
+packet 只有 workItems/contextRefs；基础 context 是 refId/canonicalContent/contentSha256，dependency context 是
+refId/canonicalContent，其正文为 kind=DEPENDENCY_RESULT、logicalWorkId、attemptRecordSha256、normalizedResult。
+规划只计已知 bytes，发放前再次验证包含全部 dependency/repair 的实际请求容量；不足时等待，不修改冻结计划。
+MATERIALIZE、VALIDATE、OFFICE 和复读独立检查 active-time，并记录实际完成区间；等待不计时，重叠区间只算一次。
 
-“调整”要求 Effective Start 的名称或摘要明确点名当前基础单元可调整的既有资产；一般治理、平台、
-交付或运行边界不自动构成既有迁移、切换或测试资产。接入复用的 `projectSideWorkTypes` 按 Schema
-枚举顺序生成承诺，`workModeRationale` 精确采用
-`<effectiveStartItemName>保持不变；<projectSideWorkCommitment>。`，validator diagnostics 在不满足时
-返回期望的 canonical rationale，使公开合同与 fail-closed 修复路径一致。复用既有 CI/CD 执行本项目
-新切换仍是“新建”发布切换，只有修改既有项目切换方案或清单才是“调整”。
+上述历史 32 样本比较器仅分析历史收据，不是当前执行入口；当前真实配对验收的 B.a–B.p、oracle、浏览器、
+严格顺序双 workbook 和逐项硬门槛必须另行完成。当前仓库 fixture 通过不代表这些实际验收已完成。
 
-`generate-task` 的 `prepare_context.py` 先匹配 As-Is、Design、Story receipt，并把 Delivery、关联
-Design/As-Is/TECHNICAL 引用与不含计算值的模板目录投影到 work-only context closure；Delivery 没有
-完备 Story→Effective Start 关系时保守保留全部 Effective Start。As-Is 的仓库 `DOCUMENT` Evidence
-使用 `repositorySnapshots` 将逻辑 `<repoId>:<anchor>` 重建为 receipt 绑定的项目相对路径，与 Design、
-Story 复用同一 handoff 语义。当前 Stage Agent 只形成
-`estimate.candidate.json`，并从 Skill 公布的 `contracts/estimate.schema.json` 固定路径读取一次
-Schema，不通过目录枚举或 test 猜测合同。五个 fragment 在一个工具回合中各读取一次，随后不得再次
-筛选或复读；`template-catalog.json` 是普通 candidate 流程唯一需要的模板目录投影，不再额外运行
-`read_template.py`、读取项目 XLSX 或 Skill-local fixture。`render_review.py` 从 candidate 与模板确定性投影逐 Task 的计数、包含、
-排除和非重复计价边界。`validate.py --mode review` 在批准前完成全部机械校验并生成风险摘要与绑定
-context manifest/fragment 的 canonical review packet；唯一 Reviewer 使用不继承完整聊天的上下文
-审查该 packet。首次机械 review 仅包含 candidate 可修复项时，Stage 可基于公开 diagnostics 完成一次
-整体修正并整体重跑 renderer/review；第二次仍失败才停止，这一额度与 Reviewer 的一次专业 finding
-修复相互独立。用户批准 packet SHA-256 后，`--mode publish-approved` 复算 candidate、review、
-context、input、Reviewer 与 approval 绑定，再发布正式 review、Estimate 和 receipt。现有
-`check/publish/rebind` 继续作为 reconciliation Adapter；其中 `publish/rebind` 必须携带合法
-`--staging-root`，不能写正式路径。普通 Owner 调用只使用 packet-bound `publish-approved`，receipt
-contract 仍为 `0.3`。
+生成后的 Scope、Story/AC 和 Task 优先按 findings 及影响范围局部修复，保留正确结果；普通 Repair 可调整、合并或拆分授权对象；共享测试资产保留独立 Story/AC，只计量一次，工作簿展示覆盖与费用归属。自动停止后，`resume --decision` 可绑定原终态与失败 Review，按明确用户裁定仅修允许字段、追加一个候选并 fresh Review，完整保留累计次数与消耗。具体合同见 [阶段自动封存](../skills/generate/references/stage-seal.md)。
 
-完整 Reviewer finding 的首次字段 patch 通过后交给轻量 diff-review。轻量 Reviewer 若只发现该 patch
-引入的 Task-local 去重、基础单元、工作模式、边界说明或引用问题，可再执行一次原子纠错 patch 和
-最终轻量 diff-review；整个 Task Owner 周期最多两次成功 patch、一个完整 Reviewer 和两个轻量
-Reviewer。需要改 Story/AC 时改走 `STORY_OWNER_RETURN_REQUIRED`；最终轻量 Reviewer 仍有 finding
-才结束当前 Task 周期。
+往期 Excel 大表按完整证据行分组，保留全部单元格、位置、哈希与表头，避免整张 Sheet 超出单次请求容量。阶段尚未发行计划工作便因容量等待时，修复分组后可从原 run 恢复，复用已完成的原型观察和检查点，不提高模型容量或重置消耗。
 
-### generate-sow
+Prior 实体跨同 packet、同 source/Sheet 的已授权行分区引用时保留所属 namespace anchor。Attempt repair 可使用可逆表传输，解码后 packet hash 完全一致；尚未发行的 retry 重新满足原容量后由 `FITTING_UNISSUED_RETRY` 接续。具体权限、完整字节绑定及中断恢复见[阶段自动封存](../skills/generate/references/stage-seal.md)。
 
-当前 Stage Agent 直接调用一次确定性生成器。生成器验证五个 Owner receipt、六份稳定数据、五份批准 review 与项目模板的当前 hash，并把稳定 ID 关系投影为唯一、非空的名称关系，把可翻译的枚举投影为中文，再确定性复读和发布工作簿及自包含交付包；普通生成不创建模型 Reviewer。package 指纹使用 `ai-sow-package-v1` 并绑定 `receipt-only-v3` 生成器合同；任何会改变工作簿或 manifest 确定性字节的投影变更必须提升该合同，并同步 reconciliation publisher 与跨路径测试。成功 stdout 直接返回 workbook、manifest、package tree SHA-256 和文件数，Stage 信任该内建复读摘要，不再自行全量哈希。As-Is 的仓库 `DOCUMENT` Evidence 通过 `repositorySnapshots` 把逻辑 `<repoId>:<anchor>` 解析为 receipt 绑定的项目相对路径，普通项目文档路径保持原值。生成器不读取上游 schema、不重诊断上游业务语义，也不执行 Excel 公式。SIT 由集成 Task 触发，UAT 由 Story 的 `uatRelevant` 决定。
+ABANDON 恢复完成后立即结束恢复后缀，避免再次读取已移除的 active marker。artifact 取证从最终 Task checkpoint 及预览修复授权事件恢复不可变候选绑定，离线读取不依赖当前候选指针。
 
-### reconcile
+Task Repair 的 AC 重分配限于本轮受影响 roots 已有的覆盖；历史授权不能扩张后续无关修复。公开 submit 在成功 Attempt 封存前拒绝越界为 INVALID_IR，物化与 proof 回放使用相同 Task-local 校验。
 
-处理已经存在有效 Owner 产物后的用户修正；固定后缀末端允许包含尚未首次发布的 Owner。当前 Stage
-确认唯一 Owner，按固定阶段顺序读取到 `generate-sow` 的完整后缀，在批准前形成各 Owner
-`CHANGED/NO_CHANGE/PENDING` 结论、全部必要 candidate 与 work-only review projection，并在同一
-flat staging view 完成一次前向 pass：`CHANGED/PENDING` 先 `check` 再 `publish`，`NO_CHANGE`
-直接 `rebind` 并物化原 output 字节；`PENDING` 必须构成连续末端并从全 `MISSING` baseline 走对应
-Owner 的正常首次发布路径，中间缺失时阻塞。每一次 Owner `publish/rebind` 都必须
-携带同一合法 `--staging-root`，缺失时在任何 Owner 写入前阻塞。最后从完整 staged handoff 生成并
-复读 package。为避免 Agent 猜测 Adapter Interface，reconcile 合同固定列出五个 Owner 的 stable、
-candidate、review、receipt 路径和 `--staging-root` 命令；`NO_CHANGE` 的 previous hash 来自 base
-Owner receipt，current hash 来自 staged upstream receipt，失败 run 不在同一 staging 内修补重试。
-ProjectView 对未覆盖路径回退到 base，因此无需把影响起点之前的 Owner 或模板复制进 staging。
-批准前第一条项目命令使用 Skill-local 只读 `inspect`，一次返回固定后缀的 baseline 路径、hash、
-validation input 与 review ID 声明；模型不再执行平台相关 hash 命令或加载完整 `NO_CHANGE` 产物。
-Owner validator 仍由 Stage 直接调用，reconcile Python 不跨 Skill 执行脚本。`NO_CHANGE` 的
-`prepare-no-change` 从 base review/receipt 与 staged upstream receipt 确定性投影全部 Stable ID 及
-hash binding；`stage-owner` 只负责 flat review/output 写入。Owner check/publish/rebind 与 Adapter
-动作必须各自是独立 fail-fast tool call，禁止命令串联、双层 `.ai-sow`、错误后继续或模型手拼
-NO_CHANGE 声明；所有调用统一使用 setup 建立的插件 `.venv` Python 与绝对脚本路径，不依赖 PATH
-uv、shell 临时变量或重复 cache path，并传绝对 `--project-root`；直接 Python 调用保持项目 cwd。
-Adapter 不拥有业务 Schema，也不是通用 Owner runner。
-在任何 staging 前，`inspect-work` 先返回 CHANGED candidate named hashes，Stage 据此冻结整体
-`review.md`；随后 `prepare-changed` 把精确 run/review hash 写入 CHANGED work review。整体 review
-不存在时 `prepare-changed/prepare-no-change` 都 fail closed，禁止先发布 Owner 再补整体批准闭包。
-Skill-local `assemble` 确定性生成 redo/diff/risk 和绑定 review、Owner artifacts、
-receipt inputs、package tree、manifest 的 packet。一个 fresh-context Reviewer 与用户批准都绑定精确
-`run-id + packet SHA-256`；任一 staged byte 变化必须重新 packet/复审/批准。批准后 publisher 只执行
-hash/check/publish，先发布 package，再按 Owner 顺序前向发布且 receipt 最后写入。它不解释业务、
-不建 DAG、不新增稳定 JSON。Story/AC 默认冻结；只有同一 packet 明确列出业务结果 diff 时才允许
-Story `CHANGED`，Task 永远无权反向修改 Story/AC。Publisher 的 `completedOperations` 对
-`before == after` 的原字节复用路径也计为完成，因此完整发布后的 `check` 必须稳定报告全部
-operation 已完成；内部前向恢复前缀仍只按实际发生字节变化的 operation 判断。
+ARTIFACT RENDER 的真实导出在成功事件前持久暂存；恢复只复用该事件精确 hash 绑定的原字节，复核篡改并记录恢复 I/O 时间。没有成功事件的孤儿暂存不授权复用；旧运行缺少暂存时仍重算并匹配原 hash。此规则不改变 renderer、工作簿或已批准预览。
 
-## 5. 稳定合同与工作簿
-
-| Sheet | 实体 | 关键语义 |
-|---|---|---|
-| `01-需求` | EPIC | BUSINESS 与 TECHNICAL 联合视图 |
-| `02-子需求` | FEATURE | 最小需求范围与来源追溯 |
-| `03-SOW主表` | STORY | 可交付、可验收、可结算 |
-| `04-验收条件` | AC | 独立可观察结果；不展示结构化 `sequence` |
-| `05-任务明细` | TASK | 一行一个基础单元实例 |
-| `06-集成点` | INTEGRATION | 顶级集成权威 |
-| `07-假设清单` | ASSUMPTION | 一项一行，供 Story 按名称单选引用 |
-| `90-系统现状` | ASIS | 供增量设计与工作模式判断共同引用的 Effective Start 明细 |
-| `91-项目参数` | PARAMETER | S/M/L 复杂度系数及 SIT、UAT、风险和取整参数 |
-| `92-基础人天` | BASE UNIT | 37 项基础单元、13 个任务族、逐单元标准与三个工作模式的人天列 |
-
-模板 prototype 提供业务表数据行的最小高度；生成器按最终可见换行文本与模板列宽确定性扩大行高，且对 `03-SOW主表` 的公式汇总列只使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。该投影语义由生成指纹中的 `receipt-only-v3` 生成器合同隔离，后续任何改变工作簿确定性字节的投影合同变化都必须提升该值，避免与旧包发生不可变 `packageId` 碰撞。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式汇总，并为每条内容添加项目符号；不得依赖 `_xlfn._xlws.` 动态工作表函数。五张受保护业务表只锁定公式与关系派生单元格及单元格格式；白色输入单元格保持可编辑，同时允许用户调整列宽与行高、使用表头筛选与排序。
-
-选填需求字段只有在内容具体时生成；省略时工作簿留空。`DESIGN_DERIVED` 理由必须关联具体决策、产生原因和缺失影响。Story 不保存类型；Task 不保存任务族、活动、数量或计算人天。每个可独立引用的结构化实体同时保存必填 ID 与非空名称，关系只保存 ID；业务 Sheet 不显示稳定 ID，并按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列实际存在的层级列。稳定 JSON 的 `baseUnit` 保留基础单元 ID，任务页投影基础单元名称；每个 Task 最多保存一个 `matchedEffectiveStartItemId`，每个 Story 最多保存一个 `assumptionId`。任务页将该 ID 显示为“关联现状条目”，下拉直接引用 `90-系统现状` 可见表中的唯一名称；任务页不展示集成点，集成页只在故事名称后展示唯一关联的集成任务名称。`90-系统现状` 不展开 Item、Commitment、Coverage、Uncertainty 或 Evidence，只显示 Effective Start 的主题、名称、现状描述和起点可用性；现状描述直接使用 Effective Start `summary`，不拼接来源 Item/Commitment 摘要；主题与起点可用性为浅黄色下拉，名称与描述为白色自由文本，整页不启用保护。工作簿内修改不回写稳定 JSON、评审或 manifest。模板按基础单元名称和工作模式对应的人天列取得 M 档基础人天，再按项目参数中的复杂度倍率计算；生成器只接受当前模板合同，不迁移旧模板。
-
-## 6. 发布、隔离与安全
-
-- 输入、输出和 Evidence anchor 使用项目相对路径；仓库 Evidence 使用 `<repoId>:<anchor>` 时，
-  validator 必须通过已登记 repository snapshot 的 path 解析并绑定实际文件。稳定数据不保存凭据、
-  绝对路径、源码或完整工具输出。
-- setup 和生成器拒绝受管路径越界与符号链接穿越。
-- Git 只负责普通协作；插件不 clone、pull、reset、commit 或 push。
-- `generate-sow` 在 `.ai-sow/outputs/` 内写入 staging，完成工作簿复读和 manifest 校验后，同文件系统 rename 为 `sow-sha256-<generationFingerprint>` 输出目录；相同内容复用，不同内容拒绝覆盖，失败 staging 由本次运行清理。
-- `reconcile` 使用项目内短 staging path、显式 tombstone 和 work-only canonical redo manifest；
-  package 先发布，Owner review/output/receipt 再按固定顺序前向写入。它假定单一受支持写入者；
-  baseline/after 之外的第三种 hash fail closed。
-- 普通 XLSX 文本以 `=`、`+`、`-` 或 `@` 开头时按文本写入；公式只来自模板。
-
-## 7. 验证
-
-每个 Owner 的 validator 检查自己的合同、自己创建的引用和必要上游 handoff；下游 handoff 失败只报告 missing、invalid、stale、unsupported 四类稳定错误。HLD/Go-live 只在 `generate-design` 本地判定。插件测试保持静态，不启动应用或容器。工作簿测试验证八个领域 Sheet、唯一名称、中文下拉、名称引用、列顺序、锁定与保护、37 项基础单元、13 个任务族、命名 Table、公式原型、可选字段留空、顶级 Integration、单行 Assumption 投影和一实例一行的 Task。
-
-As-Is 的 Commitment 与 `PRIOR_SOW` Evidence 使用
-`prior-sow:<priorSowId>#<anchor>`；validator 同时匹配登记 ID、逻辑 anchor 和原文件 SHA-256，
-不能只校验其中一个字段。Validator 独有的状态/处置规则必须在 Skill 中公开为编制矩阵，
-否则 Stage 在禁止复读脚本的边界下无法一次生成可校验 candidate。
-
-仓库级验证负责插件布局、manifest、资产身份和发布面；七阶段主线与 `reconcile` smoke 位于
-`plugins/ai-sow/tests/support/`。
-
-## 8. 非目标
-
-插件不建设统一 AI SOW CLI、共享 Owner 业务编译器、通用 Owner runner、自动审批系统、项目锁、不可变 revision store、活动指针、对抗同权限竞态的 inode 协议、EXDEV tree copy、自动 Git 操作、公式执行或 XLSX 反向导入。插件级共享 runtime 仅承载不拥有稳定业务数据的机械评审与基础设施能力。
+XLSX 数组公式按原始公式文本提取证据，不使用带进程地址的对象字符串；缺少公式文本和无原公式文本的数据表公式明确拒绝。已冻结输入保持原字节，后续新 Prepare 使用确定性结果。

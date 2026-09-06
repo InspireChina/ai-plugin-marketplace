@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:artifact-repair-authorization:1",
+  "description": "已验证工作簿的预览修复裁定；保留语义检查点和 Office 前缀，仅重新渲染及视觉复验。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "const": "ai-sow-artifact-repair-authorization-v1"
+    },
+    "candidateSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "decision": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "provenance": {
+      "enum": [
+        "USER",
+        "SIMULATED_USER"
+      ]
+    },
+    "authorization": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^run-[0-9a-f]{12}$"
+    },
+    "terminalStateSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "visualReviewAttemptRecordSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rendererSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "repairFromStep": {
+      "const": "RENDER"
+    }
+  },
+  "required": [
+    "contract",
+    "candidateSha256",
+    "decision",
+    "provenance",
+    "authorization",
+    "runId",
+    "terminalStateSha256",
+    "visualReviewAttemptRecordSha256",
+    "rendererSha256",
+    "repairFromStep"
+  ]
+}

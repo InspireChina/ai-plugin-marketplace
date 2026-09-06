@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -11,11 +12,12 @@ import sys
 import tomllib
 from pathlib import Path
 
-RELEASE_VERSION = "0.1.0-beta.1"
-PYTHON_RUNTIME_VERSION = "0.1.0b1"
+RELEASE_VERSION = "0.1.0-beta.2"
+PYTHON_RUNTIME_VERSION = "0.1.0b2"
 SOW_STANDARD_VERSION = "1.3"
 MARKETPLACE_NAME = "ai-plugin-marketplace"
 PUBLISHER_NAME = "Inspire"
+AI_SOW_DESCRIPTION = '每次仅根据明确提供的 PRD、HLD 和适用往期 SOW，完整编译并逐阶段评审可追溯的 SOW 工作簿，经 LibreOffice 双复读和全部可见 Sheet 视觉评审后请求批准发布。'
 CODEX_MARKETPLACE = ".agents/plugins/marketplace.json"
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
 CODEX_PLUGIN_MANIFEST = ".codex-plugin/plugin.json"
@@ -43,10 +45,65 @@ FORBIDDEN_PUBLIC_TEXT = (
     "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
     "-----BEGIN " + "PRIVATE KEY-----",
 )
-GENERATOR_FINGERPRINT_FILES = (
-    "scripts/generate_sow.py",
+RENDERER_FINGERPRINT_FILES = (
+    "scripts/package_renderer.py",
     "scripts/workbook.py",
+    "scripts/office_engine.py",
+    "scripts/story_notes.py",
 )
+AI_SOW_GENERATE_SUPPORT_FILES = (
+    "skills/generate/contracts/action.schema.json",
+    "skills/generate/contracts/artifact-approval.schema.json",
+    "skills/generate/contracts/common.schema.json",
+    "skills/generate/contracts/current.schema.json",
+    "skills/generate/contracts/generation-manifest.schema.json",
+    "skills/generate/contracts/input-revision.schema.json",
+    "skills/generate/contracts/request.schema.json",
+    "skills/generate/contracts/review-repair.schema.json",
+    "skills/generate/contracts/run-state.schema.json",
+    "skills/generate/contracts/sow-model.schema.json",
+    "skills/generate/contracts/stage-checkpoint.schema.json",
+    "skills/generate/references/acceptance-criteria.md",
+    "skills/generate/references/delivery-decomposition.md",
+    "skills/generate/references/delivery-lifecycle-policy.md",
+    "skills/generate/references/delivery-work-classification.md",
+    "skills/generate/references/effective-start-matching.md",
+    "skills/generate/references/epic-authoring.md",
+    "skills/generate/references/feature-authoring.md",
+    "skills/generate/references/layered-review.md",
+    "skills/generate/references/source-authority.md",
+    "skills/generate/references/story-authoring.md",
+    "skills/generate/references/task-authoring.md",
+    "skills/generate/references/technical-work-classification.md",
+)
+AI_SOW_SCHEMA_IDS = {'action.schema.json': 'urn:ai-sow:generate:next:action:1',
+ 'artifact-repair-authorization.schema.json': 'urn:ai-sow:generate:next:artifact-repair-authorization:1',
+ 'artifact-approval.schema.json': 'urn:ai-sow:generate:next:artifact-approval:1',
+ 'change-graph.schema.json': 'urn:ai-sow:generate:next:change-graph:1',
+ 'common.schema.json': 'urn:ai-sow:generate:next:common:1',
+ 'current.schema.json': 'urn:ai-sow:generate:next:current:1',
+ 'fact-decision.schema.json': 'urn:ai-sow:generate:next:fact-decision:1',
+ 'generation-manifest.schema.json': 'urn:ai-sow:generate:next:generation-manifest:1',
+ 'input-revision.schema.json': 'urn:ai-sow:generate:next:input-revision:1',
+ 'owner-clarification.schema.json': 'urn:ai-sow:generate:next:owner-clarification:1',
+ 'owner-repair-authorization.schema.json': 'urn:ai-sow:generate:next:owner-repair-authorization:1',
+ 'prior-state-decision.schema.json': 'urn:ai-sow:generate:next:prior-state-decision:1',
+ 'prior-state-snapshot.schema.json': 'urn:ai-sow:generate:next:prior-state-snapshot:1',
+ 'prototype-observation.schema.json': 'urn:ai-sow:generate:next:prototype-observation:1',
+ 'prototype-scenario.schema.json': 'urn:ai-sow:generate:next:prototype-scenario:1',
+ 'prototype-trace.schema.json': 'urn:ai-sow:generate:next:prototype-trace:1',
+ 'request.schema.json': 'urn:ai-sow:generate:next:request:1',
+ 'review-repair.schema.json': 'urn:ai-sow:generate:next:review-repair:1',
+ 'run-budget-policy.schema.json': 'urn:ai-sow:generate:next:run-budget-policy:1',
+ 'run-event.schema.json': 'urn:ai-sow:generate:next:run-event:1',
+ 'run-state.schema.json': 'urn:ai-sow:generate:next:run-state:1',
+ 'scope-decision.schema.json': 'urn:ai-sow:generate:next:scope-decision:1',
+ 'source-audit.schema.json': 'urn:ai-sow:generate:next:source-audit:1',
+ 'sow-model.schema.json': 'urn:ai-sow:generate:next:sow-model:1',
+ 'stage-checkpoint.schema.json': 'urn:ai-sow:generate:next:stage-checkpoint:1',
+ 'story-ac-decision.schema.json': 'urn:ai-sow:generate:next:story-ac-decision:1',
+ 'task-decision.schema.json': 'urn:ai-sow:generate:next:task-decision:1',
+ 'visual-review.schema.json': 'urn:ai-sow:generate:visual-review:1'}
 
 
 def load_json(path: Path) -> object:
@@ -57,6 +114,96 @@ def load_json(path: Path) -> object:
 def load_toml(path: Path) -> dict[str, object]:
     """Load a UTF-8 TOML document through the Python 3.12 standard library."""
     return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def _is_template_path_mismatch(test: ast.expr) -> bool:
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
+        return any(_is_template_path_mismatch(value) for value in test.values)
+    return (
+        isinstance(test, ast.Compare)
+        and isinstance(test.left, ast.Name)
+        and test.left.id == "template_path"
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.NotEq)
+        and len(test.comparators) == 1
+        and isinstance(test.comparators[0], ast.Name)
+        and test.comparators[0].id == "expected_path"
+    )
+
+
+def _body_has_effective_raise(body: list[ast.stmt]) -> bool:
+    for statement in body:
+        if isinstance(statement, ast.Raise):
+            return True
+        if isinstance(statement, (ast.Return, ast.Break, ast.Continue)):
+            return False
+        if isinstance(statement, (ast.With, ast.AsyncWith)) and _body_has_effective_raise(
+            statement.body
+        ):
+            return True
+        if (
+            isinstance(statement, ast.If)
+            and statement.orelse
+            and _body_has_effective_raise(statement.body)
+            and _body_has_effective_raise(statement.orelse)
+        ):
+            return True
+    return False
+
+
+def generation_store_binds_immutable_template(path: Path) -> bool:
+    """Return whether generation storage enforces its owned template copy."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return False
+    verifier = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_verify_staged_template"
+        ),
+        None,
+    )
+    if verifier is None:
+        return False
+
+    expected_path = False
+    rejection_guard = any(
+        isinstance(statement, ast.If)
+        and _is_template_path_mismatch(statement.test)
+        and _body_has_effective_raise(statement.body)
+        for statement in verifier.body
+    )
+    staged_member = False
+    for node in ast.walk(verifier):
+        if isinstance(node, ast.JoinedStr):
+            parts = "".join(
+                part.value
+                for part in node.values
+                if isinstance(part, ast.Constant) and isinstance(part.value, str)
+            )
+            if parts == ".ai-sow/generations//input/sow-template.xlsx":
+                expected_path = any(
+                    isinstance(part, ast.FormattedValue)
+                    and isinstance(part.value, ast.Name)
+                    and part.value.id == "generation_id"
+                    for part in node.values
+                )
+        elif (
+            isinstance(node, ast.BinOp)
+            and isinstance(node.op, ast.Div)
+            and isinstance(node.right, ast.Constant)
+            and node.right.value == "input/sow-template.xlsx"
+            and any(
+                isinstance(child, ast.Name)
+                and child.id == "staged_generation_root"
+                for child in ast.walk(node.left)
+            )
+        ):
+            staged_member = True
+    return expected_path and rejection_guard and staged_member
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -351,15 +498,83 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     """Validate the release identity and plugin-scoped support surface."""
     errors: list[str] = []
     required = (
+        plugin_root / "skills/generate/SKILL.md",
+        plugin_root / "skills/generate/scripts/bootstrap.sh",
+        plugin_root / "skills/generate/scripts/bootstrap.ps1",
+        plugin_root / "skills/generate/scripts/orchestrator.py",
+        plugin_root / "skills/generate/scripts/generation_store.py",
+        plugin_root / "skills/generate/assets/sow-template.xlsx",
+        plugin_root / "skills/generate/contracts/generation-manifest.schema.json",
+        plugin_root / "skills/generate/contracts/renderer-fingerprint-baseline.json",
         plugin_root / "tests/support/smoke_plugin.py",
+        plugin_root / "tests/contracts/case-manifest.schema.json",
+        plugin_root / "tests/fixtures/explicit-architecture/case-manifest.json",
         plugin_root / "docs/reference/SOW任务分类与开发交付人天标准_v1.3.md",
         plugin_root / "docs/reference/SOW估算与生成示例_v1.3.xlsx",
+        *(plugin_root / relative for relative in AI_SOW_GENERATE_SUPPORT_FILES),
     )
     for path in required:
         if not path.is_file():
             errors.append(f"missing release file: {path.relative_to(repo_root).as_posix()}")
     if (repo_root / "scripts" / "smoke_plugin.py").exists():
         errors.append("AI SOW smoke implementation must be plugin-scoped")
+
+    contract_root = plugin_root / "skills/generate/contracts"
+    actual_schema_names = {
+        path.name for path in contract_root.glob("*.schema.json")
+    }
+    expected_schema_names = set(AI_SOW_SCHEMA_IDS)
+    if actual_schema_names != expected_schema_names:
+        errors.append(
+            "AI SOW contract set must be the exact final generate schemas, "
+            f"found {sorted(actual_schema_names)}"
+        )
+    for name, expected_id in AI_SOW_SCHEMA_IDS.items():
+        path = contract_root / name
+        if not path.is_file():
+            continue
+        try:
+            value = load_json(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            errors.append(f"invalid AI SOW contract {name}: {exc}")
+            continue
+        if not isinstance(value, dict) or value.get("$id") != expected_id:
+            errors.append(f"AI SOW contract {name} must use $id {expected_id}")
+
+    generation_schema_path = contract_root / "generation-manifest.schema.json"
+    if generation_schema_path.is_file():
+        generation_schema = load_json(generation_schema_path)
+        required_fields = (
+            generation_schema.get("required")
+            if isinstance(generation_schema, dict)
+            else None
+        )
+        proof_fields = {
+            "sowModelSha256",
+            "stageCheckpointSha256s",
+            "reviewDecisionSha256",
+            "artifactManifestSha256",
+            "approvalSha256",
+            "templateSha256",
+            "effectivePolicyDecisionSha256",
+            "workbookSha256",
+            "notesSha256",
+        }
+        if not isinstance(required_fields, list) or not proof_fields <= set(
+            required_fields
+        ):
+            errors.append(
+                "generation manifest must require the v2 self-contained proof closure"
+            )
+
+    public_skills = sorted(
+        path.parent.name for path in (plugin_root / "skills").glob("*/SKILL.md")
+    )
+    if public_skills != ["generate"]:
+        errors.append(
+            "AI SOW public skills must be exactly ['generate'], "
+            f"found {public_skills}"
+        )
 
     for relative in (CODEX_PLUGIN_MANIFEST, CLAUDE_PLUGIN_MANIFEST):
         try:
@@ -373,24 +588,65 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
             )
         elif manifest.get("version") != RELEASE_VERSION:
             errors.append(f"AI SOW plugin version in {relative} must be {RELEASE_VERSION}")
-
-    project_path = (
-        plugin_root / "skills/generate-sow/fixtures/project/.ai-sow/project.json"
-    )
-    try:
-        project = load_json(project_path)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        errors.append(f"invalid AI SOW fixture project: {exc}")
-    else:
-        if not isinstance(project, dict):
-            errors.append("invalid AI SOW fixture project: expected a JSON object")
-        else:
-            if project.get("pluginVersion") != RELEASE_VERSION:
-                errors.append(f"fixture pluginVersion must be {RELEASE_VERSION}")
-            if project.get("sowStandardVersion") != SOW_STANDARD_VERSION:
+        if isinstance(manifest, dict) and manifest.get("description") != AI_SOW_DESCRIPTION:
+            errors.append(
+                f"AI SOW plugin description in {relative} must advertise the "
+                "automatic generate flow"
+            )
+        if relative == CODEX_PLUGIN_MANIFEST and isinstance(manifest, dict):
+            interface = manifest.get("interface")
+            long_description = (
+                interface.get("longDescription")
+                if isinstance(interface, dict)
+                else None
+            )
+            prompts = (
+                interface.get("defaultPrompt")
+                if isinstance(interface, dict)
+                else None
+            )
+            if not isinstance(long_description, str) or not long_description.startswith(
+                "一次提供 PRD、HLD"
+            ):
                 errors.append(
-                    f"fixture sowStandardVersion must be {SOW_STANDARD_VERSION}"
+                    "AI SOW longDescription must advertise one automatic generate flow"
                 )
+            if (
+                not isinstance(prompts, list)
+                or len(prompts) != 3
+                or any(
+                    not isinstance(prompt, str)
+                    or "ai-sow:generate" not in prompt
+                    or "下一阶段" in prompt
+                    for prompt in prompts
+                )
+            ):
+                errors.append(
+                    "AI SOW defaultPrompt must only advertise ai-sow:generate"
+                )
+
+    for relative in (CODEX_MARKETPLACE, CLAUDE_MARKETPLACE):
+        path = repo_root / relative
+        if not path.is_file():
+            continue
+        try:
+            marketplace = load_json(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        plugins = marketplace.get("plugins") if isinstance(marketplace, dict) else None
+        ai_sow = next(
+            (
+                entry
+                for entry in plugins
+                if isinstance(entry, dict) and entry.get("name") == "ai-sow"
+            ),
+            None,
+        ) if isinstance(plugins, list) else None
+        if not isinstance(ai_sow, dict) or ai_sow.get("description") != AI_SOW_DESCRIPTION:
+            errors.append(
+                f"AI SOW marketplace description in {relative} must match the "
+                "automatic generate flow"
+            )
 
     pyproject_path = plugin_root / "pyproject.toml"
     try:
@@ -425,80 +681,225 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
     return errors
 
 
-def validate_generator_contract_consistency(
+def validate_renderer_contract_consistency(
     repo_root: Path,
     plugin_root: Path,
 ) -> list[str]:
-    """Bind deterministic SOW generator bytes to the package contract token."""
+    """Bind deterministic renderer bytes to the generation contract token."""
     errors: list[str] = []
-    skill_root = plugin_root / "skills/generate-sow"
-    manifest_path = skill_root / "contracts/manifest.schema.json"
-    baseline_path = skill_root / "contracts/generator-fingerprint-baseline.json"
+    skill_root = plugin_root / "skills/generate"
+    manifest_path = skill_root / "contracts/generation-manifest.schema.json"
+    baseline_path = skill_root / "contracts/renderer-fingerprint-baseline.json"
     try:
         manifest = load_json(manifest_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return [f"invalid generate-sow manifest schema: {exc}"]
+        return [f"invalid generation manifest schema: {exc}"]
     try:
         baseline = load_json(baseline_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return [f"invalid generator fingerprint baseline: {exc}"]
+        return [f"invalid renderer fingerprint baseline: {exc}"]
 
     properties = manifest.get("properties") if isinstance(manifest, dict) else None
-    generator_contract = (
-        properties.get("generatorContract")
+    renderer_contract = (
+        properties.get("rendererContract")
         if isinstance(properties, dict)
         else None
     )
-    contract = (
-        generator_contract.get("const")
-        if isinstance(generator_contract, dict)
-        else None
-    )
+    contract = None
+    if isinstance(renderer_contract, dict):
+        const = renderer_contract.get("const")
+        supported = renderer_contract.get("enum")
+        if isinstance(const, str):
+            contract = const
+        elif (
+            isinstance(supported, list)
+            and supported
+            and all(isinstance(item, str) and item for item in supported)
+        ):
+            # Historical generation manifests remain readable; the last enum
+            # value is the only contract allowed for new renderer output.
+            contract = supported[-1]
     if not isinstance(contract, str) or not contract:
-        errors.append("generate-sow manifest schema must declare generatorContract const")
+        errors.append(
+            "generation manifest schema must declare a current rendererContract"
+        )
 
     baseline_contract = (
-        baseline.get("generatorContract") if isinstance(baseline, dict) else None
+        baseline.get("rendererContract") if isinstance(baseline, dict) else None
     )
     baseline_files = baseline.get("files") if isinstance(baseline, dict) else None
     if baseline_contract != contract:
         errors.append(
-            "generator fingerprint baseline generatorContract must match the "
+            "renderer fingerprint baseline rendererContract must match the "
             f"manifest schema: expected {contract!r}, found {baseline_contract!r}"
         )
     if not isinstance(baseline_files, dict):
-        return [*errors, "generator fingerprint baseline files must be an object"]
+        return [*errors, "renderer fingerprint baseline files must be an object"]
 
-    expected_files = set(GENERATOR_FINGERPRINT_FILES)
+    expected_files = set(RENDERER_FINGERPRINT_FILES)
     actual_files = set(baseline_files)
     if actual_files != expected_files:
         missing = ", ".join(sorted(expected_files - actual_files)) or "none"
         extra = ", ".join(sorted(actual_files - expected_files)) or "none"
         errors.append(
-            "generator fingerprint baseline file set is invalid: "
+            "renderer fingerprint baseline file set is invalid: "
             f"missing [{missing}], extra [{extra}]"
         )
 
-    for relative in GENERATOR_FINGERPRINT_FILES:
+    for relative in RENDERER_FINGERPRINT_FILES:
         path = skill_root / relative
         expected = baseline_files.get(relative)
         try:
             payload = path.read_bytes()
         except OSError as exc:
             errors.append(
-                f"cannot read generator fingerprint file "
+                f"cannot read renderer fingerprint file "
                 f"{path.relative_to(repo_root).as_posix()}: {exc}"
             )
             continue
         actual = hashlib.sha256(payload).hexdigest()
         if expected != actual:
             errors.append(
-                "generator fingerprint mismatch for "
+                "renderer fingerprint mismatch for "
                 f"{path.relative_to(repo_root).as_posix()}: expected {expected!r}, "
                 f"found {actual}; deterministic generator changes require a "
-                "generatorContract bump and baseline refresh"
+                "rendererContract bump and baseline refresh"
             )
     return errors
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+
+
+def _model_efficiency_policy_sha256(policy: dict[str, object]) -> str:
+    normalized = json.loads(json.dumps(policy))
+    gate = normalized.get("pairedBenchmarkGate")
+    if not isinstance(gate, dict):
+        return ""
+    gate.update(
+        {
+            "status": "REQUIRED_NOT_SATISFIED",
+            "claimStatus": "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS",
+            "baselineManifest": None,
+            "candidateManifest": None,
+            "comparisonReceipt": None,
+        }
+    )
+    return hashlib.sha256(_canonical_json_bytes(normalized)).hexdigest()
+
+
+def validate_model_efficiency_gate(plugin_root: Path) -> list[str]:
+    """Require SATISFIED claims to be derived from exact recomputed evidence."""
+
+    policy_path = plugin_root / "tests/benchmarks/model-efficiency-policy-v1.json"
+    runner_path = plugin_root / "tests/support/analyze_historical_benchmark.py"
+    try:
+        policy = load_json(policy_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"invalid model efficiency policy: {exc}"]
+    if not isinstance(policy, dict):
+        return ["model efficiency policy must be a JSON object"]
+    gate = policy.get("pairedBenchmarkGate")
+    if not isinstance(gate, dict):
+        return ["model efficiency policy must declare pairedBenchmarkGate"]
+    if gate.get("status") != "SATISFIED":
+        if (
+            gate.get("status") != "REQUIRED_NOT_SATISFIED"
+            or gate.get("claimStatus") != "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS"
+            or any(
+                gate.get(field) is not None
+                for field in (
+                    "baselineManifest",
+                    "candidateManifest",
+                    "comparisonReceipt",
+                )
+            )
+        ):
+            return ["unsatisfied model efficiency gate has inconsistent claim state"]
+        return []
+
+    errors: list[str] = []
+    evidence_paths: dict[str, Path] = {}
+    for field in ("baselineManifest", "candidateManifest"):
+        relative = gate.get(field)
+        if not isinstance(relative, str) or not relative or not _inside(
+            plugin_root / relative, plugin_root
+        ):
+            errors.append(f"model efficiency {field} path is invalid")
+            continue
+        path = plugin_root / relative
+        if not path.is_file():
+            errors.append(f"model efficiency {field} evidence is missing")
+            continue
+        evidence_paths[field] = path
+    comparison = gate.get("comparisonReceipt")
+    if not isinstance(comparison, dict):
+        errors.append("model efficiency comparisonReceipt binding is invalid")
+    else:
+        relative = comparison.get("path")
+        expected_sha256 = comparison.get("sha256")
+        if not isinstance(relative, str) or not relative or not _inside(
+            plugin_root / relative, plugin_root
+        ):
+            errors.append("model efficiency comparisonReceipt path is invalid")
+        else:
+            comparison_path = plugin_root / relative
+            if not comparison_path.is_file():
+                errors.append("model efficiency comparisonReceipt evidence is missing")
+            else:
+                actual_sha256 = hashlib.sha256(comparison_path.read_bytes()).hexdigest()
+                if actual_sha256 != expected_sha256:
+                    errors.append("model efficiency comparisonReceipt hash mismatch")
+                else:
+                    evidence_paths["comparisonReceipt"] = comparison_path
+    if errors:
+        return errors
+
+    try:
+        receipt = load_json(evidence_paths["comparisonReceipt"])
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [f"invalid model efficiency comparisonReceipt: {exc}"]
+    if not isinstance(receipt, dict):
+        return ["model efficiency comparisonReceipt must be a JSON object"]
+    checks = receipt.get("checks")
+    if (
+        receipt.get("verdict") != "PASS"
+        or not isinstance(checks, dict)
+        or not checks
+        or not all(value is True for value in checks.values())
+        or receipt.get("failureCodes") != []
+        or receipt.get("policySha256") != _model_efficiency_policy_sha256(policy)
+        or receipt.get("baselineManifestSha256")
+        != hashlib.sha256(evidence_paths["baselineManifest"].read_bytes()).hexdigest()
+        or receipt.get("candidateManifestSha256")
+        != hashlib.sha256(evidence_paths["candidateManifest"].read_bytes()).hexdigest()
+    ):
+        return ["model efficiency SATISFIED evidence binding is invalid"]
+    if not runner_path.is_file():
+        return ["model efficiency evidence validator is missing"]
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(runner_path),
+                "validate-policy",
+                "--policy",
+                str(policy_path),
+            ],
+            cwd=plugin_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return ["model efficiency evidence validator could not run"]
+    if completed.returncode != 0:
+        return ["model efficiency SATISFIED evidence failed mechanical reevaluation"]
+    return []
 
 
 def _marketplace_plugin_paths(repo_root: Path) -> list[tuple[str, Path]]:
@@ -567,6 +968,21 @@ def validate_public_tree(repo_root: Path) -> list[str]:
     return errors
 
 
+def validate_current_behavior_text(repo_root: Path) -> list[str]:
+    """Current operation docs may not advertise a retired protocol."""
+    paths = [repo_root / name for name in ('README.md', 'AGENTS.md', 'CONTRIBUTING.md',
+             'docs/architecture/ai-plugin-marketplace-design.md', 'plugins/ai-sow/README.md',
+             'plugins/ai-sow/docs/AI_SOW_PLUGIN_DESIGN.md', 'plugins/ai-sow/docs/CONTEXT.md',
+             'plugins/ai-sow/skills/generate/SKILL.md')]
+    for relative in ('plugins/ai-sow/references', 'plugins/ai-sow/skills/generate/references'):
+        paths.extend((repo_root / relative).glob('*.md'))
+    retired = ('currentStateDelta', 'REFERENCE_ONLY', 'RENDER_ONLY', 'DELTA_COMPILE',
+               '固定 3×8', 'stage approval', 'Demo-as-current-state')
+    return [f'retired current behavior token in {path.relative_to(repo_root)}: {token}'
+            for path in paths if path.is_file()
+            for token in retired if token in path.read_text(encoding='utf-8')]
+
+
 def validate_repository(repo_root: Path) -> list[str]:
     repo_root = repo_root.resolve()
     plugin_root = repo_root / "plugins/ai-sow"
@@ -583,9 +999,11 @@ def validate_repository(repo_root: Path) -> list[str]:
             f"{name}: {error}" for error in validate_plugin_manifest_parity(path)
         )
     errors.extend(validate_ai_sow_release(repo_root, plugin_root))
-    errors.extend(validate_generator_contract_consistency(repo_root, plugin_root))
+    errors.extend(validate_renderer_contract_consistency(repo_root, plugin_root))
+    errors.extend(validate_model_efficiency_gate(plugin_root))
     errors.extend(validate_publisher_identity(repo_root, plugin_root))
     errors.extend(validate_public_tree(repo_root))
+    errors.extend(validate_current_behavior_text(repo_root))
     return errors
 
 

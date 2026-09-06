@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:benchmark:benchmark-result:1",
+  "description": "从封存原始事实重算的真实顺序基准结果与精确验收门槛。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "unresolvedDiagnostics",
+    "unsupportedFormalClaims",
+    "forbiddenScopeClaims",
+    "unresolvedReviewerFindings",
+    "implicitRetireCount",
+    "workItemDispositionRate",
+    "obligationRecall",
+    "scopePrecision",
+    "sourceRefResolutionRate",
+    "changeGraphClosureRate",
+    "changeRecall",
+    "changePrecision",
+    "unchangedRetention",
+    "demoInteractionDispositionRate",
+    "greenfieldRunState",
+    "brownfieldRunState",
+    "priorTransferChecks",
+    "tokensByCategoryProvenanceAndKind",
+    "tokensPerFormalNode",
+    "retryAmplification",
+    "invalidIrRate",
+    "repairRate",
+    "budgetVarianceTokens",
+    "activeWallTime",
+    "userWaitingTime",
+    "claimMappings"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-benchmark-result-v1"
+    },
+    "unresolvedDiagnostics": {
+      "type": "integer",
+      "const": 0
+    },
+    "unsupportedFormalClaims": {
+      "type": "integer",
+      "const": 0
+    },
+    "forbiddenScopeClaims": {
+      "type": "integer",
+      "const": 0
+    },
+    "unresolvedReviewerFindings": {
+      "type": "integer",
+      "const": 0
+    },
+    "implicitRetireCount": {
+      "type": "integer",
+      "const": 0
+    },
+    "workItemDispositionRate": {
+      "type": "number",
+      "const": 1.0
+    },
+    "obligationRecall": {
+      "type": "number",
+      "const": 1.0
+    },
+    "scopePrecision": {
+      "type": "number",
+      "const": 1.0
+    },
+    "sourceRefResolutionRate": {
+      "type": "number",
+      "const": 1.0
+    },
+    "changeGraphClosureRate": {
+      "type": "number",
+      "const": 1.0
+    },
+    "changeRecall": {
+      "type": "number",
+      "const": 1.0
+    },
+    "changePrecision": {
+      "type": "number",
+      "const": 1.0
+    },
+    "unchangedRetention": {
+      "type": "number",
+      "const": 1.0
+    },
+    "demoInteractionDispositionRate": {
+      "type": "number",
+      "const": 1.0
+    },
+    "greenfieldRunState": {
+      "const": "AWAITING_FINAL_REVIEW"
+    },
+    "brownfieldRunState": {
+      "const": "AWAITING_FINAL_REVIEW"
+    },
+    "priorTransferChecks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "point",
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "point": {
+            "enum": [
+              "GREENFIELD_FROZEN",
+              "BROWNFIELD_INPUT",
+              "BROWNFIELD_REVISION",
+              "BROWNFIELD_FINAL"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "tokensByCategoryProvenanceAndKind": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "usageCategory",
+          "provenance",
+          "tokenKind",
+          "tokens"
+        ],
+        "properties": {
+          "usageCategory": {
+            "enum": [
+              "AUTHOR",
+              "HYDRATE",
+              "REVIEW",
+              "REPAIR"
+            ]
+          },
+          "provenance": {
+            "enum": [
+              "PROVIDER_REPORTED",
+              "LOCALLY_ESTIMATED"
+            ]
+          },
+          "tokenKind": {
+            "enum": [
+              "INPUT",
+              "OUTPUT",
+              "CACHED_INPUT",
+              "REASONING"
+            ]
+          },
+          "tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "tokenKind": {
+                  "not": {
+                    "const": "REASONING"
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "tokensPerFormalNode": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "retryAmplification": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "invalidIrRate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "repairRate": {
+      "type": "number",
+      "minimum": 0
+    },
+    "budgetVarianceTokens": {
+      "type": "integer"
+    },
+    "activeWallTime": {
+      "type": "number",
+      "minimum": 0
+    },
+    "userWaitingTime": {
+      "type": "number",
+      "minimum": 0
+    },
+    "claimMappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "formalClaimId",
+          "expectationIds"
+        ],
+        "properties": {
+          "formalClaimId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectationIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          }
+        }
+      }
+    }
+  }
+}

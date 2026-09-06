@@ -1,212 +1,168 @@
 # AI SOW 术语与数据约定
 
-本文件统一当前插件使用的术语。各 Skill 先完成分析、设计或任务拆分，交由用户确认；确认后，再把需要交给下一步和写入 XLSX 的结论整理成规定格式的数据。
+本文件统一 `ai-sow:generate` 的领域语言。用户只接触一个 Skill；`intake`、三个 Owner compiler、
+`final_review`、`package_renderer` 与 `generation_store` 是内部模块。
 
-## 1. 交付成果与计算依据
-
-| 术语 | 定义 |
-|---|---|
-| 评审材料 | 各 Skill 在整理正式数据前形成的分析、设计或拆分结果，供用户阅读和确认；具体形式由该 Skill 决定。 |
-| 数据整理 | 用户确认后，把评审材料中的最终结论整理为本 Skill 规定的 Schema 数据。结构化数据不能代替分析和判断过程。 |
-| 正式交接数据 | 五个 Skill 产生的六份 JSON：来源需求、As-Is、设计、设计产生的技术需求、交付内容和估算输入。 |
-| 项目元数据 | 由 setup 初始化的 `.ai-sow/project.json`；只登记 `projectId`、`name`、`pluginVersion`、`sowStandardVersion`，不计入上述六份正式交接数据。 |
-| 数据归属 | 每项正式数据只由一个 Skill 负责。后续 Skill 只读取 `.ai-sow/data/...`，不修改上一步的文件。 |
-| Finding 路由 | 当前 Owner 无法在自身写集合内修复时使用的 work-only 机械元数据，分类为 `LOCAL / UPSTREAM / DECISION / MECHANICAL`；它点名发现 Owner、修正 Owner、subject 和用户决策要求，不进入六份正式交接数据。 |
-| 影响集协调 | 已有有效 Owner 产物后，用 `reconcile` 在一次整体评审中处理某个 Owner 修正及其固定下游后缀；连续未发布末端可标为 `PENDING` 并走各 Owner 的首次发布路径，它不拥有稳定业务数据。 |
-| 固定 ID | 使用小写 kebab-case 和对象前缀，并且在项目数据中唯一，例如 `feature-order-status`。每个可独立引用的实体同时保存必填、非空的 `name`；所指内容不变时沿用原 ID，内容发生实质变化时新建 ID。关系字段只保存目标 ID。 |
-| Excel 展示主键 | 最终 XLSX 用唯一、非空的名称识别、选择和引用业务概念；稳定 ID 不作为业务 Sheet 的阅读字段。 |
-| 名称投影 | `generate-sow` 把稳定 ID 关系转换为名称关系，并把可翻译的机器枚举转换为中文选项；名称变化不改变结构化对象身份。 |
-| 计算依据 | `.ai-sow/templates/sow-template.xlsx`。任务规则、基础人天、复杂度、系数、公式、取整和最终人天不在 Python 或 JSON 中重复保存。 |
-| 配套 Markdown | 与当前 SOW 标准版本一致的任务分类和开发交付人天说明，用于解释分类、填写、验收和估算规则，不另设一套计算口径。 |
-| 最终 XLSX | 把六份正式数据按名称投影写入模板后生成的工作簿。Excel 打开工作簿后按模板公式计算；插件不执行公式，也不读取缓存中的计算结果。 |
-
-数组中的先后顺序就是最终展示顺序。只有 AcceptanceCriterion 使用同一 Story 内从 1 开始的连续 `sequence`；该字段保留在稳定 JSON 中用于确定性排序，但不显示在最终工作簿。一对多关系由子项保存父项 ID。
-
-## 2. 处理顺序与数据路径
-
-```text
-setup
-  -> analyze-requirement
-  -> analyze-as-is
-  -> generate-design
-  -> generate-story
-  -> generate-task
-  -> generate-sow
-```
-
-| 负责 Skill | 正式输出 |
-|---|---|
-| `analyze-requirement` | `.ai-sow/data/analyze-requirement/requirements.json` |
-| `analyze-as-is` | `.ai-sow/data/analyze-as-is/asis.json` |
-| `generate-design` | `.ai-sow/data/generate-design/design.json` 与独立的 `requirements.json` |
-| `generate-story` | `.ai-sow/data/generate-story/delivery.json` |
-| `generate-task` | `.ai-sow/data/generate-task/estimate.json` |
-
-`setup` 写入项目元数据并复制模板；`generate-sow` 生成待确认的交付文件。两者都不负责业务分析。
-
-普通首次生成仍按七阶段顺序逐项完成。上游修正发生在已有有效 Owner 产物之后时，用户可显式调用
-`reconcile`：Owner 仍分别拥有业务语义、稳定路径和确定性 validator，但不再要求用户逐阶段重启
-session。当前 Stage 在批准前按固定后缀完成各 Owner 的 `CHANGED/NO_CHANGE/PENDING` staged pass、SOW
-package 复读及 canonical redo/diff/risk，并由完整 packet 绑定；一个 fresh-context Reviewer 与一次
-用户批准绑定同一 packet SHA-256，批准后只做 check/publish。`PENDING` 只允许出现在尚未首次发布的
-连续末端，并复用对应 Owner 的正常首次发布路径；中间缺失而更下游已发布时阻塞。六份稳定 JSON
-集合保持不变。
-
-五个专业 Owner 都遵守 candidate-first 生命周期：由当前 Stage 开展分析、设计或拆分，并在 work 目录提前形成和机械校验结构化
-candidate，再确定性生成 review 投影、风险摘要和 hash-bound review packet。packet 绑定本 Owner
-的 named inputs、candidate、context manifest/fragments、review 与风险摘要，供完整 fresh-context
-Reviewer 与用户确认；Reviewer findings 只通过字段 patch 修复，并由新的轻量 fresh-context Reviewer
-复核 patch diff 与影响闭包。packet 不是稳定 JSON，也不能代替专业分析。用户批准精确 packet 后才按 candidate
-原字节发布稳定交接数据，任一绑定字节变化都必须重新整体评审和批准。
-
-## 3. 需求
+## 1. 运行、评审与发布
 
 | 术语 | 定义 |
 |---|---|
-| 原始输入 | 用户提供的文件、文本、访谈或仓库，只在处理过程中读取，不写入正式数据或交付文件。 |
-| normalizedItem | 从来源材料中抽取、合并并去重后的最小条目，用于记录每项来源需求对应哪些原始材料。 |
-| 来源处置 | `analyze-requirement` 的 work-only 完整来源检查表；把决策相关陈述唯一分类为 `BUSINESS / DESIGN_INPUT / SCOPE_BOUNDARY / EXCLUDED`，由 review packet 绑定并投影到正式 review，但不新增稳定 JSON。 |
-| Epic | 围绕同一业务结果或技术目标的一组 Feature。 |
-| Feature | 可以独立纳入、排除、延期和评审的最小需求范围；每个 Feature 只属于一个 Epic。 |
-| 来源业务需求 | `SOURCE_INPUT` BUSINESS Epic 与 Feature，由 `analyze-requirement` 负责，每项需求都要关联相应的 normalizedItem。 |
-| 技术需求 | `SOURCE_INPUT / DESIGN_DERIVED` TECHNICAL Epic 与 Feature，由 `generate-design` 负责；设计产生的技术需求必须对应到设计决策、适用的有效起点和具体原因。 |
-| 需求合并结果 | 后续 Skill 在内存中按“来源需求在前、设计产生的技术需求在后”的顺序合并；不另存第三份 merged requirements。 |
+| request | 项目内、符合 `request.schema.json` 的本次输入声明。 |
+| input revision | request、模板、政策、来源原字节与无损 block inventory 的不可变快照。 |
+| run | 绑定一个 input revision 的可恢复执行事务；同一项目同时最多一个 active run。 |
+| action | 一个 hash-bound 模型工作单元；拥有独立 prompt、packet、reference、output 和 execution receipt。 |
+| action group | 可并行的 sibling action 集合；全部必需结果封存后才一次应用。 |
+| SOW Model | `ai-sow-model-v1`；范围、设计、Story/AC、Task 和估算输入的唯一稳定业务真相。 |
+| checkpoint | Stage 1/2/3 的不可变完成证明，绑定冻结计划、实际 Attempt、候选、validator、Review/PASS、输入和上游 checkpoint。 |
+| fresh Review | 每个完整候选验证后发行的独立 singleton 评审，PASS 才关闭阶段。 |
+| artifact | 已通过阶段 fresh Review、渲染和 Office 复读但尚未发布的不可变候选包。 |
+| approval | 用户对精确 `artifactManifestSha256` 的决定；不是对内部阶段 token 的批准。 |
+| generation | 已批准并发布的 SOW Model、证明闭包、工作簿和说明；发布后不可变。 |
+| current | `.ai-sow/current.json` 指向的最近成功 generation。 |
+| last-known-good | 新 run 失败、等待、放弃或崩溃时仍由 current 指向的有效结果。 |
+| Package | `sow.xlsx` 与 `sow-notes.md`；只投影 reviewed SOW Model，不拥有新事实。 |
 
-`generate-design` 不追加或改写来源业务 requirements。它从已登记原始来源读取 Requirement review 中标记的 `DESIGN_INPUT`，再自行确认并形成 `SOURCE_INPUT` TECHNICAL 需求；来源处置摘要不能替代原文证据。发现业务需求变化时，退回 `analyze-requirement` 处理；经来源确认或由设计产生的技术需求，写入 `generate-design` 自己的 `requirements.json`。
+面向使用者的问题必须逐项呈现“问题、为什么要问、答案决定什么和未回答后果”。候选批准展示自然
+语言摘要与可读文件；内部 ID、hash、Schema、checkpoint 和 stage token 只用于精确绑定。
 
-## 4. As-Is 与设计
+## 2. NextAction 与上下文
+
+| NextAction | 宿主行为 |
+|---|---|
+| `MODEL_ACTION_GROUP` | 在声明并发度内运行 typed model actions。 |
+| `REQUEST_INPUT` | 集中向用户取得会改变范围、责任或估算的最少答案。 |
+| `REQUEST_APPROVAL` | 展示 verified artifact，等待用户批准或放弃；范围变化 abandon/start。 |
+| `DONE` | 报告 `PUBLISHED` 或安全终态并停止。 |
+
+`FRESH_NO_HISTORY` 表示每个 worker 只获得本 action 的 prompt、packet、reference 和 hydrate 证据，不
+继承主对话、兄弟 action、前序阶段或上一次 run 的聊天历史。同一 action 内的工具往返可以复用自身
+上下文；跨 action 的状态只通过 Schema 有效、hash-bound 的项目文件传递。
+
+## 3. 来源角色与权威
+
+| 来源 | 权威语义 |
+|---|---|
+| PRD | 业务目标、范围、Feature、规则、角色、场景和验收意图 |
+| DEMO | 页面、动作、状态、校验、权限、异常和可观察交互结果 |
+| HLD/ADR | 系统上下文、目标设计、Integration、数据、NFR、环境和上线约束 |
+| PRIOR_SOW | 可验证的 Brownfield 合同起点、历史承诺和 Effective Start |
+| SUPPLEMENT | 当前事实、明确决策、责任说明及其他支持材料 |
+| QUESTION_ANSWER | 绑定当前完整问题包 hash 的用户答案；未回答问题不构成证据 |
+| SOW_TEMPLATE | 基础单元、任务规则、复杂度、SIT、UAT、公式和取整 |
+
+PRD/HLD/ADR 使用 UTF-8 Markdown；DEMO 使用静态 HTML/CSS/JavaScript bundle；SUPPLEMENT 可使用
+UTF-8 文本、HTML、TypeScript/TSX 或 XLSX；PRIOR_SOW 使用 XLSX。推断不能静默覆盖明确来源，冲突必须形成可审计 decision、finding、
+`REQUEST_INPUT` 或安全终态。
+
+Greenfield 不继承既有合同能力。Brownfield 提供往期 SOW 时，用其建立合同 As-Is；未提供时记录
+`priorSowState = NOT_PROVIDED` 并建立新基线，不虚构历史承诺。Scope 按本期计划生效日形成合同推定的
+生产 As-Is；完整重复保留审计且只使用 canonical 实体，已生效 FULL 替代排除 predecessor。
+
+## 4. InputItem 与 Scope Closure
 
 | 术语 | 定义 |
 |---|---|
-| As-Is 调查 | 独立判断当前能力、系统交互、基础设施、承诺变化、证据和有效起点的调查工作。可以根据需要使用搜索、语言工具、CodeGraph、接口说明、配置、部署材料或访谈。 |
-| Topic Assessment | 每次 As-Is 对九个 Topic 各给出且只给出一条评估：系统边界与参与方、能力与流程、应用与组件、集成与外部依赖、数据与存储、平台/环境与部署、安全与合规、运维与质量、交付与约束。状态为 `RELEVANT_INVESTIGATED / RELEVANT_INSUFFICIENT_EVIDENCE / BOUNDARY_DECLARED / NOT_APPLICABLE`。 |
-| As-Is Item | 已存在或实际运行的 `CAPABILITY / COMPONENT / INTEGRATION / DATA_ASSET / INFRASTRUCTURE / CONTROL / PROCESS / CONSTRAINT` 当前事实。 |
-| Commitment | 从往期 SOW 等有效承诺提取的 `ADD / REPLACE / RETIRE` 变化；同时记录 `implementationStatus`（实现对账结果）与 `treatment`（范围处理方式）。 |
-| Effective Start | 设计与 Task 共用的项目起点基线，只能由当前 Item 与 `EXPECTED_BEFORE_START` Commitment 组成；ArchitectureDelta、ScopeDecision 和 Task 工作模式都引用同一条起点记录。 |
-| Carry-forward | `treatment = CARRY_FORWARD` 的未完成承诺；进入 Coverage、设计和 Story gap，属于本期仍需交付的范围，不是 Effective Start。 |
-| As-Is Coverage | 对每个来源 Feature 给出 `COMPLETE / PARTIAL / MISSING`、相关有效起点和理由。`MISSING` 是合法事实。 |
-| Evidence | 后续判断所需的依据。问卷中已经确认的答案整理为 `QUESTIONNAIRE` Evidence；正式数据不保存完整工具输出、源码、凭证、绝对路径或缓存。 |
-| Uncertainty | 调查和定向问卷后仍未回答、相互矛盾或证据不足的问题。每条记录显式保存 `affectsEstimate`；答案可能改变范围、责任、设计、交付对象、工作量或人天时必须为 `true`，并在关闭前阻止正式估算。只有确认不影响估算时才可为 `false`。`INSUFFICIENT_EVIDENCE` Topic 必须关联 Uncertainty。 |
-| DesignItem | 目标设计中的 `COMPONENT / FLOW / DATA / INTEGRATION / INFRASTRUCTURE / QUALITY` 对象。 |
-| ArchitectureDelta | 相对于有效起点的 `NEW / ADOPT / ADJUST / REPLACE / RETIRE` 设计变化；它不是 Task 工作模式，`REPLACE / RETIRE` 到 Task 阶段要拆成明确的基础单元。 |
-| ScopeDecision | 对每个来源 Feature 或设计产生的 Feature 给出 `IN_SCOPE / FULLY_COVERED / OUT_OF_SCOPE` 结论和理由。 |
-| HLD Coverage | 目标设计批准门禁。每个 Feature 恰有 ScopeDecision；`IN_SCOPE` 有 Design Item 覆盖，`FULLY_COVERED` 有 Evidence 支持的 Effective Start 和具体完整覆盖理由。 |
-| Go-live Assessment | 上线批准门禁。固定处置生产范围、环境配置、部署切换回滚、数据迁移、生产验证、可观测性、运维移交、上线后支持、用户赋能和遗留退役十项 Concern，并明确责任边界和依据。 |
+| Source Block | 从来源无损提取的最小覆盖单元，拥有内容 hash、locator 与上下文关系。 |
+| InputItem | 原子 requirement、design decision、constraint、responsibility、exclusion 或 conflict candidate。 |
+| Scope Closure | 每个 InputItem 的唯一处置，保存落点、限定条件、跨 Feature 规则与语义充分性。 |
+| SourceRef | `(sourceId, blockId, sha256, locator)` 精确来源身份，不依赖聊天轮次或易漂移行号。 |
+| ScopeDecision | Feature 的 `IN_SCOPE / FULLY_COVERED / OUT_OF_SCOPE`。 |
+| DesignItem | 组件、流程、数据、基础设施或质量设计对象。 |
+| Integration | 有方向、触发、目的、数据类别与责任边界的系统交互。 |
+| NFR | 性能、容量、可用性、安全、隐私、审计、灾备和可观测性要求。 |
+| PolicyInstance | Delivery Policy 对具体目标节点的结构化实例。 |
 
-As-Is 不要求所有工具使用同一种中间数据格式，也不限定必须使用某种调查工具。调查顺序为：先看仓库和文档，再看接口约定、配置、部署和运行证据，最后通过定向问卷补充信息。完整调查过程保留在该 Skill 自己的 work 目录中；正式 `asis.json` 只保存后续步骤确实需要的结论。
+Scope 的冻结 DAG 包含 Source Scan、逐覆盖根独立 Source Audit、按容量需要的 Proposal/Join 和唯一 Scope root。其完整 IR 只在全部有效工作成功后物化，再执行机械校验和 fresh Review。
 
-`As-Is Item` 只陈述调查截止日期已经存在或实际运行的事实；`Effective Start` 才是下游设计和估算使用的统一基线。它的名称必须唯一，摘要必须具体说明项目开工时可以依赖的对象、能力与边界。仓库快照只登记 `.` 或项目根下的相对子目录；项目外代码库先复制经授权的只读快照到项目子目录，稳定数据不保存绝对路径、父目录跳转或间接链接。As-Is 不预先保存 Task 工作模式：同一项 Effective Start 对不同基础单元可能分别支持“调整”“接入复用”或仍需“新建”，该判断只由 `generate-task` 结合当前 Task 完成。
-
-`.ai-sow/reviews/generate-design.md` 以精确 `PASSED` 声明和固定七列矩阵保存两个批准门禁。它不是第七份正式 JSON；门禁语义只由 `generate-design` validator 判断并绑定到 receipt。`generate-story`、`generate-task` 和 `generate-sow` 只匹配当前 Design handoff，不复制或重放 HLD/Go-live 业务判断。
-Design review 的对象计数由 renderer 从当前 Design/TECHNICAL candidate 写入唯一
-`Structure Counts` 声明；review-source 自由文本不得重复手写这些计数，避免专业整体修正后出现
-旧计数与候选不一致。
-
-## 5. 交付 Story
+## 5. Epic、Feature、Story 与 AC
 
 | 术语 | 定义 |
 |---|---|
-| Delivery 差值 | `IN_SCOPE` Feature 的目标结果减去 Effective Start；它是分解方法，不再保存为独立稳定实体。 |
-| SOW Story | 可独立交付、验收和结算的条目；直接归属一个 `featureId`。 |
-| AcceptanceCriterion | 一行一个可独立通过或不通过的可观察结果。用 `gapRationale` 说明相对 Effective Start 的差值，用 `carryForwardCommitmentIds` 逐条承接往期承诺；描述结果，不描述实现 Task。 |
-| Integration | 独立于 Story 类型和 Task，记录一次有明确方向的系统交互；保存来源、目标、触发、`INBOUND / OUTBOUND`、目的和 `INTERNAL / EXTERNAL` 责任归属，并关联 Story。登记 Integration 不等于已经生成集成 Task。 |
-| UAT 适用性 | Story 对业务 UAT 是否适用的明确判断；不从 Story 类型或 Task 任务族推导。 |
-| 假设/风险 | 保存类型、名称、触发条件、责任边界、`已明确 / 待确认` 状态和处理方式。Story 通过可选的单个 `assumptionId` 引用足以说明其不确定性的一条记录；同一条记录可以被多个 Story 引用。 |
+| Epic | 稳定业务域或长期技术能力域，以名词或名词短语命名。 |
+| Feature | 可独立纳入、排除、延期、交付和评审的领域能力。 |
+| Story | Feature 下单一、可独立移交、验收和关闭的具体结果。 |
+| AcceptanceCriterion | 一行一个可观察、可独立通过或失败的结果。 |
+| Coverage Set | Story/AC 明确关闭的 InputItem、Design 与 Policy obligation 集合。 |
 
-每个需要新增交付的 IN_SCOPE Feature 至少有一个 Story，每个 Story 至少有一条 AC；`FULLY_COVERED` Feature 不制造 Story。Story 不保存类型，可以包含任意任务族的 Task。Story/AC 获批后作为业务交付合同保持只读；Task 与同 Story AC 是多对多覆盖，且每条 Task 必须沿同 Story AC 追溯到 Feature。Task 只能满足合同，不能反向修改 Story/AC。Task 反馈的实现机制缺口由 `generate-design` 在既有交付结果内细化时，`generate-story` 只做 packet-bound `NO_CHANGE` 发布；只有用户明确批准交付结果变化后才重新评审 Story/AC。
+Epic/Feature 不能靠“平台”“闭环”“保障”等抽象词混装异质能力。Story 通过唯一 `featureId` 归属，
+至少两条 AC、最多四个 Task；目标、指标、政策类别、证据收集或测试活动本身不自动构成 Story。
+跨切面规则必须进入所有适用具体 Story 的 AC 或项目级 gate，不能只落在报表/仪表盘 Story。
 
-## 6. Task 与估算输入
+Stage 2 只能写 Story、AC 与 Delivery Annotation，不能反向修改 Stage 1。`StoryAcCheckpoint` 同时绑定
+Scope checkpoint、Owner projection、输入和 action records。
+
+## 6. Task 与估算
 
 | 术语 | 定义 |
 |---|---|
-| Task | Story 下直接估算人天的最小明细；一行对应一个基础单元实例需要完成的全部工作。 |
-| 任务类型 | `任务族 → 基础单元` 两层目录；稳定 JSON 保存基础单元 ID，工作簿只显示唯一的基础单元名称，并自动确定任务族。 |
-| 任务族 | 用于组织、汇总和查漏补缺的上层分类，不由 Task 人工填写，也不直接参与基础人天查找。 |
-| 基础单元 | 有明确计数口径和具体工作内容的估算对象；一个基础单元实例对应一个 Task。 |
-| 发布切换 | 一个统一窗口、统一责任范围和回滚方案的生产发布实例；上线计划、Go/No-Go、演练、实际部署/切换、检查、回滚和确认合并估算，每个 Story 最多一个。数据迁移始终独立。 |
-| 问题处理 | “问题诊断与恢复”覆盖分诊、证据、诊断和恢复；“同一根因问题整改”只覆盖确认根因后的实现与验证，同一 Story 不重复计算诊断。 |
-| 用户培训与使用材料 | 面向一个明确用户群体及一项连贯能力的材料与培训交付；不包含运维交接、翻译或长期培训运营。 |
-| 工作模式 | 只允许 `新建 / 调整 / 接入复用`。新建是新增一个基础单元实例；调整是保留现有对象及其主要范围并进行修改；接入复用是不改动已有能力本身，只完成本项目一侧的接入和适配。 |
-| 替换/退役变化 | 不是 Task 工作模式。替换按替代功能、数据迁移、发布切换和系统功能下线拆分；单纯下线使用“系统功能下线”。 |
-| 工作模式理由 | 说明相对 Effective Start 为什么是新建、调整或接入复用，并引用与当前 Task 对象语义相关的现状依据；测试、迁移和切换的调整还要指出被修改的既有资产。 |
-| 工作模式证据 | `调整 / 接入复用` 的结构化 `workModeEvidence`。保存一项已匹配 Effective Start 的 ID 和精确名称；`接入复用` 还保存非空 `projectSideWorkTypes` 及由它确定性生成的 `projectSideWorkCommitment`，明确本项目负责并交付的注册、配置、封装、映射、适配、认证、租户设置、权限设置或专项验证工作。 |
-| 复杂度 | 按当前基础单元自己的标准判断为 `S / M / L`；`X` 表示需要继续拆分、澄清，或先做调研和架构设计，不能进入正式 JSON 数据。 |
-| 复杂度理由 | 仅 S/L Task 保存，说明哪些已知事实使当前实例低于或高于默认 M 档；不是对标准的复述。M Task 不保存。 |
-| 基础人天匹配 | 基础单元配置表每行直接提供“新建 / 调整 / 接入复用”三个 M 档人天列；正数表示组合可用，`❌` 表示不适用。数值缺失时校验不通过。复杂度系数必须为正数且状态为固定规则、已校准或已批准；工作模式不使用全局系数。 |
-| 集成 Task | 基础单元为“内部系统对接”或“外部系统对接”的 Task；通过 `integrationId` 实现且只实现一个 Integration。每个需要交付的 Integration 都有且只有一个集成 Task。 |
-| SIT 判断 | 集成 Task 触发 SIT；仅有 Integration 记录时不直接触发。 |
-| 最终人天 | XLSX 按“M档基础人天 × 复杂度系数”计算 Task 人天，并继续计算 SIT、UAT、风险、取整和总计。结构化 JSON 不保存插件计算结果。 |
+| Task | Story 下直接估算的最小明细；一行对应一个基础单元实例。 |
+| 基础单元 | 模板 `90-估算标准` 中拥有明确计数口径和工作内容的对象。 |
+| 工作模式 | 只允许 `新建 / 调整 / 接入复用`。 |
+| 复杂度 | 按当前基础单元标准判断为 `S / M / L`。 |
+| Effective Start Match | `调整 / 接入复用` Task 对可信既有能力的结构化匹配。 |
+| 最终人天 | 模板公式计算结果；SOW Model 不保存计算值。 |
 
-Task 通过可选的单个 `matchedEffectiveStartItemId` 关联 Effective Start：“调整 / 接入复用”必须引用一项足以证明工作模式的现状；“新建”通常可以不填，但数据迁移、系统功能下线、同一根因问题整改，以及涉及现有运行能力的发布切换，仍要引用一项相关现状。Effective Start 再通过 `sourceItemIds` 和 `commitmentIds` 关联当前事实以及预计在项目开始前完成的承诺。工作簿把该引用显示为“关联现状条目”，名称直接来自 `90-系统现状` 的可见明细表，不使用隐藏辅助名单。
+Task 名称必须点明与 `workTypeId` 匹配的单一计数对象；一个接口 Task 只对应一个可独立开发、测试和
+估算的接口。Task 保存当前模板行的 `rowSemanticSha256`，避免把旧 Task 套入新任务规则。Stage 3 只能
+写 Task、Dependency、Effective Start Match 和 Estimation Annotation，不能扩大 Story/AC。
 
-“接入复用”只有在本项目侧存在可独立估算的注册、配置、封装、映射、适配、认证、租户、权限或专项验证工作时才成立。其 `workModeRationale` 使用固定格式 `<有效起点名称>保持不变；本项目负责并交付：<中文工作类型>。`，必须与结构化工作类型及承诺完全一致，不解析任意自由文本来判断责任。普通依赖引入、常规调用或直接按既有约定使用不单独生成 Task。任何 `affectsEstimate = true` 的未关闭 Uncertainty 都会阻止正式估算和 XLSX 生成；`impact` 只负责解释影响，不作为关键词门禁。
+## 7. fresh Review 与语义 Repair
 
-一个 Task 只能包含一个基础单元实例、一种工作模式和一个复杂度结论。重复实例拆成多个 Task；一个 Task 可以包含多少工作，以基础单元的计数口径和复杂度标准为准。必要的设计、实现或配置、开发自测、单元级验证、说明和基本联调，都计入该基础单元，不再固定拆成一条“设计”Task 和一条“实现”Task。
+Review 是当前候选完整机械验证后才发行的 singleton control Action，不属于预先冻结的 StagePlan。ReviewDecisionIR 只有 decision/findings；REPAIRABLE_SEMANTIC 的 subjectIds 必须解析为当前 Owner root localKeys。Repair 使用同一 Owner IR schema，定向调整、合并或拆分问题 roots，保留其它正确结果；普通路径最多两个语义 revisions；Task 的精确实施澄清可追加一次；三个 Owner 达到自动上限后，原终态绑定的明确人工裁定可逐次授权一个字段修复候选，不清零次数或消耗，后继 PASS 才关闭原 findings。INPUT_REQUIRED 进入 WAITING_INPUT，CONTRACT_GAP / OWNER_BUG 安全终止。
 
-潜在重复先按交付对象判定。同一个基础单元实例只保留一个 producing Task；如果同一 API 表面下实际包含不同对象，例如客户可见业务操作与 PostgreSQL/ElasticSearch 的 schema、索引、访问层或读模型投影，则分别保留并选择 `BU-BUSINESS-SERVICE-API`、`BU-DATA-MODEL` 等真实基础单元。消费方只有存在可独立估算的项目侧接入工作时才使用“接入复用”，普通调用不生成 Task。Renderer 会列出“相同基础单元 + 相同 Effective Start”的潜在碰撞组，Reviewer 再归类为 `SAME_INSTANCE / DISTINCT_DELIVERY_OBJECTS / REUSE_CONSUMER`。
+完整证据字段和控制身份见[阶段自动封存](../skills/generate/references/stage-seal.md)。
 
-去重后没有独立基础单元实例的 Story 不能靠 UAT、人工测试或空壳 Task 填充。Task Owner 返回 `STORY_OWNER_RETURN_REQUIRED` 并点名受影响 Story/AC，由 Story Owner 在自己的评审和批准边界内删除或合并；Task Owner 仍不反向修改 Delivery。轻量 diff-review 发现仅限 Task candidate 的碰撞或基础单元误选时，可使用一次受限纠错 patch 和最终轻量复审，不把可本地修复的问题直接升级为终局阻塞。
+## 8. 新 run、恢复与稳定 ID
 
-识别 Integration 不依赖 Story 类型。先根据已有证据登记 Integration；是否需要生成“内部系统对接”或“外部系统对接”Task、使用哪种工作模式、复杂度如何，都在拆分 Task 时确定。集成 Task 必须引用已经登记的 Integration，不能为了生成 Task 而倒推一个没有依据的 Integration。
+新 run 只执行 FULL_COMPILE，以本轮原始来源和冻结政策重新编译。未完成 run 只恢复自己的 StagePlan、Attempt 与 StageCheckpoint。业务输入变化 abandon/start。身份由 stable_ids 的受控规则生成，模型不能自由生成最终节点 ID。同 run 的预算替换必须严格增加至少一项允许的限额，其余配置不变；正文相同也拒绝，且不创建业务 input revision。
 
-`generate-task` 的 `read_template.py` 只读取项目模板中合并后的基础单元/人天配置表和项目参数里的复杂度系数；`validate.py` 检查 Story/As-Is 引用、Story 是否拆出了必要 Task、工作模式依据、S/L 偏离理由以及模板组合。两者都不调用 setup 或 generate-sow 的代码。
 
-## 7. 项目文件、Skill 隔离与交付
+## 9. 工作簿、说明与发布证明
 
-setup 由当前 Stage Agent 只调用一次平台 bootstrap；它在插件安装副本内自动准备固定 uv、managed
-Python 3.12、锁定依赖和 `.venv`，再调用确定性 Module 创建项目目录、四个必填身份字段、可选 Owner 控制项和模板，并在
-返回前复读 Project Schema 与模板。普通用户无需预装 Python/uv，后续 Skill 直接使用插件 `.venv`
-的跨平台 Python 路径。完整项目只读验证，合法的项目级模板定制按当前项目模板合同复读，不与
-bundled template 强制比较字节；不完整、损坏或身份冲突项目 fail closed。setup 不 repair、不自动
-迁移，也不接入 Repo 或往期 SOW。`analyze-as-is` 在开展现状调查时按需登记 Repo、往期 SOW、配置、
-部署材料及其他现状证据，并负责自己输入目录中的文件和元数据。没有 Repo 或往期 SOW 也可以正常
-开展调查，但必须说明实际检查了哪些现状材料。
+当前只支持 XLSX 模板。每个 input revision 保存 `sow-template.xlsx` 本轮专用副本，Task 编译、评审、
+渲染和 Office 复读使用同一不可变字节。模板是任务目录、基础人天、复杂度、SIT、UAT、公式与取整的
+唯一权威；Python 不计算最终人天。
 
-`.ai-sow/project.json` 必须保存 `projectId`、`name`、`pluginVersion` 和 `sowStandardVersion`，可选保存逐 Owner 的 `ownerControls`：`investigationMode`、`reviewDepth` 与 `tokenBudget`。每个 Skill 只写自己的 work、review、data、validation 或 output 目录。
+工作簿固定为 `01-需求故事 / 02-任务清单 / 03-工作量汇总 / 90-估算标准` 四个 Sheet 和五个命名
+Table。LibreOffice 真实回算后，固定实现复读公式、缓存、Table 计算列、验证、保护、行高、打印设置、
+全部业务行和汇总恒等关系。汇总 Sheet 的可见追溯区保存实体 ID 与公开 SourceRef，真实 Prior adapter 可仅用转交的 XLSX 读取。
 
-Skill 之间：
+每个工件 revision 只有一个 `ARTIFACT_VISUAL_REVIEW`，按稳定顺序覆盖全部可见 Sheet 的 Office PDF renders。`visualReview` 只绑定成功 AttemptRecord；全项和 overall PASS、完整深层验证通过后才进入 `AWAITING_FINAL_REVIEW`。失败不发布 ArtifactManifest/GenerationManifest 或 current。已冻结 XLSX 使用 `publish_new` 保证同字节幂等，不依赖文件系统权限位。
 
-- 不跨 Skill 导入 Python 模块；
-- 不调用另一个 Skill 的脚本；
-- 不读取另一个 Skill 的 Schema、Fixture、测试或资源文件；
-- 只通过规定的正式数据路径、批准 review、validation report/receipt、ID 和必要字段进行协作；
-- 允许调用插件级 `runtime/` 的 Owner-agnostic 项目 I/O、handoff、claim、patch、诊断、控制项与机械评审门禁；HLD/Go-live 等稳定领域规则保持 Owner Skill-local。
+generation manifest 绑定 input revision、SOW Model、三个 checkpoint、review decision、artifact、
+approval、template、renderer、workbook 与 notes hash。`current.json` 只在 generation 全部发布并复读后
+原子切换。
 
-`reconcile` 是唯一 Agent-level 协调例外：当前 Stage 可读取受影响 Owner 的 `SKILL.md` 并在批准前
-执行其公开命令；完整 staged closure 只创建一个 fresh-context Reviewer。批准后 Skill-local
-publisher 只验证 packet/hash 并前向发布。Skill Python 仍不跨 Skill import、读取其他 Skill 的 Schema/fixture
-或专业 renderer；Owner 只写自己的 review/candidate/output/receipt，Task 不能修改 Delivery、Story
-或 AC。协调合同公开五个 Owner 的精确 Adapter 路径和 `--staging-root` 参数；legacy
-`publish/rebind` 只允许 reconciliation 调用，缺少合法 staging root 时必须在任何 Owner 写入前
-阻塞。普通 Owner 发布始终走 candidate-first packet 与 `publish-approved`。`NO_CHANGE` 从 base
-Owner receipt 与 staged upstream receipt 构造 before/current 绑定，只先 stage review 再执行
-`rebind`。任一失败 receipt 都终止当前 run 并用新 run ID 整体重跑，不在已污染的 staging 内试错；
-未覆盖路径由 flat ProjectView 回退读取 base，无需复制影响集之前的稳定产物。
+## 10. 语言、运行时、隐私与法律边界
 
-普通 Owner 调用的 `NO_CHANGE` 不属于 reconciliation rebind：它必须证明至少一项 receipt 绑定输入
-发生变化、candidate 与当前稳定输出原字节一致，并把 review、context、输入与精确 packet 一起重新
-批准；`publish-approved` 只更新正式 review 与 receipt，不改稳定输出字节。
-reconciliation 的第一条项目命令固定为只读 `inspect`，集中投影固定 Owner 后缀的 baseline hash、
-validation inputs、candidate/review 路径与 review ID 声明；它不写项目、不调用 Owner，也不解释业务。
-`reconcile.py --mode prepare-no-change` 从 base review/receipt 与 staged upstream receipt 自动投影
-完整 Stable ID 和 hash binding，`stage-owner` 只做 flat staging 写入；Owner validator 仍由 Stage
-直接调用。每一动作必须是独立 fail-fast tool call，reconcile Python 不执行/import Owner、不读取
-Owner Schema，也不形成通用 Owner runner；命令统一使用 setup 建立的 `<plugin-root>/.venv` Python
-和绝对脚本路径，避免 PATH uv、shell 临时赋值展开和重复 cache path 拼写。所有 Adapter/Owner 命令
-接收绝对 `--project-root`，直接 Python 调用不改变项目 cwd。
-任何 staging 前先用只读 `inspect-work` 固定 CHANGED candidate hashes、写完整体 `review.md`，再用
-`prepare-changed` 绑定 CHANGED work review；整体 review 不存在时所有 projection 准备均 fail closed。
-批准后 publisher 的进度对外按全部 manifest operation 计数；`before == after` 的 `NO_CHANGE`
-原字节复用路径天然属于完成状态，完整发布后的复查必须返回
-`completedOperations == totalOperations`，不能把内部的 changed-prefix 计数暴露成未完成进度。
+普通用户无需预装 Python/uv；平台 bootstrap 在插件安装副本内准备锁定运行时。Codex 与 Claude Code
+只承载 Skill/worker，运行时不调用两者的 CLI。Windows、macOS 和 Linux 使用同一 Python API 与 POSIX
+项目相对路径协议。
 
-`generate-sow` 由当前 Stage Agent 直接调用确定性生成器；普通生成不创建模型 Reviewer。生成器先精确匹配五位 Owner 的 0.3 receipt 及其当前 input/review/output 字节，再读取六份正式数据和项目模板填充可扩展的 Table；它不重放上游业务 validator。业务 Sheet 用中文名称展示、下拉和跨表引用，实际存在的层级列按“需求 → 子需求 → 故事 → 验收条件 → 任务明细 → 其他”排列；派生列浅灰、锁定并启用工作表保护。模板 prototype 提供数据行最小高度，生成器按最终可见换行文本和模板列宽确定性扩大行高；`03-SOW主表` 的公式汇总列使用同一稳定输入中的 AC/Task 名称作为布局提示，不执行公式。`03-SOW主表` 的验收条件与任务明细使用 `TEXTJOIN + IF` CSE 数组公式并为每条内容添加项目符号，不依赖 `_xlfn._xlws.` 动态工作表函数；五张受保护业务表只锁定公式与关系派生单元格及单元格格式，白色输入单元格保持可编辑，并允许调整列宽与行高、使用表头筛选与排序。`04-验收条件` 不展示 `sequence`；`03-SOW主表` 单选假设/风险并带出状态；`05-任务明细` 通过“关联现状条目”单选一个可见 Effective Start 且不展示集成点；`06-集成点` 只展示关联的集成任务名称；`07-假设清单` 是独立被引用表；`90-系统现状` 只保留一张 Effective Start 明细表，展示“主题名称 / 现状条目名称 / 现状描述 / 起点可用性”，其中现状描述直接投影 Effective Start 自身的 `summary`，不以来源 Item/Commitment 摘要重建开工边界；主题和起点可用性使用下拉，整页可手工填写且不启用保护。任务下拉直接引用该可见名称列，不再使用隐藏辅助名单。Excel 内的系统现状修订不回写稳定 JSON、评审或 manifest。普通文本以 `= / + / - / @` 开头时按文本处理，避免被 Excel 当作公式；公式只能来自模板中的原型行。
+用户叙述、问题、评审、风险和自由文本默认使用简体中文；JSON 属性、Schema 枚举、ID、hash、路径、
+文件名、Sheet/Table 名和公式保持合同原值。
 
-生成结果先写入 `.ai-sow/outputs/.staging-*` 临时目录。工作簿复读和 manifest 校验通过后，再把目录改名为 `.ai-sow/outputs/sow-sha256-<generationFingerprint>/`。生成指纹中的 `receipt-only-v3` 合同隔离当前工作簿投影语义；投影变化必须提升该合同，避免不同包树复用同一不可变 ID。成功目录包含 `sow.xlsx`、`manifest.json`、六份稳定数据、五份批准评审、五份 validation receipt 和模板副本；相同包逐字节复用，不同内容 fail closed，失败 staging 由本次运行清理。
+`.ai-sow/` 包含客户输入和衍生数据，应默认被版本控制忽略。稳定 SOW Model、action record 和公共材料
+不保存凭据、私有源码、完整工具输出或本机绝对路径。AI SOW 输出用于离线评审、估算和签署准备；自动
+生成本身不构成客户签署、接受、承诺生效或法律意见。
 
-插件不提供统一 CLI，也不建设共享 Owner 业务编译器、项目锁、不可变 revision store、活动指针、
-自动回滚、自动 Git commit、用户项目级 Python/uv 环境、公式执行、OOXML 全量基准或 XLSX
-反向导入。`reconcile` 仅使用 work-only run ID、显式 tombstone 和 canonical redo manifest 做单写者
-前向恢复；这些不是稳定业务合同或通用事务系统。
+内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
+pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，
+只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
+都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
 
-Git 只用于普通的协作记录。需要调查本地 Repo 时，由 `analyze-as-is` 执行只读 Git 检查，确认工作树根目录并记录调查时的 `HEAD` revision 和 dirty 状态；它不 clone、不 fetch、不 pull，也不修改目标仓库。
+Scope 独占 PriorStateSnapshot 与 ChangeGraph。CODE_ONLY 是有剩余 intent review 义务的候选；全部 round 的采用项必须绑定 Scope fresh Review/PASS 后才构成正式范围。
+
+生成后优先使用同一 Owner 的条件 Repair 收敛：保留正确结果与已封存上游，定向调整、合并或拆分，完整校验及 fresh Review 后继续。共享测试资产保留独立 Story/AC，只计量一次；工作簿明确展示覆盖与费用归属。
+
+大表 Prior 分区采用 `ai-sow-prior-row-partition-v1`：evidence 保留全部完整证据行，sheet 保留结构元数据，headerEvidence 只供解释列与上下文，不扩大授权证据。阶段首组尚未发行时，可通过原 run 的 `FITTING_UNISSUED_PLAN` 容量恢复记录继续；已冻结计划、原型记录和消耗保持不变。
+
+实体可以引用同 packet、同 source/Sheet 的已授权行分区，保留所属 namespace anchor。Prior retry 的 `ai-sow-lossless-tables-v1` 仅改变传输表示，canonical packet SHA 不变；尚未发行且恢复到原容量内的 retry 由 `FITTING_UNISSUED_RETRY` 接续，保留失败 Attempt。完整约束见[阶段自动封存](../skills/generate/references/stage-seal.md)。
+
+终态恢复在 ABANDON 决定落实后结束；不可变 artifact 的候选由最终 Task checkpoint 决定，取证不依赖 active state 的当前候选。宿主中断保留原调用证据，未知用量与本地估算分开记录，再沿执行重试继续。
+
+Task Repair 的 AC 重分配限于本轮受影响 roots 已有的覆盖；历史授权不能扩张后续无关修复。公开 submit 在成功 Attempt 封存前拒绝越界为 INVALID_IR，物化与 proof 回放使用相同 Task-local 校验。
+
+XLSX 数组公式证据按原始公式文本读取，不执行公式或使用对象字符串；缺少公式时拒绝。修正后的新 Prepare 会生成确定性证据块，已发行的冻结 revision 和调用证据不回写。
+
+ARTIFACT RENDER 的真实导出在成功事件前持久暂存；恢复只复用该事件精确 hash 绑定的原字节，复核篡改并记录恢复 I/O 时间。没有成功事件的孤儿暂存不授权复用；旧运行缺少暂存时仍重算并匹配原 hash。此规则不改变 renderer、工作簿或已批准预览。

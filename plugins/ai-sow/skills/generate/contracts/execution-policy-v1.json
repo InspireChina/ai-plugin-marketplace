@@ -1,0 +1,22 @@
+{
+  "contract": "ai-sow-execution-policy-v1",
+  "policyVersion": "1",
+  "requiredContextPolicy": "FRESH_NO_HISTORY",
+  "inheritConversation": false,
+  "contextReuseScope": "WITHIN_ACTION_TOOL_LOOP_ONLY",
+  "tokenAccountingRequirement": "LOCAL_ESTIMATE_MINIMUM",
+  "contextAllocation": {
+    "initialPacketRatio": 0.60,
+    "hydrationRatio": 0.15,
+    "outputRatio": 0.20,
+    "safetyMarginRatio": 0.05
+  },
+  "hardLimits": {
+    "maxHydrationRoundsPerAction": 2,
+    "maxExecutionAttemptsPerShard": 2,
+    "maxSemanticRepairRoundsPerProposition": 2,
+    "maxAdjudicationsPerProposition": 1,
+    "maxReviewReshardDepth": 2,
+    "maxPhysicalShardsPerLogicalTheme": 8
+  }
+}

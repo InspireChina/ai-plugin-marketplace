@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:review-repair:1",
+  "description": "定义独立评审计划、角色化评审结果与最小影响返修波次。",
+  "$defs": {
+    "reviewDecisionIR": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "findings"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "PASS",
+            "REPAIRABLE_SEMANTIC",
+            "INPUT_REQUIRED",
+            "CONTRACT_GAP",
+            "OWNER_BUG"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "path",
+              "subjectIds",
+              "evidenceIds",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "path": {
+                "type": "string"
+              },
+              "subjectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                },
+                "uniqueItems": true,
+                "minItems": 1
+              },
+              "evidenceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                },
+                "uniqueItems": true
+              },
+              "message": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "decision": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "findings": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "findings": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$ref": "#/$defs/reviewDecisionIR"
+}

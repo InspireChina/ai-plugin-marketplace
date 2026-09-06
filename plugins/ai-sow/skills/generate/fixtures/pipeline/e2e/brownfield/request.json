@@ -1,0 +1,48 @@
+{
+  "contract": "ai-sow-generate-request-v3",
+  "project": {
+    "projectId": "project-refund-brownfield-anonymous",
+    "name": "匿名退款存量能力改造",
+    "plannedEffectiveDate": "2026-10-01"
+  },
+  "mode": "BROWNFIELD",
+  "responsibilityBoundaries": [
+    {
+      "responsibilityBoundaryId": "responsibility-vendor-delivery",
+      "party": "VENDOR",
+      "name": "供应商交付责任",
+      "responsibilities": [
+        "完成范围内设计、实现、自测、发布支持和交付移交"
+      ]
+    },
+    {
+      "responsibilityBoundaryId": "responsibility-customer-acceptance",
+      "party": "CUSTOMER",
+      "name": "客户输入与验收责任",
+      "responsibilities": [
+        "提供已批准来源、目标环境和验收人员并完成业务裁决"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "prd-main",
+      "role": "PRD",
+      "path": "prd.md",
+      "expectedSha256": "bb3ea90563bedab8bc908d86aef3d579779130c9301f308c323df71584e4e43a"
+    },
+    {
+      "sourceId": "hld-main",
+      "role": "HLD",
+      "path": "hld.md",
+      "expectedSha256": "fcb0287aa88a903401b3882a15c55a89133ceb1103821da72d6ce0c740996925"
+    }
+  ],
+  "questions": [],
+  "questionnaireAnswers": [],
+  "declaredChangeContext": {
+    "status": "NO_KNOWN_CHANGES",
+    "summary": "未提供历史 SOW，按当前已批准来源建立新交付基线。",
+    "supplementalSourceIds": []
+  }
+}

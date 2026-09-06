@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:generation-manifest:1",
+  "description": "封闭已发布 generation 的输入、模型、检查点、评审、批准和工件哈希。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract", "generationId", "runId", "inputRevisionSha256", "sowModelPath",
+    "sowModelSha256", "stageCheckpointSha256s", "reviewDecisionSha256",
+    "artifactManifestSha256", "approvalSha256", "templateSha256",
+    "effectivePolicyDecisionSha256", "rendererContract", "rendererSha256", "workbookPath", "workbookSha256",
+    "notesPath", "notesSha256", "publicationComplete"
+  ],
+  "properties": {
+    "contract": {"const": "ai-sow-generation-manifest-v2"},
+    "generationId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+    "runId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
+    "inputRevisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "sowModelPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+    "sowModelSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "stageCheckpointSha256s": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"}
+    },
+    "reviewDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "artifactManifestSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "approvalSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "pairDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "templateSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "effectivePolicyDecisionSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "rendererContract": {"const": "generation-renderer-v12"},
+    "rendererSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "workbookPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+    "workbookSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "notesPath": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/relativePath"},
+    "notesSha256": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"},
+    "publicationComplete": {"const": true}
+  }
+}

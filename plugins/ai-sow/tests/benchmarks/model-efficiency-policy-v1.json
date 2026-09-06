@@ -1,0 +1,101 @@
+{
+  "contract": "ai-sow-model-efficiency-policy-v1",
+  "policyVersion": "1",
+  "baselineObservationSha256": "145163bff8279ac1b3886a9c70b06fd7ff4c371938f2abe40dc7083d3b004a68",
+  "contextAllocation": {
+    "initialPacketRatio": 0.6,
+    "hydrationRatio": 0.15,
+    "outputRatio": 0.2,
+    "safetyMarginRatio": 0.05
+  },
+  "globalTargets": {
+    "fullCompileTokenRatio": 0.7,
+    "fullCompileP50WallRatio": 0.7,
+    "postReviewP50WallRatio": 0.7,
+    "reviewTokenRatioMaximum": 1.4
+  },
+  "stageBudgets": {
+    "STAGE_1": {"maxWallMilliseconds": 420000, "maxTotalTokens": 100000},
+    "STAGE_2": {"maxWallMilliseconds": 420000, "maxTotalTokens": 100000},
+    "STAGE_3": {"maxWallMilliseconds": 420000, "maxTotalTokens": 120000},
+    "R1": {"maxWallMilliseconds": 300000, "maxTotalTokens": 60000},
+    "R2": {"maxWallMilliseconds": 300000, "maxTotalTokens": 60000},
+    "R3": {"maxWallMilliseconds": 300000, "maxTotalTokens": 60000},
+    "REPAIR": {"maxWallMilliseconds": 300000, "maxTotalTokens": 60000},
+    "DELTA_REVIEW": {"maxWallMilliseconds": 240000, "maxTotalTokens": 45000},
+    "ADJUDICATION": {"maxWallMilliseconds": 240000, "maxTotalTokens": 45000},
+    "DRAFT_OFFICE": {"maxWallMilliseconds": 120000, "maxTotalTokens": 10000},
+    "CONTROL_PLANE": {"maxWallMilliseconds": 60000, "maxTotalTokens": 10000}
+  },
+  "actionBudget": {
+    "maxWallMilliseconds": 420000,
+    "maxTotalTokens": 120000
+  },
+  "hardLimits": {
+    "maxHydrationRoundsPerAction": 2,
+    "maxExecutionAttemptsPerShard": 2,
+    "maxSemanticRepairRoundsPerProposition": 2,
+    "maxAdjudicationsPerProposition": 1,
+    "maxReviewReshardDepth": 2,
+    "maxPhysicalShardsPerLogicalTheme": 8
+  },
+  "costShiftGuards": {
+    "stage1": true,
+    "downstreamReview": true,
+    "office": true,
+    "promote": true,
+    "controlPlane": true,
+    "retryRework": true
+  },
+  "allocationProof": {
+    "targetCriticalPathRatio": 0.7,
+    "targetTokenRatio": 0.7,
+    "status": "REQUIRES_PAIRED_BENCHMARK"
+  },
+  "pairedBenchmarkGate": {
+    "status": "REQUIRED_NOT_SATISFIED",
+    "claimStatus": "FORBIDDEN_UNTIL_VALIDATED_MANIFESTS",
+    "manifestSchema": "tests/contracts/pipeline-benchmark.schema.json",
+    "baselineManifest": null,
+    "candidateManifest": null,
+    "comparisonReceipt": null,
+    "minimumSamplesPerManifest": 32,
+    "minimumRepetitionsPerSuccessScenario": 5,
+    "cacheModes": ["COLD", "WARM"],
+    "requiredSuccessScenarios": [
+      "small-greenfield",
+      "medium-demo",
+      "large-brownfield"
+    ],
+    "requiredBlockedScenarios": [
+      "blocked-missing-design",
+      "blocked-source-conflict"
+    ],
+    "requiredReceiptGranularities": ["ACTION", "STAGE", "RUN"],
+    "sameExecutionProfileRequired": [
+      "modelProfileId",
+      "model",
+      "reasoningEffort",
+      "environmentSha256",
+      "toolVersions",
+      "office",
+      "accountingMode",
+      "cacheProtocol"
+    ],
+    "comparisonInterval": {
+      "startProbe": "INPUT_REVISION_ACCEPTED",
+      "baselineEndProbe": "PUBLISHED_OFFICE_VERIFIED",
+      "candidateEndProbe": "AWAITING_APPROVAL",
+      "includedBaselinePublishSegments": [
+        "RENDER",
+        "OFFICE_RECALCULATION",
+        "OFFICE_REREAD"
+      ],
+      "excludedAfterApprovalSegments": [
+        "USER_WAIT",
+        "ATOMIC_PROMOTE",
+        "CURRENT_SWAP"
+      ]
+    }
+  }
+}

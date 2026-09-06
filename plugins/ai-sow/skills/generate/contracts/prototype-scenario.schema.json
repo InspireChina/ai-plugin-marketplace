@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:prototype-scenario:1",
+  "description": "模型生成的有序 Demo 场景与操作；程序只校验来源和预算。",
+  "$ref": "#/$defs/prototypeScenarioResult",
+  "$defs": {
+    "prototypeScenarioResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleSha256",
+        "round",
+        "scenarios"
+      ],
+      "properties": {
+        "bundleSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "scenarioId",
+              "critical",
+              "interactionIds",
+              "steps"
+            ],
+            "properties": {
+              "scenarioId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "critical": {
+                "type": "boolean"
+              },
+              "interactionIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stepId",
+                    "page",
+                    "interactionId",
+                    "operation",
+                    "selector",
+                    "value",
+                    "assertions",
+                    "screenshot"
+                  ],
+                  "properties": {
+                    "stepId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "interactionId": {
+                      "type": ["string", "null"],
+                      "minLength": 1
+                    },
+                    "page": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    },
+                    "operation": {
+                      "enum": [
+                        "navigate",
+                        "click",
+                        "fill",
+                        "select",
+                        "check",
+                        "press",
+                        "wait"
+                      ]
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "assertions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "selector",
+                          "attribute",
+                          "expected"
+                        ],
+                        "properties": {
+                          "selector": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "attribute": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "minItems": 1
+                    },
+                    "screenshot": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "minItems": 1
+              }
+            }
+          },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}
