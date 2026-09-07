@@ -22,6 +22,7 @@ REQUIRED_PYTHON_MODULES = {'action_ledger.py',
  'final_review.py',
  'generation_store.py',
  'intake.py',
+ 'owner_callbacks.py',
  'models.py',
  'office_engine.py',
  'orchestrator.py',
@@ -218,7 +219,12 @@ def test_orchestrator_cli_modes_are_exact() -> None:
 def test_command_files_pin_utf8_and_platform_encodings() -> None:
     orchestrator = (SCRIPTS / "orchestrator.py").read_text(encoding="utf-8")
     assert "sys.stdout.buffer.write(canonical_json_bytes(result))" in orchestrator
-    assert "print(" not in orchestrator
+    assert not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "print"
+        for node in ast.walk(ast.parse(orchestrator))
+    )
     shell = (SCRIPTS / "bootstrap.sh").read_bytes()
     powershell = (SCRIPTS / "bootstrap.ps1").read_bytes()
     assert not shell.startswith(b"\xef\xbb\xbf")

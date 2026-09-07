@@ -23,6 +23,19 @@ SCHEMA_REGISTRY = load_registry(SKILL_ROOT / "contracts")
 SIX_DIGITS = re.compile(r"^[0-9]{6}$")
 
 
+def step_fingerprint(inputs, *, parameters, implementations, tool=None):
+    return {
+        'contract':'ai-sow-step-fingerprint-v1',
+        'inputSha256':sha256_bytes(canonical_json_bytes(inputs)),
+        'parametersSha256':sha256_bytes(canonical_json_bytes(parameters)),
+        'implementationSha256':sha256_bytes(canonical_json_bytes({
+            name:sha256_bytes((SKILL_ROOT/'scripts'/name).read_bytes())
+            for name in implementations
+        })),
+        'toolSha256':sha256_bytes(canonical_json_bytes(tool)),
+    }
+
+
 def replace_current(files: ProjectFiles, payload: bytes) -> None:
     """Atomically replace the sole mutable pointer after immutable publication."""
     files.write_atomic(".ai-sow/current.json", payload)
@@ -611,8 +624,8 @@ def collect_artifact_proof(files, state, revision_path, *, repair_entries=None):
     steps={kind:files.read_json(artifact_step_directory(run_root,kind,plan['stepRevisions'][kind])+'/'+_artifact_step_digest(proof['events'],kind,plan['stepRevisions'][kind])+'.json')
         for kind in (*ARTIFACT_PREFIX_STEPS,'RENDER')}
     proof['artifactSteps']=steps
-    from orchestrator import _office_tool_fingerprint
-    proof['officeToolFingerprint']=_office_tool_fingerprint()
+    from office_engine import office_tool_fingerprint
+    proof['officeToolFingerprint']=office_tool_fingerprint()
     if repair_entries:
         proof.update(artifactRepairAuthorizations=repair_entries,artifactRevision=plan['revision'],artifactStepRevisions=plan['stepRevisions'])
     return proof
@@ -650,7 +663,7 @@ def _proof_ledger(proof, *, expected_resolutions=None, require_bundled_resolutio
     ledger=ActionLedger(envelopes,records,raw,normalized)
     if any(e.value['actionContractId']=='CANDIDATE_PATCH-v1' for e in envelopes.values()):
         from candidate_repair import replay_candidate_ledger
-        from final_review import candidate_owner_callbacks
+        from owner_callbacks import candidate_owner_callbacks
         plans={h:canonical_json_bytes(value) for h,value in proof.get('candidateRepairPlans',{}).items()}
         ledger=replay_candidate_ledger(ledger,packets,plans,
             owner_callbacks=lambda e,p,semantic_source=None:candidate_owner_callbacks(
@@ -669,7 +682,7 @@ def _proof_ledger(proof, *, expected_resolutions=None, require_bundled_resolutio
 def verify_artifact_proof(proof, model, manifest):
     from final_review import verify_checkpoint_proof, verify_manual_authorization_records
     from task_compiler import verify_task_repair_chain
-    from package_renderer import visual_identity, validate_visual_result
+    from package_renderer import decode_binary, visual_identity, validate_visual_result
     from stage_planner import _effective_success, _effective_envelope
     from contracts import action_contract_binding
     ledger, packets = _proof_ledger(proof)
@@ -677,7 +690,6 @@ def verify_artifact_proof(proof, model, manifest):
     if (proof.get('artifactRevision',1)!=repair_plan['revision']
             or proof.get('artifactStepRevisions',repair_plan['stepRevisions'])!=repair_plan['stepRevisions']):
         raise ValueError('工件修复步骤未绑定已验证前缀。')
-    from orchestrator import _step_fingerprint
     tool=proof.get('officeToolFingerprint')
     if not isinstance(tool,dict):
         raise ValueError('artifact proof 缺少无路径 Office 工具身份。')
@@ -695,7 +707,7 @@ def verify_artifact_proof(proof, model, manifest):
         'RENDER':['package_renderer.py','office_engine.py']}
     for kind,value in proof['artifactSteps'].items():
         revision=repair_plan['stepRevisions'][kind]
-        fingerprint=_step_fingerprint(artifact_inputs[kind],
+        fingerprint=step_fingerprint(artifact_inputs[kind],
             parameters={'stage':'ARTIFACT','revision':revision,'kind':kind},
             implementations=implementations[kind],
             tool=tool if kind in {'OFFICE','OFFICE_REFERENCE','RENDER'} else None)

@@ -1143,28 +1143,15 @@ def _read_step_output(files, state, stage, revision, kind, directory, *, fingerp
 
 
 def _step_fingerprint(inputs, *, parameters, implementations, tool=None):
-    return {'contract':'ai-sow-step-fingerprint-v1','inputSha256':sha256_bytes(canonical_json_bytes(inputs)),
-        'parametersSha256':sha256_bytes(canonical_json_bytes(parameters)),
-        'implementationSha256':sha256_bytes(canonical_json_bytes({name:sha256_bytes((SKILL_ROOT/'scripts'/name).read_bytes()) for name in implementations})),
-        'toolSha256':sha256_bytes(canonical_json_bytes(tool))}
+    from generation_store import step_fingerprint
+    return step_fingerprint(
+        inputs,parameters=parameters,implementations=implementations,tool=tool
+    )
 
 
 def _office_tool_fingerprint():
-    # Identity is path-free and never launches Office.
-    import os,shutil,platform
-    configured=os.environ.get('AI_SOW_OFFICE_BIN')
-    if configured:
-        executable=configured;selection='AI_SOW_OFFICE_BIN'
-    else:
-        executable=shutil.which('soffice')
-        selection='PATH_SOFFICE'
-        if executable is None:
-            executable=shutil.which('libreoffice');selection='PATH_LIBREOFFICE'
-    path=Path(executable).expanduser().resolve() if executable else None
-    return {'selectionSource':selection if path else 'UNAVAILABLE',
-            'executableBasename':path.name if path else None,
-            'executableSha256':sha256_bytes(path.read_bytes()) if path and path.is_file() else None,
-            'platform':platform.system(),'normalizedArguments':['--headless']}
+    from office_engine import office_tool_fingerprint
+    return office_tool_fingerprint()
 
 
 class DeterministicStepFailure(ValueError):
@@ -1372,9 +1359,19 @@ def _semantic_repair_bundle(files,state,stage,review_bundle,original,resolution)
 
 def _issue_semantic_candidate_repair(files,state,stage,plan,owner_packet,owner_ir,review_packet,review_bundle,resolution):
     from candidate_repair import _at
-    from final_review import candidate_owner_callbacks,semantic_repair_lineage
+    from final_review import semantic_repair_lineage
+    from owner_callbacks import candidate_owner_callbacks
     review=review_bundle['result'];review_sha=review_bundle['record'].normalized_result_sha256
     patch_contract,patch_contract_sha=action_contract_binding(SKILL_ROOT,'CANDIDATE_PATCH-v1')
+    if stage=='TASK':
+        from task_compiler import prepare_task_repair_packet
+        _,_,_,_,task_inputs=_frozen_stage_inputs(files,state,'TASK')
+        owner_packet=prepare_task_repair_packet(
+            owner_packet,owner_ir,review,
+            task_inputs.story_candidate_bytes,
+            task_inputs.input_revision_bytes,
+            resolution,
+        )
     lineage=semantic_repair_lineage(stage,review_sha,patch_contract_sha)
     owner_raw=canonical_json_bytes(owner_ir);owner_sha=sha256_bytes(owner_raw)
     owner_contract=_semantic_owner_contract(stage,plan)
@@ -1506,7 +1503,8 @@ def _stage_revision_limit(files,state,stage):
 
 
 def _resume_manual_owner_repair(files,path):
-    from final_review import replace_owner_decisions, repair_root_keys, owner_resolution, validate_owner_resolution
+    from final_review import (replace_owner_decisions, repair_root_keys,
+        owner_resolution, semantic_repair_lineage, validate_owner_resolution)
     answer=_mapping(files,_managed_request_path(files,path))
     if validate_contract(answer,'owner-repair-authorization.schema.json',load_schema_registry(SKILL_ROOT)):
         raise ValueError('人工继续修复合同无效。')
@@ -1539,9 +1537,23 @@ def _resume_manual_owner_repair(files,path):
     previous=json.loads(_one_content(files,_stage_root(terminal,stage)+f'/review-inputs/{revision-1}'))['workItems'][0]['payload']
     _,_,previous_review=_control_bundle(files,terminal,stage,'REVIEW',previous['candidateSha256'])
     _,_,previous_repair=_control_bundle(files,terminal,stage,'REPAIR',previous_review['record'].normalized_result_sha256)
-    if previous_repair is None: raise ValueError('人工继续缺少前一版实际 Repair。')
-    previous_body=json.loads(files.read_bytes(previous_repair['envelope']['packetPath']))['workItems'][0]['payload']
-    current_ir=replace_owner_decisions(stage,previous_body['ownerIR'],previous_body['reviewDecision'],previous_repair['result'],owner_resolution(previous_body))
+    if previous_repair is not None:
+        previous_body=json.loads(files.read_bytes(previous_repair['envelope']['packetPath']))['workItems'][0]['payload']
+        current_ir=replace_owner_decisions(stage,previous_body['ownerIR'],
+            previous_body['reviewDecision'],previous_repair['result'],
+            owner_resolution(previous_body))
+    else:
+        _,patch_contract_sha=action_contract_binding(
+            SKILL_ROOT,'CANDIDATE_PATCH-v1'
+        )
+        lineage=semantic_repair_lineage(
+            stage,previous_review['record'].normalized_result_sha256,
+            patch_contract_sha,
+        )
+        ledger=_load_action_ledger(files,run_id)
+        if lineage not in ledger.candidate_resolutions:
+            raise ValueError('人工继续缺少前一版实际 Repair。')
+        current_ir=json.loads(effective_result_bytes(ledger,lineage))
     keys=repair_root_keys(stage,current_ir,review['result'],answer)
     from final_review import OWNER_COLLECTION
     if any(not set(answer['allowedFields'])<=row.keys() for row in current_ir[OWNER_COLLECTION[stage]] if row['localKey'] in keys):
@@ -1561,7 +1573,7 @@ def _read_owner_clarification(files,state,review_hash):
 
 def _task_context_at_candidate(files,state):
     from task_compiler import apply_task_repairs
-    from final_review import owner_resolution
+    from final_review import owner_resolution, semantic_repair_lineage
     plan,items,contexts,policy,inputs=_frozen_stage_inputs(files,state,'TASK')
     packet,decisions=_stage_ir(files,state,'TASK',plan,items,contexts,policy,inputs)
     for revision in range(1,_stage_revision_limit(files,state,'TASK')+1):
@@ -1573,10 +1585,36 @@ def _task_context_at_candidate(files,state):
         _,_,review=_control_bundle(files,state,'TASK','REVIEW',body['candidateSha256'])
         if review is None: break
         _,_,repair=_control_bundle(files,state,'TASK','REPAIR',review['record'].normalized_result_sha256)
-        if repair is None: break
-        payload=json.loads(files.read_bytes(repair['envelope']['packetPath']))['workItems'][0]['payload']
-        resolution=owner_resolution(payload)
-        operation=(review['result'],repair['result'],resolution) if resolution is not None else (review['result'],repair['result'])
+        if repair is not None:
+            payload=json.loads(files.read_bytes(repair['envelope']['packetPath']))['workItems'][0]['payload']
+            resolution=owner_resolution(payload)
+            replacement=repair['result']
+        else:
+            _,patch_contract_sha=action_contract_binding(
+                SKILL_ROOT,'CANDIDATE_PATCH-v1'
+            )
+            lineage=semantic_repair_lineage(
+                'TASK',review['record'].normalized_result_sha256,
+                patch_contract_sha,
+            )
+            ledger=_load_action_ledger(files,state['runId'])
+            proof=ledger.candidate_resolutions.get(lineage)
+            if proof is None:
+                break
+            origin=json.loads(proof)['origin']
+            semantic=json.loads(
+                ledger.candidate_repair_semantic_sources[
+                    origin['semanticSourceSha256']
+                ]
+            )
+            resolution=semantic.get('ownerResolution')
+            bundle=_semantic_repair_bundle(
+                files,state,'TASK',review,decisions,resolution
+            )
+            if bundle is None or bundle.get('pending'):
+                break
+            replacement=bundle['replacement']
+        operation=(review['result'],replacement,resolution) if resolution is not None else (review['result'],replacement)
         packet,decisions=apply_task_repairs(packet,decisions,[operation],inputs)
     raise ValueError('澄清候选未绑定连续的实际 Owner 修复链。')
 
@@ -1903,6 +1941,27 @@ def _attempt_stop_response(
                     **_diagnostic_value(_diagnostic("BUDGET_EXHAUSTED", "请求容量、运行预算或候选/执行次数已用尽；保留现有候选和成功进度，按诊断修复并显式增加所需有限预算后继续。")),
                     "details": {"chargedTokens": charged, "unfinishedPlannedTokens": unfinished, "maxPlannedTokens": policy["maxPlannedTokens"], "activeSeconds": active_seconds, "maxActiveSeconds": policy["maxActiveSeconds"], "maxActionRevisions": policy.get("maxActionRevisions", 2), "maxExecutionAttempts": policy.get("maxExecutionAttempts", 2), "pendingRepairs": pending_repairs, "maxDeterministicAttempts": policy.get("maxDeterministicAttempts", 2), "pendingSteps": _failed_deterministic_steps(files, state)},
                 }],
+            }
+        candidate_input_wait = next((
+            event for event in events
+            if event.type == 'WAITING_INPUT_ENTERED'
+            and event.payload['waitId'] not in exited
+            and event.payload['reasonCode'] != 'BUDGET_EXHAUSTED'
+            and not event.payload['waitId'].startswith(('prototype-wait-','stage-wait-'))
+        ), None)
+        if candidate_input_wait is not None and not any(
+            record.outcome == 'FAILED' and record.failure_kind == 'INPUT_REQUIRED'
+            for record in _load_action_ledger(files, str(state['runId'])).attempt_records.values()
+        ):
+            code=candidate_input_wait.payload['reasonCode']
+            return {
+                'outcome':'WAITING_INPUT',
+                'state':{**state,'wait':'INPUT','expectedActionIds':[],
+                         'resumeFromPhase':state['phase']},
+                'nextAction':None,
+                'diagnostics':[_diagnostic_value(_diagnostic(
+                    code,'候选修复发现必须由真实输入关闭的问题；已保留失败候选和全部进度。'
+                ))],
             }
     routes = {
         "CONTRACT_UNSUPPORTED": ("CONTRACT_GAP", "CONTRACT_UNSUPPORTED"),
@@ -3178,7 +3237,32 @@ def _reconcile_budget_wait(
             and entered.sequence < event.sequence < exited.sequence),None)
         if issuance is None: raise ValueError('容量恢复缺少等待期间实际发行的 Repair 证明。')
         action=_mapping(files,_action_paths(run_id,exited.payload['actionId'])['envelope'])
-        if action['actionContractId'] != _control_contract_id(files,state,action['stageKind'],'REPAIR'):
+        if exited.payload['resolutionKind']=='FITTING_UNISSUED_CANDIDATE_REPAIR':
+            from candidate_repair import patch_context
+            if action['actionContractId']!='CANDIDATE_PATCH-v1':
+                raise ValueError('候选修复容量恢复必须复用 CANDIDATE_PATCH。')
+            view=patch_context(_mapping(files,action['packetPath']))
+            plan_raw=files.read_bytes(
+                f"{RUNS_ROOT}/{run_id}/candidate-repairs/plans/{view['repairPlanSha256']}.json"
+            )
+            plan=json.loads(plan_raw);origin=plan['origin']
+            ledger=_load_action_ledger(files,run_id)
+            source=ledger.attempt_records.get(origin['sourceAttemptRecordSha256'])
+            source_envelope=(
+                ledger.envelopes_by_sha256.get(source.envelope_sha256)
+                if source is not None else None
+            )
+            if (sha256_bytes(plan_raw)!=view['repairPlanSha256']
+                    or origin!=view['origin']
+                    or origin['sourceKind']!='SEMANTIC_REVIEW'
+                    or source is None
+                    or source.normalized_result_sha256!=origin['reviewDecisionSha256']
+                    or source_envelope is None
+                    or source_envelope.value['baseCandidateSha256']!=origin['reviewCandidateSha256']):
+                raise ValueError('候选修复容量恢复未绑定当前 Review 与精确计划。')
+        elif action['actionContractId'] != _control_contract_id(
+            files,state,action['stageKind'],'REPAIR'
+        ):
             raise ValueError('容量恢复只能复用尚未发行的 Owner Repair。')
     elif exited.payload["resolutionKind"] == "FITTING_UNISSUED_RETRY":
         ledger=_load_action_ledger(files,run_id)
@@ -3353,7 +3437,7 @@ def _load_action_ledger(files: ProjectFiles, run_id: str) -> ActionLedger:
         )
     if any(e.value['actionContractId']=='CANDIDATE_PATCH-v1' for e in envelopes.values()):
         from candidate_repair import replay_candidate_ledger, patch_context
-        from final_review import candidate_owner_callbacks
+        from owner_callbacks import candidate_owner_callbacks
         packets={e.value['packetSha256']:files.read_bytes(e.value['packetPath']) for e in envelopes.values()}
         plans={}
         for e in envelopes.values():
@@ -4290,7 +4374,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _candidate_callbacks(files, envelope, packet, semantic_source=None):
-    from final_review import candidate_owner_callbacks
+    from owner_callbacks import candidate_owner_callbacks
     inventories=();revision=None
     if envelope['actionContractId'].startswith('PRIOR_'):
         inventories=_prior_inventories(files,{'runId':envelope['runId']})

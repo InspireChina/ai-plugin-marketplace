@@ -434,6 +434,9 @@ def diagnose_candidate(action_kind, packet, candidate, **owner_context):
     else:
         domains.append('PROTOTYPE_BINDINGS')
     issues+=issues_from_diagnostics(diagnostics,'PROTOTYPE',value)
+    for issue in issues:
+        if issue['code']=='PROTOTYPE_SCOPE_EVIDENCE_REQUIRED':
+            issue['repairClass']='INPUT_REQUIRED'
     if action_kind=='PROTOTYPE_BROWSER':
         for issue in issues:issue['repairClass']='EXECUTION'
     return diagnostic_report(raw,issues,owner='PROTOTYPE',checker_file=__file__,packet=packet,
@@ -446,6 +449,24 @@ def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **o
     selected={issue['issueId']:issue['paths'] for issue in report['issues']}
     groups=group_fields(candidate,report,owner_context.get('action_contract_id',action_kind+'-v1'),selected)
     if not groups:raise InvalidActionResult('原型缺口需要真实执行或输入，不能改写已有观察。')
+    if len(groups)>1:
+        issue_ids=sorted({
+            issue_id for group in groups for issue_id in group['issueIds']
+        })
+        slots=list({
+            slot['slotId']:slot for group in groups for slot in group['slots']
+        }.values())
+        read_set=list({
+            (entry['objectId'],tuple(entry['fields'])):entry
+            for group in groups for entry in group['readSet']
+        }.values())
+        groups=[{
+            'groupId':'group-'+sha256_bytes(canonical_json_bytes(issue_ids))[:24],
+            'issueIds':issue_ids,
+            'readSet':read_set,
+            'slots':slots,
+            'verificationObligations':issue_ids,
+        }]
     return build_repair_plan(candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate),report,groups,origin=origin)
 
 

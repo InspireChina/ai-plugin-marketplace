@@ -180,6 +180,31 @@ def discover_office_engine() -> OfficeEngine | None:
     return None
 
 
+def office_tool_fingerprint():
+    """Return the path-free Office selection identity without launching it."""
+    from contracts import canonical_json_bytes, sha256_bytes
+
+    configured=os.environ.get('AI_SOW_OFFICE_BIN')
+    if configured:
+        executable=configured;selection='AI_SOW_OFFICE_BIN'
+    else:
+        executable=shutil.which('soffice')
+        selection='PATH_SOFFICE'
+        if executable is None:
+            executable=shutil.which('libreoffice');selection='PATH_LIBREOFFICE'
+    path=Path(executable).expanduser().resolve() if executable else None
+    return {
+        'selectionSource':selection if path else 'UNAVAILABLE',
+        'executableBasename':path.name if path else None,
+        'executableSha256':(
+            sha256_bytes(path.read_bytes())
+            if path and path.is_file() else None
+        ),
+        'platform':platform.system(),
+        'normalizedArguments':['--headless'],
+    }
+
+
 def require_office_engine() -> OfficeEngine:
     engine = discover_office_engine()
     if engine is None:

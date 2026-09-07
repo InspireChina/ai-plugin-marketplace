@@ -63,6 +63,7 @@ NEXT_SCHEMA_IDS = {
     "artifact-repair-authorization.schema.json": "urn:ai-sow:generate:next:artifact-repair-authorization:1",
     "owner-clarification.schema.json": "urn:ai-sow:generate:next:owner-clarification:1",
     "owner-repair-authorization.schema.json": "urn:ai-sow:generate:next:owner-repair-authorization:1",
+    "candidate-repair.schema.json": "urn:ai-sow:generate:next:candidate-repair:1",
     "visual-review.schema.json": "urn:ai-sow:generate:visual-review:1",
     "task-decision.schema.json": "urn:ai-sow:generate:next:task-decision:1",
     "story-ac-decision.schema.json": "urn:ai-sow:generate:next:story-ac-decision:1",
@@ -899,7 +900,7 @@ def test_result_schema_dispatch_uses_registered_action_contract_only() -> None:
     assert registry_path.exists()
     registry = read_json(registry_path)
     contracts = registry["contracts"]
-    assert len(contracts) == 24
+    assert len(contracts) == 25
     assert {item["actionContractId"] for item in contracts if item["actionContractId"].startswith("PROTOTYPE_")} == {
         "PROTOTYPE_SCENARIO-v1", "PROTOTYPE_BROWSER-v1", "PROTOTYPE_ANALYZE-v1",
     }
@@ -1089,12 +1090,18 @@ def test_nine_contract_families_have_stable_ids_and_reject_extra_fields() -> Non
     sys.path.insert(0, str(SKILL_ROOT / "tests"))
     from test_prototype_analysis import demo_files, scenario_fixture, trace_fixture, observation_fixture
     from prototype_analysis import inventory_demo_bundle
+    from test_candidate_repair_protocol import field_case
+    import candidate_repair
 
     inventory = inventory_demo_bundle("demo/index.html", demo_files())
     scenario = scenario_fixture(inventory)
     values = next_schemas()
     assert {name: value["$id"] for name, value in values.items()} == NEXT_SCHEMA_IDS
     from ir_samples import scan_ir, audit_ir, complete_scope_ir, story_ac_ir, task_decision_ir
+    repair_base, repair_report, repair_groups, repair_origin = field_case()
+    repair_plan = json.loads(candidate_repair.build_repair_plan(
+        repair_base, repair_report, repair_groups, origin=repair_origin
+    ))
     samples = {
         "task-decision.schema.json": task_decision_ir(),
         "story-ac-decision.schema.json": story_ac_ir(),
@@ -1136,6 +1143,7 @@ def test_nine_contract_families_have_stable_ids_and_reject_extra_fields() -> Non
             'decision':'仅修正复杂度。','provenance':'SIMULATED_USER','authorization':'用户已授权模拟裁定。'},
         "visual-review.schema.json": {'sheets':[{'sheetKey':'sheet-a','checks':{key:'PASS' for key in
             ('clipping','readability','unexpectedBlank','styleLoss')},'decision':'PASS','findings':[]}],'overallDecision':'PASS'},
+        "candidate-repair.schema.json": repair_plan,
         "artifact-approval.schema.json": artifact_manifest_sample(),
         "generation-manifest.schema.json": {
             "contract": "ai-sow-generation-manifest-v2",

@@ -59,6 +59,7 @@ flowchart TD
 | Module | 承担的职责 |
 |---|---|
 | 各 Owner，包括 Prior、Prototype 的所属 Owner | 发现本职责内的问题；确定修改槽位、必要上下文与复验规则；判断业务含义 |
+| `owner_callbacks` | 将冻结 Action 路由到现有 Owner 的诊断、计划和完整校验，避免 `final_review` 反向依赖各 Owner |
 | `candidate_repair` | 对象定位、绑定验证、受限合并、保护检查和局部进度证明 |
 | `contracts` / `models` | 定义版本化数据结构；不导入修复执行器或专业编译器 |
 | `action_ledger` / `run_events` | 保存原始候选、Attempt、用量和幂等事实 |

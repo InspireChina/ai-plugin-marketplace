@@ -277,8 +277,9 @@ def test_semantic_review_issues_candidate_patch_and_requires_fresh_review():
     from action_ledger import ActionLedger,attempt_record_value
     from candidate_repair import apply_repair_patch,replay_candidate_ledger
     from contracts import InvalidActionResult
-    from final_review import (candidate_owner_callbacks,candidate_repair_replacement,
-        control_identity,semantic_repair_lineage)
+    from final_review import (candidate_repair_replacement,control_identity,
+        semantic_repair_lineage)
+    from owner_callbacks import candidate_owner_callbacks
     from ir_samples import complete_scope_ir
     from models import ActionEnvelope,AttemptRecord,AttemptTiming,RunEvent,Usage
     from test_scope_compiler import synthesis_packet
@@ -380,7 +381,7 @@ def test_semantic_review_issues_candidate_patch_and_requires_fresh_review():
 
 def test_review_format_repair_cannot_supply_author_pass():
     from contracts import InvalidActionResult
-    from final_review import candidate_owner_callbacks
+    from owner_callbacks import candidate_owner_callbacks
     from test_candidate_repair_protocol import field_case
     reviewer_envelope={'actionContractId':'SOURCE_SCOPE-v1'}
     reviewer_packet={'workItems':[],'contextRefs':[]}
@@ -390,7 +391,7 @@ def test_review_format_repair_cannot_supply_author_pass():
     diagnose,plan,_=candidate_owner_callbacks(reviewer_envelope,reviewer_packet)
     report=diagnose(candidate,origin);repair_plan=json.loads(plan(candidate,report,origin))
     assert report['owner']=='REVIEWER'
-    assert {slot.get('field') for group in repair_plan['groups'] for slot in group['slots']}=={'decision'}
+    assert {slot.get('field') for group in repair_plan['groups'] for slot in group['slots']}=={'decision','findings'}
     from scope_compiler import diagnose_candidate,plan_candidate_repair
     from test_scope_compiler import scan_ir_packet
     author_packet=scan_ir_packet();author_origin={**origin,'sourceActionContractId':'SOURCE_SCAN-v1'}

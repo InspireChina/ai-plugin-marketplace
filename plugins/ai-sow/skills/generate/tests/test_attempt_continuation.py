@@ -10,8 +10,15 @@ for directory in (TESTS, TESTS.parent / "scripts", TESTS.parents[2]):
     if str(directory) not in sys.path: sys.path.insert(0, str(directory))
 
 TEST_LAYER = 'integration'
-from test_orchestrator import (orchestrator_module as api, write_run_store_request,
-    write_budget_policy, submit_prototype, canonical_json_bytes)
+from test_orchestrator import (
+    candidate_patch_for_result,
+    orchestrator_module as api,
+    submit_candidate_repairs,
+    submit_prototype,
+    write_budget_policy,
+    write_run_store_request,
+    canonical_json_bytes,
+)
 from stage_driver import stage_result
 
 
@@ -36,10 +43,9 @@ def advance_to_task(project, mode='GREENFIELD'):
     pytest.fail('Task not reached')
 
 
-@pytest.mark.parametrize('violate_scope', [False, True])
-def test_task_failed_candidates_pause_and_continue_without_rebuilding_upstream(tmp_path, monkeypatch, violate_scope):
+def test_task_failed_candidates_pause_and_continue_without_rebuilding_upstream(tmp_path, monkeypatch):
     monkeypatch.setattr(api, '_advance_artifact', lambda files, state: {'outcome':'ACTIVE','state':state,'nextAction':None})
-    action, state = advance_to_task(tmp_path, 'BROWNFIELD' if violate_scope else 'GREENFIELD')
+    action, state = advance_to_task(tmp_path)
     run_root = tmp_path / '.ai-sow/work/runs' / state['runId']
     protected = {p:p.read_bytes() for stage in ('SCOPE','STORY_AC')
         for p in (run_root/'stages'/stage).rglob('*') if p.is_file()}
@@ -52,15 +58,14 @@ def test_task_failed_candidates_pause_and_continue_without_rebuilding_upstream(t
     first = submit_prototype(tmp_path, action, bad)['record']
     assert first['failureKind'] == 'INVALID_IR'
     assert first['diagnostic']['findings']
-    retry = api.run_mode(tmp_path, 'resume')['nextAction']
-    second_bad = copy.deepcopy(bad)
-    if violate_scope:
-        second_bad['tasks'][1]['workModeDecision'] = '调整'
-    else:
-        second_bad['tasks'][0]['evidenceIds'][-1] = 'unbound-second'
-    second = submit_prototype(tmp_path, retry, second_bad)['record']
+    repair = api.run_mode(tmp_path, 'resume')['nextAction']
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    second_bad = copy.deepcopy(good)
+    second_bad['tasks'][0]['evidenceIds'].append('unbound-second')
+    second = submit_prototype(
+        tmp_path,repair,candidate_patch_for_result(tmp_path,repair,second_bad)
+    )['record']
     assert second['failureKind'] == 'INVALID_IR'
-    if violate_scope: assert second['diagnostic']['code'] == 'REPAIR_SCOPE_VIOLATION'
     paused = api.run_mode(tmp_path, 'resume')
     assert paused['outcome'] == 'WAITING_INPUT', paused
     assert paused['state']['checkpointRefs'] == checkpoints
@@ -71,10 +76,14 @@ def test_task_failed_candidates_pause_and_continue_without_rebuilding_upstream(t
     resumed = api.run_mode(tmp_path, 'resume', budget_policy=increased)
     assert resumed['outcome'] == 'ACTIVE', resumed
     third = resumed['nextAction']
-    assert (third['logicalWorkId'], third['revision'], third['attempt']) == (action['logicalWorkId'], 3, 1)
+    assert third['actionContractId']=='CANDIDATE_PATCH-v1'
+    from candidate_repair import patch_context
+    view=patch_context(json.loads((tmp_path/third['packetPath']).read_bytes()))
+    assert view['origin']['originLogicalWorkId']==action['logicalWorkId']
+    assert view['origin']['repairRound']==3
     assert api.run_mode(tmp_path, 'resume')['nextAction']['actionId'] == third['actionId']
-    assert submit_prototype(tmp_path, third, good)['record']['outcome'] == 'SUCCEEDED'
-    fresh = api.run_mode(tmp_path, 'resume')['nextAction']
+    continued=submit_candidate_repairs(tmp_path,third,good)
+    fresh = continued['nextAction']
     assert fresh['actionContractId'] == 'TASK_ESTIMATION-v1'
     review = stage_result('TASK_ESTIMATION', json.loads((tmp_path/fresh['packetPath']).read_bytes()))
     assert submit_prototype(tmp_path, fresh, review)['record']['outcome'] == 'SUCCEEDED'

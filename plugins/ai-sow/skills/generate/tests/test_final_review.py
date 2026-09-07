@@ -85,7 +85,12 @@ def test_checkpoint_deep_binding_exact_required_proof_fields():
 @pytest.fixture(scope='module')
 def sealed_prior_repair_project(tmp_path_factory):
     from test_intake import write_next_request
-    from test_orchestrator import write_budget_policy, submit_prototype, prototype_payload
+    from test_orchestrator import (
+        semantic_scope_patch,
+        submit_prototype,
+        prototype_payload,
+        write_budget_policy,
+    )
     from test_scope_compiler import scope_owner_result
     from stage_driver import stage_result
     project = tmp_path_factory.mktemp('sealed-prior-repair')
@@ -105,11 +110,10 @@ def sealed_prior_repair_project(tmp_path_factory):
                 result = {'decision': 'REPAIRABLE_SEMANTIC', 'findings': [{'code': 'BOUNDARY', 'path': '/features',
                     'subjectIds': [key], 'evidenceIds': [], 'message': '名称应明确交付结果。'}]}
                 repaired = True
-            elif kind == 'SCOPE_REPAIR':
-                body = prototype_payload(project, action)
-                row = copy.deepcopy(next(row for row in body['ownerIR']['decisions'] if row['localKey'] == key))
-                row['boundaryEvidence']['name'] = '已明确的订单交付能力'
-                result = {'decisions': [row]}
+            elif kind == 'CANDIDATE_PATCH':
+                result = semantic_scope_patch(
+                    project, action, key, '已明确的订单交付能力'
+                )
             else:
                 result = scope_owner_result(kind, packet) if kind.startswith('PRIOR_') else stage_result(kind, packet)
             recorded = submit_prototype(project, action, result)
@@ -144,7 +148,7 @@ def test_checkpoint_deep_binding_complete_real_chain(sealed_prior_repair_project
     if target == 'plan': checkpoint['stagePlanSha256'] = '0'*64
     elif target == 'upstream': checkpoint['upstreamCheckpointSha256s'] = ['0'*64]
     elif target.endswith('-attempt'):
-        contract = {'owner-attempt': 'SOURCE_SCAN-v1', 'review-attempt': 'SOURCE_SCOPE-v1', 'repair-attempt': 'SCOPE_REPAIR-v1'}[target]
+        contract = {'owner-attempt': 'SOURCE_SCAN-v1', 'review-attempt': 'SOURCE_SCOPE-v1', 'repair-attempt': 'CANDIDATE_PATCH-v1'}[target]
         digest = next(digest for digest, record in ledger.attempt_records.items()
             if ledger.envelopes_by_sha256[record.envelope_sha256].value['actionContractId'] == contract)
         checkpoint['effectiveAttemptRecordSha256s'].remove(digest)

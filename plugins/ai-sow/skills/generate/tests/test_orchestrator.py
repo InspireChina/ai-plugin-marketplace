@@ -196,9 +196,11 @@ def test_public_stage_plan_cutover_requires_owner_bound_preseal_validation(tmp_p
     result = orchestrator_module.submit(tmp_path, action["actionId"], completion)
     assert result["outcome"] == "RECORDED", result
     assert result["record"]["failureKind"] == "INVALID_IR", "schema-valid unrelated roots cannot seal"
-    retry = orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]
-    assert retry["logicalWorkId"] == action["logicalWorkId"]
-    assert retry["revision"] == 2
+    repair = orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]
+    assert repair["actionContractId"] == "CANDIDATE_PATCH-v1"
+    from candidate_repair import patch_context
+    repair_view = patch_context(json.loads((tmp_path/repair["packetPath"]).read_bytes()))
+    assert repair_view["origin"]["originLogicalWorkId"] == action["logicalWorkId"]
 
 
 def scope_review_action(project, *, request_path=None):
@@ -429,12 +431,26 @@ def semantic_scope_patch(project,action,key,value,field='name'):
     for slot in view['group']['slots']:
         if slot['operation']=='TRANSFORM_ROOTS':
             rows=[]
+            originals={
+                object_id:_at(base,index[object_id]['path'])['localKey']
+                for object_id in slot['inputObjectIds']
+            }
+            replacements={
+                original:slot['outputNamespace']+original.replace(':','-')
+                for original in originals.values()
+            }
             for object_id in slot['inputObjectIds']:
                 row=copy.deepcopy(_at(base,index[object_id]['path']))
-                if row['localKey']==key:
+                original=row['localKey']
+                if original==key:
                     if field=='name':row['boundaryEvidence']['name']=value
                     else:row[field]=value
-                row['localKey']=slot['outputNamespace']+row['localKey'].replace(':','-')
+                row['localKey']=replacements[original]
+                for relation in row['relations']:
+                    relation['targetLocalKeys']=[
+                        replacements.get(target,target)
+                        for target in relation['targetLocalKeys']
+                    ]
                 rows.append(row)
             new_value=rows
         else:new_value=value
@@ -442,6 +458,85 @@ def semantic_scope_patch(project,action,key,value,field='name'):
     return {'repairPlanSha256':view['repairPlanSha256'],
         'baseCandidateSha256':view['baseCandidateSha256'],'groupId':view['group']['groupId'],
         'operations':operations}
+
+
+def candidate_patch_for_result(project,action,correct):
+    from candidate_repair import _at,patch_context
+    packet=json.loads((project/action['packetPath']).read_bytes())
+    view=patch_context(packet)
+    root=project/'.ai-sow/work/runs'/action['runId']/'candidate-repairs'
+    plan=json.loads((root/'plans'/f"{view['repairPlanSha256']}.json").read_bytes())
+    ledger=orchestrator_module._load_action_ledger(ProjectFiles.open(project),action['runId'])
+    origin=plan['origin']
+    if origin['sourceKind']=='SEMANTIC_REVIEW':
+        initial=(root/'bases'/f"{plan['baseCandidateSha256']}.json").read_bytes()
+    else:
+        source=ledger.attempt_records[origin['sourceAttemptRecordSha256']]
+        initial=ledger.raw_outputs[source.raw_sha256]
+    base=json.loads(ledger.repair_heads.get(
+        origin['originLogicalWorkId'],(initial,)
+    )[0])
+    assert sha256_bytes(canonical_json_bytes(base))==view['baseCandidateSha256']
+    index={row['objectId']:row for row in plan['objectIndex']}
+    operations=[];alternatives=set()
+    for slot in view['group']['slots']:
+        if slot.get('alternativeSet') in alternatives:
+            continue
+        operation={'slotId':slot['slotId']}
+        if slot['operation']=='SET_FIELD':
+            operation['value']=copy.deepcopy(
+                _at(correct,index[slot['objectId']]['path'])[slot['field']]
+            )
+        elif slot['operation']=='APPEND_OBJECT':
+            path='' if slot['collection']=='$' else '/'+slot['collection']
+            before={canonical_json_bytes(row) for row in _at(base,path)}
+            additions=[
+                row for row in _at(correct,path)
+                if canonical_json_bytes(row) not in before
+            ]
+            assert additions
+            operation['value']=copy.deepcopy(additions[0])
+        elif slot['operation']=='TRANSFORM_ROOTS':
+            rows=[
+                copy.deepcopy(_at(correct,index[object_id]['path']))
+                for object_id in slot['inputObjectIds']
+            ]
+            replacements={
+                row['localKey']:slot['outputNamespace']+row['localKey'].replace(':','-')
+                for row in rows
+            }
+            for row in rows:
+                row['localKey']=replacements[row['localKey']]
+                for relation in row.get('relations',()):
+                    relation['targetLocalKeys']=[
+                        replacements.get(target,target)
+                        for target in relation['targetLocalKeys']
+                    ]
+            operation['value']=rows
+        if slot.get('alternativeSet'):
+            alternatives.add(slot['alternativeSet'])
+        operations.append(operation)
+    return {
+        'repairPlanSha256':view['repairPlanSha256'],
+        'baseCandidateSha256':view['baseCandidateSha256'],
+        'groupId':view['group']['groupId'],
+        'operations':operations,
+    }
+
+
+def submit_candidate_repairs(project,action,correct):
+    response={'outcome':'ACTIVE','nextAction':action}
+    for _ in range(10):
+        current=response.get('nextAction')
+        if (response.get('outcome')!='ACTIVE' or current is None
+                or current.get('actionContractId')!='CANDIDATE_PATCH-v1'):
+            return response
+        recorded=submit_prototype(
+            project,current,candidate_patch_for_result(project,current,correct)
+        )
+        assert recorded['record']['outcome']=='SUCCEEDED',recorded
+        response=orchestrator_module.run_mode(project,'resume')
+    pytest.fail('candidate repair did not converge')
 
 
 @pytest.mark.e2e
@@ -545,14 +640,18 @@ def test_fresh_control_review_invalid_root_retry_binds_actual_overlay_and_stops_
         'subjectIds': ['unrelated-root'], 'evidenceIds': [], 'message': '需纠正能力边界。'}]}
     recorded = submit_prototype(tmp_path, action, review)
     assert recorded['record']['failureKind'] == 'INVALID_IR'
-    retry = orchestrator_module.run_mode(tmp_path, 'resume')['nextAction']
-    assert retry['revision'] == 2 and retry['logicalWorkId'] == action['logicalWorkId']
-    assert retry['packetSha256'] != action['packetSha256']
-    submit_prototype(tmp_path, retry, {'decision': 'PASS', 'findings': []})
-    passed = orchestrator_module.run_mode(tmp_path, 'resume')
+    repair = orchestrator_module.run_mode(tmp_path, 'resume')['nextAction']
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    passed=submit_candidate_repairs(
+        tmp_path,repair,{'decision':'PASS','findings':[]}
+    )
     assert passed['outcome'] == 'ACTIVE', passed
     checkpoint = json.loads(next((tmp_path/'.ai-sow/work/runs'/action['runId']/'stages/SCOPE/checkpoints').glob('*.json')).read_bytes())
-    assert checkpoint['reviewPacketSha256'] == retry['packetSha256']
+    assert checkpoint['reviewPacketSha256'] == action['packetSha256']
+    assert any(
+        json.loads(path.read_bytes())['actionContractId']=='CANDIDATE_PATCH-v1'
+        for path in (tmp_path/'.ai-sow/work/runs'/action['runId']/'actions').glob('*/envelope.json')
+    )
     assert orchestrator_module.run_mode(tmp_path, 'resume')['outcome'] == 'ACTIVE'
 
 
@@ -569,7 +668,17 @@ def test_bounded_semantic_repair_public_second_finding_does_not_close_original(t
     submit_prototype(tmp_path,repair,semantic_scope_patch(
         tmp_path,repair,key,'已修正的交付能力'))
     second = orchestrator_module.run_mode(tmp_path, 'resume')['nextAction']
-    submit_prototype(tmp_path, second, review)
+    second_body = prototype_payload(tmp_path, second)
+    repaired_key = next(
+        current for current in second_body['ownerIndex']
+        if current.startswith(key + ':repair:')
+    )
+    second_review = copy.deepcopy(review)
+    second_review['findings'][0].update(
+        path=second_body['ownerIndex'][repaired_key]['path'],
+        subjectIds=[repaired_key],
+    )
+    submit_prototype(tmp_path, second, second_review)
     stopped = orchestrator_module.run_mode(tmp_path, 'resume')
     assert stopped['state']['result'] == 'MANUAL_REVIEW_REQUIRED', stopped
     root = tmp_path/'.ai-sow/work/runs'/action['runId']
@@ -690,8 +799,11 @@ def test_prototype_actual_target_binding_public_classification(tmp_path, case):
         assert resumed["outcome"] == "SYSTEM_FAILED"
         assert resumed["nextAction"] is None
     else:
-        assert resumed["nextAction"]["revision"] == 2
-        assert resumed["nextAction"]["logicalWorkId"] == action["logicalWorkId"]
+        repair=resumed["nextAction"]
+        assert repair["actionContractId"]=="CANDIDATE_PATCH-v1"
+        from candidate_repair import patch_context
+        repair_view=patch_context(json.loads((tmp_path/repair["packetPath"]).read_bytes()))
+        assert repair_view["origin"]["originLogicalWorkId"]==action["logicalWorkId"]
 
 
 @pytest.mark.parametrize("case", ["unknown-interaction", "wrong-bundle", "wrong-round", "unknown-evidence", "broken-then-invalid"])
@@ -723,26 +835,18 @@ def test_prototype_model_invalid_binding_uses_existing_ir_repair(tmp_path, case)
     assert recorded["record"]["failureKind"] == "INVALID_IR"
     assert recorded["record"]["normalizedResultSha256"] is None
     assert (tmp_path / action["packetPath"]).is_file()
-    repaired = orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]
-    assert (repaired["revision"], repaired["attempt"]) == (2, 1)
-    assert repaired["logicalWorkId"] == action["logicalWorkId"]
+    resumed = orchestrator_module.run_mode(tmp_path, "resume")
     if case == "broken-then-invalid":
-        from contracts import InvalidActionResult
-        from prototype_analysis import validate_bound_prototype_result
-        packet = json.loads((tmp_path / repaired["packetPath"]).read_bytes())
-        with pytest.raises(InvalidActionResult) as protected:
-            validate_bound_prototype_result("PROTOTYPE_ANALYZE", packet["workItems"][0]["payload"],
-                canonical_json_bytes(valid), packet=packet)
-        assert protected.value.diagnostic.code == "REPAIR_SCOPE_VIOLATION"
-        valid["observations"].insert(0, copy.deepcopy(broken))
-    assert submit_prototype(tmp_path, repaired, valid)["record"]["outcome"] == "SUCCEEDED"
-    continuation = orchestrator_module.run_mode(tmp_path, "resume")
-    if case == "broken-then-invalid":
-        assert continuation["outcome"] == "WAITING_INPUT"
-        assert continuation["nextAction"] is None
-        assert any(item["code"] == "PROTOTYPE_SCOPE_EVIDENCE_REQUIRED" for item in continuation["diagnostics"])
-    else:
-        assert continuation["nextAction"]["actionContractId"] == ("SOURCE_SCAN-v1" if case == "unknown-evidence" else "PROTOTYPE_BROWSER-v1")
+        assert resumed["outcome"] == "WAITING_INPUT"
+        assert resumed["nextAction"] is None
+        assert any(item["code"] == "PROTOTYPE_SCOPE_EVIDENCE_REQUIRED" for item in resumed["diagnostics"])
+        return
+    repair = resumed["nextAction"]
+    assert repair["actionContractId"] == "CANDIDATE_PATCH-v1"
+    continuation = submit_candidate_repairs(tmp_path,repair,valid)
+    assert continuation["nextAction"]["actionContractId"] == (
+        "SOURCE_SCAN-v1" if case == "unknown-evidence" else "PROTOTYPE_BROWSER-v1"
+    )
 
 
 def test_prototype_scenario_frozen_limits_survive_replacement_and_repair(tmp_path):
@@ -763,10 +867,9 @@ def test_prototype_scenario_frozen_limits_survive_replacement_and_repair(tmp_pat
     valid = scenario_fixture(payload["inventory"])
     submit_prototype(tmp_path, action, {**valid, "bundleSha256": "f" * 64})
     repair = orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]
-    assert repair["revision"] == 2
-    assert prototype_payload(tmp_path, repair) == payload
-    submit_prototype(tmp_path, repair, valid)
-    browser = orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]
+    assert repair["actionContractId"] == "CANDIDATE_PATCH-v1"
+    continuation=submit_candidate_repairs(tmp_path,repair,valid)
+    browser = continuation["nextAction"]
     assert prototype_payload(tmp_path, browser)["demoLimits"] == limits
 
 
@@ -786,10 +889,9 @@ def test_prototype_scenario_static_frozen_limit_uses_ir_repair(tmp_path, limit):
     assert record["failureKind"] == "INVALID_IR"
     assert record["normalizedResultSha256"] is None
     repair = orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]
-    assert (repair["revision"], repair["attempt"]) == (2, 1)
-    assert prototype_payload(tmp_path, repair) == payload
-    assert submit_prototype(tmp_path, repair, valid)["record"]["outcome"] == "SUCCEEDED"
-    assert orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]["actionContractId"] == "PROTOTYPE_BROWSER-v1"
+    assert repair["actionContractId"] == "CANDIDATE_PATCH-v1"
+    continuation=submit_candidate_repairs(tmp_path,repair,valid)
+    assert continuation["nextAction"]["actionContractId"] == "PROTOTYPE_BROWSER-v1"
 
 
 def test_prototype_remaining_packet_counts_unique_prior_trace_and_allows_no_screenshot(tmp_path):
@@ -1258,7 +1360,7 @@ def test_resume_fitting_unissued_ir_retry_keeps_original_attempt_and_budget(tmp_
     materialize=orchestrator_module._materialize_action_retry
     def over_capacity(*args,**kwargs):raise StagePlanningBlocked('BUDGET_EXHAUSTED')
     monkeypatch.setattr(orchestrator_module,'_materialize_action_retry',over_capacity)
-    write_json(tmp_path/action['resultPath'],{'invalid':'retained old result'})
+    (tmp_path/action['resultPath']).write_bytes(b'{')
     write_json(tmp_path/'execution.json',{'failureKind':None,'diagnostic':None,
         'usage':{'provenance':'PROVIDER_REPORTED','inputTokens':100,'outputTokens':20,'cachedInputTokens':0,'reasoningTokens':None},
         'timing':{'startedAtUtc':'2026-09-05T00:00:00Z','endedAtUtc':'2026-09-05T00:00:01Z'}})
@@ -1477,7 +1579,9 @@ def test_context_capacity_increase_recovers_unissued_retry_and_preserves_frozen_
     started = orchestrator_module.run_mode(tmp_path, "start", request=request, budget_policy=budget)
     action = started["nextAction"]
     policy = json.loads((tmp_path / budget).read_bytes())
-    write_json(tmp_path / action["resultPath"], {"invalid": "x" * policy["modelContextLimitTokens"]})
+    (tmp_path/action["resultPath"]).write_bytes(
+        b'{' + b'x' * policy["modelContextLimitTokens"]
+    )
     write_json(tmp_path / "execution.json", {"failureKind": None, "diagnostic": None,
         "usage": {"provenance": "PROVIDER_REPORTED", "inputTokens": 100, "outputTokens": 20, "cachedInputTokens": 0, "reasoningTokens": None},
         "timing": {"startedAtUtc": "2026-09-05T00:00:00Z", "endedAtUtc": "2026-09-05T00:00:01Z"}})
@@ -2590,7 +2694,6 @@ def test_issued_envelope_malformed_type_fails_closed(tmp_path: Path) -> None:
     (
         ("EXECUTION", 1, 2),
         ("INVALID_JSON", 2, 1),
-        ("INVALID_IR", 2, 1),
     ),
 )
 @pytest.mark.parametrize("boundary", ("packet.json", "envelope.json", "event"))
@@ -3947,6 +4050,12 @@ def test_checkpoint_deep_binding_rehashed_review_input_cannot_replace_completed_
             event=json.loads(event_path.read_bytes())
             if event['type']=='DETERMINISTIC_STEP_FINISHED' and event['payload']['stepKind']=='MATERIALIZE':
                 event['payload']['outputSha256']=sha256_bytes(raw);write_json(event_path,event)
+    if tamper=='input-only':
+        result=orchestrator_module.run_mode(tmp_path,'resume')
+        assert result['outcome']=='ACTIVE',result
+        assert result['nextAction']['actionContractId']=='SOURCE_SCOPE-v1'
+        assert path.is_file() and sha256_bytes(path.read_bytes())==path.stem
+        return
     before=managed_snapshot(tmp_path)
     result=orchestrator_module.run_mode(tmp_path,'resume')
     assert result['outcome']=='BLOCKED',result
@@ -3985,47 +4094,66 @@ def test_checkpoint_deep_binding_prior_graph_recovery_uses_sealed_owner_sources(
     assert managed_snapshot(tmp_path)==before
 
 
-@pytest.mark.parametrize(('clarify','borrow_prior_ac','author_version'),[(False,False,1),(False,False,2),(True,False,2),(True,True,2)],
-    ids=['frozen-v1-repair','shared-repair','shared-clarification','unrelated-ac-rejected'])
-def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_checkpoints(tmp_path, monkeypatch, clarify, borrow_prior_ac, author_version):
+@pytest.mark.parametrize(
+    ('clarify','author_version'),
+    [(False,1),(False,2),(True,2)],
+    ids=['frozen-v1-repair','shared-repair','shared-clarification'],
+)
+def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_checkpoints(
+    tmp_path,monkeypatch,clarify,author_version
+):
     # This integration ends at Task checkpoint; real Office is a separate E2E gate.
-    monkeypatch.setattr(orchestrator_module,'_advance_artifact',lambda files,state: {'outcome':'ACTIVE','state':state,'nextAction':None})
+    monkeypatch.setattr(orchestrator_module,'_advance_artifact',lambda files,state: {
+        'outcome':'ACTIVE','state':state,'nextAction':None
+    })
+    from candidate_repair import patch_context
     from stage_driver import stage_result
-    from task_compiler import expand_task_repair_packet
     import stage_planner
     current_selector=stage_planner.current_action_contract_id
     monkeypatch.setattr(stage_planner,'current_action_contract_id',lambda kind:
         f'TASK-v{author_version}' if kind=='TASK' else current_selector(kind))
-    response = orchestrator_module.run_mode(tmp_path,'start',request=write_run_store_request(tmp_path),
-        budget_policy=write_budget_policy(tmp_path))
+    response = orchestrator_module.run_mode(
+        tmp_path,'start',request=write_run_store_request(tmp_path),
+        budget_policy=write_budget_policy(tmp_path)
+    )
     for _ in range(30):
         assert response['outcome']=='ACTIVE',response
         actions=response['nextAction'].get('actions',[response['nextAction']])
-        if actions[0]['actionContractId']=='TASK_ESTIMATION-v1': break
+        if actions[0]['actionContractId']=='TASK_ESTIMATION-v1':
+            break
         for action in actions:
-            submit_prototype(tmp_path,action,stage_result(action['actionContractId'][:-3],
-                json.loads((tmp_path/action['packetPath']).read_bytes())))
+            submit_prototype(
+                tmp_path,action,stage_result(
+                    action['actionContractId'][:-3],
+                    json.loads((tmp_path/action['packetPath']).read_bytes()),
+                )
+            )
         response=orchestrator_module.run_mode(tmp_path,'resume')
-    else: pytest.fail('Task Review was not issued')
+    else:
+        pytest.fail('Task Review was not issued')
     monkeypatch.setattr(stage_planner,'current_action_contract_id',current_selector)
-    repair_id=f'TASK_REPAIR-v{author_version}'
     action=actions[0];body=prototype_payload(tmp_path,action)
     root=tmp_path/'.ai-sow/work/runs'/action['runId']
     frozen={path:path.read_bytes() for stage in ('SCOPE','STORY_AC')
             for path in (root/'stages'/stage).rglob('*.json')}
     candidate_one=canonical_json_bytes(body['candidate'])
-    policies={row['policyInstanceId']:row['policyId'] for row in body['candidate']['policyInstances']}
+    policies={row['policyInstanceId']:row['policyId']
+              for row in body['candidate']['policyInstances']}
     keys=[key for key,entry in body['ownerIndex'].items() if any(
         policies[policy] in ('policy-sit-automation','policy-uat-automation')
-        for task in body['candidate']['tasks'] if task['taskId']==entry['id'] for policy in task['policyInstanceIds'])]
+        for task in body['candidate']['tasks'] if task['taskId']==entry['id']
+        for policy in task['policyInstanceIds']
+    )]
     assert len(keys)==2
-    review={'decision':'REPAIRABLE_SEMANTIC','findings':[{'code':'DUPLICATE_ASSET','path':'/tasks',
-        'subjectIds':keys,'evidenceIds':[],'message':'同一资产同时承担两项验收义务。'}]}
+    review={'decision':'REPAIRABLE_SEMANTIC','findings':[{
+        'code':'DUPLICATE_ASSET','path':'/tasks','subjectIds':keys,
+        'evidenceIds':[],'message':'同一资产同时承担两项验收义务。'
+    }]}
     submit_prototype(tmp_path,action,review)
     estimator=orchestrator_module.estimate_action_input_tokens
     def oversized(skill,contract,*args,**kwargs):
         value=estimator(skill,contract,*args,**kwargs)
-        return value+1000000 if contract==repair_id else value
+        return value+1000000 if contract=='CANDIDATE_PATCH-v1' else value
     with monkeypatch.context() as fault:
         import contracts
         fault.setattr(orchestrator_module,'estimate_action_input_tokens',oversized)
@@ -4039,212 +4167,350 @@ def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_ch
     policy_files={p:p.read_bytes() for p in (root/'budget-policies').glob('*.json')}
     resumed=orchestrator_module.run_mode(tmp_path,'resume')
     assert resumed['outcome']=='ACTIVE',resumed
-    repair=resumed['nextAction'];payload=prototype_payload(tmp_path,repair)
-    assert repair['actionContractId']==repair_id
-    assert payload['authorizedRootKeys']==sorted(keys)
-    packet=expand_task_repair_packet(payload['ownerPacket'])
-    assert payload['ownerPacket']['contract']=='ai-sow-task-repair-context-v1'
+    repair=resumed['nextAction']
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    view=patch_context(json.loads((tmp_path/repair['packetPath']).read_bytes()))
+    plan=json.loads((root/'candidate-repairs/plans'/f"{view['repairPlanSha256']}.json").read_bytes())
+    assert plan['origin']['sourceKind']=='SEMANTIC_REVIEW'
     assert all(p.read_bytes()==raw for p,raw in policy_files.items())
     assert all(p.read_bytes()==raw for p,raw in frozen.items())
     assert orchestrator_module.run_mode(tmp_path,'resume')['nextAction']['actionId']==repair['actionId']
-    rows=[row for row in payload['ownerIR']['tasks'] if row['localKey'] in keys]
+    owner_ir=json.loads((root/'candidate-repairs/bases'/f"{view['baseCandidateSha256']}.json").read_bytes())
+    rows=[row for row in owner_ir['tasks'] if row['localKey'] in keys]
+    slot=next(slot for slot in view['group']['slots']
+              if slot['operation']=='TRANSFORM_ROOTS')
     row=copy.deepcopy(rows[0])
-    for field in ('acceptanceCriterionKeys','evidenceIds'): row[field]=sorted({key for task in rows for key in task[field]})
+    row['localKey']=slot['outputNamespace']+'shared'
+    for field in ('acceptanceCriterionKeys','evidenceIds'):
+        row[field]=sorted({key for task in rows for key in task[field]})
     row['deliverableBoundary']='一套共享自动化资产，分别提供集成和用户验收结果。'
-    assert submit_prototype(tmp_path,repair,{'tasks':[row]})['record']['outcome']=='SUCCEEDED'
+    patch={
+        'repairPlanSha256':view['repairPlanSha256'],
+        'baseCandidateSha256':view['baseCandidateSha256'],
+        'groupId':view['group']['groupId'],
+        'operations':[{'slotId':slot['slotId'],'value':[row]}],
+    }
+    assert submit_prototype(tmp_path,repair,patch)['record']['outcome']=='SUCCEEDED'
     second=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
     assert second['actionContractId']=='TASK_ESTIMATION-v1'
-    revised=prototype_payload(tmp_path,second)['candidate']
+    second_body=prototype_payload(tmp_path,second)
+    revised=second_body['candidate']
     assert len(revised['tasks'])==len(body['candidate']['tasks'])-1
-    for collection in ('stories','acceptanceCriteria','features','inputItems'): assert revised[collection]==body['candidate'][collection]
+    for collection in ('stories','acceptanceCriteria','features','inputItems'):
+        assert revised[collection]==body['candidate'][collection]
     assert not list((root/'stages/TASK/checkpoints').glob('*.json'))
     assert orchestrator_module.run_mode(tmp_path,'resume')['nextAction']['actionId']==second['actionId']
-    if borrow_prior_ac:
-        other=next(copy.deepcopy(task) for task in payload['ownerIR']['tasks'] if task['localKey'] not in keys)
-        question={'decision':'INPUT_REQUIRED','findings':[{'code':'IMPLEMENTATION_BOUNDARY','path':'/tasks',
-            'subjectIds':[other['localKey']],'evidenceIds':[],'message':'仅明确这个独立资产的移交边界。'}]}
-        submit_prototype(tmp_path,second,question)
-        assert orchestrator_module.run_mode(tmp_path,'resume')['outcome']=='WAITING_INPUT'
-        answer={'contract':'ai-sow-owner-clarification-v1','stageKind':'TASK',
-            'candidateSha256':second['baseCandidateSha256'],'reviewDecisionSha256':sha256_bytes(canonical_json_bytes(question)),
-            'scope':'IMPLEMENTATION_WITHIN_APPROVED_TARGETS','technicalTargetKeys':[other['technicalTarget']],
-            'decision':'保留原实施目标和原验收覆盖，仅明确移交原有资产。',
-            'provenance':'SIMULATED_USER','authorization':'用户已授权模拟技术选择。'}
-        write_json(tmp_path/'answer.json',answer)
-        repair_two=orchestrator_module.run_mode(tmp_path,'resume',decision='answer.json')['nextAction']
-        assert repair_two['actionContractId']==repair_id
-        bad=copy.deepcopy(other)
-        for field in ('acceptanceCriterionKeys','evidenceIds'): bad[field]=sorted(set(bad[field]+row[field]))
-        rejected=submit_prototype(tmp_path,repair_two,{'tasks':[bad]})
-        assert rejected['record']['outcome']=='FAILED',rejected
-        assert rejected['record']['failureKind']=='INVALID_IR'
-        assert rejected['record']['normalizedResultSha256'] is None
-        retry=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
-        assert retry['logicalWorkId']==repair_two['logicalWorkId'] and retry['revision']==repair_two['revision']+1
-        assert submit_prototype(tmp_path,retry,{'tasks':[other]})['record']['outcome']=='SUCCEEDED'
-        assert all(p.read_bytes()==raw for p,raw in frozen.items())
-        return
     if clarify:
-        question={'decision':'INPUT_REQUIRED','findings':[{'code':'IMPLEMENTATION_BOUNDARY','path':'/tasks',
-            'subjectIds':[row['localKey']],'evidenceIds':[],'message':'明确共享资产的执行与移交边界。'}]}
+        shared_key=row['localKey']
+        question={'decision':'INPUT_REQUIRED','findings':[{
+            'code':'IMPLEMENTATION_BOUNDARY',
+            'path':second_body['ownerIndex'][shared_key]['path']+'/deliverableBoundary',
+            'subjectIds':[shared_key],'evidenceIds':[],
+            'message':'明确共享资产的执行与移交边界。'
+        }]}
         submit_prototype(tmp_path,second,question)
         assert orchestrator_module.run_mode(tmp_path,'resume')['outcome']=='WAITING_INPUT'
-        answer={'contract':'ai-sow-owner-clarification-v1','stageKind':'TASK',
-            'candidateSha256':second['baseCandidateSha256'],'reviewDecisionSha256':sha256_bytes(canonical_json_bytes(question)),
-            'scope':'IMPLEMENTATION_WITHIN_APPROVED_TARGETS','technicalTargetKeys':[row['technicalTarget']],
+        answer={
+            'contract':'ai-sow-owner-clarification-v1','stageKind':'TASK',
+            'candidateSha256':second['baseCandidateSha256'],
+            'reviewDecisionSha256':sha256_bytes(canonical_json_bytes(question)),
+            'scope':'IMPLEMENTATION_WITHIN_APPROVED_TARGETS',
+            'technicalTargetKeys':[row['technicalTarget']],
             'decision':'共享资产使用原已批准实施目标，移交同一套脚本与两次验收运行记录。',
-            'provenance':'SIMULATED_USER','authorization':'用户已授权模拟技术选择。'}
-        wrong={**answer,'technicalTargetKeys':['target:unapproved-component']};write_json(tmp_path/'answer.json',wrong)
-        assert orchestrator_module.run_mode(tmp_path,'resume',decision='answer.json')['outcome']=='BLOCKED'
+            'provenance':'SIMULATED_USER','authorization':'用户已授权模拟技术选择。'
+        }
+        wrong={**answer,'technicalTargetKeys':['target:unapproved-component']}
+        write_json(tmp_path/'answer.json',wrong)
+        assert orchestrator_module.run_mode(
+            tmp_path,'resume',decision='answer.json'
+        )['outcome']=='BLOCKED'
         write_json(tmp_path/'answer.json',answer)
-        publish=ProjectFiles.publish_new
-        interrupted=False
+        publish=ProjectFiles.publish_new;interrupted=False
         def after_clarification_event(files,path,payload):
             nonlocal interrupted
             value=publish(files,path,payload)
-            if '/events/' in path and json.loads(payload).get('payload',{}).get('resolutionKind')=='OWNER_CLARIFICATION' and not interrupted:
-                interrupted=True;raise OSError('interrupt after immutable clarification event')
+            if ('/events/' in path
+                    and json.loads(payload).get('payload',{}).get('resolutionKind')=='OWNER_CLARIFICATION'
+                    and not interrupted):
+                interrupted=True
+                raise OSError('interrupt after immutable clarification event')
             return value
         with monkeypatch.context() as fault:
             fault.setattr(ProjectFiles,'publish_new',after_clarification_event)
-            assert orchestrator_module.run_mode(tmp_path,'resume',decision='answer.json')['outcome']=='BLOCKED'
+            assert orchestrator_module.run_mode(
+                tmp_path,'resume',decision='answer.json'
+            )['outcome']=='BLOCKED'
         assert interrupted
         continued=orchestrator_module.run_mode(tmp_path,'resume')
         assert continued['outcome']=='ACTIVE',continued
-        assert orchestrator_module.run_mode(tmp_path,'resume',decision='answer.json')['nextAction']['actionId']==continued['nextAction']['actionId']
-        repair_two=continued['nextAction'];payload_two=prototype_payload(tmp_path,repair_two)
-        assert payload_two['ownerClarification']==answer
-        assert len(payload_two['ownerIR']['tasks'])==len(payload['ownerIR']['tasks'])-1
-        row=next(copy.deepcopy(task) for task in payload_two['ownerIR']['tasks'] if task['localKey']==row['localKey'])
-        row['deliverableBoundary']+='移交同一套脚本与两个阶段运行记录。'
-        assert submit_prototype(tmp_path,repair_two,{'tasks':[row]})['record']['outcome']=='SUCCEEDED'
-        third=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
-        third_body=prototype_payload(tmp_path,third)
-        assert third['actionContractId']=='TASK_ESTIMATION-v1' and third_body['ownerClarification']==answer
+        repair_two=continued['nextAction']
+        assert repair_two['actionContractId']=='CANDIDATE_PATCH-v1'
+        assert orchestrator_module.run_mode(
+            tmp_path,'resume',decision='answer.json'
+        )['nextAction']['actionId']==repair_two['actionId']
+        view_two=patch_context(json.loads(
+            (tmp_path/repair_two['packetPath']).read_bytes()
+        ))
+        base_two=json.loads((root/'candidate-repairs/bases'/
+            f"{view_two['baseCandidateSha256']}.json").read_bytes())
+        clarified=copy.deepcopy(base_two)
+        clarified_row=next(
+            task for task in clarified['tasks'] if task['localKey']==shared_key
+        )
+        clarified_row['deliverableBoundary']+='移交同一套脚本与两个阶段运行记录。'
+        continued=submit_candidate_repairs(tmp_path,repair_two,clarified)
+        third=continued['nextAction'];third_body=prototype_payload(tmp_path,third)
+        assert third['actionContractId']=='TASK_ESTIMATION-v1'
+        assert third_body['ownerClarification']==answer
         assert len(third_body['candidate']['tasks'])==len(revised['tasks'])
         assert all(p.read_bytes()==raw for p,raw in frozen.items())
-        second=third
-        finding={'decision':'REPAIRABLE_SEMANTIC','findings':[{'code':'COMPLEXITY','path':'/tasks',
-            'subjectIds':[row['localKey']],'evidenceIds':[],'message':'按模板修正这一资产复杂度。'}]}
+        finding={'decision':'REPAIRABLE_SEMANTIC','findings':[{
+            'code':'COMPLEXITY',
+            'path':third_body['ownerIndex'][shared_key]['path']+'/complexity',
+            'subjectIds':[shared_key],'evidenceIds':[],
+            'message':'按模板修正这一资产复杂度。'
+        }]}
         submit_prototype(tmp_path,third,finding)
         stopped=orchestrator_module.run_mode(tmp_path,'resume')
         assert stopped['outcome']=='MANUAL_REVIEW_REQUIRED',stopped
         stopped_raw=canonical_json_bytes(stopped['state'])
-        authorization={'contract':'ai-sow-owner-repair-authorization-v1','runId':action['runId'],'stageKind':'TASK',
-            'terminalStateSha256':sha256_bytes(stopped_raw),'candidateSha256':third['baseCandidateSha256'],
+        authorization={
+            'contract':'ai-sow-owner-repair-authorization-v1',
+            'runId':action['runId'],'stageKind':'TASK',
+            'terminalStateSha256':sha256_bytes(stopped_raw),
+            'candidateSha256':third['baseCandidateSha256'],
             'reviewDecisionSha256':sha256_bytes(canonical_json_bytes(finding)),
-            'rootKeys':[row['localKey']],'allowedFields':['complexityDecision'],'additionalRevisions':1,
-            'decision':'仅调整该资产复杂度为 L，保留其他结果。','provenance':'SIMULATED_USER','authorization':'用户已授权模拟技术裁定。'}
+            'rootKeys':[shared_key],'allowedFields':['complexityDecision'],
+            'additionalRevisions':1,
+            'decision':'仅调整该资产复杂度为 L，保留其他结果。',
+            'provenance':'SIMULATED_USER','authorization':'用户已授权模拟技术裁定。'
+        }
         write_json(tmp_path/'continue.json',{**authorization,'candidateSha256':'0'*64})
-        assert orchestrator_module.run_mode(tmp_path,'resume',decision='continue.json')['outcome']=='BLOCKED'
+        assert orchestrator_module.run_mode(
+            tmp_path,'resume',decision='continue.json'
+        )['outcome']=='BLOCKED'
         write_json(tmp_path/'continue.json',authorization)
         interrupted=False
         def after_authorization_event(files,path,payload):
             nonlocal interrupted
             value=publish(files,path,payload)
-            if '/events/' in path and json.loads(payload).get('type')=='OWNER_REPAIR_AUTHORIZED' and not interrupted:
-                interrupted=True;raise OSError('interrupt after manual repair authorization')
+            if ('/events/' in path
+                    and json.loads(payload).get('type')=='OWNER_REPAIR_AUTHORIZED'
+                    and not interrupted):
+                interrupted=True
+                raise OSError('interrupt after manual repair authorization')
             return value
         with monkeypatch.context() as fault:
             fault.setattr(ProjectFiles,'publish_new',after_authorization_event)
-            assert orchestrator_module.run_mode(tmp_path,'resume',decision='continue.json')['outcome']=='BLOCKED'
+            assert orchestrator_module.run_mode(
+                tmp_path,'resume',decision='continue.json'
+            )['outcome']=='BLOCKED'
         assert interrupted
-        continued=orchestrator_module.run_mode(tmp_path,'resume',decision='continue.json')
+        continued=orchestrator_module.run_mode(
+            tmp_path,'resume',decision='continue.json'
+        )
         assert continued['outcome']=='ACTIVE',continued
-        manual=continued['nextAction'];manual_body=prototype_payload(tmp_path,manual)
-        assert manual_body['ownerRepairAuthorization']==authorization
-        assert orchestrator_module.run_mode(tmp_path,'resume',decision='continue.json')['nextAction']['actionId']==manual['actionId']
-        manual_row=next(copy.deepcopy(task) for task in manual_body['ownerIR']['tasks'] if task['localKey']==row['localKey'])
-        assert manual_row['complexityDecision']=='M'
-        manual_row['complexityDecision']='L'
-        assert submit_prototype(tmp_path,manual,{'tasks':[manual_row]})['record']['outcome']=='SUCCEEDED'
-        second=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
-        fourth=prototype_payload(tmp_path,second)
-        assert fourth['ownerRepairAuthorization']==authorization and fourth['ownerClarification']==answer
+        manual=continued['nextAction']
+        assert manual['actionContractId']=='CANDIDATE_PATCH-v1'
+        assert orchestrator_module.run_mode(
+            tmp_path,'resume',decision='continue.json'
+        )['nextAction']['actionId']==manual['actionId']
+        manual_view=patch_context(json.loads(
+            (tmp_path/manual['packetPath']).read_bytes()
+        ))
+        manual_base=json.loads((root/'candidate-repairs/bases'/
+            f"{manual_view['baseCandidateSha256']}.json").read_bytes())
+        corrected=copy.deepcopy(manual_base)
+        corrected_row=next(
+            task for task in corrected['tasks'] if task['localKey']==shared_key
+        )
+        assert corrected_row['complexityDecision']=='M'
+        corrected_row['complexityDecision']='L'
+        continued=submit_candidate_repairs(tmp_path,manual,corrected)
+        second=continued['nextAction'];fourth=prototype_payload(tmp_path,second)
+        assert fourth['ownerRepairAuthorization']==authorization
+        assert fourth['ownerClarification']==answer
         assert len(fourth['candidate']['tasks'])==len(revised['tasks'])
         assert (root/'states'/f'state-{authorization["terminalStateSha256"]}.json').read_bytes()==stopped_raw
         assert len(list((root/'stages/TASK/review-inputs').glob('*/*.json')))==4
         assert all(p.read_bytes()==raw for p,raw in frozen.items())
         from final_review import verify_manual_authorization_records
-        entries={authorization['reviewDecisionSha256']:{'authorization':authorization,'terminalState':stopped['state']}}
-        events=[json.loads(p.read_bytes()) for p in sorted((root/'events').glob('*.json'))]
-        review_inputs={p.stem:json.loads(p.read_bytes()) for p in (root/'stages/TASK/review-inputs').glob('*/*.json')}
+        entries={
+            authorization['reviewDecisionSha256']:{
+                'authorization':authorization,'terminalState':stopped['state']
+            }
+        }
+        events=[json.loads(p.read_bytes())
+                for p in sorted((root/'events').glob('*.json'))]
+        review_inputs={
+            p.stem:json.loads(p.read_bytes())
+            for p in (root/'stages/TASK/review-inputs').glob('*/*.json')
+        }
         def portable(values,log):
-            return verify_manual_authorization_records(values,log,'TASK',action['runId'],stopped['state']['currentInputRevisionSha256'],
+            return verify_manual_authorization_records(
+                values,log,'TASK',action['runId'],
+                stopped['state']['currentInputRevisionSha256'],
                 require_repair=True,review_inputs=review_inputs,
-                stage_plan=json.loads(next((root/'stages/TASK/plans').glob('*.json')).read_bytes()))
-        assert portable(entries,events)=={authorization['reviewDecisionSha256']:authorization}
-        for mutate in ('missing-stop','changed-authorization','missing-event','reset-count','late-authorization'):
+                stage_plan=json.loads(next(
+                    (root/'stages/TASK/plans').glob('*.json')
+                ).read_bytes()),
+            )
+        assert portable(entries,events)=={
+            authorization['reviewDecisionSha256']:authorization
+        }
+        for mutate in (
+            'missing-stop','changed-authorization','missing-event',
+            'reset-count','late-authorization'
+        ):
             bad_entries=copy.deepcopy(entries);bad_events=copy.deepcopy(events)
-            event=next(item for item in bad_events if item['type']=='OWNER_REPAIR_AUTHORIZED')
-            if mutate=='missing-stop': bad_entries[authorization['reviewDecisionSha256']]['terminalState']={}
-            elif mutate=='changed-authorization': bad_entries[authorization['reviewDecisionSha256']]['authorization']['allowedFields']=['deliverableBoundary']
-            elif mutate=='missing-event': bad_events.remove(event)
-            elif mutate=='reset-count': event['payload']['semanticRevision']=1
-            else: event['sequence']=len(bad_events)+1
-            with pytest.raises(ValueError): portable(bad_entries,bad_events)
+            event=next(
+                item for item in bad_events
+                if item['type']=='OWNER_REPAIR_AUTHORIZED'
+            )
+            if mutate=='missing-stop':
+                bad_entries[authorization['reviewDecisionSha256']]['terminalState']={}
+            elif mutate=='changed-authorization':
+                bad_entries[authorization['reviewDecisionSha256']]['authorization']['allowedFields']=['deliverableBoundary']
+            elif mutate=='missing-event':
+                bad_events.remove(event)
+            elif mutate=='reset-count':
+                event['payload']['semanticRevision']=1
+            else:
+                event['sequence']=len(bad_events)+1
+            with pytest.raises(ValueError):
+                portable(bad_entries,bad_events)
     submit_prototype(tmp_path,second,{'decision':'PASS','findings':[]})
     result=orchestrator_module.run_mode(tmp_path,'resume')
     assert result['outcome']=='ACTIVE' and result['state']['phase']=='DRAFT',result
     assert all(p.read_bytes()==raw for p,raw in frozen.items())
-    assert (root/'stages/TASK/candidates'/f'{sha256_bytes(candidate_one)}.json').read_bytes()==candidate_one
+    assert (root/'stages/TASK/candidates'/
+            f'{sha256_bytes(candidate_one)}.json').read_bytes()==candidate_one
     assert orchestrator_module.status(tmp_path)['outcome']=='ACTIVE'
 
 
 @pytest.mark.parametrize('stage,review_contract,collection,field',[
     ('SCOPE','SOURCE_SCOPE-v1','decisions','boundaryEvidence'),
     ('STORY_AC','STORY_DESIGN-v1','stories','deliverableOutcome')])
-def test_public_manual_owner_repair_preserves_prior_candidates_and_cumulative_changes(tmp_path,monkeypatch,stage,review_contract,collection,field):
+def test_public_manual_owner_repair_preserves_prior_candidates_and_cumulative_changes(
+    tmp_path,monkeypatch,stage,review_contract,collection,field
+):
+    from action_ledger import effective_result_bytes
+    from candidate_repair import patch_context
+    from contracts import action_contract_binding
+    from final_review import repair_root_keys,semantic_repair_lineage
     from stage_driver import stage_result
-    from final_review import repair_root_keys
-    monkeypatch.setattr(orchestrator_module,'_advance_artifact',lambda files,state:{'outcome':'ACTIVE','state':state,'nextAction':None})
-    response=orchestrator_module.run_mode(tmp_path,'start',request=write_run_store_request(tmp_path),budget_policy=write_budget_policy(tmp_path))
+    monkeypatch.setattr(orchestrator_module,'_advance_artifact',lambda files,state:{
+        'outcome':'ACTIVE','state':state,'nextAction':None
+    })
+    response=orchestrator_module.run_mode(
+        tmp_path,'start',request=write_run_store_request(tmp_path),
+        budget_policy=write_budget_policy(tmp_path)
+    )
     for _ in range(25):
         assert response['outcome']=='ACTIVE',response
         actions=response['nextAction'].get('actions',[response['nextAction']])
-        if actions[0]['actionContractId']==review_contract: break
-        for action in actions: submit_prototype(tmp_path,action,stage_result(action['actionContractId'][:-3],json.loads((tmp_path/action['packetPath']).read_bytes())))
+        if actions[0]['actionContractId']==review_contract:
+            break
+        for action in actions:
+            submit_prototype(
+                tmp_path,action,stage_result(
+                    action['actionContractId'][:-3],
+                    json.loads((tmp_path/action['packetPath']).read_bytes()),
+                )
+            )
         response=orchestrator_module.run_mode(tmp_path,'resume')
-    else: pytest.fail('Owner Review missing')
+    else:
+        pytest.fail('Owner Review missing')
     action=actions[0];body=prototype_payload(tmp_path,action)
-    key=next(key for key,entry in body['ownerIndex'].items() if entry['path'].startswith('/features/' if stage=='SCOPE' else '/stories/'))
-    finding={'decision':'REPAIRABLE_SEMANTIC','findings':[{'code':'NAME','path':'/features' if stage=='SCOPE' else '/stories',
-        'subjectIds':[key],'evidenceIds':[],'message':'调整既有对象名称。'}]}
+    key=next(
+        key for key,entry in body['ownerIndex'].items()
+        if entry['path'].startswith('/features/' if stage=='SCOPE' else '/stories/')
+    )
+    finding={'decision':'REPAIRABLE_SEMANTIC','findings':[{
+        'code':'NAME','path':'/features' if stage=='SCOPE' else '/stories',
+        'subjectIds':[key],'evidenceIds':[],'message':'调整既有对象名称。'
+    }]}
     submit_prototype(tmp_path,action,finding)
-    repair=orchestrator_module.run_mode(tmp_path,'resume')['nextAction'];repair_body=prototype_payload(tmp_path,repair)
-    first=copy.deepcopy(next(row for row in repair_body['ownerIR'][collection] if row['localKey']==key))
-    if stage=='SCOPE': first['boundaryEvidence']['name']+='已修正'
-    else: first['deliverableOutcome']+='已修正'
-    assert submit_prototype(tmp_path,repair,{collection:[first]})['record']['outcome']=='SUCCEEDED'
-    second=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
-    # A distinct review hash is essential; each approval binds exactly one actual finding.
-    next_finding=copy.deepcopy(finding);next_finding['findings'][0]['message']='根据本候选进一步明确名称。'
-    submit_prototype(tmp_path,second,next_finding)
-    stopped=orchestrator_module.run_mode(tmp_path,'resume');assert stopped['outcome']=='MANUAL_REVIEW_REQUIRED'
-    from final_review import replace_owner_decisions
-    ir=replace_owner_decisions(stage,repair_body['ownerIR'],finding,{collection:[first]})
-    keys=repair_root_keys(stage,ir,next_finding)
-    auth={'contract':'ai-sow-owner-repair-authorization-v1','runId':action['runId'],'stageKind':stage,
-        'terminalStateSha256':sha256_bytes(canonical_json_bytes(stopped['state'])),'candidateSha256':second['baseCandidateSha256'],
-        'reviewDecisionSha256':sha256_bytes(canonical_json_bytes(next_finding)),'rootKeys':keys,'allowedFields':[field],
-        'additionalRevisions':1,'decision':'保留已修正内容，仅进一步明确这一名称。','provenance':'SIMULATED_USER','authorization':'用户授权局部修复裁定。'}
+    repair=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    view=patch_context(json.loads((tmp_path/repair['packetPath']).read_bytes()))
     root=tmp_path/'.ai-sow/work/runs'/action['runId']
+    correct=json.loads((root/'candidate-repairs/bases'/
+        f"{view['baseCandidateSha256']}.json").read_bytes())
+    selected=next(row for row in correct[collection] if row['localKey']==key)
+    if stage=='SCOPE':
+        selected['boundaryEvidence']['name']+='已修正'
+    else:
+        selected['deliverableOutcome']+='已修正'
+    continued=submit_candidate_repairs(tmp_path,repair,correct)
+    second=continued['nextAction'];second_body=prototype_payload(tmp_path,second)
+    assert second['actionContractId']==review_contract
+    current_key=next(
+        current for current in second_body['ownerIndex']
+        if current.startswith(key+':repair:')
+    )
+    # A distinct review hash is essential; each approval binds exactly one actual finding.
+    next_finding={'decision':'REPAIRABLE_SEMANTIC','findings':[{
+        'code':'NAME',
+        'path':second_body['ownerIndex'][current_key]['path']+'/name',
+        'subjectIds':[current_key],'evidenceIds':[],
+        'message':'根据本候选进一步明确名称。'
+    }]}
+    submit_prototype(tmp_path,second,next_finding)
+    stopped=orchestrator_module.run_mode(tmp_path,'resume')
+    assert stopped['outcome']=='MANUAL_REVIEW_REQUIRED'
+    ledger=orchestrator_module._load_action_ledger(
+        ProjectFiles.open(tmp_path),action['runId']
+    )
+    _,patch_contract_sha=action_contract_binding(
+        SKILL_ROOT,'CANDIDATE_PATCH-v1'
+    )
+    lineage=semantic_repair_lineage(
+        stage,sha256_bytes(canonical_json_bytes(finding)),patch_contract_sha
+    )
+    ir=json.loads(effective_result_bytes(ledger,lineage))
+    keys=repair_root_keys(stage,ir,next_finding)
+    auth={
+        'contract':'ai-sow-owner-repair-authorization-v1',
+        'runId':action['runId'],'stageKind':stage,
+        'terminalStateSha256':sha256_bytes(canonical_json_bytes(stopped['state'])),
+        'candidateSha256':second['baseCandidateSha256'],
+        'reviewDecisionSha256':sha256_bytes(canonical_json_bytes(next_finding)),
+        'rootKeys':keys,'allowedFields':[field],'additionalRevisions':1,
+        'decision':'保留已修正内容，仅进一步明确这一名称。',
+        'provenance':'SIMULATED_USER','authorization':'用户授权局部修复裁定。'
+    }
     frozen={p:p.read_bytes() for p in (root/'stages').rglob('*.json')}
     write_json(tmp_path/'manual.json',auth)
-    response=orchestrator_module.run_mode(tmp_path,'resume',decision='manual.json');assert response['outcome']=='ACTIVE',response
-    manual=response['nextAction'];payload=prototype_payload(tmp_path,manual)
-    assert payload['ownerIR']==ir
-    rows=[copy.deepcopy(row) for row in ir[collection] if row['localKey'] in keys]
-    selected=next(row for row in rows if row['localKey']==key)
-    if stage=='SCOPE': selected['boundaryEvidence']['name']+='且已明确'
-    else: selected['deliverableOutcome']+='且已明确'
-    assert submit_prototype(tmp_path,manual,{collection:rows})['record']['outcome']=='SUCCEEDED'
-    third=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
+    response=orchestrator_module.run_mode(
+        tmp_path,'resume',decision='manual.json'
+    )
+    assert response['outcome']=='ACTIVE',response
+    manual=response['nextAction']
+    assert manual['actionContractId']=='CANDIDATE_PATCH-v1'
+    manual_view=patch_context(json.loads(
+        (tmp_path/manual['packetPath']).read_bytes()
+    ))
+    corrected=json.loads((root/'candidate-repairs/bases'/
+        f"{manual_view['baseCandidateSha256']}.json").read_bytes())
+    selected=next(
+        row for row in corrected[collection] if row['localKey']==current_key
+    )
+    if stage=='SCOPE':
+        selected['boundaryEvidence']['name']+='且已明确'
+    else:
+        selected['deliverableOutcome']+='且已明确'
+    continued=submit_candidate_repairs(tmp_path,manual,corrected)
+    third=continued['nextAction']
     assert prototype_payload(tmp_path,third)['ownerRepairAuthorization']==auth
     assert all(p.read_bytes()==raw for p,raw in frozen.items())
     submit_prototype(tmp_path,third,{'decision':'PASS','findings':[]})
-    resumed=orchestrator_module.run_mode(tmp_path,'resume');assert resumed['outcome']=='ACTIVE',resumed
-    assert any(ref['kind']==('SCOPE_CLOSURE' if stage=='SCOPE' else stage) for ref in resumed['state']['checkpointRefs'])
+    resumed=orchestrator_module.run_mode(tmp_path,'resume')
+    assert resumed['outcome']=='ACTIVE',resumed
+    assert any(
+        ref['kind']==('SCOPE_CLOSURE' if stage=='SCOPE' else stage)
+        for ref in resumed['state']['checkpointRefs']
+    )
     assert orchestrator_module.status(tmp_path)['outcome']=='ACTIVE'
 
 

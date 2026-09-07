@@ -116,14 +116,17 @@ def test_hydrate_reserve_increase_preserves_inflight_task_and_retry(tmp_path, mo
     retry = orchestrator.run_mode(tmp_path, 'resume')
     assert retry['outcome'] == 'ACTIVE', retry
     next_action = retry['nextAction'].get('actions', [retry['nextAction']])[0]
-    assert next_action['revision'] == 2
-    assert next_action['executionLimits']['maxHydrateTokens'] == 12000
+    assert next_action['actionContractId']=='CANDIDATE_PATCH-v1'
+    from candidate_repair import patch_context
+    view=patch_context(json.loads((tmp_path/next_action['packetPath']).read_bytes()))
+    assert view['origin']['originLogicalWorkId']==action['logicalWorkId']
+    assert view['origin']['budgetPolicySha256']!=action['budgetPolicySha256']
 
 
 def test_public_identity_collision_fails_before_seal_and_revises_without_upstream_drift(tmp_path, monkeypatch):
     import orchestrator
     from stage_driver import stage_result
-    from test_orchestrator import submit_prototype
+    from test_orchestrator import submit_candidate_repairs, submit_prototype
     from task_compiler import verify_task_decision
     action = reach_task(tmp_path, monkeypatch, 2)
     packet = json.loads((tmp_path/action['packetPath']).read_bytes())
@@ -141,13 +144,11 @@ def test_public_identity_collision_fails_before_seal_and_revises_without_upstrea
     assert record['outcome']=='FAILED' and record['failureKind']=='INVALID_IR'
     assert record['diagnostic']=={'code':'TASK_IDENTITY_COLLISION','path':'/tasks','subjectIds':sorted([original_key,'other'])}
     assert record['normalizedResultSha256'] is None
-    retry = orchestrator.run_mode(tmp_path,'resume')['nextAction']
-    retry = retry.get('actions', [retry])[0]
-    assert retry['logicalWorkId']==action['logicalWorkId'] and retry['revision']==2
-    assert submit_prototype(tmp_path,retry,original)['record']['outcome']=='SUCCEEDED'
-    assert all(path.read_bytes()==raw for path,raw in upstream.items())
-    response=orchestrator.run_mode(tmp_path,'resume')
+    repair = orchestrator.run_mode(tmp_path,'resume')['nextAction']
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    response=submit_candidate_repairs(tmp_path,repair,original)
     assert response['nextAction']['actionContractId']=='TASK_ESTIMATION-v1'
+    assert all(path.read_bytes()==raw for path,raw in upstream.items())
 
 
 @pytest.mark.e2e
@@ -166,7 +167,6 @@ def test_public_repair_identity_validation_includes_untouched_roots(tmp_path, mo
     assert submit_prototype(tmp_path,action,original)['record']['outcome']=='SUCCEEDED'
     review_action=orchestrator.run_mode(tmp_path,'resume')['nextAction']
     other={**other,'localKey':action['logicalWorkId']+':other'}
-    first_key=action['logicalWorkId']+':'+first['localKey']
     finding={'decision':'REPAIRABLE_SEMANTIC','findings':[{'code':'BOUNDARY','path':'/tasks',
         'subjectIds':[other['localKey']],'evidenceIds':[],'message':'明确这一项原有交付边界。'}]}
     assert submit_prototype(tmp_path,review_action,finding)['record']['outcome']=='SUCCEEDED'
@@ -180,13 +180,3 @@ def test_public_repair_identity_validation_includes_untouched_roots(tmp_path, mo
         'groupId':view['group']['groupId'],'operations':[{'slotId':slot['slotId'],'value':[bad]}]}
     record=submit_prototype(tmp_path,repair,bad_patch)['record']
     assert record['outcome']=='FAILED' and record['failureKind']=='INVALID_IR'
-    retry=orchestrator.run_mode(tmp_path,'resume')['nextAction']
-    retry_view=patch_context(json.loads((tmp_path/retry['packetPath']).read_bytes()))
-    assert retry['actionContractId']=='CANDIDATE_PATCH-v1' and retry['logicalWorkId']!=repair['logicalWorkId']
-    fixed={**other,'localKey':retry_view['group']['slots'][0]['outputNamespace']+'fixed',
-        'deliverableBoundary':'明确原有编辑场景的验收边界'}
-    fixed_patch={'repairPlanSha256':retry_view['repairPlanSha256'],'baseCandidateSha256':retry_view['baseCandidateSha256'],
-        'groupId':retry_view['group']['groupId'],'operations':[{
-            'slotId':retry_view['group']['slots'][0]['slotId'],'value':[fixed]}]}
-    assert submit_prototype(tmp_path,retry,fixed_patch)['record']['outcome']=='SUCCEEDED'
-    assert orchestrator.run_mode(tmp_path,'resume')['nextAction']['actionContractId']=='TASK_ESTIMATION-v1'

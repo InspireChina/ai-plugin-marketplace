@@ -128,7 +128,7 @@ def test_transform_is_atomic_and_requires_new_identity_and_reference_closure():
             repair.apply_repair_patch(base,plan,patch(value),group_id='fix-t1',verify_group=lambda *_:None)
     good=[{'localKey':'t1:repair:a','title':'甲'},{'localKey':'t1:repair:b','title':'乙'}]
     merged,_ = repair.apply_repair_patch(base,plan,patch(good),group_id='fix-t1',verify_group=lambda *_:None)
-    assert json.loads(merged)['tasks'] == [{'localKey':'t2','title':'保留'},*good]
+    assert json.loads(merged)['tasks'] == [*good, {'localKey':'t2','title':'保留'}]
     with pytest.raises(InvalidActionResult):
         repair.apply_repair_patch(base,plan,patch(good),group_id='fix-t1',verify_group=lambda *_:(_ for _ in ()).throw(InvalidActionResult('引用仍缺失。')))
     assert json.loads(base)['tasks'][0]['localKey']=='t1'

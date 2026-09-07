@@ -43,6 +43,8 @@ class ActionLedger:
     candidate_resolutions: Mapping[str, bytes] = field(default_factory=dict)
     resolved_candidates: Mapping[str, bytes] = field(default_factory=dict)
     repair_heads: Mapping[str, tuple] = field(default_factory=dict)
+    candidate_repair_bases: Mapping[str, bytes] = field(default_factory=dict)
+    candidate_repair_semantic_sources: Mapping[str, bytes] = field(default_factory=dict)
 
     def __post_init__(self):
         for name in (
@@ -50,6 +52,7 @@ class ActionLedger:
             "attempt_records",
             "raw_outputs",
             "normalized_results", "candidate_resolutions", "resolved_candidates", "repair_heads",
+            "candidate_repair_bases", "candidate_repair_semantic_sources",
         ):
             object.__setattr__(self, name, MappingProxyType(dict(getattr(self, name))))
         seen = set()
@@ -551,8 +554,17 @@ def resolved_result(ledger, logical_work_id: str, *, verify_resolution: Callable
         return raw
     envelopes = [e for e in ledger.envelopes_by_sha256.values() if e.value['logicalWorkId'] == logical_work_id]
     if not envelopes: return None
-    latest = max(envelopes, key=lambda e:(e.value['revision'],e.value['attempt']))
+    latest_rank = max((e.value['revision'], e.value['attempt']) for e in envelopes)
+    effective = [
+        e for e in envelopes
+        if (e.value['revision'], e.value['attempt']) == latest_rank
+    ]
+    if len(effective) != 1:
+        raise ValueError('依赖effective Attempt必须唯一。')
+    latest = effective[0]
     records = [r for r in ledger.attempt_records.values() if r.envelope_sha256 == latest.sha256 and r.outcome == 'SUCCEEDED']
+    if len(records) > 1:
+        raise ValueError('依赖必须有唯一effective SUCCEEDED Attempt。')
     if records:
         if latest.value['actionContractId'] == 'CANDIDATE_PATCH-v1': return None
         return ledger.normalized_results[records[0].normalized_result_sha256]

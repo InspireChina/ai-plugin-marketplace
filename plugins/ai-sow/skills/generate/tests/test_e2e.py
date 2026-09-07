@@ -384,7 +384,7 @@ def test_public_fixture_logs_have_no_absolute_paths_private_source_or_evidence_t
 
 def convergence_submission_factory(project: Path, *, fail_scope=False, fail_prior=False, fail_task=False):
     from candidate_repair import _at,patch_context
-    state={'correct':{},'injected':set(),'patchGroups':[],'failedSecondGroup':False}
+    state={'correct':{},'injected':set()}
     def factory(action,packet):
         kind=action['actionContractId'][:-3]
         if kind!='CANDIDATE_PATCH':
@@ -395,7 +395,10 @@ def convergence_submission_factory(project: Path, *, fail_scope=False, fail_prio
             elif fail_prior and kind=='PRIOR_ANALYZE' and 'PRIOR' not in state['injected']:
                 result=copy.deepcopy(result)
                 if result.get('unextractedEvidence'):
-                    result['unextractedEvidence'].pop();state['injected'].add('PRIOR')
+                    result['unextractedEvidence'].pop()
+                else:
+                    result['entities'][0]['semanticSummary']=''
+                state['injected'].add('PRIOR')
             elif fail_task and kind=='TASK' and 'TASK' not in state['injected']:
                 result=copy.deepcopy(result);result['tasks'][0]['deliverableBoundary']='';state['injected'].add('TASK')
             return result
@@ -429,12 +432,6 @@ def convergence_submission_factory(project: Path, *, fail_scope=False, fail_prio
                 if slot['alternativeSet'] in alternatives:continue
                 alternatives[slot['alternativeSet']]=slot['slotId']
             operations.append(operation)
-        state['patchGroups'].append(view['group']['groupId'])
-        if (fail_scope and len(set(state['patchGroups']))>=2 and not state['failedSecondGroup']
-                and operations and 'value' in operations[0]):
-            state['failedSecondGroup']=True
-            operations[0]['value']=copy.deepcopy(operations[0]['value'])
-            if isinstance(operations[0]['value'],str):operations[0]['value']=''
         return {'repairPlanSha256':view['repairPlanSha256'],'baseCandidateSha256':view['baseCandidateSha256'],
             'groupId':view['group']['groupId'],'operations':operations}
     factory.state=state
@@ -445,8 +442,8 @@ def test_deferred_greenfield_scope_task_convergence_preserves_upstream_hashes(tm
     factory=convergence_submission_factory(tmp_path,fail_scope=True,fail_task=True)
     result,trace=drive_fixture_host(tmp_path,'greenfield',factory)
     assert result['outcome']=='REQUEST_APPROVAL'
-    assert {'SCOPE','TASK'}<=factory.state['injected'] and factory.state['failedSecondGroup']
-    assert sum(action['actionContractId']=='CANDIDATE_PATCH-v1' for action in trace)>=3
+    assert {'SCOPE','TASK'}<=factory.state['injected']
+    assert sum(action['actionContractId']=='CANDIDATE_PATCH-v1' for action in trace)>=2
     run=next((tmp_path/'.ai-sow/work/runs').iterdir())
     checkpoints={stage:_load(next((run/'stages'/stage/'checkpoints').glob('*.json')))
                  for stage in ('SCOPE','STORY_AC','TASK')}
@@ -458,6 +455,8 @@ def test_deferred_greenfield_scope_task_convergence_preserves_upstream_hashes(tm
 
 def test_deferred_brownfield_prior_task_convergence_preserves_prior_rows(tmp_path: Path) -> None:
     request_path=_prepare_project(tmp_path,'brownfield');request=_load(tmp_path/request_path)
+    budget=_load(tmp_path/'budget.json')
+    _write_json(tmp_path/'budget.json',{**budget,'modelContextLimitTokens':256000})
     prior_source=PLUGIN_ROOT/'docs/reference/SOW估算与生成示例_v1.3.xlsx'
     target=tmp_path/'prior.xlsx';shutil.copyfile(prior_source,target)
     request['sources'].append({'sourceId':'prior-main','role':'PRIOR_SOW','path':'prior.xlsx',

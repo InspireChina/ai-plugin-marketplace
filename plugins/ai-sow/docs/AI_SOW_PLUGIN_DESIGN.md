@@ -60,6 +60,7 @@ renderer、fixture 和测试。运行时不得读取插件目录之外的实现�
 | `scope_compiler` | Stage 1 的 InputItem、Scope Closure、Epic/Feature、Design/Integration/NFR/Policy、PriorStateSnapshot、ChangeGraph 与返修 |
 | `delivery_compiler` | Stage 2 的 Story/AC，不能反向改变 Stage 1 |
 | `task_compiler` | Stage 3 的 Task、Dependency、Effective Start Match 与 Estimation Annotation |
+| `owner_callbacks` | 将冻结 Action 绑定到对应 Owner validator/RepairPlan；只做依赖反转与责任路由，不保存状态或业务规则 |
 | `final_review` | fresh Review/条件 Repair、定向 root 修复与 StageCheckpoint 证明 |
 | `sow_model` | 唯一模型的结构、引用、Owner 写集合与 checkpoint 闭包 |
 | `package_renderer` | 从 reviewed SOW Model 与 revision 模板确定性渲染 Package |

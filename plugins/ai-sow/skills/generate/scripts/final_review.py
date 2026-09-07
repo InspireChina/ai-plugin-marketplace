@@ -110,6 +110,19 @@ def verify_manual_authorization_records(entries, events, stage, run_id, revision
         repair_logical,_=control_identity(stage,'REPAIR',key,repair_contract)
         before=[item['sequence'] for item in events if item['type']=='ACTION_ISSUED' and item['payload']['logicalWorkId']==review_logical]
         after=[item['sequence'] for item in events if item['type']=='ACTION_ISSUED' and item['payload']['logicalWorkId']==repair_logical]
+        if review_inputs is not None:
+            for packet in review_inputs.values():
+                body=packet['workItems'][0]['payload']
+                if body.get('ownerRepairAuthorization')!=answer:
+                    continue
+                candidate_review,_=control_identity(
+                    stage,'REVIEW',body['candidateSha256'],review_contract
+                )
+                after.extend(
+                    item['sequence'] for item in events
+                    if item['type']=='ACTION_ISSUED'
+                    and item['payload']['logicalWorkId']==candidate_review
+                )
         if not before or max(before)>=event['sequence'] or (after and min(after)<=event['sequence']) or require_repair and not after:
             raise ValueError('人工裁定必须在实际失败 Review 与其 Repair 发行之间。')
         if review_inputs is not None:
@@ -168,8 +181,7 @@ def replace_owner_decisions(stage_kind, original, review, replacements, resoluti
                     !={k:v for k,v in after[key].items() if k not in fields}):
                 raise ValueError('人工继续修复越过了批准字段。')
         if all(before[key]==after[key] for key in keys): raise ValueError('继续修复不能提交无变化候选。')
-    replaced = {key for finding in review['findings'] for key in finding['subjectIds']}
-    merged = {key: row for key, row in before.items() if key not in replaced}
+    merged = {key: row for key, row in before.items() if key not in keys}
     merged.update(after)
     return {collection: [deepcopy(merged[key]) for key in sorted(merged)]}
 
@@ -185,97 +197,17 @@ def candidate_repair_replacement(stage_kind, original, repaired, review, resolut
     keys=set(repair_root_keys(stage_kind,original,review,resolution))
     affected=[deepcopy(row) for row in repaired[collection] if repair_key_root(row['localKey'],keys) is not None]
     replacement={collection:affected}
-    if replace_owner_decisions(stage_kind,original,review,replacement,resolution)!=repaired:
-        raise ValueError('CandidateResolution 不能精确重建完整修复后 Owner IR。')
+    normalized={collection:sorted(
+        (deepcopy(row) for row in repaired[collection]),
+        key=lambda row:row['localKey'],
+    )}
+    if replace_owner_decisions(stage_kind,original,review,replacement,resolution)!=normalized:
+        raise ValueError('CandidateResolution 不能按 Owner 稳定顺序重建完整修复后 IR。')
     return replacement
 
 
-def _semantic_owner_binding(stage, owner_packet, owner_contract_id):
-    import scope_compiler,delivery_compiler,task_compiler
-    if stage=='SCOPE':
-        return (scope_compiler,
-            lambda raw:scope_compiler.validate_bound_scope_result('SCOPE_SYNTHESIS',owner_packet,raw))
-    if stage=='STORY_AC':
-        return delivery_compiler,lambda raw:delivery_compiler.validate_bound_story_result(owner_packet,raw)
-    if stage=='TASK':
-        return task_compiler,lambda raw:task_compiler.validate_bound_task_result(owner_packet,raw)
-    raise ValueError('语义修复只属于三个阶段 Owner。')
 
 
-def _semantic_candidate_callbacks(envelope, packet, semantic_source):
-    from candidate_repair import (append_object_group,build_repair_plan,diagnostic_report,
-        group_fields,index_candidate,make_issue,schema_at,transform_roots_group)
-    from contracts import InvalidActionResult
-    stage=semantic_source['stageKind'];owner_packet=semantic_source['ownerPacket']
-    review=semantic_source['reviewDecision'];resolution=semantic_source.get('ownerResolution')
-    owner_contract_id=semantic_source['ownerActionContractId']
-    owner,bound=_semantic_owner_binding(stage,owner_packet,owner_contract_id)
-    collection=OWNER_COLLECTION[stage]
-    def semantic_issue(finding):
-        root=finding['subjectIds'][0] if finding['subjectIds'] else ''
-        path='/'+collection+'/'+root if root else '/'+collection
-        issue=make_issue('SEMANTIC_'+finding['code'],path,stage,finding['message'],
-            '仅修改 Review 明确定位的 Owner root，并由 fresh Review 重新判断。',
-            subjects=[{'objectId':collection+'/'+key} for key in finding['subjectIds']])
-        issue['evidenceRefs']=[{'refId':key,'sha256':sha256_bytes(canonical_json_bytes(key))}
-                               for key in finding.get('evidenceIds',())]
-        return issue
-    def mechanical_issues(raw):
-        try:
-            bound(raw)
-        except InvalidActionResult as error:
-            diagnostics=error.diagnostic.findings or (error.diagnostic,)
-            from candidate_repair import issues_from_diagnostics
-            return issues_from_diagnostics(diagnostics,stage,json.loads(raw))
-        return []
-    def diagnose(raw,origin):
-        issues=mechanical_issues(raw)
-        if sha256_bytes(raw)==semantic_source['ownerIRSha256']:
-            issues.extend(semantic_issue(finding) for finding in review['findings'])
-        return diagnostic_report(raw,issues,owner=stage,checker_file=owner.__file__,packet=owner_packet,
-            origin=origin,blocked=(),domains=['SCHEMA','OWNER_BINDINGS','SEMANTIC_REVIEW'])
-    def plan(raw,report,origin):
-        value=json.loads(raw);roots=repair_root_keys(stage,value,review,resolution)
-        rows={row['localKey']:i for i,row in enumerate(value[collection])}
-        direct={};broad=False
-        for finding in review['findings']:
-            issue_id=semantic_issue(finding)['issueId']
-            paths=[]
-            for key in finding['subjectIds']:
-                projected=semantic_source['ownerIndex'][key]['path']
-                suffix=finding['path'][len(projected):] if finding['path'].startswith(projected) else ''
-                if stage=='SCOPE' and suffix=='/name':
-                    paths.append(f"/{collection}/{rows[key]}/boundaryEvidence/name")
-                elif stage=='STORY_AC' and suffix=='/name':
-                    paths.append(f"/{collection}/{rows[key]}/deliverableOutcome")
-                elif stage=='TASK' and suffix in {'/name','/deliverableBoundary'}:
-                    paths.append(f"/{collection}/{rows[key]}/deliverableBoundary")
-                elif stage=='TASK' and suffix=='/complexity':
-                    paths.append(f"/{collection}/{rows[key]}/complexityDecision")
-                else:
-                    broad=True
-            direct[issue_id]=paths
-        if is_manual_repair(resolution):
-            allowed=set(resolution['allowedFields'])
-            direct={issue_id:[path for path in paths if path.rsplit('/',1)[-1] in allowed]
-                    for issue_id,paths in direct.items()}
-            if broad or any(not paths for paths in direct.values()):
-                raise InvalidActionResult('人工裁定 finding 不能映射到 allowedFields。')
-        if not broad:
-            groups=group_fields(raw,report,owner_contract_id,direct)
-            if groups:return build_repair_plan(raw,report,groups,origin=origin)
-        entries=[entry for entry in index_candidate(raw,inherited=report.get('objectIndex',()))
-                 if entry['objectId'] in {collection+'/'+key for key in roots}]
-        if len(entries)!=len(roots):
-            raise InvalidActionResult('Review root 不能解析为唯一 Owner 对象。')
-        schema=schema_at(owner_contract_id,f'/{collection}/0')
-        group=transform_roots_group(raw,entries,schema,
-            [item['issueId'] for item in report['issues'] if item['code'].startswith('SEMANTIC_')],
-            namespace=roots[0]+':repair:',maximum=max(1,len(roots)*2))
-        return build_repair_plan(raw,report,[group],origin=origin)
-    def full(raw):
-        bound(raw)
-    return diagnose,plan,full
 
 
 def review_route(review, *, previous_review=None, resolution=None):
@@ -405,12 +337,63 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
     for old_hash,old_envelope,old_record,old_review,_ in reviews:
         if old_hash==candidate_hash: continue
         if old_review['decision'] not in {'REPAIRABLE_SEMANTIC','INPUT_REQUIRED'}: raise ValueError('无条件语义 Repair 不合法。')
-        _,contract_hash=action_contract_binding(SKILL_ROOT,repair_action_contract_id(stage,plan))
-        logical,group=control_identity(stage,'REPAIR',old_record.normalized_result_sha256,contract_hash)
-        repair_envelope=_effective_envelope(ledger,logical);effective_result(ledger,logical)
-        repair_packet=json.loads(packets[repair_envelope.value['packetSha256']])['workItems'][0]['payload']
-        if repair_envelope.value['groupId']!=group or repair_packet['reviewDecisionSha256']!=old_record.normalized_result_sha256 or repair_packet['reviewDecision']!=old_review:
-            raise ValueError('Repair 未绑定触发 Review 的全部 findings。')
+        _,patch_contract_hash=action_contract_binding(SKILL_ROOT,'CANDIDATE_PATCH-v1')
+        lineage=semantic_repair_lineage(
+            stage,old_record.normalized_result_sha256,patch_contract_hash
+        )
+        candidate_resolution=ledger.candidate_resolutions.get(lineage)
+        if candidate_resolution is not None:
+            proof=json.loads(candidate_resolution)
+            base_raw=ledger.candidate_repair_bases.get(proof['authorRawSha256'])
+            semantic_raw=ledger.candidate_repair_semantic_sources.get(
+                proof['origin']['semanticSourceSha256']
+            )
+            if base_raw is None or semantic_raw is None:
+                raise ValueError('语义 CandidateResolution 缺少 base 或来源描述符。')
+            base=json.loads(base_raw);semantic=json.loads(semantic_raw)
+            if (semantic['reviewDecision']!=old_review
+                    or semantic['reviewDecisionSha256']!=old_record.normalized_result_sha256
+                    or semantic['ownerIRSha256']!=sha256_bytes(base_raw)):
+                raise ValueError('语义 CandidateResolution 未绑定触发 Review 和 Owner IR。')
+            resolution=semantic.get('ownerResolution')
+            repair_packet={
+                **semantic,
+                'ownerIR':base,
+                'authorizedRootKeys':repair_root_keys(
+                    stage,base,old_review,resolution
+                ),
+            }
+            if resolution is not None:
+                repair_packet[resolution_field(resolution)]=resolution
+            replacement=candidate_repair_replacement(
+                stage,
+                base,
+                json.loads(effective_result_bytes(ledger,lineage)),
+                old_review,
+                resolution,
+            )
+            legacy_logical=None
+        else:
+            _,contract_hash=action_contract_binding(
+                SKILL_ROOT,repair_action_contract_id(stage,plan)
+            )
+            logical,group=control_identity(
+                stage,'REPAIR',old_record.normalized_result_sha256,contract_hash
+            )
+            repair_envelope=_effective_envelope(ledger,logical)
+            effective_result(ledger,logical)
+            repair_packet=json.loads(
+                packets[repair_envelope.value['packetSha256']]
+            )['workItems'][0]['payload']
+            if (repair_envelope.value['groupId']!=group
+                    or repair_packet['reviewDecisionSha256']!=old_record.normalized_result_sha256
+                    or repair_packet['reviewDecision']!=old_review):
+                raise ValueError('Repair 未绑定触发 Review 的全部 findings。')
+            _,repair_record=effective_result(ledger,logical)
+            replacement=json.loads(
+                ledger.normalized_results[repair_record.normalized_result_sha256]
+            )
+            legacy_logical=logical
         resolution=owner_resolution(repair_packet)
         if is_manual_repair(resolution):
             validate_owner_resolution(stage,old_review,resolution)
@@ -422,16 +405,17 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
             validate_owner_clarification(stage,old_review,resolution or {})
             clarified+=1
         else:
-            if resolution is not None: raise ValueError('自动修复携带了不适用的裁定。')
+            if resolution is not None:
+                raise ValueError('自动修复携带了不适用的裁定。')
             automatic+=1
-        _,repair_record=effective_result(ledger,logical)
-        replacement=json.loads(ledger.normalized_results[repair_record.normalized_result_sha256])
-        replace_owner_decisions(stage,repair_packet['ownerIR'],old_review,replacement,resolution)
+        replace_owner_decisions(
+            stage,repair_packet['ownerIR'],old_review,replacement,resolution
+        )
         owner_repairs.append((old_hash,repair_packet,replacement))
         if stage == 'TASK':
-            _,repair_record = effective_result(ledger,logical)
-            task_repairs.append((old_hash,repair_packet,json.loads(effective_result_bytes(ledger,logical))))
-        allowed.add(logical)
+            task_repairs.append((old_hash,repair_packet,replacement))
+        if legacy_logical is not None:
+            allowed.add(legacy_logical)
     if automatic>1 or clarified>1 or manual_seen!=set(manual_authorizations or {}):
         raise ValueError('新增候选必须逐次绑定明确裁定，不能重置自动计数。')
     if task_repairs:
@@ -510,47 +494,3 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
         prior=final_body.get('priorState')
         if (prior is None)!=(prior_hash is None) or (prior is not None and prior_states.get(prior_hash)!=canonical_json_bytes(prior)):
             raise ValueError('Scope Prior state hash 缺失或漂移。')
-
-
-def candidate_owner_callbacks(envelope, packet, *, inventories=(), revision_bytes=None, semantic_source=None):
-    """Bind existing professional validators for live and portable candidate proofs."""
-    if semantic_source is not None:
-        return _semantic_candidate_callbacks(envelope,packet,semantic_source)
-    from contracts import normalize_action_result, InvalidActionResult
-    from candidate_repair import schema_issues, diagnostic_report, group_fields, build_repair_plan, issues_from_diagnostics
-    import scope_compiler, delivery_compiler, task_compiler, prior_state, prototype_analysis
-    contract_id=envelope['actionContractId'];kind=contract_id.rpartition('-v')[0]
-    context={'action_contract_id':contract_id}
-    if kind.startswith('PRIOR_'):
-        owner=prior_state;context.update(inventories=inventories,input_revision_bytes=revision_bytes)
-        bound=lambda raw:prior_state.validate_bound_prior_result(kind,packet,raw,inventories=inventories,input_revision_bytes=revision_bytes)
-    elif kind in {'SOURCE_SCAN','SOURCE_AUDIT','SCOPE_SYNTHESIS','SCOPE_PROPOSAL','SCOPE_JOIN'}:
-        owner=scope_compiler;bound=lambda raw:owner.validate_bound_scope_result(kind,packet,raw)
-    elif kind=='STORY_AC':
-        owner=delivery_compiler;bound=lambda raw:owner.validate_bound_story_result(packet,raw)
-    elif kind=='TASK':
-        owner=task_compiler;bound=lambda raw:owner.validate_bound_task_result(packet,raw)
-    elif kind in {'PROTOTYPE_SCENARIO','PROTOTYPE_ANALYZE'}:
-        owner=prototype_analysis;bound=lambda raw:owner.validate_bound_prototype_result(kind,packet['workItems'][0]['payload'],raw,packet=packet)
-    elif kind in {'SOURCE_SCOPE','STORY_DESIGN','TASK_ESTIMATION'}:
-        owner=None;bound=lambda raw:validate_bound_review_result(packet,raw)
-    else:
-        raise InvalidActionResult('该执行责任不接受模型字段补丁。')
-    def normalize(raw):
-        return normalize_action_result(envelope,raw,skill_root=SKILL_ROOT,packet_payload=canonical_json_bytes(packet))
-    def full(raw):bound(normalize(raw))
-    def diagnose(raw,origin):
-        if owner is not None:return owner.diagnose_candidate(kind,packet,raw,origin=origin,**context)
-        value=json.loads(raw);issues=schema_issues(contract_id,value,'REVIEWER');blocked=['REVIEW_OBLIGATIONS'] if issues else []
-        if not issues:
-            try:bound(canonical_json_bytes(value))
-            except InvalidActionResult as error:issues+=issues_from_diagnostics(error.diagnostic.findings or [error.diagnostic],'REVIEWER',value)
-        return diagnostic_report(raw,issues,owner='REVIEWER',checker_file=__file__,packet=packet,origin=origin,blocked=blocked,domains=['SCHEMA','REVIEW_OBLIGATIONS'] if not blocked else ['SCHEMA'])
-    def plan(raw,report,origin):
-        if owner is not None:return owner.plan_candidate_repair(kind,packet,raw,report,origin=origin,**context)
-        # Review format repair can only be dispatched from an actual Review
-        # envelope; Author results cannot acquire Reviewer authority here.
-        groups=group_fields(raw,report,contract_id,{i['issueId']:i['paths'] for i in report['issues']})
-        if not groups:raise InvalidActionResult('Review 格式缺口不能安全定位，保留完整义务等待 Reviewer。')
-        return build_repair_plan(raw,report,groups,origin=origin)
-    return diagnose,plan,full

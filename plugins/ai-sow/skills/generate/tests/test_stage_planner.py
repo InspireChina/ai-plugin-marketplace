@@ -317,7 +317,7 @@ def test_stable_stage_plan_packet_dependency_requires_unique_effective_success(m
     elif mutation == "duplicate":
         refs.append(ref)
     elif mutation == "unknown_record":
-        refs = [replace(ref, attempt_record_sha256="f" * 64)]
+        refs = [replace(ref, result_sha256="f" * 64)]
     elif mutation == "bytes":
         refs = [replace(ref, normalized_result=b"{}\n")]
     elif mutation == "cross_logical":
@@ -326,7 +326,7 @@ def test_stable_stage_plan_packet_dependency_requires_unique_effective_success(m
         record = replace(record, outcome="SUPERSEDED")
         digest = sha256_bytes(canonical_json_bytes(attempt_record_value(record)))
         ledger = replace(ledger, attempt_records={digest: record})
-        refs = [replace(ref, attempt_record_sha256=digest)]
+        refs = [replace(ref, result_sha256=digest)]
     elif mutation == "pending":
         ledger = replace(ledger, attempt_records={})
     else:

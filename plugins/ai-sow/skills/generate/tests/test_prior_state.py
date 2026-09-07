@@ -298,7 +298,7 @@ def test_prior_multi_file_relations_root_rejects_unproven_or_wrong_topology(tmp_
         envelopes = {key: item for key, item in ledger.envelopes_by_sha256.items() if key != old.sha256}
         envelopes[envelope.sha256] = envelope
         ledger = replace(ledger, envelopes_by_sha256=envelopes, attempt_records=records)
-        provided = [replace(root, attempt_record_sha256=digest)]
+        provided = [replace(root, result_sha256=digest)]
     elif mutation == "unknown_dependency":
         plan["works"][-1]["packetPlan"]["dependencyLogicalWorkIds"].append("logical-unknown")
     elif mutation == "analyze_root":

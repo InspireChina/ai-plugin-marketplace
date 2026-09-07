@@ -379,7 +379,9 @@ def apply_repair_patch(base_candidate: bytes, plan_payload: bytes, patch_payload
                     raise InvalidActionResult('实质 root 变换必须使用新的授权身份。')
             collection = _at(merged, '' if slot['collection'] == '$' else '/' + slot['collection'])
             removed = {id(objects[key]) for key in slot['inputObjectIds']}
-            collection[:] = [row for row in collection if id(row) not in removed] + value
+            insert_at = min(i for i, row in enumerate(collection) if id(row) in removed)
+            retained = [row for row in collection if id(row) not in removed]
+            collection[:] = retained[:insert_at] + value + retained[insert_at:]
         changes.append({'slotId': slot_id, 'beforeSha256': slot['oldValueSha256'], 'afterSha256': _digest(value)})
     # Identity counts are collection-scoped and occurrence-aware. Existing
     # malformed duplicates may remain for another group, but a patch cannot
@@ -590,9 +592,10 @@ def issues_from_diagnostics(diagnostics, owner, candidate):
         keys = getattr(diagnostic, 'subject_ids', ()) or getattr(diagnostic, 'details', {}).get('subjectIds', ())
         subjects = [{'objectId':row['objectId']} for row in index if any(
             row['objectId'].endswith('/'+key) for key in keys)]
-        try: observed = _at(candidate, diagnostic.path)
+        path=getattr(diagnostic,'path','') or '/'
+        try: observed = _at(candidate, path)
         except (KeyError, ValueError, IndexError, TypeError): observed = None
-        result.append(make_issue(diagnostic.code, diagnostic.path, owner, observed,
+        result.append(make_issue(diagnostic.code, path, owner, observed,
             getattr(diagnostic, 'message', None) or '满足本 Owner 的冻结引用与交付义务。', subjects=subjects))
     return result
 
@@ -655,6 +658,8 @@ def replay_candidate_ledger(ledger, packets, plans, *, owner_callbacks, events=(
             if selection_sequence+1!=first_issued:
                 raise InvalidActionResult('协议选择必须紧邻 lineage 首个 Patch ACTION_ISSUED。')
     bases=bases or {};semantic_sources=semantic_sources or {}
+    bound_bases = {}
+    bound_semantic_sources = {}
     def source_base(plan):
         origin=plan['origin'];source=ledger.attempt_records.get(origin['sourceAttemptRecordSha256'])
         if source is None:
@@ -674,6 +679,8 @@ def replay_candidate_ledger(ledger, packets, plans, *, owner_callbacks, events=(
             raise InvalidActionResult('语义接续缺少 base 或来源描述符。')
         if not isinstance(semantic_raw,bytes):semantic_raw=canonical_json_bytes(semantic_raw)
         if not isinstance(base,bytes):base=canonical_json_bytes(base)
+        bound_bases[plan['baseCandidateSha256']] = base
+        bound_semantic_sources[origin['semanticSourceSha256']] = semantic_raw
         semantic=_read_candidate(semantic_raw)
         review_raw=ledger.normalized_results[source.normalized_result_sha256]
         review=_read_candidate(review_raw)
@@ -743,6 +750,8 @@ def replay_candidate_ledger(ledger, packets, plans, *, owner_callbacks, events=(
             final,resolution=resolve_candidate(author_raw,chain,verify_group=replay_group,verify_candidate=verify_full)
             resolutions[logical]=resolution;results[sha256_bytes(resolution)]=final
     return replace(ledger,candidate_resolutions=resolutions,resolved_candidates=results,repair_heads=heads,
+                   candidate_repair_bases=bound_bases,
+                   candidate_repair_semantic_sources=bound_semantic_sources,
                    normalized_results={**ledger.normalized_results, **{sha256_bytes(raw):raw for raw in results.values()}})
 
 
