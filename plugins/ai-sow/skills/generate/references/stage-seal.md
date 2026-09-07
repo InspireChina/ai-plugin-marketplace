@@ -74,7 +74,7 @@ Task Review 的 INPUT_REQUIRED 若仅缺既有批准目标内的实施决定，�
 
 ## 机械候选的有限接续
 
-机械失败沿同一逻辑工作保留候选 raw、完整 `AttemptDiagnostic.findings` 和已成功依赖。默认每个逻辑工作最多 2 个候选版本、每个版本最多执行 2 次；用尽后进入 `WAITING_INPUT`，不因次数耗尽进入 `SYSTEM_FAILED`。预算等待检查未发行 retry 时按 Repair 链叶节点优先，不依赖内容寻址 Action ID 的排序。可在 `resume --budget-policy ...` 中显式增加 `maxActionRevisions` 或 `maxExecutionAttempts`（各项 2–10，省略为 2），继续累计 revision/attempt；已发行 Envelope、旧失败、成功 checkpoint 与原计量不回写。新版本只绑定紧邻的前一次失败。该入口不会恢复已放弃的 run。
+机械失败沿同一逻辑工作保留候选 raw、完整 `AttemptDiagnostic.findings` 和已成功依赖。默认每个逻辑工作最多 2 个候选版本、每个版本最多执行 2 次；用尽后进入 `WAITING_INPUT`，不因次数耗尽进入 `SYSTEM_FAILED`。预算等待检查未发行 retry 时按同一 Owner lineage 的最新 `repairRound` 叶节点优先，不依赖内容寻址 Action ID 的排序；只有等待进入后真实发行的新 Action 才能关闭该次等待，旧 Patch 的既有 Envelope 不能生成伪退出 receipt。可在 `resume --budget-policy ...` 中显式增加 `maxActionRevisions` 或 `maxExecutionAttempts`（各项 2–10，省略为 2），继续累计 revision/attempt；已发行 Envelope、旧失败、成功 checkpoint 与原计量不回写。新版本只绑定紧邻的前一次失败。该入口不会恢复已放弃的 run。
 
 Scope 的 Scan/Audit/决策、Story/Task、Prior Analyze 和原型 Scenario/Observation 的机械诊断保留问题对象及具体路径。Prior Consolidate 保留已成功的依赖实体，只修新增关系。修复只允许这些 roots 及 Owner 定位的覆盖范围变化，无关对象和字段保持一致；跨 Story 边界拆分只使用被诊断 Story 已有的义务。越界候选被拒绝，中间的非法 JSON/Schema 也不能撤销先前的保护基线。成功后仍执行完整验证和 fresh Review，失败 raw 不作为成功成果发布。首版 Schema 不完整时，已经符合 Schema 的其他对象仍受保护；后续非法候选不能撤销该基线。
 

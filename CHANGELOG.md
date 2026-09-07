@@ -8,7 +8,7 @@
 - 派生结果不再冒充 Attempt；dependency、Prototype、checkpoint 与 portable proof 区分物理 record 和 CandidateResolution，并重放 base、对象索引、语义来源、事件和完整 Patch 链。确定性缓存绑定实际输入、参数、相关实现和无绝对路径 Office 身份；旧无指纹成功不在新路径复用。
 - 修复 `CANDIDATE_PATCH-v1` 在真实阶段接续中的集成缺口：Task 共享资产、实施澄清、人工裁定、Reviewer 格式修复、未发行容量恢复和 portable proof 统一保留 CandidateResolution、旧 Attempt、上游 checkpoint 与精确 Review 绑定；最终工件复核同时恢复实际 workbook bytes 解码。
 - 真实宿主 E2E 使用宿主当前模型、全新 Controller Session 和逐 `MODEL_PROVIDER` Action 的 `FRESH_NO_HISTORY` worker；新增 test-only 内容寻址隔离报告与 `verify-host-invocations`。基准结果切换为 `ai-sow-benchmark-result-v2`，将严格 Functional Acceptance、必记 Timing Observation 与 `COMPLETE / PARTIAL / UNAVAILABLE` Token Observation 分离；缺少 provider usage 不再阻断功能，实际 token 不换算费用。
-- 修复 Schema-invalid 候选含附加属性或缺失对象身份时 Repair 无法收敛的问题：诊断展开到精确属性路径，Owner 以无值 `REMOVE_FIELD` 槽位只删除 Schema 明确拒绝的现存字段，并只允许 `SET_FIELD` 补齐尚不存在的身份字段；已有身份仍不可改写。Patch receipt 统一绑定规范化 Patch 并可从模型原始非 canonical JSON 重放；预算等待恢复按 Repair 链叶节点优先，不再受 Action ID 排序影响。旧失败 raw 仍保留，新运行使用更新后的 Patch 合同 hash。
+- 修复 Schema-invalid 候选含附加属性或缺失对象身份时 Repair 无法收敛的问题：诊断展开到精确属性路径，Owner 以无值 `REMOVE_FIELD` 槽位只删除 Schema 明确拒绝的现存字段，并只允许 `SET_FIELD` 补齐尚不存在的身份字段；已有身份仍不可改写。Patch receipt 统一绑定规范化 Patch并可从模型原始非 canonical JSON 重放；预算等待恢复按同一 Owner lineage 的最新 `repairRound` 叶节点处理，不再受 Action ID 排序影响，也不会为等待前已发行的旧 Patch 写入伪 `WAITING_INPUT_EXITED`。旧失败 raw 仍保留，新运行使用更新后的 Patch 合同 hash。
 
 - 修复 Action 容量门禁按全局 hydrate reserve 过量预留的问题：发放与独立校验使用该 Action 冻结的读取上限；原容量、总预算、输入与失败记录不变，未发行修复可从原等待处接续。
 

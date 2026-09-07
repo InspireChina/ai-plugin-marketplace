@@ -3130,6 +3130,16 @@ def _resume_fitting_unissued_retry(files,state):
     if waiting is None: return
     ledger=_load_action_ledger(files,state['runId'])
     earlier={event.payload['actionId'] for event in events if event.type=='ACTION_ISSUED' and event.sequence<waiting.sequence}
+    from candidate_repair import patch_context
+    patch_leaves={}
+    for record in ledger.attempt_records.values():
+        envelope=ledger.envelopes_by_sha256[record.envelope_sha256].value
+        if envelope['actionContractId']!='CANDIDATE_PATCH-v1':continue
+        view=patch_context(json.loads(files.read_bytes(envelope['packetPath'])))
+        lineage=view['origin']['originLogicalWorkId']
+        score=(view['origin']['repairRound'],envelope['revision'],envelope['attempt'],envelope['actionId'])
+        if lineage not in patch_leaves or score>patch_leaves[lineage][0]:
+            patch_leaves[lineage]=(score,envelope['actionId'])
     records = sorted(
         ledger.attempt_records.items(),
         key=lambda item: (
@@ -3145,6 +3155,9 @@ def _resume_fitting_unissued_retry(files,state):
         original=ledger.envelopes_by_sha256[record.envelope_sha256].value
         if (record.outcome!='FAILED' or record.failure_kind not in {'INVALID_JSON','INVALID_IR'}
                 or original['actionId'] not in earlier): continue
+        if original['actionContractId']=='CANDIDATE_PATCH-v1':
+            view=patch_context(json.loads(files.read_bytes(original['packetPath'])))
+            if patch_leaves[view['origin']['originLogicalWorkId']][1]!=original['actionId']:continue
         later=[env for env in ledger.envelopes_by_sha256.values() if env.value['logicalWorkId']==record.logical_work_id
             and (env.value['revision'],env.value['attempt'])>(record.revision,record.attempt)]
         if any(env.value['actionId'] in earlier or any(item.envelope_sha256==env.sha256
@@ -3153,6 +3166,10 @@ def _resume_fitting_unissued_retry(files,state):
             retry=_materialize_action_retry(files,original['actionId'],original,attempt_record_value(record))
         except AttemptLimitReached:
             return
+        issuance=next((event for event in _read_run_events(files,state['runId'])
+            if event.type=='ACTION_ISSUED' and event.payload['actionId']==retry['actionId']
+            and event.sequence>waiting.sequence),None)
+        if issuance is None:return
         _append_run_event(files,state['runId'],'WAITING_INPUT_EXITED',{
             'waitId':waiting.payload['waitId'],'resolutionKind':'FITTING_UNISSUED_RETRY',
             'actionId':retry['actionId'],'envelopeSha256':sha256_bytes(canonical_json_bytes(retry)),
@@ -4531,17 +4548,19 @@ def _issue_candidate_patch(files, envelope, failed_record, ledger):
     files.publish_new(f"{RUNS_ROOT}/{source['runId']}/candidate-repairs/plans/{sha256_bytes(plan_raw)}.json",plan_raw)
     result_envelope=ActionEnvelope(result,_action_paths(source['runId'],result['actionId'])['envelope'],sha256_bytes(canonical_json_bytes(result)))
     _guard_action_budget(ledger,_read_run_events(files,source['runId']),policy,[result_envelope])
-    selection_round=(json.loads(chain[0]['plan'])['origin']['repairRound'] if chain
+    selections=[event for event in _read_run_events(files,source['runId'])
+                if event.type=='CANDIDATE_REPAIR_PROTOCOL_SELECTED' and event.payload['originLogicalWorkId']==lineage]
+    if len(selections)>1:raise ValueError('候选修复协议选择事件冲突。')
+    selection_round=(dict(selections[0].payload)['repairRound'] if selections
+                     else json.loads(chain[0]['plan'])['origin']['repairRound'] if chain
                      else last_plan['origin']['repairRound'] if last_plan is not None else round_number)
     selection={'originLogicalWorkId':lineage,'sourceAttemptRecordSha256':source_digest,
         'sourceActionContractId':source['actionContractId'],
         'selectionKind':'SEMANTIC_REVIEW' if source_kind=='SEMANTIC_REVIEW' else 'AUTHOR_FAILURE',
         'repairRound':selection_round,'candidatePatchActionContractSha256':result['actionContractSha256'],
         'candidateRepairSchemaSha256':sha256_bytes((SKILL_ROOT/'contracts/candidate-repair.schema.json').read_bytes())}
-    selections=[event for event in _read_run_events(files,source['runId'])
-                if event.type=='CANDIDATE_REPAIR_PROTOCOL_SELECTED' and event.payload['originLogicalWorkId']==lineage]
     if not selections:_append_run_event(files,source['runId'],'CANDIDATE_REPAIR_PROTOCOL_SELECTED',selection)
-    elif len(selections)!=1 or dict(selections[0].payload)!=selection:raise ValueError('候选修复协议选择事件冲突。')
+    elif dict(selections[0].payload)!=selection:raise ValueError('候选修复协议选择事件冲突。')
     _persist_issued_action(files,result,canonical_json_bytes(repair_packet))
     return result
 

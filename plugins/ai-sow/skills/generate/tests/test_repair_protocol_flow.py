@@ -17,8 +17,8 @@ from contracts import canonical_json_bytes as encode,sha256_bytes as digest
 from action_ledger import effective_result_bytes,resolved_result
 
 
-def local_failed_work(tmp_path):
-    state=api.start(tmp_path,write_run_store_request(tmp_path),write_budget_policy(tmp_path,maxConcurrency=1,maxActionRevisions=4))['state']
+def local_failed_work(tmp_path, *, max_action_revisions=4):
+    state=api.start(tmp_path,write_run_store_request(tmp_path),write_budget_policy(tmp_path,maxConcurrency=1,maxActionRevisions=max_action_revisions))['state']
     files=ProjectFiles.open(tmp_path)
     # This seam prepares the skeleton and issues only the first Source Scan.
     # No Author result, materialization, Review, or downstream stage is executed.
@@ -184,6 +184,55 @@ def test_candidate_repair_progress_and_budget_are_cumulative(tmp_path):
     assert api.submit(tmp_path,third['actionId'],successful_completion(patch_for(files,third,good)))['outcome']=='RECORDED'
     assert json.loads(effective_result_bytes(api._load_action_ledger(files,author['runId']),author['logicalWorkId']))==good
 
+
+def test_failed_patch_revision_resumes_the_patch_leaf_repeatedly(tmp_path):
+    files,author,_,good,_=local_failed_work(tmp_path,max_action_revisions=2)
+    patch=current_action(files)
+    assert patch['actionContractId']=='CANDIDATE_PATCH-v1' and patch['revision']==1
+    from candidate_repair import patch_context
+    view=patch_context(json.loads(files.read_bytes(patch['packetPath'])))
+    invalid=successful_completion(encode({
+        'repairPlanSha256':view['repairPlanSha256'],
+        'baseCandidateSha256':view['baseCandidateSha256'],
+        'groupId':view['group']['groupId'],
+        'operations':[],
+        'diagnostics':[{'code':'SEMANTIC_EVIDENCE_INSUFFICIENT'}]}))
+    assert api.submit(tmp_path,patch['actionId'],invalid)['record']['failureKind']=='INVALID_IR'
+    assert api.run_mode(tmp_path,'resume')['outcome']=='WAITING_INPUT'
+
+    third_result=api.run_mode(
+        tmp_path,'resume',
+        budget_policy=write_budget_policy(
+            tmp_path,maxConcurrency=1,maxActionRevisions=3))
+    assert third_result['outcome']=='ACTIVE',third_result
+    third=third_result['nextAction']
+    assert third['actionContractId']=='CANDIDATE_PATCH-v1'
+    assert plan_for_action(files,third)['origin']['repairRound']==3
+    assert api.submit(
+        tmp_path,third['actionId'],
+        successful_completion(patch_for(files,third,good,bad=True)))['record']['failureKind']=='INVALID_IR'
+    paused=api.run_mode(tmp_path,'resume')
+    assert paused['outcome']=='WAITING_INPUT',paused
+    events=api._read_run_events(files,author['runId'])
+    latest_wait=next(event for event in reversed(events) if event.type=='WAITING_INPUT_ENTERED')
+    assert not any(event.type=='WAITING_INPUT_EXITED'
+        and event.payload['waitId']==latest_wait.payload['waitId'] for event in events)
+
+    fourth_result=api.run_mode(
+        tmp_path,'resume',
+        budget_policy=write_budget_policy(
+            tmp_path,maxConcurrency=1,maxActionRevisions=4))
+    assert fourth_result['outcome']=='ACTIVE',fourth_result
+    fourth=fourth_result['nextAction']
+    assert fourth['actionContractId']=='CANDIDATE_PATCH-v1'
+    assert plan_for_action(files,fourth)['origin']['repairRound']==4
+    assert fourth['actionId'] not in {
+        patch['actionId'],third['actionId'],author['actionId']}
+    selections=[
+        event for event in api._read_run_events(files,author['runId'])
+        if event.type=='CANDIDATE_REPAIR_PROTOCOL_SELECTED']
+    assert len(selections)==1
+    assert selections[0].payload['repairRound']==2
 
 def test_equivalent_ineffective_patch_stops_without_budget_exhaustion(tmp_path):
     files,author,_,good,_=local_failed_work(tmp_path)
