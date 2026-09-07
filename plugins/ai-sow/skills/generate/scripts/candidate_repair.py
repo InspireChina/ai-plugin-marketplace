@@ -267,8 +267,9 @@ def _check_plan(base, plan):
             if op in {'SET_FIELD', 'REMOVE_FIELD'}:
                 if not slot.get('field') or '/' in slot['field']:
                     raise InvalidActionResult('字段槽位不能使用任意路径。')
-                if op == 'SET_FIELD' and slot['field'] in {'localKey', 'scenarioId', 'coverageRootId', 'id'}:
-                    raise InvalidActionResult('字段槽位不能改写身份。')
+                if (op == 'SET_FIELD' and slot['field'] in {'localKey', 'scenarioId', 'coverageRootId', 'id'}
+                        and slot['field'] in _at(candidate, index[slot['objectId']]['path'])):
+                    raise InvalidActionResult('字段槽位不能改写已有身份。')
             elif 'field' in slot:
                 raise InvalidActionResult('非字段操作不能携带 field。')
             if op in {'SET_FIELD', 'REMOVE_FIELD', 'REMOVE_OBJECT'}:
@@ -458,7 +459,8 @@ def resolve_candidate(author_raw: bytes, chain: Sequence[Mapping[str, bytes]], *
         if len(contexts) != 1 or contexts[0].get('repairPlanSha256') != sha256_bytes(item['plan']):
             raise InvalidActionResult('发行 packet 未绑定 RepairPlan。')
         patch = parse_repair_document(item['patch'], 'PatchResult')
-        current, receipt = apply_repair_patch(current, item['plan'], item['patch'], group_id=patch['groupId'], verify_group=verify_group)
+        normalized_patch = canonical_json_bytes(patch)
+        current, receipt = apply_repair_patch(current, item['plan'], normalized_patch, group_id=patch['groupId'], verify_group=verify_group)
         if receipt != item['receipt']: raise InvalidActionResult('RepairReceipt 无法重放。')
         previous_index = json.loads(receipt)['objectIndex']
         entries.append({key + 'Sha256': sha256_bytes(item[key]) for key in ('plan','patch','receipt','record','envelope','packet')})
@@ -568,9 +570,9 @@ def located_slots(candidate, action_contract_id, paths, *, inherited=(), remove=
         parent, _, field = path.rpartition('/')
         if parent not in by_path or not field or field.isdigit(): continue
         field = field.replace('~1','/').replace('~0','~')
-        if not remove and field in {'localKey','scenarioId','coverageRootId','id'}: continue
         row = by_path[parent]
         target = _at(value, parent)
+        if not remove and field in {'localKey','scenarioId','coverageRootId','id'} and field in target: continue
         if remove:
             if field not in target: continue
             slots.append({
@@ -769,7 +771,8 @@ def replay_candidate_ledger(ledger, packets, plans, *, owner_callbacks, events=(
               'receipt':ledger.normalized_results[record.normalized_result_sha256],
               'record':canonical_json_bytes(attempt_record_value(record)), 'envelope':canonical_json_bytes(envelope.value),'packet':packet_raw}
         patch=parse_repair_document(item['patch'],'PatchResult')
-        merged,receipt=apply_repair_patch(current,plan_raw,item['patch'],group_id=patch['groupId'],
+        normalized_patch=canonical_json_bytes(patch)
+        merged,receipt=apply_repair_patch(current,plan_raw,normalized_patch,group_id=patch['groupId'],
             verify_group=lambda raw,group:verify_group_progress(report,diagnose(raw,origin),group))
         if receipt!=item['receipt']:
             raise InvalidActionResult('已保存 receipt 不能重放。')

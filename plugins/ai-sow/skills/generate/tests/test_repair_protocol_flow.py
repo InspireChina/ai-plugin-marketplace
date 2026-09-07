@@ -48,8 +48,8 @@ def patch_for(files,action,good,*,bad=False):
     plan=json.loads(files.read_bytes(f".ai-sow/work/runs/{action['runId']}/candidate-repairs/plans/{view['repairPlanSha256']}.json"))
     index={r['objectId']:r for r in plan['objectIndex']}
     operations=[{'slotId':s['slotId'],'value':'' if bad else _at(good,index[s['objectId']]['path'])[s['field']]} for s in view['group']['slots']]
-    return encode({'repairPlanSha256':view['repairPlanSha256'],'baseCandidateSha256':view['baseCandidateSha256'],
-                   'groupId':view['group']['groupId'],'operations':operations})
+    return json.dumps({'repairPlanSha256':view['repairPlanSha256'],'baseCandidateSha256':view['baseCandidateSha256'],
+                       'groupId':view['group']['groupId'],'operations':operations},ensure_ascii=False,indent=2).encode()
 
 
 def finish_local_work(files,action,good):

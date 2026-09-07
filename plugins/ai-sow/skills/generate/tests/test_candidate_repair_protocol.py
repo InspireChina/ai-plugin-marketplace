@@ -390,3 +390,78 @@ def test_additional_properties_become_narrow_field_removals():
         candidate, plan, patch, group_id=groups[0]['groupId'],
         verify_group=verify)
     assert json.loads(merged)['scenarios'][0]['steps'][0].get('action') is None
+
+
+def test_missing_identity_gets_narrow_slot_but_existing_identity_stays_frozen():
+    candidate = encode({
+        'bundleSha256': '1' * 64,
+        'round': 1,
+        'scenarios': [{
+            'critical': False,
+            'interactionIds': ['interaction-one'],
+            'steps': [{
+                'stepId': 'step-one',
+                'page': 'demo/index.html',
+                'interactionId': 'interaction-one',
+                'operation': 'click',
+                'selector': '#action',
+                'value': None,
+                'assertions': [{
+                    'selector': '#result',
+                    'attribute': 'textContent',
+                    'expected': '完成',
+                }],
+                'screenshot': True,
+            }],
+        }],
+    })
+    path = '/scenarios/0/scenarioId'
+    slots = repair.located_slots(
+        candidate, 'PROTOTYPE_SCENARIO-v1', [path])
+    assert len(slots) == 1
+    assert slots[0]['operation'] == 'SET_FIELD'
+    assert slots[0]['field'] == 'scenarioId'
+
+    existing = copy.deepcopy(json.loads(candidate))
+    existing['scenarios'][0]['scenarioId'] = 'scenario-existing'
+    assert repair.located_slots(
+        encode(existing), 'PROTOTYPE_SCENARIO-v1', [path]) == []
+
+    origin = {
+        'runId': 'run-test',
+        'inputRevisionSha256': '1' * 64,
+        'originLogicalWorkId': 'prototype-work-1',
+        'sourceKind': 'AUTHOR_FAILURE',
+        'sourceActionContractId': 'PROTOTYPE_SCENARIO-v1',
+        'sourceAttemptRecordSha256': '2' * 64,
+        'stageKind': 'SCOPE',
+        'repairRound': 2,
+        'budgetPolicySha256': '3' * 64,
+    }
+    issues = repair.schema_issues(
+        'PROTOTYPE_SCENARIO-v1', json.loads(candidate), 'PROTOTYPE')
+    report = repair.diagnostic_report(
+        candidate, issues, owner='PROTOTYPE', checker_file=__file__,
+        packet={}, origin=origin)
+    group = {
+        'groupId': 'group-missing-identity',
+        'issueIds': [issues[0]['issueId']],
+        'readSet': [{'objectId': slots[0]['objectId'], 'fields': ['scenarioId']}],
+        'slots': slots,
+        'verificationObligations': [issues[0]['issueId']],
+    }
+    plan = repair.build_repair_plan(
+        candidate, report, [group], origin=origin)
+    patch = encode({
+        'repairPlanSha256': digest(plan),
+        'baseCandidateSha256': digest(candidate),
+        'groupId': group['groupId'],
+        'operations': [{
+            'slotId': slots[0]['slotId'],
+            'value': 'scenario-repaired',
+        }],
+    })
+    merged, _ = repair.apply_repair_patch(
+        candidate, plan, patch, group_id=group['groupId'],
+        verify_group=lambda *_: None)
+    assert json.loads(merged)['scenarios'][0]['scenarioId'] == 'scenario-repaired'

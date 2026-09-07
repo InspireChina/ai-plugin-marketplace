@@ -110,8 +110,8 @@ Task 名称必须点明与 `workTypeId` 匹配的单一计数对象；一个接�
 
 Review 是完整机械验证后的 singleton control Action。`REPAIRABLE_SEMANTIC` 的 subjectIds 解析为当前
 Owner root localKeys；新发修复使用 Review-bound `CANDIDATE_PATCH-v1`，只开放可证明的字段或 root 闭包。
-Schema 明确拒绝的附加属性由 Owner 发放无值 `REMOVE_FIELD` 槽位精确删除；它不授权替换所在对象。
-Patch 成功产生物理 RepairReceipt，完整 Owner 校验后产生派生 CandidateResolution；它不把原失败 Author
+Schema 明确拒绝的附加属性由 Owner 发放无值 `REMOVE_FIELD` 槽位精确删除；它不授权替换所在对象。缺失身份字段可由窄 `SET_FIELD` 补齐，但已有身份不可改写或复用。
+Patch 成功产生绑定规范化 Patch 的物理 RepairReceipt，模型原始 raw 仍由 Attempt 单独绑定并可在非 canonical JSON 情况下重放；完整 Owner 校验后产生派生 CandidateResolution。它不把原失败 Author
 改为成功，也不能提供 Review PASS。新候选必须由 distinct fresh Review 复核。已发行旧 Repair 保持冻结合同。
 
 ## 8. 新 run、恢复与稳定 ID

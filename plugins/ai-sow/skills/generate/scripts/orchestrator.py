@@ -4564,7 +4564,7 @@ def _normalize_candidate_patch(files,state,envelope,packet,raw,ledger):
     for head,chain,index in ledger.repair_heads.values():
         for item in chain:
             if sha256_bytes(item['plan'])==sha256_bytes(plan_raw) and item['envelope']==canonical_json_bytes(envelope):
-                if item['patch']!=raw:raise ValueError('同一 Action 不允许不同补丁。')
+                if canonical_json_bytes(json.loads(item['patch']))!=raw:raise ValueError('同一 Action 不允许不同补丁。')
                 return item['receipt']
     diagnose,_,_=_candidate_callbacks(files,source,source_packet,semantic_source)
     _,receipt=apply_repair_patch(base,plan_raw,raw,group_id=view['group']['groupId'],
