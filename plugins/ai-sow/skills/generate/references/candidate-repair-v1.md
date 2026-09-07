@@ -4,8 +4,8 @@
 前者绑定原始失败 Attempt/raw；后者绑定成功的非 PASS Review、程序侧 Owner IR base 和
 `semanticSourceSha256`。`CANDIDATE_REPAIR_PROTOCOL_SELECTED` 在 lineage 首个 Patch 发行前固定协议与合同 hash。
 
-Owner 诊断并提供 `SET_FIELD / APPEND_OBJECT / REMOVE_OBJECT / TRANSFORM_ROOTS` 槽位；模型只填写增量。
-Patch 必须提交全部普通槽位，并从每个 `alternativeSet` 恰选一个。程序拒绝重叠写集合、重复集合修改、
+Owner 诊断并提供 `SET_FIELD / REMOVE_FIELD / APPEND_OBJECT / REMOVE_OBJECT / TRANSFORM_ROOTS` 槽位；模型只填写增量。
+`REMOVE_FIELD` 仅删除 Schema 明确拒绝的现存附加属性，不携带 `value`；`REMOVE_OBJECT` 仍只删除 Owner 明确授权的集合成员。Patch 必须提交全部普通槽位，并从每个 `alternativeSet` 恰选一个。程序拒绝重叠写集合、重复集合修改、
 过期 base、越权引用、身份复用和不完整引用闭包。后续计划以 `previousReceiptSha256` 绑定紧邻的成功
 RepairReceipt；匿名重复行沿 receipt 保持 occurrence 身份。
 

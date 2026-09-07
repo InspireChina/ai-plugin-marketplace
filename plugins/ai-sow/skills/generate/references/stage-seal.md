@@ -6,7 +6,7 @@
 
 Review 输入只含候选、来源引用、全部当前 Owner root localKey 到候选 ID/path 的索引（含 EXCLUDE/RETIRE 的 scopeAnnotations），以及必须逐项判断的 review obligations。恢复还从已封 Owner IR 与原来源独立推导精确 root 索引；Scope 复用唯一稳定 ID 规则（含 parent/Prior 身份），Story/Task 复用原 node bindings，同名节点不能交换映射。Reviewer 不继承 Author 历史。`ReviewDecisionIR` 只有 `decision` 和 `findings`；PASS 无 finding，其他决定至少一个 finding。决定为 `PASS / REPAIRABLE_SEMANTIC / INPUT_REQUIRED / CONTRACT_GAP / OWNER_BUG`。SYSTEM 属于 Attempt failure，不是模型 Review 决定。
 
-`REPAIRABLE_SEMANTIC` 或已批准的 Task 实施澄清使用 Review-bound Patch。`SEMANTIC_REVIEW` Origin 绑定真实 Review Attempt、Review decision/candidate、程序侧 Owner IR base 和 semantic source descriptor；模型 packet 只含 findings、槽位、受影响 roots、义务和证据。精确投影字段使用 `SET_FIELD`；宽 root finding 只授权 `repair_root_keys(...)` 闭包的原子 `TRANSFORM_ROOTS`，新 root 使用 `:repair:` namespace。人工裁定再与 `allowedFields` 取交集。
+`REPAIRABLE_SEMANTIC` 或已批准的 Task 实施澄清使用 Review-bound Patch。`SEMANTIC_REVIEW` Origin 绑定真实 Review Attempt、Review decision/candidate、程序侧 Owner IR base 和 semantic source descriptor；模型 packet 只含 findings、槽位、受影响 roots、义务和证据。精确投影字段使用 `SET_FIELD`；Schema 明确拒绝的附加属性使用不携带新值的 `REMOVE_FIELD`；宽 root finding 只授权 `repair_root_keys(...)` 闭包的原子 `TRANSFORM_ROOTS`，新 root 使用 `:repair:` namespace。人工裁定再与 `allowedFields` 取交集。
 
 Review identity 仍为 `{stageKind, actionKind:"REVIEW", candidateSha256, actionContractSha256}`。语义 Patch 使用独立
 `candidate-repair-<sha256({stageKind, reviewDecisionSha256, candidatePatchActionContractSha256})>` lineage，
@@ -74,7 +74,7 @@ Task Review 的 INPUT_REQUIRED 若仅缺既有批准目标内的实施决定，�
 
 ## 机械候选的有限接续
 
-机械失败沿同一逻辑工作保留候选 raw、完整 `AttemptDiagnostic.findings` 和已成功依赖。默认每个逻辑工作最多 2 个候选版本、每个版本最多执行 2 次；用尽后进入 `WAITING_INPUT`，不因次数耗尽进入 `SYSTEM_FAILED`。可在 `resume --budget-policy ...` 中显式增加 `maxActionRevisions` 或 `maxExecutionAttempts`（各项 2–10，省略为 2），继续累计 revision/attempt；已发行 Envelope、旧失败、成功 checkpoint 与原计量不回写。新版本只绑定紧邻的前一次失败。该入口不会恢复已放弃的 run。
+机械失败沿同一逻辑工作保留候选 raw、完整 `AttemptDiagnostic.findings` 和已成功依赖。默认每个逻辑工作最多 2 个候选版本、每个版本最多执行 2 次；用尽后进入 `WAITING_INPUT`，不因次数耗尽进入 `SYSTEM_FAILED`。预算等待检查未发行 retry 时按 Repair 链叶节点优先，不依赖内容寻址 Action ID 的排序。可在 `resume --budget-policy ...` 中显式增加 `maxActionRevisions` 或 `maxExecutionAttempts`（各项 2–10，省略为 2），继续累计 revision/attempt；已发行 Envelope、旧失败、成功 checkpoint 与原计量不回写。新版本只绑定紧邻的前一次失败。该入口不会恢复已放弃的 run。
 
 Scope 的 Scan/Audit/决策、Story/Task、Prior Analyze 和原型 Scenario/Observation 的机械诊断保留问题对象及具体路径。Prior Consolidate 保留已成功的依赖实体，只修新增关系。修复只允许这些 roots 及 Owner 定位的覆盖范围变化，无关对象和字段保持一致；跨 Story 边界拆分只使用被诊断 Story 已有的义务。越界候选被拒绝，中间的非法 JSON/Schema 也不能撤销先前的保护基线。成功后仍执行完整验证和 fresh Review，失败 raw 不作为成功成果发布。首版 Schema 不完整时，已经符合 Schema 的其他对象仍受保护；后续非法候选不能撤销该基线。
 

@@ -455,6 +455,7 @@
           "description": "封闭操作。",
           "enum": [
             "SET_FIELD",
+            "REMOVE_FIELD",
             "APPEND_OBJECT",
             "REMOVE_OBJECT",
             "TRANSFORM_ROOTS"

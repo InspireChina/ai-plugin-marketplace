@@ -214,7 +214,7 @@ def test_input_contract_and_budget_stops_remain_distinct(tmp_path):
     files=ProjectFiles.open(contract_root);action=api._start_public_pipeline(files,state)['nextAction']
     packet=json.loads(files.read_bytes(action['packetPath']))
     bad=[entry for item in packet['workItems'] for entry in scan_ir(item['payload']['coverageRootId'])]
-    bad[0]['unexpected']=True
+    bad={'unsupportedRootShape':True}
     assert api.submit(contract_root,action['actionId'],successful_completion(encode(bad)))['outcome']=='RECORDED'
     contract_state=api._recover_active_run(files,api._read_active_marker(files))
     assert contract_state['phase']=='DONE' and contract_state['result']=='CONTRACT_UNSUPPORTED'

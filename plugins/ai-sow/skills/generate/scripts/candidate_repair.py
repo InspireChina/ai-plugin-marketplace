@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contracts import InvalidActionResult, canonical_json_bytes, normalize_result_sets
 from models import AttemptDiagnostic
 
@@ -173,7 +174,7 @@ def _slot_value(candidate, index, slot):
     if operation == 'TRANSFORM_ROOTS':
         return [_at(candidate, index[key]['path']) for key in slot['inputObjectIds']]
     target = _at(candidate, index[slot['objectId']]['path'])
-    if operation == 'SET_FIELD':
+    if operation in {'SET_FIELD', 'REMOVE_FIELD'}:
         field = slot['field']
         return target[field] if field in target else {'$repairMissing': True}
     return target
@@ -188,7 +189,7 @@ def _collection_path(collection):
 
 def _slot_footprint(index, slot):
     operation = slot['operation']
-    if operation == 'SET_FIELD':
+    if operation in {'SET_FIELD', 'REMOVE_FIELD'}:
         return index[slot['objectId']]['path'] + '/' + _pointer_part(slot['field'])
     return _collection_path(slot['collection'])
 
@@ -263,14 +264,18 @@ def _check_plan(base, plan):
                 raise InvalidActionResult('槽位重复。')
             slot_ids.add(slot['slotId'])
             op = slot['operation']
-            if op == 'SET_FIELD':
-                if not slot.get('field') or '/' in slot['field'] or slot['field'] in {'localKey', 'scenarioId', 'coverageRootId', 'id'}:
-                    raise InvalidActionResult('字段槽位不能改写身份或使用任意路径。')
+            if op in {'SET_FIELD', 'REMOVE_FIELD'}:
+                if not slot.get('field') or '/' in slot['field']:
+                    raise InvalidActionResult('字段槽位不能使用任意路径。')
+                if op == 'SET_FIELD' and slot['field'] in {'localKey', 'scenarioId', 'coverageRootId', 'id'}:
+                    raise InvalidActionResult('字段槽位不能改写身份。')
             elif 'field' in slot:
                 raise InvalidActionResult('非字段操作不能携带 field。')
-            if op in {'SET_FIELD', 'REMOVE_OBJECT'}:
+            if op in {'SET_FIELD', 'REMOVE_FIELD', 'REMOVE_OBJECT'}:
                 if slot['objectId'] not in index or index[slot['objectId']]['collection'] != slot['collection']:
                     raise InvalidActionResult('槽位目标不存在或越出集合。')
+                if op == 'REMOVE_FIELD' and slot['field'] not in _at(candidate, index[slot['objectId']]['path']):
+                    raise InvalidActionResult('只能删除明确存在的字段。')
                 if op == 'REMOVE_OBJECT' and not isinstance(_at(candidate, index[slot['objectId']]['path'].rsplit('/', 1)[0]), list):
                     raise InvalidActionResult('只能删除明确的集合成员。')
             if op == 'APPEND_OBJECT' and slot['objectId'] in index:
@@ -286,7 +291,7 @@ def _check_plan(base, plan):
                 collection = _at(candidate, _collection_path(slot['collection']))
                 if not isinstance(collection, list) or not slot.get('maxNewObjects'):
                     raise InvalidActionResult('新增必须绑定集合与有限额度。')
-            if op != 'REMOVE_OBJECT':
+            if op not in {'REMOVE_FIELD', 'REMOVE_OBJECT'}:
                 if 'valueSchema' not in slot:
                     raise InvalidActionResult('写入值缺少 Owner Schema。')
                 try:
@@ -351,10 +356,11 @@ def apply_repair_patch(base_candidate: bytes, plan_payload: bytes, patch_payload
         if slot_id not in operations:continue
         operation = operations[slot_id]
         op = slot['operation']
-        if ('value' in operation) != (op != 'REMOVE_OBJECT'):
+        deletes_value = op in {'REMOVE_FIELD', 'REMOVE_OBJECT'}
+        if ('value' in operation) == deletes_value:
             raise InvalidActionResult('槽位 value 与操作类型不符。')
         value = deepcopy(operation.get('value'))
-        if op != 'REMOVE_OBJECT':
+        if not deletes_value:
             if list(Draft202012Validator(slot['valueSchema'], registry=load_schema_registry(Path(__file__).parents[1])).iter_errors(value)):
                 raise InvalidActionResult('槽位值不符合 Owner Schema。')
             for limit in slot.get('referenceLimits', ()):
@@ -363,6 +369,8 @@ def apply_repair_patch(base_candidate: bytes, plan_payload: bytes, patch_payload
                     raise InvalidActionResult('引用超出授权或丢失旧引用。')
         if op == 'SET_FIELD':
             objects[slot['objectId']][slot['field']] = value
+        elif op == 'REMOVE_FIELD':
+            del objects[slot['objectId']][slot['field']]
         elif op == 'REMOVE_OBJECT':
             parent = _at(merged, index[slot['objectId']]['path'].rsplit('/', 1)[0])
             parent[:] = [row for row in parent if row is not objects[slot['objectId']]]
@@ -500,6 +508,19 @@ def schema_issues(action_contract_id, candidate, owner):
                 if field not in error.instance:
                     issues.append(make_issue('SCHEMA_REQUIRED', '/'+'/'.join(_pointer_part(p) for p in [*parts,field]), owner,
                         {'missing':True}, '补齐本 Owner Schema 要求的字段。'))
+        elif error.validator == 'additionalProperties' and isinstance(error.instance, dict):
+            properties = error.schema.get('properties', {})
+            patterns = error.schema.get('patternProperties', {})
+            unexpected = [
+                field for field in error.instance
+                if field not in properties
+                and not any(re.search(pattern, field) for pattern in patterns)
+            ]
+            for field in unexpected:
+                path = '/' + '/'.join(_pointer_part(p) for p in [*parts, field])
+                issues.append(make_issue(
+                    'SCHEMA_ADDITIONALPROPERTIES', path, owner,
+                    error.instance[field], '删除本 Owner Schema 未授权字段。'))
         else:
             issues.append(make_issue('SCHEMA_'+str(error.validator).upper(), '/'+'/'.join(_pointer_part(p) for p in parts), owner,
                 error.instance, '满足本 Owner 冻结 Schema 的 '+str(error.validator)+' 约束。'))
@@ -536,7 +557,7 @@ def diagnostic_report(candidate, issues, *, owner, checker_file, packet, origin=
         'issues':sorted({i['issueId']:i for i in issues}.values(),key=lambda i:i['issueId'])}
 
 
-def located_slots(candidate, action_contract_id, paths, *, inherited=()):
+def located_slots(candidate, action_contract_id, paths, *, inherited=(), remove=False):
     """Translate Owner-selected field locations into frozen mechanical grants."""
     raw = candidate if isinstance(candidate, bytes) else canonical_json_bytes(candidate)
     value = _read_candidate(raw)
@@ -547,9 +568,18 @@ def located_slots(candidate, action_contract_id, paths, *, inherited=()):
         parent, _, field = path.rpartition('/')
         if parent not in by_path or not field or field.isdigit(): continue
         field = field.replace('~1','/').replace('~0','~')
-        if field in {'localKey','scenarioId','coverageRootId','id'}: continue
+        if not remove and field in {'localKey','scenarioId','coverageRootId','id'}: continue
         row = by_path[parent]
-        old = _at(value,parent).get(field, {'$repairMissing':True})
+        target = _at(value, parent)
+        if remove:
+            if field not in target: continue
+            slots.append({
+                'slotId':'slot-'+_digest([row['objectId'],field])[:24],
+                'operation':'REMOVE_FIELD','collection':row['collection'],
+                'objectId':row['objectId'],'field':field,
+                'oldValueSha256':_digest(target[field])})
+            continue
+        old = target.get(field, {'$repairMissing':True})
         schema = schema_at(action_contract_id,path)
         if not schema: continue
         slots.append({'slotId':'slot-'+_digest([row['objectId'],field])[:24],'operation':'SET_FIELD',
@@ -562,7 +592,11 @@ def group_fields(candidate, report, action_contract_id, paths_by_issue):
     """Group intersecting Owner grants atomically; shared fields cannot race."""
     groups = []
     for issue in report['issues']:
-        slots = located_slots(candidate, action_contract_id, paths_by_issue.get(issue['issueId'], ()), inherited=report.get('objectIndex', ()))
+        slots = located_slots(
+            candidate, action_contract_id,
+            paths_by_issue.get(issue['issueId'], ()),
+            inherited=report.get('objectIndex', ()),
+            remove=issue['code'] == 'SCHEMA_ADDITIONALPROPERTIES')
         if not slots: continue
         overlap = [g for g in groups if {s['slotId'] for s in g['slots']} & {s['slotId'] for s in slots}]
         ids = [issue['issueId']]

@@ -3130,7 +3130,18 @@ def _resume_fitting_unissued_retry(files,state):
     if waiting is None: return
     ledger=_load_action_ledger(files,state['runId'])
     earlier={event.payload['actionId'] for event in events if event.type=='ACTION_ISSUED' and event.sequence<waiting.sequence}
-    for digest,record in ledger.attempt_records.items():
+    records = sorted(
+        ledger.attempt_records.items(),
+        key=lambda item: (
+            ledger.envelopes_by_sha256[item[1].envelope_sha256].value[
+                'actionContractId'
+            ] != 'CANDIDATE_PATCH-v1',
+            item[1].logical_work_id,
+            item[1].revision,
+            item[1].attempt,
+        ),
+    )
+    for digest,record in records:
         original=ledger.envelopes_by_sha256[record.envelope_sha256].value
         if (record.outcome!='FAILED' or record.failure_kind not in {'INVALID_JSON','INVALID_IR'}
                 or original['actionId'] not in earlier): continue

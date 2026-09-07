@@ -888,7 +888,7 @@
       "resultSchema": {
         "id": "urn:ai-sow:generate:next:candidate-repair:1#/$defs/PatchResult",
         "path": "contracts/candidate-repair.schema.json",
-        "sha256": "0d8f56ecf6cc9132656bb087f7fe4afe8643a5d038fcb0e9b33de06bad40a46a"
+        "sha256": "841eba33ce1deb23f512b2baedcf3aebbb0c0caedbd57d280a187f4d1c82e38d"
       },
       "sealPredicates": [
         "EXACT_SLOTS",

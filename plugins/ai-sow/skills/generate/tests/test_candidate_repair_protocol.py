@@ -311,3 +311,82 @@ def test_two_successful_writes_from_one_stale_base_are_rejected():
             _chain_item(plan, first_patch, first_receipt, 'one'),
             _chain_item(plan, second_patch, second_receipt, 'two')],
             verify_group=lambda *_: None, verify_candidate=lambda *_: None)
+
+
+def test_additional_properties_become_narrow_field_removals():
+    candidate = encode({
+        'bundleSha256': '1' * 64,
+        'round': 1,
+        'kind': 'PROTOTYPE_SCENARIO-v1',
+        'scenarios': [{
+            'scenarioId': 'scenario-one',
+            'critical': False,
+            'interactionIds': ['interaction-one'],
+            'title': '多余标题',
+            'steps': [{
+                'stepId': 'step-one',
+                'page': 'demo/index.html',
+                'interactionId': 'interaction-one',
+                'operation': 'click',
+                'action': 'click',
+                'selector': '#action',
+                'value': None,
+                'assertions': [{
+                    'selector': '#result',
+                    'attribute': 'textContent',
+                    'expected': '完成',
+                }],
+                'screenshot': True,
+            }],
+        }],
+    })
+    origin = {
+        'runId': 'run-test',
+        'inputRevisionSha256': '1' * 64,
+        'originLogicalWorkId': 'prototype-work-1',
+        'sourceKind': 'AUTHOR_FAILURE',
+        'sourceActionContractId': 'PROTOTYPE_SCENARIO-v1',
+        'sourceAttemptRecordSha256': '2' * 64,
+        'stageKind': 'SCOPE',
+        'repairRound': 2,
+        'budgetPolicySha256': '3' * 64,
+    }
+    issues = repair.schema_issues(
+        'PROTOTYPE_SCENARIO-v1', json.loads(candidate), 'PROTOTYPE')
+    report = repair.diagnostic_report(
+        candidate, issues, owner='PROTOTYPE', checker_file=__file__,
+        packet={}, origin=origin)
+    from prototype_analysis import plan_candidate_repair
+    plan = plan_candidate_repair(
+        'PROTOTYPE_SCENARIO', {}, candidate, report, origin=origin,
+        action_contract_id='PROTOTYPE_SCENARIO-v1')
+    groups = json.loads(plan)['groups']
+
+    assert len(groups) == 1
+    assert {
+        (slot['operation'], slot['field'])
+        for slot in groups[0]['slots']
+    } == {
+        ('REMOVE_FIELD', 'kind'),
+        ('REMOVE_FIELD', 'title'),
+        ('REMOVE_FIELD', 'action'),
+    }
+
+    plan = encode(json.loads(plan))
+    patch = encode({
+        'repairPlanSha256': digest(plan),
+        'baseCandidateSha256': digest(candidate),
+        'groupId': groups[0]['groupId'],
+        'operations': [
+            {'slotId': slot['slotId']} for slot in groups[0]['slots']
+        ],
+    })
+
+    def verify(raw, _group):
+        assert repair.schema_issues(
+            'PROTOTYPE_SCENARIO-v1', json.loads(raw), 'PROTOTYPE') == []
+
+    merged, _ = repair.apply_repair_patch(
+        candidate, plan, patch, group_id=groups[0]['groupId'],
+        verify_group=verify)
+    assert json.loads(merged)['scenarios'][0]['steps'][0].get('action') is None
