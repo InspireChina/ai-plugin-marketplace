@@ -878,7 +878,7 @@
       ],
       "instruction": {
         "path": "prompts/candidate-patch.md",
-        "sha256": "f5c2b4ebc8c41cf9c71c2ca2271800ffea483a5bceb5763dc385c22253f90dad"
+        "sha256": "24012454d4102762f3fda5ff01448d72092dc53122f8b03ea009639d66551f90"
       },
       "limits": {
         "maxHydrateTokens": 65536,
