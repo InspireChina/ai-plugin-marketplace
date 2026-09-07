@@ -8,7 +8,7 @@ from typing import Literal, Mapping, Sequence
 from models import ContextRefDescriptor
 from action_ledger import ActionLedger, validate_attempt_repair_context
 
-from contracts import action_contract_binding, canonical_json_bytes, estimate_action_input_tokens, load_schema_registry, sha256_bytes, usable_action_input_tokens, validate_contract
+from contracts import action_contract_binding, current_action_contract_id, canonical_json_bytes, estimate_action_input_tokens, load_schema_registry, sha256_bytes, usable_action_input_tokens, validate_contract
 
 SKILL_ROOT = Path(__file__).parents[1]
 StagePlan = Mapping[str, object]
@@ -98,11 +98,33 @@ class StagePlanningBlocked(Exception):
 @dataclass(frozen=True)
 class DependencyResultRef:
     logical_work_id: str
-    attempt_record_sha256: str
+    result_sha256: str
     normalized_result: bytes
+    source_attempt_record_sha256: str | None = None
+
+def _selected_action_contract_id(action_kind, action_contract_ids):
+    contract_id = (action_contract_ids or {}).get(action_kind, current_action_contract_id(action_kind))
+    if not isinstance(contract_id, str) or contract_id.rpartition("-v")[0] != action_kind:
+        raise ValueError("已绑定 Action contract 与 work kind 不一致。")
+    action_contract_binding(SKILL_ROOT, contract_id)
+    return contract_id
 
 
-def estimate_work_input_tokens(action_kind, work_items, context_refs, budget_policy):
+def bound_action_contract_ids(plan):
+    """Recover only verified contract selections; frozen inputs remain authoritative."""
+    selected = {}
+    for work in plan["works"]:
+        packet = work["packetPlan"]
+        kind, contract_id = packet["actionKind"], packet["actionContractId"]
+        _selected_action_contract_id(kind, {kind: contract_id})
+        _, digest = action_contract_binding(SKILL_ROOT, contract_id)
+        if packet["actionContractSha256"] != digest or (kind in selected and selected[kind] != contract_id):
+            raise ValueError("冻结计划的 Action contract hash 或同类版本不一致。")
+        selected[kind] = contract_id
+    return selected
+
+
+def estimate_work_input_tokens(action_kind, work_items, context_refs, budget_policy, *, action_contract_ids=None):
     """Estimate known base bytes through the same public request authority."""
     descriptor = make_planned_work(action_kind, work_items, context_refs, [])
     items = {item.work_item_id: item for item in work_items}
@@ -114,8 +136,9 @@ def estimate_work_input_tokens(action_kind, work_items, context_refs, budget_pol
         "contextRefs": [{"refId": ref_id, "contentSha256": sha256_bytes(contexts[ref_id].canonical_content)}
                         for ref_id in descriptor.context_ref_ids],
     }
-    contract, _ = action_contract_binding(SKILL_ROOT, action_kind + "-v1")
-    return estimate_action_input_tokens(SKILL_ROOT, action_kind + "-v1",
+    contract_id = _selected_action_contract_id(action_kind, action_contract_ids)
+    contract, _ = action_contract_binding(SKILL_ROOT, contract_id)
+    return estimate_action_input_tokens(SKILL_ROOT, contract_id,
         canonical_json_bytes(_base_packet(packet_plan, items, contexts)),
         budget_policy=run_budget_policy_value(budget_policy),
         max_output_tokens=min(budget_policy.output_reserve_tokens, contract["limits"]["maxOutputTokens"]))
@@ -128,6 +151,8 @@ def plan_stage(
     planned_works: Sequence[PlannedWorkDescriptor],
     upstream_checkpoint_sha256s: Sequence[str],
     budget_policy: RunBudgetPolicy,
+    *,
+    action_contract_ids: Mapping[str, str] | None = None,
 ) -> StagePlan:
     items = {item.work_item_id: item for item in work_items}
     contexts = {ref.ref_id: ref for ref in context_refs}
@@ -169,7 +194,7 @@ def plan_stage(
     logical_by_key = {}
     for key in [key for layer in layers for key in layer]:
         descriptor = by_key[key]
-        contract_id = descriptor.action_kind + "-v1"
+        contract_id = _selected_action_contract_id(descriptor.action_kind, action_contract_ids)
         contract, contract_hash = action_contract_binding(SKILL_ROOT, contract_id)
         packet_plan = {
             "actionKind": descriptor.action_kind,
@@ -217,8 +242,12 @@ def validate_stage_plan(
     planned_works: Sequence[PlannedWorkDescriptor],
     upstream_checkpoint_sha256s: Sequence[str],
     budget_policy: RunBudgetPolicy,
+    *,
+    action_contract_ids: Mapping[str, str] | None = None,
 ) -> None:
-    expected = plan_stage(str(plan["stageKind"]), work_items, context_refs, planned_works, upstream_checkpoint_sha256s, budget_policy)
+    frozen_ids = bound_action_contract_ids(plan)
+    expected = plan_stage(str(plan["stageKind"]), work_items, context_refs, planned_works, upstream_checkpoint_sha256s, budget_policy,
+                          action_contract_ids=frozen_ids if action_contract_ids is None else action_contract_ids)
     if canonical_json_bytes(plan) != canonical_json_bytes(expected):
         raise ValueError("StagePlan 与完整冻结输入不一致。")
 
@@ -233,7 +262,7 @@ def materialize_packet(
     ledger: ActionLedger,
     attempt_repair_context: ContextRefDescriptor | None = None,
 ) -> bytes:
-    if type(revision) is not int or revision not in (1, 2) or (revision == 2 and attempt_repair_context is None) or (revision == 1 and attempt_repair_context is not None):
+    if type(revision) is not int or not 1 <= revision <= 10 or (revision > 1 and attempt_repair_context is None) or (revision == 1 and attempt_repair_context is not None):
         raise ValueError("revision与唯一repair context不一致。")
     matches = [work for work in plan["works"] if work["logicalWorkId"] == logical_work_id]
     if len(matches) != 1:
@@ -241,6 +270,8 @@ def materialize_packet(
     work = matches[0]
     packet_plan = work["packetPlan"]
     contract, contract_hash = action_contract_binding(SKILL_ROOT, packet_plan["actionContractId"])
+    if revision > 1 and contract["executionKind"] != "MODEL_PROVIDER":
+        raise ValueError("只有MODEL_PROVIDER允许候选修复。")
     expected_id = "logical-" + sha256_bytes(canonical_json_bytes({"stageKind": plan["stageKind"], "packetPlanSha256": sha256_bytes(canonical_json_bytes(packet_plan))}))
     if contract_hash != packet_plan["actionContractSha256"] or expected_id != logical_work_id:
         raise ValueError("PacketPlan合同或LogicalWork hash漂移。")
@@ -255,18 +286,21 @@ def materialize_packet(
     provided = [ref.logical_work_id for ref in dependency_refs]
     if len(provided) != len(set(provided)) or set(provided) != set(packet_plan["dependencyLogicalWorkIds"]):
         raise ValueError("DependencyResultRef必须恰好覆盖冻结依赖。")
+    from action_ledger import CandidateResult, effective_result, effective_result_bytes, dependency_context
     for ref in dependency_refs:
-        digest, record = _effective_success(ledger, ref.logical_work_id)
-        if digest != ref.attempt_record_sha256 or sha256_bytes(ref.normalized_result) != record.normalized_result_sha256 or ledger.normalized_results.get(record.normalized_result_sha256) != ref.normalized_result:
-            raise ValueError("dependency record或normalized bytes未由ledger证明。")
+        digest, result = effective_result(ledger, ref.logical_work_id)
+        source = result.source_attempt_record_sha256 if isinstance(result, CandidateResult) else None
+        if (digest != ref.result_sha256 or source != ref.source_attempt_record_sha256
+                or sha256_bytes(ref.normalized_result) != result.normalized_result_sha256
+                or effective_result_bytes(ledger,ref.logical_work_id) != ref.normalized_result):
+            raise ValueError("dependency result或normalized bytes未由ledger证明。")
     packet = _base_packet(packet_plan, items, contexts)
-    packet["contextRefs"].extend({
-        "refId": "dependency-result-" + ref.logical_work_id,
-        "canonicalContent": {"kind": "DEPENDENCY_RESULT", "logicalWorkId": ref.logical_work_id, "attemptRecordSha256": ref.attempt_record_sha256, "normalizedResult": _canonical_value(ref.normalized_result)},
-    } for ref in sorted(dependency_refs, key=lambda ref: ref.logical_work_id))
+    packet['contextRefs'].extend(dependency_context(ledger,ref.logical_work_id)
+        for ref in sorted(dependency_refs,key=lambda ref:ref.logical_work_id))
     if attempt_repair_context is not None:
-        if contract["executionKind"] != "MODEL_PROVIDER":
-            raise ValueError("只有MODEL_PROVIDER允许revision 2 repair。")
+        previous = ledger.attempt_records.get(json.loads(attempt_repair_context.canonical_content)['attemptRecordSha256'])
+        if previous is None or previous.revision != revision - 1:
+            raise ValueError('repair 必须绑定紧邻前一候选。')
         validate_attempt_repair_context(attempt_repair_context, logical_work_id, ledger.attempt_records, envelopes_by_sha256=ledger.envelopes_by_sha256)
         packet["contextRefs"].append({"refId": attempt_repair_context.ref_id, "canonicalContent": _canonical_value(attempt_repair_context.canonical_content), "contentSha256": sha256_bytes(attempt_repair_context.canonical_content)})
     ref_ids = [ref["refId"] for ref in packet["contextRefs"]]
@@ -339,12 +373,8 @@ def validate_packet_against_plan(
 
 
 def next_issuable_group(plan: StagePlan, ledger: ActionLedger) -> ActionGroup | None:
-    effective = {work["logicalWorkId"]: _effective_envelope(ledger, work["logicalWorkId"]) for work in plan["works"]}
-    succeeded = {record.envelope_sha256 for record in ledger.attempt_records.values() if record.outcome == "SUCCEEDED"}
-    for group in plan["groups"]:
-        if any(effective[logical_id] is None or effective[logical_id].sha256 not in succeeded for logical_id in group["requiredLogicalWorkIds"]):
-            return group
-    return None
+    from action_ledger import is_group_ready
+    return next((group for group in plan['groups'] if not is_group_ready(ledger,group['requiredLogicalWorkIds'])),None)
 
 
 def make_planned_work(

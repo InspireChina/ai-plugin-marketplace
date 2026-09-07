@@ -1,4 +1,5 @@
 from __future__ import annotations
+from action_ledger import effective_result, effective_result_bytes
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -473,7 +474,8 @@ def _story_decision_diagnostics(packet, result):
     obligations, facts = _story_packet_catalog(packet)
     diagnostics, adopted, story_keys, rule_keys = [], set(), set(), {}
     def add(code, path):
-        diagnostics.append(_diagnostic(code, 'Story/AC 未满足冻结义务或来源绑定。', path))
+        diagnostics.append(Diagnostic(code=code, message='Story/AC 未满足冻结义务或来源绑定。', path=path,
+            details={'subjectIds': [story['localKey']] if path.startswith('/stories/') else []}))
     for story in result['stories']:
         path = '/stories/'+story['localKey']
         if story['localKey'] in story_keys:
@@ -528,8 +530,24 @@ def verify_story_ac_decision(packet, result):
 def validate_bound_story_result(packet, normalized_result):
     # finish already performed strict parsing, exact schema validation and the
     # sole set normalization. This core does no schema reads or other I/O.
-    if _story_decision_diagnostics(packet, json.loads(normalized_result)):
-        raise InvalidActionResult('Story/AC 未关闭已授权的义务/来源绑定。')
+    result = json.loads(normalized_result)
+    from candidate_repair import repair_baseline, preserve_roots
+    baseline = repair_baseline(packet, 'STORY_AC-v1')
+    if baseline is not None:
+        previous, diagnostic = baseline
+        if diagnostic['code'] == 'STORY_DECISION_INVALID':
+            missing = {item['path'].removeprefix('/obligations/') for item in diagnostic.get('findings', [])
+                       if item['path'].startswith('/obligations/')}
+            authorized = missing | {key for row in previous['stories']
+                if row['localKey'] in diagnostic['subjectIds'] for key in row['scopeDecisionKeys']}
+            preserve_roots(previous, result, 'stories', set(diagnostic['subjectIds']),
+                allow_new=lambda row: bool(row['scopeDecisionKeys']) and set(row['scopeDecisionKeys']) <= authorized)
+    diagnostics = _story_decision_diagnostics(packet, result)
+    if diagnostics:
+        from models import AttemptDiagnostic
+        findings = tuple(AttemptDiagnostic(item.code, item.path, tuple(item.details.get('subjectIds', ()))) for item in diagnostics)
+        raise InvalidActionResult('Story/AC 未关闭已授权的义务/来源绑定。', diagnostic=AttemptDiagnostic(
+            'STORY_DECISION_INVALID', '/stories', tuple(sorted({key for item in findings for key in item.subject_ids})), findings))
 
 
 @dataclass(frozen=True)
@@ -543,7 +561,7 @@ class StoryMaterialization:
 
 
 def _complete_story_results(inputs, plan, ledger, budget_policy):
-    from stage_planner import validate_stage_plan, materialize_packet, _effective_envelope, _effective_success
+    from stage_planner import validate_stage_plan, materialize_packet, _effective_envelope
     from action_ledger import build_attempt_repair_context
     expected = prepare_story_inputs(inputs.scope_candidate_bytes, inputs.checkpoint_bytes,
                                     checkpoint_sha256=inputs.checkpoint_sha256)
@@ -558,10 +576,9 @@ def _complete_story_results(inputs, plan, ledger, budget_policy):
     for work in plan['works']:
         key, packet_plan = work['logicalWorkId'], work['packetPlan']
         envelope = _effective_envelope(ledger, key)
-        if envelope is None or not any(record.envelope_sha256 == envelope.sha256 and record.outcome == 'SUCCEEDED'
-                for record in ledger.attempt_records.values()):
+        if envelope is None or effective_result_bytes(ledger,key) is None:
             raise StoryInputRequired('Story plan 尚有未 sealed 的 LogicalWork。')
-        _, record = _effective_success(ledger, key)
+        _, record = effective_result(ledger, key)
         if (envelope.value['actionContractId'] != packet_plan['actionContractId']
                 or envelope.value['actionContractSha256'] != packet_plan['actionContractSha256']
                 or envelope.value['inputRevisionSha256'] != scope['project']['inputRevisionSha256']
@@ -572,9 +589,9 @@ def _complete_story_results(inputs, plan, ledger, budget_policy):
         if sha256_bytes(normalized) != record.normalized_result_sha256:
             raise ValueError('Story normalized result hash 漂移。')
         repair = None
-        if envelope.value['revision'] == 2:
+        if envelope.value['revision'] > 1:
             failed = [digest for digest, item in ledger.attempt_records.items()
-                      if item.logical_work_id == key and item.revision == 1 and item.failure_kind == 'INVALID_IR']
+                      if item.logical_work_id == key and item.revision == envelope.value['revision'] - 1 and item.failure_kind in {'INVALID_JSON', 'INVALID_IR'}]
             if len(failed) != 1:
                 raise ValueError('Story revision 2 没有唯一 INVALID_IR Attempt。')
             repair = build_attempt_repair_context(key, failed[0], ledger.attempt_records, ledger.raw_outputs,
@@ -699,3 +716,104 @@ def publish_story_candidate(files, run_id, material):
         raise ValueError('Story candidate hash 漂移。')
     files.publish_new(f'.ai-sow/work/runs/{run_id}/stages/STORY_AC/candidates/{digest}.json', material.candidate_bytes)
     return {'candidateSha256': digest}
+
+
+def diagnose_candidate(action_kind, packet, candidate, **owner_context):
+    from candidate_repair import schema_issues, diagnostic_report, issues_from_diagnostics
+    raw=candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate);value=json.loads(raw)
+    issues=schema_issues(owner_context.get('action_contract_id','STORY_AC-v1'),value,'STORY_AC')
+    blocked=[];domains=['SCHEMA']
+    try:
+        diagnostics=_story_decision_diagnostics(packet,value)
+    except (KeyError,TypeError,IndexError):
+        blocked.append('STORY_BINDINGS')
+    else:
+        issues+=issues_from_diagnostics(diagnostics,'STORY_AC',value);domains.append('STORY_BINDINGS')
+    return diagnostic_report(raw,issues,owner='STORY_AC',checker_file=__file__,packet=packet,
+        origin=owner_context.get('origin'),blocked=blocked,domains=domains)
+
+
+def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **owner_context):
+    from candidate_repair import group_fields, build_repair_plan
+    value=json.loads(candidate) if isinstance(candidate,bytes) else candidate
+    obligations,_=_story_packet_catalog(packet)
+    fields={'STORY_SCOPE_KEY_NOT_AUTHORIZED':['scopeDecisionKeys'], 'STORY_FACT_NOT_AUTHORIZED':['sourceFactIds'],
+        'STORY_ACTOR_NOT_AUTHORIZED':['actorKey'],
+        'STORY_OBLIGATION_UNCLOSED':['sourceFactIds'],
+        'STORY_RULE_DUPLICATE':['condition','observableResult'], 'STORY_RULE_CONTRADICTORY':['condition','observableResult']}
+    selected={};qualifier_appends=[]
+    for issue in report['issues']:
+        path=issue['paths'][0];parts=path.split('/');story_index=None
+        if len(parts)>2 and parts[1]=='stories' and not parts[2].isdigit():
+            matches=[i for i,row in enumerate(value['stories']) if row['localKey']==parts[2]]
+            if len(matches)!=1:continue
+            story_index=matches[0];path='/stories/'+str(story_index)
+            if len(parts)>3:
+                ac=[i for i,row in enumerate(value['stories'][story_index]['acceptanceCriteria']) if row['localKey']==parts[3]]
+                if len(ac)==1:path+='/acceptanceCriteria/'+str(ac[0])
+        if issue['code']=='STORY_QUALIFIER_MISSING' and story_index is not None:
+            obligation=next((row for row in obligations.values() if row['obligationId']==parts[3]),None)
+            if obligation is None:continue
+            required=set(obligation['sourceFactIds'])
+            matching=[i for i,row in enumerate(value['stories'][story_index]['acceptanceCriteria'])
+                      if required.intersection(row['sourceFactIds'])]
+            if matching:
+                selected[issue['issueId']]=[
+                    f'/stories/{story_index}/acceptanceCriteria/{i}/{field}'
+                    for i in matching for field in ('condition','observableResult')]
+            else:
+                qualifier_appends.append((issue,story_index,obligation))
+            continue
+        selected[issue['issueId']]=[path+'/'+field for field in fields[issue['code']]] if issue['code'] in fields else [path]
+    contract_id=owner_context.get('action_contract_id','STORY_AC-v1')
+    groups=group_fields(candidate,report,contract_id,selected)
+    for group in groups:
+        qualifier_ids=set(group['issueIds']) & {issue['issueId'] for issue in report['issues'] if issue['code']=='STORY_QUALIFIER_MISSING'}
+        if qualifier_ids:
+            choice='qualifier-'+next(iter(qualifier_ids))
+            for slot in group['slots']:
+                slot['alternativeSet']=choice
+    from candidate_repair import append_object_group,transform_roots_group,schema_at,index_candidate
+    raw=candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate)
+    for issue,story_index,obligation in qualifier_appends:
+        story=value['stories'][story_index]
+        schema=schema_at(contract_id,'/stories/0/acceptanceCriteria/0')
+        schema={**schema,'properties':{**schema['properties'],
+            'localKey':{'type':'string','pattern':'^'+re.escape(story['localKey']+':ac:repair:')},
+            'sourceFactIds':{'const':sorted(obligation['sourceFactIds'])}}}
+        groups.append(append_object_group(raw,f'stories/{story_index}/acceptanceCriteria',schema,
+            [issue['issueId']],group_id='qualifier-'+issue['issueId']))
+    for issue in report['issues']:
+        if issue['code']=='STORY_OBLIGATION_UNCLOSED' and issue['paths'][0].startswith('/obligations/'):
+            key=issue['paths'][0].removeprefix('/obligations/')
+            schema=schema_at(contract_id,'/stories/0')
+            schema={**schema,'properties':{**schema['properties'],'scopeDecisionKeys':{'const':[key]}}}
+            groups.append(append_object_group(raw,'stories',schema,[issue['issueId']],group_id='missing-'+issue['issueId']))
+        elif issue['code']=='INDEPENDENT_STORY_BOUNDARIES_MERGED':
+            key=issue['paths'][0].split('/')[2]
+            entries=[e for e in index_candidate(raw,inherited=report.get('objectIndex',())) if e['objectId']=='stories/'+key]
+            if entries:
+                row=value['stories'][int(entries[0]['path'].split('/')[2])]
+                schema=schema_at(contract_id,'/stories/0')
+                schema={**schema,'properties':{**schema['properties'],'scopeDecisionKeys':{'type':'array','items':{'enum':row['scopeDecisionKeys']},'minItems':1,'uniqueItems':True}}}
+                groups.append(transform_roots_group(raw,entries,schema,[issue['issueId']],namespace=key+':repair:',maximum=len(row['scopeDecisionKeys'])))
+    if not groups:raise InvalidActionResult('Story 问题需要精确 root 变换或真实输入，不能改写其它 Story。')
+    return build_repair_plan(raw,report,groups,origin=origin)
+
+
+def candidate_repair_context(action_kind, packet, candidate, plan, group):
+    value=json.loads(candidate);index={r['objectId']:r for r in plan['objectIndex']};keys=set()
+    for slot in group['slots']:
+        path=index.get(slot['objectId'],{}).get('path')
+        if path:
+            parts=path.split('/')
+            if len(parts)>2 and parts[1]=='stories':keys.update(value['stories'][int(parts[2])]['scopeDecisionKeys'])
+        collection=slot['collection'].split('/')
+        if len(collection)>1 and collection[0]=='stories' and collection[1].isdigit():
+            keys.update(value['stories'][int(collection[1])]['scopeDecisionKeys'])
+        const=slot.get('valueSchema',{}).get('properties',{}).get('scopeDecisionKeys',{}).get('const')
+        if isinstance(const,list):keys.update(const)
+    items=[item['payload'] for item in packet['workItems'] if item['payload']['scopeDecisionKey'] in keys]
+    facts={key for item in items for key in item['obligation']['sourceFactIds']}
+    return [{'kind':'OWNER_OBLIGATION','value':item} for item in items]+[
+        ref['canonicalContent'] for ref in packet['contextRefs'] if ref['canonicalContent'].get('factKey') in facts]

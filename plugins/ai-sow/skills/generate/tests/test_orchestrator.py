@@ -323,7 +323,7 @@ def test_public_task_rule_hydration_uses_frozen_catalog_and_capacity(tmp_path, r
     for _ in range(30):
         assert response['outcome'] == 'ACTIVE', response
         actions = response['nextAction'].get('actions', [response['nextAction']])
-        if actions[0]['actionContractId'] == 'TASK-v1': break
+        if actions[0]['actionContractId'] == 'TASK-v2': break
         for action in actions:
             submit_prototype(tmp_path, action, stage_result(action['actionContractId'][:-3],
                 json.loads((tmp_path/action['packetPath']).read_bytes())))
@@ -419,6 +419,32 @@ def test_checkpoint_deep_binding_public_resume_rejects_changed_stage_proof(tmp_p
     assert {p:p.read_bytes() for p in root.rglob('*.json')}==before
 
 
+def semantic_scope_patch(project,action,key,value,field='name'):
+    from candidate_repair import patch_context,_at
+    packet=json.loads((project/action['packetPath']).read_bytes());view=patch_context(packet)
+    root=project/'.ai-sow/work/runs'/action['runId']/'candidate-repairs'
+    plan=json.loads((root/'plans'/f"{view['repairPlanSha256']}.json").read_bytes())
+    base=json.loads((root/'bases'/f"{plan['baseCandidateSha256']}.json").read_bytes())
+    index={row['objectId']:row for row in plan['objectIndex']};operations=[]
+    for slot in view['group']['slots']:
+        if slot['operation']=='TRANSFORM_ROOTS':
+            rows=[]
+            for object_id in slot['inputObjectIds']:
+                row=copy.deepcopy(_at(base,index[object_id]['path']))
+                if row['localKey']==key:
+                    if field=='name':row['boundaryEvidence']['name']=value
+                    else:row[field]=value
+                row['localKey']=slot['outputNamespace']+row['localKey'].replace(':','-')
+                rows.append(row)
+            new_value=rows
+        else:new_value=value
+        operations.append({'slotId':slot['slotId'],'value':new_value})
+    return {'repairPlanSha256':view['repairPlanSha256'],
+        'baseCandidateSha256':view['baseCandidateSha256'],'groupId':view['group']['groupId'],
+        'operations':operations}
+
+
+@pytest.mark.e2e
 def test_bounded_semantic_repair_public_immutable_candidate_and_fresh_pass(tmp_path):
     action=scope_review_action(tmp_path)
     body=prototype_payload(tmp_path,action)
@@ -427,11 +453,9 @@ def test_bounded_semantic_repair_public_immutable_candidate_and_fresh_pass(tmp_p
         'subjectIds':[key],'evidenceIds':body['evidenceIds'][:1],'message':'能力名称需点明交付结果。'}]}
     submit_prototype(tmp_path,action,review)
     repair=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
-    assert repair['actionContractId']=='SCOPE_REPAIR-v1'
-    payload=prototype_payload(tmp_path,repair)
-    row=copy.deepcopy(next(row for row in payload['ownerIR']['decisions'] if row['localKey']==key))
-    row['boundaryEvidence']['name']='已明确的订单查询能力'
-    submit_prototype(tmp_path,repair,{'decisions':[row]})
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    submit_prototype(tmp_path,repair,semantic_scope_patch(
+        tmp_path,repair,key,'已明确的订单查询能力'))
     fresh=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
     assert fresh['actionContractId']=='SOURCE_SCOPE-v1' and fresh['logicalWorkId']!=action['logicalWorkId']
     assert fresh['baseCandidateSha256']!=action['baseCandidateSha256']
@@ -532,6 +556,7 @@ def test_fresh_control_review_invalid_root_retry_binds_actual_overlay_and_stops_
     assert orchestrator_module.run_mode(tmp_path, 'resume')['outcome'] == 'ACTIVE'
 
 
+@pytest.mark.e2e
 def test_bounded_semantic_repair_public_second_finding_does_not_close_original(tmp_path):
     action = scope_review_action(tmp_path)
     body = prototype_payload(tmp_path, action)
@@ -540,10 +565,9 @@ def test_bounded_semantic_repair_public_second_finding_does_not_close_original(t
         'subjectIds': [key], 'evidenceIds': [], 'message': '需纠正能力边界。'}]}
     submit_prototype(tmp_path, action, review)
     repair = orchestrator_module.run_mode(tmp_path, 'resume')['nextAction']
-    owner_ir = prototype_payload(tmp_path, repair)['ownerIR']
-    row = copy.deepcopy(next(row for row in owner_ir['decisions'] if row['localKey'] == key))
-    row['boundaryEvidence']['name'] = '已修正的交付能力'
-    submit_prototype(tmp_path, repair, {'decisions': [row]})
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    submit_prototype(tmp_path,repair,semantic_scope_patch(
+        tmp_path,repair,key,'已修正的交付能力'))
     second = orchestrator_module.run_mode(tmp_path, 'resume')['nextAction']
     submit_prototype(tmp_path, second, review)
     stopped = orchestrator_module.run_mode(tmp_path, 'resume')
@@ -551,7 +575,7 @@ def test_bounded_semantic_repair_public_second_finding_does_not_close_original(t
     root = tmp_path/'.ai-sow/work/runs'/action['runId']
     assert not list((root/'stages/SCOPE/checkpoints').glob('*.json'))
     envelopes = [json.loads(path.read_bytes()) for path in (root/'actions').glob('*/envelope.json')]
-    assert sum(row['actionContractId'] == 'SCOPE_REPAIR-v1' for row in envelopes) == 1
+    assert sum(row['actionContractId'] == 'CANDIDATE_PATCH-v1' for row in envelopes) == 1
 
 
 def write_json(path: Path, value: object) -> None:
@@ -702,8 +726,23 @@ def test_prototype_model_invalid_binding_uses_existing_ir_repair(tmp_path, case)
     repaired = orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]
     assert (repaired["revision"], repaired["attempt"]) == (2, 1)
     assert repaired["logicalWorkId"] == action["logicalWorkId"]
+    if case == "broken-then-invalid":
+        from contracts import InvalidActionResult
+        from prototype_analysis import validate_bound_prototype_result
+        packet = json.loads((tmp_path / repaired["packetPath"]).read_bytes())
+        with pytest.raises(InvalidActionResult) as protected:
+            validate_bound_prototype_result("PROTOTYPE_ANALYZE", packet["workItems"][0]["payload"],
+                canonical_json_bytes(valid), packet=packet)
+        assert protected.value.diagnostic.code == "REPAIR_SCOPE_VIOLATION"
+        valid["observations"].insert(0, copy.deepcopy(broken))
     assert submit_prototype(tmp_path, repaired, valid)["record"]["outcome"] == "SUCCEEDED"
-    assert orchestrator_module.run_mode(tmp_path, "resume")["nextAction"]["actionContractId"] == ("SOURCE_SCAN-v1" if case in {"unknown-evidence", "broken-then-invalid"} else "PROTOTYPE_BROWSER-v1")
+    continuation = orchestrator_module.run_mode(tmp_path, "resume")
+    if case == "broken-then-invalid":
+        assert continuation["outcome"] == "WAITING_INPUT"
+        assert continuation["nextAction"] is None
+        assert any(item["code"] == "PROTOTYPE_SCOPE_EVIDENCE_REQUIRED" for item in continuation["diagnostics"])
+    else:
+        assert continuation["nextAction"]["actionContractId"] == ("SOURCE_SCAN-v1" if case == "unknown-evidence" else "PROTOTYPE_BROWSER-v1")
 
 
 def test_prototype_scenario_frozen_limits_survive_replacement_and_repair(tmp_path):
@@ -1337,7 +1376,7 @@ def test_resume_fitting_unissued_scope_plan_preserves_run_and_budget(tmp_path, m
     {"demoLimits": {"maxDiscoveryRounds": 2, "maxScenarioSteps": 29, "maxScreenshots": 12}},
     {"demoLimits": {"maxDiscoveryRounds": 2, "maxScenarioSteps": 30, "maxScreenshots": 11}},
     {"outputReserveTokens": 8193, "maxPlannedTokens": 2000000},
-    {"hydrateReserveTokens": 4097, "maxPlannedTokens": 2000000},
+    {"hydrateReserveTokens": 4095, "maxPlannedTokens": 2000000},
     {"safetyMarginTokens": 1025, "maxPlannedTokens": 2000000},
     {"referenceOverheadTokens": 257, "maxPlannedTokens": 2000000},
     {"modelContextLimitTokens": 64000, "maxPlannedTokens": 2000000},
@@ -1359,7 +1398,7 @@ def test_budget_update_not_business_input_replacement_only_monotonic_limits(tmp_
     assert managed_snapshot(tmp_path) == before
 
 
-@pytest.mark.parametrize("field", ["maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens", "maxDiscoveryRounds", "maxScenarioSteps", "maxScreenshots"])
+@pytest.mark.parametrize("field", ["maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens", "hydrateReserveTokens", "maxDiscoveryRounds", "maxScenarioSteps", "maxScreenshots"])
 def test_budget_update_not_business_input_increase_preserves_frozen_plan_and_attempt(tmp_path, field):
     from stage_driver import stage_result
     request = write_run_store_request(tmp_path)
@@ -3470,7 +3509,7 @@ def test_no_stage_approval_all_three_owners_complete_with_one_materialization_ea
             if action['actionContractId']=='STORY_AC-v1':
                 from delivery_compiler import verify_story_ac_decision
                 assert not verify_story_ac_decision(packet,result), verify_story_ac_decision(packet,result)
-            if action['actionContractId']=='TASK-v1':
+            if action['actionContractId']=='TASK-v2':
                 from task_compiler import verify_task_decision
                 assert not verify_task_decision(packet,result), verify_task_decision(packet,result)
             record=submit_prototype(tmp_path,action,result)['record']
@@ -3482,7 +3521,7 @@ def test_no_stage_approval_all_three_owners_complete_with_one_materialization_ea
         assert len(list((root/f'stages/{stage}/checkpoints').glob('*.json')))==1
         assert len(list((root/f'stages/{stage}/plans').glob('*.json')))==1
     assert set(contracts)=={'SOURCE_SCAN-v1','SOURCE_AUDIT-v1','SCOPE_SYNTHESIS-v1','SOURCE_SCOPE-v1',
-        'STORY_AC-v1','STORY_DESIGN-v1','TASK-v1','TASK_ESTIMATION-v1'}
+        'STORY_AC-v1','STORY_DESIGN-v1','TASK-v2','TASK_ESTIMATION-v1'}
     events=[json.loads(path.read_bytes()) for path in sorted((root/'events').glob('*.json'))]
     assert [event['payload']['stepKind'] for event in events if event['type']=='DETERMINISTIC_STEP_FINISHED']==['MATERIALIZE','VALIDATE']*3
     import scope_compiler,delivery_compiler,task_compiler
@@ -3603,14 +3642,16 @@ def test_stage_seal_order_active_overrun_prevents_next_operation_and_recovers_on
     assert [event['payload']['stepKind'] for event in events if event['type']=='DETERMINISTIC_STEP_FINISHED']==['MATERIALIZE','VALIDATE']
 
 
-@pytest.mark.parametrize('case',['pass','missing-obligation','intent-refused'])
+@pytest.mark.parametrize('case',['pass','missing-obligation','intent-refused','implicit-evidence','non-scope-target','included-excluded'])
 def test_fresh_control_review_code_only_all_original_rounds_and_obligations(tmp_path,monkeypatch,case):
     from test_prototype_analysis import scenario_fixture,trace_fixture,observation_fixture
     from stage_driver import stage_result
     from dataclasses import replace
     import scope_compiler
-    action=start_demo(tmp_path,two_controls=True)['nextAction'];inventory=prototype_payload(tmp_path,action)['inventory']
+    action=start_demo(tmp_path,two_controls=case!='implicit-evidence',second_page=case=='implicit-evidence')['nextAction']
+    inventory=prototype_payload(tmp_path,action)['inventory']
     root=tmp_path/'.ai-sow/work/runs'/action['runId'];attempts=[]
+    implicit_decisions=None
     for number in (1,2):
         assert not list((root/'stages/SCOPE/plans').glob('*.json'))
         chosen=copy.deepcopy(inventory);chosen['interactions']=[inventory['interactions'][number-1]]
@@ -3620,6 +3661,7 @@ def test_fresh_control_review_code_only_all_original_rounds_and_obligations(tmp_
         attempts.append(submit_prototype(tmp_path,browser,trace_fixture(inventory,scenario))['record'])
         analyze=orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
         observation=observation_fixture(chosen,'round-'+str(number));observation['runtimeStatus']='CODE_ONLY'
+        if case=='non-scope-target': observation['scopeRelation']='NON_SCOPE'
         attempts.append(submit_prototype(tmp_path,analyze,{'observations':[observation]})['record'])
         response=orchestrator_module.run_mode(tmp_path,'resume')
         action=response['nextAction']
@@ -3627,6 +3669,15 @@ def test_fresh_control_review_code_only_all_original_rounds_and_obligations(tmp_
         original=scope_compiler.materialize_scope_candidate
         def missing(*args,**kwargs): return replace(original(*args,**kwargs),review_obligations=())
         monkeypatch.setattr(scope_compiler,'materialize_scope_candidate',missing)
+    elif case in {'non-scope-target','included-excluded'}:
+        original=scope_compiler.materialize_scope_candidate
+        failures=[]
+        def capture_failure(*args,**kwargs):
+            try: return original(*args,**kwargs)
+            except Exception as error:
+                failures.append(error)
+                raise
+        monkeypatch.setattr(scope_compiler,'materialize_scope_candidate',capture_failure)
     for _ in range(12):
         if response['outcome']!='ACTIVE': break
         action=response['nextAction']
@@ -3637,16 +3688,71 @@ def test_fresh_control_review_code_only_all_original_rounds_and_obligations(tmp_
             if kind=='SCOPE_SYNTHESIS':
                 refs=[ref['canonicalContent'] for ref in packet['contextRefs'] if ref['canonicalContent'].get('kind')=='PROTOTYPE_OBSERVATION_REF']
                 feature=next(row for row in result['decisions'] if row['decisionKind']=='FEATURE')
-                feature['boundaryEvidence']['observationKeys']=sorted(key for ref in refs for key in ref['observationKeys'])
-                feature['boundaryEvidence']['evidenceIds']=sorted(set(feature['boundaryEvidence']['evidenceIds'])|{key for ref in refs for key in ref['evidenceIds']})
+                if case=='implicit-evidence':
+                    parent=next(relation['targetLocalKeys'][0] for relation in feature['relations'] if relation['kind']=='PARENT')
+                    epic=next(row for row in result['decisions'] if row['localKey']==parent)
+                    for target,ref in zip((feature,epic),sorted(refs,key=lambda row:row['round']),strict=True):
+                        target['boundaryEvidence']['observationKeys']=ref['observationKeys']
+                    implicit_decisions=copy.deepcopy(result)
+                else:
+                    feature['boundaryEvidence']['observationKeys']=sorted(key for ref in refs for key in ref['observationKeys'])
+                    feature['boundaryEvidence']['evidenceIds']=sorted(set(feature['boundaryEvidence']['evidenceIds'])|{key for ref in refs for key in ref['evidenceIds']})
+                    if case=='included-excluded':
+                        excluded=copy.deepcopy(feature)
+                        excluded.update(localKey='excluded-prototype',decisionKind='EXCLUDE',relations=[],
+                            factIds=[feature['factIds'].pop()],exclusionReason='错误排除已选入的原型目标。')
+                        excluded['boundaryEvidence']['classification']='DISPOSITION'
+                        feature['boundaryEvidence']['observationKeys']=[]
+                        result['decisions'].append(excluded)
             assert submit_prototype(tmp_path,current,result)['record']['outcome']=='SUCCEEDED'
         response=orchestrator_module.run_mode(tmp_path,'resume')
-    if case=='missing-obligation':
+    if case in {'missing-obligation','non-scope-target','included-excluded'}:
         assert response['outcome']!='ACTIVE',response
         assert response.get('nextAction') is None
+        assert not list((root/'stages/SCOPE/checkpoints').glob('*.json'))
+        if case=='non-scope-target':
+            assert response['outcome']=='BLOCKED'
+            assert len(failures)==1 and 'NON_SCOPE' in str(failures[0])
+        elif case=='included-excluded':
+            assert response['outcome']=='WAITING_INPUT'
+            assert len(failures)==1 and '静默排除' in str(failures[0])
         return
     assert action['actionContractId']=='SOURCE_SCOPE-v1',response
     body=prototype_payload(tmp_path,action)
+    if case=='implicit-evidence':
+        assert implicit_decisions is not None
+        explicit=copy.deepcopy(implicit_decisions)
+        selected={row['localKey']:row for row in explicit['decisions'] if row['boundaryEvidence']['observationKeys']}
+        observation_sources={key:set(ref['evidenceIds']) for ref in refs for key in ref['observationKeys']}
+        for key,decision in selected.items():
+            expected=set(decision['boundaryEvidence']['evidenceIds'])
+            for handle in decision['boundaryEvidence']['observationKeys']:expected.update(observation_sources[handle])
+            assert expected!=set(decision['boundaryEvidence']['evidenceIds'])
+            pointer=body['ownerIndex'][key]['path'].strip('/').split('/')
+            node=body['candidate'][pointer[0]][int(pointer[1])]
+            assert {ref['blockId'] for ref in node['sourceRefs']}==expected
+            decision['boundaryEvidence']['evidenceIds']=sorted(expected)
+        files=ProjectFiles.open(tmp_path);state=orchestrator_module.status(tmp_path)['state']
+        _,items,contexts,_,_=orchestrator_module._frozen_stage_inputs(files,state,'SCOPE')
+        ledger=orchestrator_module._load_action_ledger(files,state['runId'])
+        with pytest.raises(ValueError,match='实际 Attempt ledger'):
+            scope_compiler.scope_review_owner_index(canonical_json_bytes(body['candidate']),explicit,items,
+                prototype_inventory=inventory,context_refs=contexts)
+        observation_ref=next(ref for ref in contexts if json.loads(ref.canonical_content).get('kind')=='PROTOTYPE_OBSERVATION_REF')
+        binding=json.loads(observation_ref.canonical_content)
+        with pytest.raises(ValueError,match='内容 hash'):
+            replace(ledger,normalized_results={**ledger.normalized_results,binding['normalizedResultSha256']:b'{}'})
+        binding['observationKeys']=['forged-handle']
+        corrupted_ref=replace(observation_ref,canonical_content=canonical_json_bytes(binding))
+        with pytest.raises(ValueError,match='handle'):
+            scope_compiler._scope_observations([corrupted_ref],ledger)
+        # Repeating the already selected provenance must not change identity.
+        explicit_index=scope_compiler.scope_review_owner_index(canonical_json_bytes(body['candidate']),explicit,items,
+            prototype_inventory=inventory,context_refs=contexts,ledger=ledger)
+        assert explicit_index==body['ownerIndex']
+        before=managed_snapshot(tmp_path)
+        assert orchestrator_module.status(tmp_path)['outcome']=='ACTIVE'
+        assert managed_snapshot(tmp_path)==before
     obligations=[row for row in body['reviewObligations'] if row['kind']=='PROTOTYPE_INTENT']
     assert {row['round'] for row in obligations}=={1,2}
     for row in obligations:
@@ -3755,6 +3861,7 @@ def scope_review_boundary(project, *, excluded=False, separate_roots=False):
     pytest.fail('Scope did not reach Review boundary')
 
 
+@pytest.mark.e2e
 @pytest.mark.parametrize('kind',['EXCLUDE','RETIRE'])
 def test_bounded_semantic_repair_excluded_scope_root_is_reviewable(tmp_path,kind):
     response = scope_review_boundary(tmp_path, excluded=kind)
@@ -3766,12 +3873,13 @@ def test_bounded_semantic_repair_excluded_scope_root_is_reviewable(tmp_path,kind
         'subjectIds':['excluded-root'],'evidenceIds':body['evidenceIds'][:1],'message':'排除理由需要明确本期责任边界。'}]}
     assert submit_prototype(tmp_path,action,review)['record']['outcome'] == 'SUCCEEDED'
     repair = orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
-    row = next(row for row in prototype_payload(tmp_path,repair)['ownerIR']['decisions'] if row['localKey']=='excluded-root')
-    row['exclusionReason'] = '本期由客户既有系统承担，不纳入本次实施交付'
-    assert submit_prototype(tmp_path,repair,{'decisions':[row]})['record']['outcome'] == 'SUCCEEDED'
+    assert repair['actionContractId']=='CANDIDATE_PATCH-v1'
+    assert submit_prototype(tmp_path,repair,semantic_scope_patch(tmp_path,repair,'excluded-root',
+        '本期由客户既有系统承担，不纳入本次实施交付',field='exclusionReason'))['record']['outcome'] == 'SUCCEEDED'
     fresh = orchestrator_module.run_mode(tmp_path,'resume')['nextAction']
     assert fresh['baseCandidateSha256'] != action['baseCandidateSha256']
-    assert prototype_payload(tmp_path,fresh)['ownerIndex']['excluded-root']['id'] == entry['id']
+    repaired_keys=[key for key in prototype_payload(tmp_path,fresh)['ownerIndex'] if key.startswith('excluded-root:repair:')]
+    assert len(repaired_keys)==1
 
 
 @pytest.mark.parametrize('step', ['MATERIALIZE','VALIDATE'])
@@ -3810,7 +3918,7 @@ def test_stage_seal_order_step_output_transaction_recovers_exact_timing(tmp_path
     assert response['nextAction']['actionContractId']=='SOURCE_SCOPE-v1'
     repeated=[row['payload'] for row in events() if row['type']=='DETERMINISTIC_STEP_FINISHED' and row['payload']['stepKind']==step]
     assert len(repeated)==(1 if boundary=='after-output' else 2) and all(row['outputSha256']==digest for row in repeated)
-    assert called[step]==len(repeated)
+    assert called[step]==1  # Recovery reuses the completed bytes, including before output publication.
     assert (root/('stages/SCOPE'+directory)/f'{digest}.json').is_file()
     before=dict(called)
     assert orchestrator_module.run_mode(tmp_path,'resume')['outcome']=='ACTIVE'
@@ -3877,13 +3985,17 @@ def test_checkpoint_deep_binding_prior_graph_recovery_uses_sealed_owner_sources(
     assert managed_snapshot(tmp_path)==before
 
 
-@pytest.mark.parametrize(('clarify','borrow_prior_ac'),[(False,False),(True,False),(True,True)],
-    ids=['shared-repair','shared-clarification','unrelated-ac-rejected'])
-def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_checkpoints(tmp_path, monkeypatch, clarify, borrow_prior_ac):
+@pytest.mark.parametrize(('clarify','borrow_prior_ac','author_version'),[(False,False,1),(False,False,2),(True,False,2),(True,True,2)],
+    ids=['frozen-v1-repair','shared-repair','shared-clarification','unrelated-ac-rejected'])
+def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_checkpoints(tmp_path, monkeypatch, clarify, borrow_prior_ac, author_version):
     # This integration ends at Task checkpoint; real Office is a separate E2E gate.
     monkeypatch.setattr(orchestrator_module,'_advance_artifact',lambda files,state: {'outcome':'ACTIVE','state':state,'nextAction':None})
     from stage_driver import stage_result
     from task_compiler import expand_task_repair_packet
+    import stage_planner
+    current_selector=stage_planner.current_action_contract_id
+    monkeypatch.setattr(stage_planner,'current_action_contract_id',lambda kind:
+        f'TASK-v{author_version}' if kind=='TASK' else current_selector(kind))
     response = orchestrator_module.run_mode(tmp_path,'start',request=write_run_store_request(tmp_path),
         budget_policy=write_budget_policy(tmp_path))
     for _ in range(30):
@@ -3895,6 +4007,8 @@ def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_ch
                 json.loads((tmp_path/action['packetPath']).read_bytes())))
         response=orchestrator_module.run_mode(tmp_path,'resume')
     else: pytest.fail('Task Review was not issued')
+    monkeypatch.setattr(stage_planner,'current_action_contract_id',current_selector)
+    repair_id=f'TASK_REPAIR-v{author_version}'
     action=actions[0];body=prototype_payload(tmp_path,action)
     root=tmp_path/'.ai-sow/work/runs'/action['runId']
     frozen={path:path.read_bytes() for stage in ('SCOPE','STORY_AC')
@@ -3911,7 +4025,7 @@ def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_ch
     estimator=orchestrator_module.estimate_action_input_tokens
     def oversized(skill,contract,*args,**kwargs):
         value=estimator(skill,contract,*args,**kwargs)
-        return value+1000000 if contract=='TASK_REPAIR-v1' else value
+        return value+1000000 if contract==repair_id else value
     with monkeypatch.context() as fault:
         import contracts
         fault.setattr(orchestrator_module,'estimate_action_input_tokens',oversized)
@@ -3926,7 +4040,7 @@ def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_ch
     resumed=orchestrator_module.run_mode(tmp_path,'resume')
     assert resumed['outcome']=='ACTIVE',resumed
     repair=resumed['nextAction'];payload=prototype_payload(tmp_path,repair)
-    assert repair['actionContractId']=='TASK_REPAIR-v1'
+    assert repair['actionContractId']==repair_id
     assert payload['authorizedRootKeys']==sorted(keys)
     packet=expand_task_repair_packet(payload['ownerPacket'])
     assert payload['ownerPacket']['contract']=='ai-sow-task-repair-context-v1'
@@ -3958,7 +4072,7 @@ def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_ch
             'provenance':'SIMULATED_USER','authorization':'用户已授权模拟技术选择。'}
         write_json(tmp_path/'answer.json',answer)
         repair_two=orchestrator_module.run_mode(tmp_path,'resume',decision='answer.json')['nextAction']
-        assert repair_two['actionContractId']=='TASK_REPAIR-v1'
+        assert repair_two['actionContractId']==repair_id
         bad=copy.deepcopy(other)
         for field in ('acceptanceCriterionKeys','evidenceIds'): bad[field]=sorted(set(bad[field]+row[field]))
         rejected=submit_prototype(tmp_path,repair_two,{'tasks':[bad]})
@@ -4057,7 +4171,8 @@ def test_public_localized_task_repair_resumes_unissued_capacity_and_preserves_ch
         review_inputs={p.stem:json.loads(p.read_bytes()) for p in (root/'stages/TASK/review-inputs').glob('*/*.json')}
         def portable(values,log):
             return verify_manual_authorization_records(values,log,'TASK',action['runId'],stopped['state']['currentInputRevisionSha256'],
-                require_repair=True,review_inputs=review_inputs)
+                require_repair=True,review_inputs=review_inputs,
+                stage_plan=json.loads(next((root/'stages/TASK/plans').glob('*.json')).read_bytes()))
         assert portable(entries,events)=={authorization['reviewDecisionSha256']:authorization}
         for mutate in ('missing-stop','changed-authorization','missing-event','reset-count','late-authorization'):
             bad_entries=copy.deepcopy(entries);bad_events=copy.deepcopy(events)

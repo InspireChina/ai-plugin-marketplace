@@ -69,11 +69,14 @@ def stable_entity_id(
              "sortedEvidenceAnchors": sorted(anchors), "controlledDiscriminator": list(controlled_discriminator)}
     if entity_kind == "CONTRACT_ENTITY":
         pairs = [json.loads(anchor) for anchor in anchors]
-        if parent_identity is not None or any(not isinstance(pair, dict) or set(pair) != {"sourceId", "priorEvidenceId"}
+        cell_identity = schema_version == "prior-entity-id-v2"
+        fields = {"sourceId", "priorEvidenceId", "address"} if cell_identity else {"sourceId", "priorEvidenceId"}
+        if parent_identity is not None or any(not isinstance(pair, dict) or set(pair) != fields
                 or not isinstance(pair["sourceId"], str) or not pair["sourceId"]
-                or not re.fullmatch(r"[a-f0-9]{64}", str(pair["priorEvidenceId"])) for pair in pairs):
+                or not re.fullmatch(r"[a-f0-9]{64}", str(pair["priorEvidenceId"]))
+                or (cell_identity and not re.fullmatch(r"\$[A-Z]+\$[1-9][0-9]*", str(pair['address']))) for pair in pairs):
             raise ValueError("Prior 身份锚点必须是 sourceId/priorEvidenceId 对。")
-        basis["sortedEvidenceAnchors"] = sorted(pairs, key=lambda pair: (pair["sourceId"], pair["priorEvidenceId"]))
+        basis["sortedEvidenceAnchors"] = sorted(pairs, key=lambda pair: (pair["sourceId"], pair["priorEvidenceId"], pair.get("address", "")))
     if parent_identity is not None:
         basis["parentIdentity"] = _identity_key(parent_identity)
     return PREFIXES[entity_kind] + "-" + sha256_bytes(canonical_json_bytes(basis))

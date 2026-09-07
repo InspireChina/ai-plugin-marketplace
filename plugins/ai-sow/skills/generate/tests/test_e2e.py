@@ -139,6 +139,9 @@ def drive_result_host(
             assert [message["role"] for message in provider_request["messages"]] == ["system", "user"]
             assert provider_request["maxOutputTokens"] == action["executionLimits"]["maxOutputTokens"]
             packet = json.loads(provider_request["messages"][1]["content"])
+            if packet.get("transportEncoding") == "ai-sow-lossless-tables-v1":
+                from provider_adapter import unpack_lossless_tables
+                packet = json.loads(unpack_lossless_tables(packet))
             assert canonical_json_bytes(packet) == files.read_bytes(action["packetPath"])
             submission = (
                 submission_factory(action, packet)
@@ -200,7 +203,7 @@ def test_fresh_run_independence_full_compile_reaches_verified_approval_then_publ
         "SOURCE_AUDIT-v1",
         "SOURCE_SCOPE-v1",
         "STORY_AC-v1",
-        "TASK-v1",
+        "TASK-v2",
         "STORY_DESIGN-v1",
         "TASK_ESTIMATION-v1",
     }
@@ -377,3 +380,104 @@ def test_public_fixture_logs_have_no_absolute_paths_private_source_or_evidence_t
             content = evidence.get("content")
             if content:
                 assert content not in record_text
+
+
+def convergence_submission_factory(project: Path, *, fail_scope=False, fail_prior=False, fail_task=False):
+    from candidate_repair import _at,patch_context
+    state={'correct':{},'injected':set(),'patchGroups':[],'failedSecondGroup':False}
+    def factory(action,packet):
+        kind=action['actionContractId'][:-3]
+        if kind!='CANDIDATE_PATCH':
+            result=_submission(action,packet)
+            state['correct'][action['logicalWorkId']]=copy.deepcopy(result)
+            if fail_scope and kind in {'SCOPE_SYNTHESIS','SCOPE_PROPOSAL','SCOPE_JOIN'} and 'SCOPE' not in state['injected']:
+                result=copy.deepcopy(result);result['decisions'][0]['boundaryEvidence']['name']='';state['injected'].add('SCOPE')
+            elif fail_prior and kind=='PRIOR_ANALYZE' and 'PRIOR' not in state['injected']:
+                result=copy.deepcopy(result)
+                if result.get('unextractedEvidence'):
+                    result['unextractedEvidence'].pop();state['injected'].add('PRIOR')
+            elif fail_task and kind=='TASK' and 'TASK' not in state['injected']:
+                result=copy.deepcopy(result);result['tasks'][0]['deliverableBoundary']='';state['injected'].add('TASK')
+            return result
+        view=patch_context(packet);run_root=project/'.ai-sow/work/runs'/action['runId']/'candidate-repairs'
+        plan=_load(run_root/'plans'/f"{view['repairPlanSha256']}.json")
+        base=_load(run_root/'bases'/f"{plan['baseCandidateSha256']}.json") if plan['origin']['sourceKind']=='SEMANTIC_REVIEW' else None
+        if base is None:
+            ledger=orchestrator_module._load_action_ledger(ProjectFiles.open(project),action['runId'])
+            source=ledger.attempt_records[plan['origin']['sourceAttemptRecordSha256']]
+            base=json.loads(ledger.raw_outputs[source.raw_sha256])
+        correct=state['correct'].get(plan['origin']['originLogicalWorkId'])
+        if correct is None:
+            correct=copy.deepcopy(base)
+        index={row['objectId']:row for row in plan['objectIndex']};operations=[]
+        alternatives={}
+        for slot in view['group']['slots']:
+            operation={'slotId':slot['slotId']}
+            if slot['operation']=='SET_FIELD':
+                path=index[slot['objectId']]['path']
+                operation['value']=_at(correct,path).get(slot['field'])
+            elif slot['operation']=='APPEND_OBJECT':
+                path='' if slot['collection']=='$' else '/'+slot['collection']
+                before={canonical_json_bytes(row) for row in _at(base,path)}
+                additions=[row for row in _at(correct,path) if canonical_json_bytes(row) not in before]
+                if not additions:continue
+                operation['value']=additions[0]
+            elif slot['operation']=='TRANSFORM_ROOTS':
+                wanted={index[key]['path'] for key in slot['inputObjectIds']}
+                operation['value']=[copy.deepcopy(_at(correct,path)) for path in wanted]
+            if 'alternativeSet' in slot:
+                if slot['alternativeSet'] in alternatives:continue
+                alternatives[slot['alternativeSet']]=slot['slotId']
+            operations.append(operation)
+        state['patchGroups'].append(view['group']['groupId'])
+        if (fail_scope and len(set(state['patchGroups']))>=2 and not state['failedSecondGroup']
+                and operations and 'value' in operations[0]):
+            state['failedSecondGroup']=True
+            operations[0]['value']=copy.deepcopy(operations[0]['value'])
+            if isinstance(operations[0]['value'],str):operations[0]['value']=''
+        return {'repairPlanSha256':view['repairPlanSha256'],'baseCandidateSha256':view['baseCandidateSha256'],
+            'groupId':view['group']['groupId'],'operations':operations}
+    factory.state=state
+    return factory
+
+
+def test_deferred_greenfield_scope_task_convergence_preserves_upstream_hashes(tmp_path: Path) -> None:
+    factory=convergence_submission_factory(tmp_path,fail_scope=True,fail_task=True)
+    result,trace=drive_fixture_host(tmp_path,'greenfield',factory)
+    assert result['outcome']=='REQUEST_APPROVAL'
+    assert {'SCOPE','TASK'}<=factory.state['injected'] and factory.state['failedSecondGroup']
+    assert sum(action['actionContractId']=='CANDIDATE_PATCH-v1' for action in trace)>=3
+    run=next((tmp_path/'.ai-sow/work/runs').iterdir())
+    checkpoints={stage:_load(next((run/'stages'/stage/'checkpoints').glob('*.json')))
+                 for stage in ('SCOPE','STORY_AC','TASK')}
+    assert (run/'stages/SCOPE/candidates'/f"{checkpoints['SCOPE']['candidateSha256']}.json").is_file()
+    assert (run/'stages/STORY_AC/candidates'/f"{checkpoints['STORY_AC']['candidateSha256']}.json").is_file()
+    assert checkpoints['TASK']['upstreamCheckpointSha256s']==[
+        sha256_bytes(canonical_json_bytes(checkpoints['STORY_AC']))]
+
+
+def test_deferred_brownfield_prior_task_convergence_preserves_prior_rows(tmp_path: Path) -> None:
+    request_path=_prepare_project(tmp_path,'brownfield');request=_load(tmp_path/request_path)
+    prior_source=PLUGIN_ROOT/'docs/reference/SOW估算与生成示例_v1.3.xlsx'
+    target=tmp_path/'prior.xlsx';shutil.copyfile(prior_source,target)
+    request['sources'].append({'sourceId':'prior-main','role':'PRIOR_SOW','path':'prior.xlsx',
+        'expectedSha256':sha256_bytes(target.read_bytes())})
+    request['declaredChangeContext']['summary']='基于适用历史 SOW 核对退款能力增量。'
+    _write_json(tmp_path/request_path,request)
+    factory=convergence_submission_factory(tmp_path,fail_prior=True,fail_task=True)
+    started=orchestrator_module.run_mode(tmp_path,'start',request=request_path,budget_policy='budget.json')
+    result,trace=drive_result_host(tmp_path,started,factory)
+    assert result['outcome']=='REQUEST_APPROVAL'
+    assert {'PRIOR','TASK'}<=factory.state['injected']
+    ledger=orchestrator_module._load_action_ledger(ProjectFiles.open(tmp_path),result['state']['runId'])
+    prior_results=[json.loads(orchestrator_module.effective_result_bytes(ledger,key))
+                   for key,value in factory.state['correct'].items() if any(
+                       envelope.value['logicalWorkId']==key and envelope.value['actionContractId'].startswith('PRIOR_ANALYZE')
+                       for envelope in ledger.envelopes_by_sha256.values())]
+    assert prior_results
+    expected=prior_results[0]
+    effective=next(json.loads(orchestrator_module.effective_result_bytes(ledger,envelope.value['logicalWorkId']))
+                   for envelope in ledger.envelopes_by_sha256.values()
+                   if envelope.value['actionContractId'].startswith('PRIOR_ANALYZE'))
+    assert effective['entities']==expected['entities']
+    assert effective['unextractedEvidence']==expected['unextractedEvidence']

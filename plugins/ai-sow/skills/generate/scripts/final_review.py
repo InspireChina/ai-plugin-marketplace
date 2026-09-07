@@ -1,4 +1,5 @@
 from __future__ import annotations
+from action_ledger import effective_result, effective_result_bytes
 import json
 
 from copy import deepcopy
@@ -68,7 +69,21 @@ def validate_owner_resolution(stage_kind, review, resolution):
         raise ValueError('继续修复裁定必须绑定本次可修复 Review、Owner 和一个新增候选。')
 
 
-def verify_manual_authorization_records(entries, events, stage, run_id, revision_hash, *, require_repair=False, review_inputs=None):
+def repair_action_contract_id(stage, plan):
+    """A frozen Author plan owns the matching Repair version, including proof replay."""
+    from stage_planner import bound_action_contract_ids
+    if stage not in REVIEW_CONTRACT or not isinstance(plan,dict) or plan.get('stageKind') != stage:
+        raise ValueError('Repair 合同必须绑定同阶段冻结计划。')
+    contracts = bound_action_contract_ids(plan)
+    if stage != 'TASK':
+        return stage + '_REPAIR-v1'
+    selected = contracts.get('TASK')
+    if selected not in {'TASK-v1', 'TASK-v2'}:
+        raise ValueError('Task Repair 缺少受支持的冻结 Author 合同。')
+    return {'TASK-v1': 'TASK_REPAIR-v1', 'TASK-v2': 'TASK_REPAIR-v2'}[selected]
+
+
+def verify_manual_authorization_records(entries, events, stage, run_id, revision_hash, *, require_repair=False, review_inputs=None, stage_plan=None):
     """Portable proof of the original stop and an explicit, single-candidate continuation."""
     from contracts import load_schema_registry, action_contract_binding
     registry=load_schema_registry(SKILL_ROOT)
@@ -89,7 +104,8 @@ def verify_manual_authorization_records(entries, events, stage, run_id, revision
                 or terminal['currentInputRevisionSha256']!=revision_hash):
             raise ValueError('人工继续修复没有完整原终态、候选与授权证明。')
         _,review_contract=action_contract_binding(SKILL_ROOT,REVIEW_CONTRACT[stage])
-        _,repair_contract=action_contract_binding(SKILL_ROOT,stage+'_REPAIR-v1')
+        repair_id=repair_action_contract_id(stage,stage_plan) if stage=='TASK' else stage+'_REPAIR-v1'
+        _,repair_contract=action_contract_binding(SKILL_ROOT,repair_id)
         review_logical,_=control_identity(stage,'REVIEW',answer['candidateSha256'],review_contract)
         repair_logical,_=control_identity(stage,'REPAIR',key,repair_contract)
         before=[item['sequence'] for item in events if item['type']=='ACTION_ISSUED' and item['payload']['logicalWorkId']==review_logical]
@@ -156,6 +172,110 @@ def replace_owner_decisions(stage_kind, original, review, replacements, resoluti
     merged = {key: row for key, row in before.items() if key not in replaced}
     merged.update(after)
     return {collection: [deepcopy(merged[key]) for key in sorted(merged)]}
+
+def semantic_repair_lineage(stage_kind, review_decision_sha256, candidate_patch_action_contract_sha256):
+    return 'candidate-repair-'+sha256_bytes(canonical_json_bytes({
+        'stageKind':stage_kind,'reviewDecisionSha256':review_decision_sha256,
+        'candidatePatchActionContractSha256':candidate_patch_action_contract_sha256}))
+
+
+def candidate_repair_replacement(stage_kind, original, repaired, review, resolution=None):
+    """Project a verified semantic CandidateResolution back to the legacy materializer seam."""
+    collection=OWNER_COLLECTION[stage_kind]
+    keys=set(repair_root_keys(stage_kind,original,review,resolution))
+    affected=[deepcopy(row) for row in repaired[collection] if repair_key_root(row['localKey'],keys) is not None]
+    replacement={collection:affected}
+    if replace_owner_decisions(stage_kind,original,review,replacement,resolution)!=repaired:
+        raise ValueError('CandidateResolution 不能精确重建完整修复后 Owner IR。')
+    return replacement
+
+
+def _semantic_owner_binding(stage, owner_packet, owner_contract_id):
+    import scope_compiler,delivery_compiler,task_compiler
+    if stage=='SCOPE':
+        return (scope_compiler,
+            lambda raw:scope_compiler.validate_bound_scope_result('SCOPE_SYNTHESIS',owner_packet,raw))
+    if stage=='STORY_AC':
+        return delivery_compiler,lambda raw:delivery_compiler.validate_bound_story_result(owner_packet,raw)
+    if stage=='TASK':
+        return task_compiler,lambda raw:task_compiler.validate_bound_task_result(owner_packet,raw)
+    raise ValueError('语义修复只属于三个阶段 Owner。')
+
+
+def _semantic_candidate_callbacks(envelope, packet, semantic_source):
+    from candidate_repair import (append_object_group,build_repair_plan,diagnostic_report,
+        group_fields,index_candidate,make_issue,schema_at,transform_roots_group)
+    from contracts import InvalidActionResult
+    stage=semantic_source['stageKind'];owner_packet=semantic_source['ownerPacket']
+    review=semantic_source['reviewDecision'];resolution=semantic_source.get('ownerResolution')
+    owner_contract_id=semantic_source['ownerActionContractId']
+    owner,bound=_semantic_owner_binding(stage,owner_packet,owner_contract_id)
+    collection=OWNER_COLLECTION[stage]
+    def semantic_issue(finding):
+        root=finding['subjectIds'][0] if finding['subjectIds'] else ''
+        path='/'+collection+'/'+root if root else '/'+collection
+        issue=make_issue('SEMANTIC_'+finding['code'],path,stage,finding['message'],
+            '仅修改 Review 明确定位的 Owner root，并由 fresh Review 重新判断。',
+            subjects=[{'objectId':collection+'/'+key} for key in finding['subjectIds']])
+        issue['evidenceRefs']=[{'refId':key,'sha256':sha256_bytes(canonical_json_bytes(key))}
+                               for key in finding.get('evidenceIds',())]
+        return issue
+    def mechanical_issues(raw):
+        try:
+            bound(raw)
+        except InvalidActionResult as error:
+            diagnostics=error.diagnostic.findings or (error.diagnostic,)
+            from candidate_repair import issues_from_diagnostics
+            return issues_from_diagnostics(diagnostics,stage,json.loads(raw))
+        return []
+    def diagnose(raw,origin):
+        issues=mechanical_issues(raw)
+        if sha256_bytes(raw)==semantic_source['ownerIRSha256']:
+            issues.extend(semantic_issue(finding) for finding in review['findings'])
+        return diagnostic_report(raw,issues,owner=stage,checker_file=owner.__file__,packet=owner_packet,
+            origin=origin,blocked=(),domains=['SCHEMA','OWNER_BINDINGS','SEMANTIC_REVIEW'])
+    def plan(raw,report,origin):
+        value=json.loads(raw);roots=repair_root_keys(stage,value,review,resolution)
+        rows={row['localKey']:i for i,row in enumerate(value[collection])}
+        direct={};broad=False
+        for finding in review['findings']:
+            issue_id=semantic_issue(finding)['issueId']
+            paths=[]
+            for key in finding['subjectIds']:
+                projected=semantic_source['ownerIndex'][key]['path']
+                suffix=finding['path'][len(projected):] if finding['path'].startswith(projected) else ''
+                if stage=='SCOPE' and suffix=='/name':
+                    paths.append(f"/{collection}/{rows[key]}/boundaryEvidence/name")
+                elif stage=='STORY_AC' and suffix=='/name':
+                    paths.append(f"/{collection}/{rows[key]}/deliverableOutcome")
+                elif stage=='TASK' and suffix in {'/name','/deliverableBoundary'}:
+                    paths.append(f"/{collection}/{rows[key]}/deliverableBoundary")
+                elif stage=='TASK' and suffix=='/complexity':
+                    paths.append(f"/{collection}/{rows[key]}/complexityDecision")
+                else:
+                    broad=True
+            direct[issue_id]=paths
+        if is_manual_repair(resolution):
+            allowed=set(resolution['allowedFields'])
+            direct={issue_id:[path for path in paths if path.rsplit('/',1)[-1] in allowed]
+                    for issue_id,paths in direct.items()}
+            if broad or any(not paths for paths in direct.values()):
+                raise InvalidActionResult('人工裁定 finding 不能映射到 allowedFields。')
+        if not broad:
+            groups=group_fields(raw,report,owner_contract_id,direct)
+            if groups:return build_repair_plan(raw,report,groups,origin=origin)
+        entries=[entry for entry in index_candidate(raw,inherited=report.get('objectIndex',()))
+                 if entry['objectId'] in {collection+'/'+key for key in roots}]
+        if len(entries)!=len(roots):
+            raise InvalidActionResult('Review root 不能解析为唯一 Owner 对象。')
+        schema=schema_at(owner_contract_id,f'/{collection}/0')
+        group=transform_roots_group(raw,entries,schema,
+            [item['issueId'] for item in report['issues'] if item['code'].startswith('SEMANTIC_')],
+            namespace=roots[0]+':repair:',maximum=max(1,len(roots)*2))
+        return build_repair_plan(raw,report,[group],origin=origin)
+    def full(raw):
+        bound(raw)
+    return diagnose,plan,full
 
 
 def review_route(review, *, previous_review=None, resolution=None):
@@ -235,7 +355,7 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
     for work in plan['works']:
         logical=work['logicalWorkId'];packet_plan=work['packetPlan']
         envelope=_effective_envelope(ledger,logical)
-        _effective_success(ledger,logical)
+        effective_result(ledger,logical)
         if (envelope.value['inputRevisionSha256']!=checkpoint['inputRevisionSha256']
                 or envelope.value['actionContractId']!=packet_plan['actionContractId']
                 or envelope.value['actionContractSha256']!=packet_plan['actionContractSha256']):
@@ -249,9 +369,9 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
                 for ref in base]!=packet_plan['contextRefs']:
             raise ValueError('实际 packet base contexts 不匹配冻结计划。')
         for dependency in packet_plan['dependencyLogicalWorkIds']:
-            digest,record=_effective_success(ledger,dependency)
-            expected={'refId':'dependency-result-'+dependency,'canonicalContent':{'kind':'DEPENDENCY_RESULT',
-                'logicalWorkId':dependency,'attemptRecordSha256':digest,'normalizedResult':json.loads(ledger.normalized_results[record.normalized_result_sha256])}}
+            digest,record=effective_result(ledger,dependency)
+            from action_ledger import dependency_context
+            expected=dependency_context(ledger,dependency)
             if expected not in packet['contextRefs']: raise ValueError('实际 packet dependency 绑定不一致。')
     reviews=[]
     for raw in review_inputs.values():
@@ -261,7 +381,7 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
         _,contract_hash=action_contract_binding(SKILL_ROOT,REVIEW_CONTRACT[stage])
         logical,group=control_identity(stage,'REVIEW',candidate_hash,contract_hash)
         envelope=_effective_envelope(ledger,logical)
-        digest,record=_effective_success(ledger,logical)
+        digest,record=effective_result(ledger,logical)
         actual=json.loads(packets[envelope.value['packetSha256']])
         if (actual['workItems']!=json.loads(raw)['workItems'] or envelope.value['groupId']!=group
                 or envelope.value['baseCandidateSha256']!=candidate_hash):
@@ -285,9 +405,9 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
     for old_hash,old_envelope,old_record,old_review,_ in reviews:
         if old_hash==candidate_hash: continue
         if old_review['decision'] not in {'REPAIRABLE_SEMANTIC','INPUT_REQUIRED'}: raise ValueError('无条件语义 Repair 不合法。')
-        _,contract_hash=action_contract_binding(SKILL_ROOT,stage+'_REPAIR-v1')
+        _,contract_hash=action_contract_binding(SKILL_ROOT,repair_action_contract_id(stage,plan))
         logical,group=control_identity(stage,'REPAIR',old_record.normalized_result_sha256,contract_hash)
-        repair_envelope=_effective_envelope(ledger,logical);_effective_success(ledger,logical)
+        repair_envelope=_effective_envelope(ledger,logical);effective_result(ledger,logical)
         repair_packet=json.loads(packets[repair_envelope.value['packetSha256']])['workItems'][0]['payload']
         if repair_envelope.value['groupId']!=group or repair_packet['reviewDecisionSha256']!=old_record.normalized_result_sha256 or repair_packet['reviewDecision']!=old_review:
             raise ValueError('Repair 未绑定触发 Review 的全部 findings。')
@@ -304,13 +424,13 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
         else:
             if resolution is not None: raise ValueError('自动修复携带了不适用的裁定。')
             automatic+=1
-        _,repair_record=_effective_success(ledger,logical)
+        _,repair_record=effective_result(ledger,logical)
         replacement=json.loads(ledger.normalized_results[repair_record.normalized_result_sha256])
         replace_owner_decisions(stage,repair_packet['ownerIR'],old_review,replacement,resolution)
         owner_repairs.append((old_hash,repair_packet,replacement))
         if stage == 'TASK':
-            _,repair_record = _effective_success(ledger,logical)
-            task_repairs.append((old_hash,repair_packet,json.loads(ledger.normalized_results[repair_record.normalized_result_sha256])))
+            _,repair_record = effective_result(ledger,logical)
+            task_repairs.append((old_hash,repair_packet,json.loads(effective_result_bytes(ledger,logical))))
         allowed.add(logical)
     if automatic>1 or clarified>1 or manual_seen!=set(manual_authorizations or {}):
         raise ValueError('新增候选必须逐次绑定明确裁定，不能重置自动计数。')
@@ -319,8 +439,8 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
             raise ValueError('Task 修复证明缺少 Owner 验证器。')
         author_ir={'tasks':[]}
         for work in plan['works']:
-            _,author=_effective_success(ledger,work['logicalWorkId'])
-            for row in json.loads(ledger.normalized_results[author.normalized_result_sha256])['tasks']:
+            effective_result(ledger,work['logicalWorkId'])
+            for row in json.loads(effective_result_bytes(ledger,work['logicalWorkId']))['tasks']:
                 node=deepcopy(row);node['localKey']=work['logicalWorkId']+':'+node['localKey'];author_ir['tasks'].append(node)
         author_ir['tasks'].sort(key=lambda row:row['localKey'])
         resolutions=task_repair_verifier(task_repairs,candidates,revision_bytes,author_ir,candidate_hash)
@@ -334,13 +454,13 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
             consumed={key for work in plan['works'] if work['logicalWorkId'] in works for key in work['packetPlan']['dependencyLogicalWorkIds']}
             roots=works-consumed
             if len(roots)!=1: raise ValueError('Scope Author root 不唯一。')
-            _,author=_effective_success(ledger,roots.pop())
-            current_ir=json.loads(ledger.normalized_results[author.normalized_result_sha256])
+            root=roots.pop();effective_result(ledger,root)
+            current_ir=json.loads(effective_result_bytes(ledger,root))
         else:
             current_ir={'stories':[]}
             for work in plan['works']:
-                _,author=_effective_success(ledger,work['logicalWorkId'])
-                for row in json.loads(ledger.normalized_results[author.normalized_result_sha256])['stories']:
+                effective_result(ledger,work['logicalWorkId'])
+                for row in json.loads(effective_result_bytes(ledger,work['logicalWorkId']))['stories']:
                     node=deepcopy(row);node['localKey']=work['logicalWorkId']+':'+node['localKey'];current_ir['stories'].append(node)
             current_ir['stories'].sort(key=lambda row:row['localKey'])
         remaining=list(owner_repairs);operations=[]
@@ -365,6 +485,22 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
             if envelope.value['logicalWorkId']!='logical-'+sha256_bytes(canonical_json_bytes(identity)):
                 raise ValueError('Prototype control identity 不一致。')
             allowed.add(envelope.value['logicalWorkId'])
+    from candidate_repair import patch_context
+    for digest,record in stage_records.items():
+        envelope=ledger.envelopes_by_sha256[record.envelope_sha256]
+        if envelope.value['actionContractId']=='CANDIDATE_PATCH-v1':
+            view=patch_context(json.loads(packets[envelope.value['packetSha256']]))
+            origin=view['origin']
+            if origin['sourceKind']=='SEMANTIC_REVIEW':
+                source=stage_records.get(origin['sourceAttemptRecordSha256'])
+                authorized=source is not None and source.logical_work_id in allowed
+            else:
+                authorized=origin['originLogicalWorkId'] in allowed
+            if not authorized:
+                raise ValueError('Patch 来源不属于本阶段冻结工作。')
+            if origin['originLogicalWorkId'] not in ledger.candidate_resolutions:
+                raise ValueError('阶段包含尚未完整关闭的补丁来源。')
+            allowed.add(record.logical_work_id)
     if {record.logical_work_id for record in stage_records.values()}!=allowed:
         raise ValueError('Checkpoint 包含未发生的 Repair 或非授权 Attempt。')
     prior_hash=checkpoint.get('priorStateSha256')
@@ -374,3 +510,47 @@ def verify_checkpoint_proof(checkpoint, *, revision_bytes, plan_bytes, upstream_
         prior=final_body.get('priorState')
         if (prior is None)!=(prior_hash is None) or (prior is not None and prior_states.get(prior_hash)!=canonical_json_bytes(prior)):
             raise ValueError('Scope Prior state hash 缺失或漂移。')
+
+
+def candidate_owner_callbacks(envelope, packet, *, inventories=(), revision_bytes=None, semantic_source=None):
+    """Bind existing professional validators for live and portable candidate proofs."""
+    if semantic_source is not None:
+        return _semantic_candidate_callbacks(envelope,packet,semantic_source)
+    from contracts import normalize_action_result, InvalidActionResult
+    from candidate_repair import schema_issues, diagnostic_report, group_fields, build_repair_plan, issues_from_diagnostics
+    import scope_compiler, delivery_compiler, task_compiler, prior_state, prototype_analysis
+    contract_id=envelope['actionContractId'];kind=contract_id.rpartition('-v')[0]
+    context={'action_contract_id':contract_id}
+    if kind.startswith('PRIOR_'):
+        owner=prior_state;context.update(inventories=inventories,input_revision_bytes=revision_bytes)
+        bound=lambda raw:prior_state.validate_bound_prior_result(kind,packet,raw,inventories=inventories,input_revision_bytes=revision_bytes)
+    elif kind in {'SOURCE_SCAN','SOURCE_AUDIT','SCOPE_SYNTHESIS','SCOPE_PROPOSAL','SCOPE_JOIN'}:
+        owner=scope_compiler;bound=lambda raw:owner.validate_bound_scope_result(kind,packet,raw)
+    elif kind=='STORY_AC':
+        owner=delivery_compiler;bound=lambda raw:owner.validate_bound_story_result(packet,raw)
+    elif kind=='TASK':
+        owner=task_compiler;bound=lambda raw:owner.validate_bound_task_result(packet,raw)
+    elif kind in {'PROTOTYPE_SCENARIO','PROTOTYPE_ANALYZE'}:
+        owner=prototype_analysis;bound=lambda raw:owner.validate_bound_prototype_result(kind,packet['workItems'][0]['payload'],raw,packet=packet)
+    elif kind in {'SOURCE_SCOPE','STORY_DESIGN','TASK_ESTIMATION'}:
+        owner=None;bound=lambda raw:validate_bound_review_result(packet,raw)
+    else:
+        raise InvalidActionResult('该执行责任不接受模型字段补丁。')
+    def normalize(raw):
+        return normalize_action_result(envelope,raw,skill_root=SKILL_ROOT,packet_payload=canonical_json_bytes(packet))
+    def full(raw):bound(normalize(raw))
+    def diagnose(raw,origin):
+        if owner is not None:return owner.diagnose_candidate(kind,packet,raw,origin=origin,**context)
+        value=json.loads(raw);issues=schema_issues(contract_id,value,'REVIEWER');blocked=['REVIEW_OBLIGATIONS'] if issues else []
+        if not issues:
+            try:bound(canonical_json_bytes(value))
+            except InvalidActionResult as error:issues+=issues_from_diagnostics(error.diagnostic.findings or [error.diagnostic],'REVIEWER',value)
+        return diagnostic_report(raw,issues,owner='REVIEWER',checker_file=__file__,packet=packet,origin=origin,blocked=blocked,domains=['SCHEMA','REVIEW_OBLIGATIONS'] if not blocked else ['SCHEMA'])
+    def plan(raw,report,origin):
+        if owner is not None:return owner.plan_candidate_repair(kind,packet,raw,report,origin=origin,**context)
+        # Review format repair can only be dispatched from an actual Review
+        # envelope; Author results cannot acquire Reviewer authority here.
+        groups=group_fields(raw,report,contract_id,{i['issueId']:i['paths'] for i in report['issues']})
+        if not groups:raise InvalidActionResult('Review 格式缺口不能安全定位，保留完整义务等待 Reviewer。')
+        return build_repair_plan(raw,report,groups,origin=origin)
+    return diagnose,plan,full

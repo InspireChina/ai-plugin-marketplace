@@ -54,7 +54,7 @@ def test_story_checkpoint_revalidates_records_against_group_base_candidate(
     for _ in range(30):
         assert result['outcome'] == 'ACTIVE', result
         actions = result['nextAction'].get('actions', [result['nextAction']])
-        if actions[0]['actionContractId'] == 'TASK-v1': break
+        if actions[0]['actionContractId'] == 'TASK-v2': break
         for action in actions:
             packet_path = tmp_path/action['packetPath']
             envelope_path = packet_path.parent/'envelope.json'

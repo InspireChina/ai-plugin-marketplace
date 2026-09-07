@@ -24,9 +24,19 @@ fan-in width 固定为 `floor(usableInput / (outputReserve + referenceOverhead))
 
 原型 whole-file SourceRef 使用 inventory evidence ID、原始文件 hash 和 `file:<revision-relative path>` locator；源文件集合必须匹配 InputRevision。该证据不证明生产 As-Is 或批准设计。Epic/Feature 的程序生成 sourceRefs 保留 boundary 和原型的直接来源。
 
+选中的 observationKeys 从冻结 context 和实际有效 Analyze Attempt 解析。程序核对结果 hash、完整 handle 集和来源集，再将每个对象实际选中的 observation 来源与其 boundary evidence 合并，用于 SourceRefs、稳定身份和独立评审索引；模型无需重复枚举观察中的来源，其他观察的来源不会被补入。未知或失配绑定仍拒绝，NON_SCOPE 的两向处置和批准设计／政策的来源权威检查保持有效。
+
 `stable_entity_id` 是唯一 ID 算法：版本、类型、可选父身份、排序证据锚点和合同封闭 discriminator 决定 hash。名称、状态、估算、模型 localKey 不参与。证据不足以区分身份时要求补充输入，不增加位置后缀。Prior 调用同一函数，保留已接受的 sourceId/priorEvidenceId 身份基底。只有经验证且语义唯一、身份未变的 1:1 匹配可保留旧可见 ID。
 
 ChangeGraph 只保存显式 changeGroups 和 retiredPrior。NEW/KEEP 来自当前目标和 effective Prior 的补集，不持久化；duplicate 的非 canonical 对象和已生效 FULL predecessor 不进入 KEEP。
+
+Prior v2 优先一次分析整本工作簿，超过输入块容量才按完整行分组。模型在 Analyze 中理解标题、横纵布局和附注，不另生成布局 IR。只有本项目明确的合同交付形成实体；通用目录、示例、重复汇总给出未提取理由。全局验收、责任、排除和时间限定进入相关实体 semanticSummary 与 evidenceIds；无法确定适用对象时用 unsupportedRegions，不隐藏为无关内容。
+
+`PRIOR_ANALYZE-v2` 用 `unextractedEvidence` 的 sourceId/evidenceIds/reason 按行分组说明，程序检查 assigned evidence 全部被引用或说明。`priorContext` 是同来源、同 workbook hash 的完整行位置索引，Analyze 和 Scope Review 通过现有 hydrate 读取原文，继续使用两轮及 token 限额；每个实体仍需所属 workItem 的主证据。
+
+同一组行证据无法区分多个对象时，实体才提供原始主证据中的 `cellAnchors`，以 `prior-entity-id-v2` 参与稳定 ID；未提供则保留 v1 身份基底。Snapshot 结构不增加字段，准确锚点保留于 Prior IR/Attempt 和 Review obligation；Snapshot、Scope、ChangeGraph 复用同一个身份映射，不按整行覆盖多个对象。
+
+`PRIOR_CONSOLIDATE-v2` 原始输出只有新增 sourceRelations/entitySupersessions。Owner 标准化绑定实际 packet，保留 dependencies 的全部实体、说明和既有关系；完整 normalized result 仍由原有 Attempt hash、唯一 root 和 generation raw 重放证明。旧 v1 prompt/schema 与 IR 可读，不自动升级旧结果；完整历史 run 绑定原源码及合同，不提供新规划器对旧 StagePlan 的透明迁移。
 
 ## 物化、验证与评审
 
@@ -38,8 +48,14 @@ ChangeGraph 只保存显式 changeGroups 和 retiredPrior。NEW/KEEP 来自当�
 
 每个采用的 CODE_ONLY 观察都有 round/Attempt/result/localKey/证据/目标绑定的 PROTOTYPE_INTENT 义务；每个变更匹配和 RETIRE 都有 Prior root/state/证据绑定的 PRIOR_IDENTITY 义务。fresh Scope Review 的 PASS 必须确认这些义务，不能在机械候选生成前要求未来 Review 已存在，也不能增加批准字段。正式关闭还需 orchestrator 把 PASS、候选和完整 Attempt 链共同绑定到 ScopeCheckpoint。
 
+Prior v2 的 PRIOR_EXTRACTION 义务携带未提取说明、原文位置索引和必要的精确锚点。Reviewer 必须补读被排除行，核验项目交付、目录、汇总和限定；机械覆盖不是语义批准。冻结 Prior 错误而 Scope root Repair 无法修改时报告 OWNER_BUG，不删除依赖掩盖问题。
+
 ## 校验缓存与测试
 
 Schema 定义检查仅按精确内容字节在进程内复用成功结果，LRU 上限 128。每次仍重新读文件、检查 ID、建立独立 registry 并验证实例和绑定。Scope 独立验证入口也重新读取当前 Schema。
 
 按 [测试分层指南](../../../tests/README.md) 选择当前行为的 unit/integration 节点。Owner 的 direct、57-item、多 Prior、原型及修订恢复测试属于局部 integration；完整 Office、宿主和产品 E2E 保留到最终集成验收。
+
+真实大工作簿的同来源位置索引作为额外上下文完整保留，不消耗 64 KB 的行数据分组目标；完整 packet（含索引、表头、依赖和修复正文）仍由原 model policy 的实际请求预算检查，超容量仍等待。此规则不提高模型容量或截断来源，仅用于尚未发行的新分组。
+
+新计划的 Analyze Action 为 `PRIOR_ANALYZE-v3`：只把既有无损表传输用于初始请求，继续使用上述 v2 专业规则、schema 和证据绑定。更紧凑的请求允许同一预算内共同读取更多完整行；不自动合并实体、不排除索引，也不保证语义通过。旧计划继续使用其冻结合同版本，详见[阶段自动封存](stage-seal.md)。

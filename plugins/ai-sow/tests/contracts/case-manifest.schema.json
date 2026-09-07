@@ -43,7 +43,7 @@
             "uniqueItems": true,
             "items": {
               "type": "string",
-              "pattern": "^[A-Z_]+-v1$"
+              "pattern": "^(?:[A-Z_]+-v1|TASK-v2)$"
             }
           }
         }

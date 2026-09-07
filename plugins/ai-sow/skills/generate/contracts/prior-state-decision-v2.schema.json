@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:prior-state-decision:2",
+  "description": "Prior v2：分析覆盖说明与必要单元格锚点；Consolidate 原始输出只含新增关系。",
+  "$ref": "#/$defs/priorStateDecision",
+  "$defs": {
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "localKey",
+        "sourceId",
+        "entityKind",
+        "semanticSummary",
+        "deliveryStatus",
+        "evidenceIds"
+      ],
+      "properties": {
+        "localKey": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "sourceId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "entityKind": {
+          "const": "CONTRACT_ENTITY"
+        },
+        "semanticSummary": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "deliveryStatus": {
+          "enum": [
+            "CURRENT_BY_CONTRACT",
+            "EXCLUDED",
+            "CANCELLED",
+            "NOT_IMPLEMENTED",
+            "FUTURE"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+          }
+        },
+        "visiblePriorId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "cellAnchors": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "evidenceId",
+              "address"
+            ],
+            "properties": {
+              "evidenceId": {
+                "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+              },
+              "address": {
+                "type": "string",
+                "pattern": "^\\$[A-Z]+\\$[1-9][0-9]*$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "sourceRelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceAId",
+        "sourceBId",
+        "relation",
+        "evidenceIds"
+      ],
+      "properties": {
+        "sourceAId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "sourceBId": {
+          "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+        },
+        "relation": {
+          "enum": [
+            "DUPLICATE",
+            "COMPLEMENTARY",
+            "CONFLICT",
+            "UNRELATED"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+          }
+        }
+      }
+    },
+    "entitySupersession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "predecessorLocalKeys",
+        "successorLocalKeys",
+        "evidenceIds"
+      ],
+      "properties": {
+        "predecessorLocalKeys": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+          }
+        },
+        "successorLocalKeys": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+          }
+        },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+          }
+        }
+      }
+    },
+    "priorStateDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entities",
+        "sourceRelations",
+        "entitySupersessions",
+        "unsupportedRegions",
+        "unextractedEvidence"
+      ],
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entity"
+          }
+        },
+        "sourceRelations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sourceRelation"
+          }
+        },
+        "entitySupersessions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/entitySupersession"
+          }
+        },
+        "unsupportedRegions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceId",
+              "regionId",
+              "reason"
+            ],
+            "properties": {
+              "sourceId": {
+                "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+              },
+              "regionId": {
+                "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+              },
+              "reason": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            }
+          }
+        },
+        "unextractedEvidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceId",
+              "evidenceIds",
+              "reason"
+            ],
+            "properties": {
+              "sourceId": {
+                "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+              },
+              "evidenceIds": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"
+                }
+              },
+              "reason": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            }
+          }
+        }
+      }
+    },
+    "priorRelations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceRelations",
+        "entitySupersessions"
+      ],
+      "properties": {
+        "sourceRelations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sourceRelation"
+          }
+        },
+        "entitySupersessions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/entitySupersession"
+          }
+        }
+      }
+    }
+  }
+}

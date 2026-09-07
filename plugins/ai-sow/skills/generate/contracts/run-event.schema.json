@@ -358,6 +358,44 @@
             "outputSha256": {
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
+            },
+            "stepFingerprint": {
+              "type": "object",
+              "description": "本次步骤实际输入、参数与实现/工具的版本化指纹。",
+              "additionalProperties": false,
+              "required": [
+                "contract",
+                "inputSha256",
+                "parametersSha256",
+                "implementationSha256",
+                "toolSha256"
+              ],
+              "properties": {
+                "contract": {
+                  "const": "ai-sow-step-fingerprint-v1",
+                  "description": "指纹合同版本。"
+                },
+                "inputSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "完整实际输入哈希。"
+                },
+                "parametersSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "本步参数哈希。"
+                },
+                "implementationSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "相关实现哈希。"
+                },
+                "toolSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "实际工具身份哈希。"
+                }
+              }
             }
           },
           "dependentRequired": {
@@ -441,7 +479,86 @@
               "type": "string",
               "format": "date-time",
               "pattern": "Z$"
+            },
+            "stageKind": {
+              "enum": [
+                "SCOPE",
+                "STORY_AC",
+                "TASK",
+                "ARTIFACT"
+              ]
+            },
+            "semanticRevision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "diagnostic": {
+              "$ref": "urn:ai-sow:generate:next:action:1#/$defs/attemptDiagnostic"
+            },
+            "stepFingerprint": {
+              "type": "object",
+              "description": "本次步骤实际输入、参数与实现/工具的版本化指纹。",
+              "additionalProperties": false,
+              "required": [
+                "contract",
+                "inputSha256",
+                "parametersSha256",
+                "implementationSha256",
+                "toolSha256"
+              ],
+              "properties": {
+                "contract": {
+                  "const": "ai-sow-step-fingerprint-v1",
+                  "description": "指纹合同版本。"
+                },
+                "inputSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "完整实际输入哈希。"
+                },
+                "parametersSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "本步参数哈希。"
+                },
+                "implementationSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "相关实现哈希。"
+                },
+                "toolSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "实际工具身份哈希。"
+                }
+              }
             }
+          },
+          "dependentRequired": {
+            "stageKind": [
+              "semanticRevision",
+              "attempt",
+              "diagnostic"
+            ],
+            "semanticRevision": [
+              "stageKind",
+              "attempt",
+              "diagnostic"
+            ],
+            "attempt": [
+              "stageKind",
+              "semanticRevision",
+              "diagnostic"
+            ],
+            "diagnostic": [
+              "stageKind",
+              "semanticRevision",
+              "attempt"
+            ]
           }
         }
       }
@@ -535,7 +652,10 @@
               "minLength": 1
             },
             "resolutionKind": {
-              "const": "FITTING_UNISSUED_REPAIR"
+              "enum": [
+                "FITTING_UNISSUED_REPAIR",
+                "FITTING_UNISSUED_CANDIDATE_REPAIR"
+              ]
             },
             "actionId": {
               "type": "string",
@@ -840,6 +960,80 @@
               "pattern": "^[a-f0-9]{64}$"
             },
             "failedAttemptRecordSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "sequence",
+        "type",
+        "occurredAtUtc",
+        "payload"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "const": "CANDIDATE_REPAIR_PROTOCOL_SELECTED"
+        },
+        "occurredAtUtc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "originLogicalWorkId",
+            "sourceAttemptRecordSha256",
+            "sourceActionContractId",
+            "selectionKind",
+            "repairRound",
+            "candidatePatchActionContractSha256",
+            "candidateRepairSchemaSha256"
+          ],
+          "properties": {
+            "originLogicalWorkId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sourceAttemptRecordSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "sourceActionContractId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "selectionKind": {
+              "enum": [
+                "AUTHOR_FAILURE",
+                "SEMANTIC_REVIEW"
+              ]
+            },
+            "repairRound": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "candidatePatchActionContractSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "candidateRepairSchemaSha256": {
               "type": "string",
               "pattern": "^[a-f0-9]{64}$"
             }

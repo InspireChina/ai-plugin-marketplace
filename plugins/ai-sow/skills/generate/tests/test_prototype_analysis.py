@@ -592,3 +592,109 @@ def test_demo_scope_semantics_candidate_authority(status, source, runtime, expec
     else:
         result = verify_prototype_observations(inventory, scenario, trace, {"observations": [observation]})
         assert result == {"authority": "TARGET_SCOPE_ONLY", "requiresIntentReviewLocalKeys": ["save"] if status == "CODE_ONLY" else []}
+
+
+def prototype_repair_packet(bad, diagnostic):
+    from action_ledger import diagnostic_value
+    return {"workItems": [], "contextRefs": [{"refId": "repair-from-attempt-synthetic",
+        "canonicalContent": {"kind": "ATTEMPT_REPAIR", "rawOutputUtf8": canonical_json_bytes(bad).decode(),
+            "diagnostic": diagnostic_value(diagnostic)}}]}
+
+
+def prototype_candidate_case():
+    inventory = inventory_demo_bundle("demo/index.html", demo_files())
+    scenario = scenario_fixture(inventory)
+    scenario["scenarios"].append(copy.deepcopy(scenario["scenarios"][0]) | {"scenarioId": "untouched"})
+    scenario["scenarios"][1]["steps"][0]["stepId"] = "untouched-step"
+    payload = {"inventory": inventory, "identity": {"round": 1},
+        "demoLimits": {"maxDiscoveryRounds": 2, "maxScenarioSteps": 30, "maxScreenshots": 12},
+        "demoRemaining": {}, "scenario": {"normalizedResult": scenario},
+        "trace": {"normalizedResult": trace_fixture(inventory, scenario)}}
+    return inventory, scenario, payload
+
+
+@pytest.mark.parametrize("kind", ["PROTOTYPE_SCENARIO", "PROTOTYPE_ANALYZE"])
+def test_prototype_candidate_repair_preserves_unrelated_objects(kind):
+    from contracts import InvalidActionResult
+    from prototype_analysis import validate_bound_prototype_result
+    inventory, scenario, payload = prototype_candidate_case()
+    if kind == "PROTOTYPE_SCENARIO":
+        good, collection = scenario, "scenarios"
+        bad = copy.deepcopy(good)
+        bad[collection][0]["steps"][0]["selector"] = "#unknown"
+        subject = good[collection][0]["scenarioId"]
+        expected_path = "/scenarios/0/steps/0/selector"
+    else:
+        good, collection = {"observations": [observation_fixture(inventory), observation_fixture(inventory, "untouched")]}, "observations"
+        bad = copy.deepcopy(good)
+        bad[collection][0]["evidenceIds"] = ["unknown-source"]
+        subject = "save"
+        expected_path = "/observations/0/evidenceIds"
+    with pytest.raises(InvalidActionResult) as failure:
+        validate_bound_prototype_result(kind, payload, canonical_json_bytes(bad))
+    assert failure.value.diagnostic.subject_ids == (subject,)
+    assert failure.value.diagnostic.path == expected_path
+    packet = prototype_repair_packet(bad, failure.value.diagnostic)
+    validate_bound_prototype_result(kind, payload, canonical_json_bytes(good), packet=packet)
+    changed = copy.deepcopy(good)
+    if kind == "PROTOTYPE_SCENARIO": changed[collection][1]["critical"] = not changed[collection][1]["critical"]
+    else: changed[collection][1]["behavior"]["trigger"] = "无关改写"
+    with pytest.raises(InvalidActionResult) as protected:
+        validate_bound_prototype_result(kind, payload, canonical_json_bytes(changed), packet=packet)
+    assert protected.value.diagnostic.code == "REPAIR_SCOPE_VIOLATION"
+    assert protected.value.diagnostic.subject_ids == ("untouched",)
+    added = copy.deepcopy(good)
+    new = copy.deepcopy(good[collection][0])
+    new["scenarioId" if kind == "PROTOTYPE_SCENARIO" else "localKey"] = "unrelated-new"
+    added[collection].append(new)
+    with pytest.raises(InvalidActionResult) as protected:
+        validate_bound_prototype_result(kind, payload, canonical_json_bytes(added), packet=packet)
+    assert protected.value.diagnostic.code == "REPAIR_SCOPE_VIOLATION"
+
+
+def test_scenario_binding_field_repair_keeps_all_scenarios():
+    from contracts import InvalidActionResult
+    from prototype_analysis import validate_bound_prototype_result
+    _, good, payload = prototype_candidate_case()
+    bad = copy.deepcopy(good); bad["bundleSha256"] = "0" * 64
+    with pytest.raises(InvalidActionResult) as failure:
+        validate_bound_prototype_result("PROTOTYPE_SCENARIO", payload, canonical_json_bytes(bad))
+    assert failure.value.diagnostic.path == "/bundleSha256"
+    packet = prototype_repair_packet(bad, failure.value.diagnostic)
+    validate_bound_prototype_result("PROTOTYPE_SCENARIO", payload, canonical_json_bytes(good), packet=packet)
+    changed = copy.deepcopy(good); changed["scenarios"][0]["critical"] = not changed["scenarios"][0]["critical"]
+    with pytest.raises(InvalidActionResult) as protected:
+        validate_bound_prototype_result("PROTOTYPE_SCENARIO", payload, canonical_json_bytes(changed), packet=packet)
+    assert protected.value.diagnostic.code == "REPAIR_SCOPE_VIOLATION"
+
+
+def test_scenario_duplicate_step_diagnostic_includes_both_owning_roots():
+    from contracts import InvalidActionResult
+    from prototype_analysis import validate_bound_prototype_result
+    _, bad, payload = prototype_candidate_case()
+    bad["scenarios"][1]["steps"][0]["stepId"] = bad["scenarios"][0]["steps"][0]["stepId"]
+    with pytest.raises(InvalidActionResult) as failure:
+        validate_bound_prototype_result("PROTOTYPE_SCENARIO", payload, canonical_json_bytes(bad))
+    assert failure.value.diagnostic.subject_ids == tuple(sorted([bad["scenarios"][0]["scenarioId"], "untouched"]))
+    assert failure.value.diagnostic.path == "/scenarios/1/steps/0/stepId"
+    good = copy.deepcopy(bad); good["scenarios"][0]["steps"][0]["stepId"] = "corrected-first"
+    validate_bound_prototype_result("PROTOTYPE_SCENARIO", payload, canonical_json_bytes(good),
+        packet=prototype_repair_packet(bad, failure.value.diagnostic))
+
+
+def test_scenario_repair_preserves_unrelated_execution_order():
+    from contracts import InvalidActionResult
+    from prototype_analysis import validate_bound_prototype_result
+    _, good, payload = prototype_candidate_case()
+    third = copy.deepcopy(good["scenarios"][1]) | {"scenarioId": "third"}
+    third["steps"][0]["stepId"] = "third-step"
+    good["scenarios"].append(third)
+    bad = copy.deepcopy(good); bad["scenarios"][0]["steps"][0]["selector"] = "#unknown"
+    with pytest.raises(InvalidActionResult) as failure:
+        validate_bound_prototype_result("PROTOTYPE_SCENARIO", payload, canonical_json_bytes(bad))
+    packet = prototype_repair_packet(bad, failure.value.diagnostic)
+    changed = copy.deepcopy(good); changed["scenarios"].reverse()
+    with pytest.raises(InvalidActionResult) as protected:
+        validate_bound_prototype_result("PROTOTYPE_SCENARIO", payload, canonical_json_bytes(changed), packet=packet)
+    assert protected.value.diagnostic.code == "REPAIR_SCOPE_VIOLATION"
+    assert set(protected.value.diagnostic.subject_ids) == {"untouched", "third"}

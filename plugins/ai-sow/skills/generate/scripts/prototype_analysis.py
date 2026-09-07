@@ -10,11 +10,13 @@ from urllib.parse import unquote, urlsplit
 
 from contracts import canonical_json_bytes, sha256_bytes, load_registry, validate_contract, InvalidActionResult
 from source_readers import html_elements, PROTOTYPE_BINARY_SUFFIXES
+from models import AttemptDiagnostic
 
 
 class PrototypeError(ValueError):
-    def __init__(self, code: str):
+    def __init__(self, code: str, path: str = "", subject_ids=()):
         self.code = code
+        self.diagnostic = AttemptDiagnostic(code, path, tuple(sorted(set(subject_ids)))) if path else None
         super().__init__(code)
 
 
@@ -151,34 +153,50 @@ def inventory_demo_bundle(entrypoint: str, files: Sequence[Mapping[str, object]]
     return inventory
 
 
-def _verify_scenario_bindings(inventory, scenario, round):
+def _verify_scenario_bindings(inventory, scenario, round, *, diagnostics=None):
+    def emit(error):
+        if diagnostics is None: raise error
+        diagnostics.append(error.diagnostic)
     if scenario["bundleSha256"] != inventory["bundleSha256"]:
-        raise PrototypeError("PROTOTYPE_BUNDLE_MISMATCH")
+        emit(PrototypeError("PROTOTYPE_BUNDLE_MISMATCH", "/bundleSha256"))
     if scenario["round"] != round:
-        raise PrototypeError("PROTOTYPE_SCENARIO_INVALID")
+        emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", "/round"))
     interaction_ids = {item["interactionId"] for item in inventory["interactions"]}
     scenarios = scenario["scenarios"]
-    steps = [step for item in scenarios for step in item["steps"]]
-    if any(not set(item["interactionIds"]) <= interaction_ids for item in scenarios) or any(step["interactionId"] is not None and step["interactionId"] not in interaction_ids for step in steps):
-        raise PrototypeError("PROTOTYPE_INTERACTION_UNKNOWN")
-    if len({item["scenarioId"] for item in scenarios}) != len(scenarios) or len({step["stepId"] for step in steps}) != len(steps):
-        raise PrototypeError("PROTOTYPE_SCENARIO_INVALID")
-    if any(set(item["interactionIds"]) != {step["interactionId"] for step in item["steps"] if step["interactionId"] is not None} for item in scenarios):
-        raise PrototypeError("PROTOTYPE_SCENARIO_INVALID")
+    scenario_keys, step_owners = set(), {}
     operations = {"navigate": {"navigate"}, "click": {"click"}, "fill": {"input"},
                   "select": {"input", "change"}, "check": {"input", "change", "click"},
                   "press": {"keydown", "keyup"}, "wait": set()}
     interactions = {item["interactionId"]: item for item in inventory["interactions"]}
-    for step in steps:
-        if step["page"] not in inventory["routes"]:
-            raise PrototypeError("PROTOTYPE_SCENARIO_INVALID")
-        if step["operation"] == "navigate" and step["value"] not in {None, step["page"]}:
-            raise PrototypeError("PROTOTYPE_SCENARIO_INVALID")
-        if step["interactionId"] is None:
-            continue
-        interaction = interactions[step["interactionId"]]
-        if step["page"] != interaction["page"] or step["selector"] != interaction["selector"] or interaction["event"] not in operations[step["operation"]]:
-            raise PrototypeError("PROTOTYPE_SCENARIO_INVALID")
+    for index, item in enumerate(scenarios):
+        path, subject = "/scenarios/" + str(index), item["scenarioId"]
+        if subject in scenario_keys:
+            emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", path + "/scenarioId", (subject,)))
+        scenario_keys.add(subject)
+        if not set(item["interactionIds"]) <= interaction_ids:
+            emit(PrototypeError("PROTOTYPE_INTERACTION_UNKNOWN", path + "/interactionIds", (subject,)))
+        for position, step in enumerate(item["steps"]):
+            step_path = path + "/steps/" + str(position)
+            if step["stepId"] in step_owners:
+                emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", step_path + "/stepId",
+                                     (subject, step_owners[step["stepId"]])))
+            step_owners[step["stepId"]] = subject
+            if step["interactionId"] is not None and step["interactionId"] not in interaction_ids:
+                emit(PrototypeError("PROTOTYPE_INTERACTION_UNKNOWN", step_path + "/interactionId", (subject,)))
+            if step["page"] not in inventory["routes"]:
+                emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", step_path + "/page", (subject,)))
+            if step["operation"] == "navigate" and step["value"] not in {None, step["page"]}:
+                emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", step_path + "/value", (subject,)))
+            if step["interactionId"] not in interactions:
+                continue
+            interaction = interactions[step["interactionId"]]
+            for field in ("page", "selector"):
+                if step[field] != interaction[field]:
+                    emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", step_path + "/" + field, (subject,)))
+            if interaction["event"] not in operations[step["operation"]]:
+                emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", step_path + "/operation", (subject,)))
+        if set(item["interactionIds"]) != {step["interactionId"] for step in item["steps"] if step["interactionId"] is not None}:
+            emit(PrototypeError("PROTOTYPE_SCENARIO_INVALID", path + "/interactionIds", (subject,)))
 
 
 def verify_scenario_manifest(inventory, scenario, limits, *, round):
@@ -193,7 +211,8 @@ def _verify_scenario_plan(inventory, scenario, limits, round):
     _verify_scenario_bindings(inventory, scenario, round)
     steps = [step for item in scenario["scenarios"] for _ in range(2 if item["critical"] else 1) for step in item["steps"]]
     if round > limits["maxDiscoveryRounds"] or len(steps) > limits["maxScenarioSteps"] or sum(step["screenshot"] for step in steps) > limits["maxScreenshots"]:
-        raise PrototypeError("INCOMPLETE_BUDGET")
+        raise PrototypeError("INCOMPLETE_BUDGET", "/scenarios",
+                             tuple(item["scenarioId"] for item in scenario["scenarios"]))
     return scenario
 
 
@@ -284,30 +303,37 @@ def verify_prototype_observations(inventory, scenario, trace, result):
     return _verify_observation_bindings(inventory, scenario, trace, result)
 
 
-def _verify_observation_bindings(inventory, scenario, trace, result):
+def _verify_observation_bindings(inventory, scenario, trace, result, *, diagnostics=None):
+    def emit(error):
+        if diagnostics is None: raise error
+        diagnostics.append(error.diagnostic)
     evidence = _verify_trace_bindings(inventory, scenario, trace)
     if evidence["unresolvedDiscoveryCount"]:
-        raise PrototypeError("PROTOTYPE_UNRESOLVED_DISCOVERY")
+        emit(PrototypeError("PROTOTYPE_UNRESOLVED_DISCOVERY"))
     source_ids = {item["evidenceId"] for item in inventory["evidence"] if item["content"]}
     interaction_ids = {item["interactionId"] for item in inventory["interactions"]}
     observed = {item["interactionId"] for item in evidence["interactionDispositions"] if item["disposition"] == "OBSERVED"}
     local_keys = [item["localKey"] for item in result["observations"]]
     if len(set(local_keys)) != len(local_keys):
-        raise PrototypeError("PROTOTYPE_OBSERVATION_INVALID")
+        duplicate = next(key for key in local_keys if local_keys.count(key) > 1)
+        emit(PrototypeError("PROTOTYPE_OBSERVATION_INVALID", "/observations/" + str(local_keys.index(duplicate)) + "/localKey", (duplicate,)))
     intent_review = []
-    for observation in result["observations"]:
+    for index, observation in enumerate(result["observations"]):
+        path, subject = "/observations/" + str(index), (observation["localKey"],)
         if not observation["evidenceIds"] or not set(observation["evidenceIds"]) <= source_ids:
-            raise PrototypeError("PROTOTYPE_SOURCE_EVIDENCE_REQUIRED")
-        if observation["behavior"]["page"] not in inventory["routes"] or not set(observation["interactionIds"]) <= interaction_ids:
-            raise PrototypeError("PROTOTYPE_OBSERVATION_INVALID")
+            emit(PrototypeError("PROTOTYPE_SOURCE_EVIDENCE_REQUIRED", path + "/evidenceIds", subject))
+        if observation["behavior"]["page"] not in inventory["routes"]:
+            emit(PrototypeError("PROTOTYPE_OBSERVATION_INVALID", path + "/behavior/page", subject))
+        if not set(observation["interactionIds"]) <= interaction_ids:
+            emit(PrototypeError("PROTOTYPE_OBSERVATION_INVALID", path + "/interactionIds", subject))
         if observation["runtimeStatus"] == "OBSERVED" and (not observation["interactionIds"] or not set(observation["interactionIds"]) <= observed):
-            raise PrototypeError("PROTOTYPE_RUNTIME_EVIDENCE_REQUIRED")
+            emit(PrototypeError("PROTOTYPE_RUNTIME_EVIDENCE_REQUIRED", path + "/interactionIds", subject))
         if observation["runtimeStatus"] == "OBSERVED" and any(item["page"] != observation["behavior"]["page"] for item in inventory["interactions"] if item["interactionId"] in observation["interactionIds"]):
-            raise PrototypeError("PROTOTYPE_RUNTIME_EVIDENCE_REQUIRED")
-    for observation in result["observations"]:
+            emit(PrototypeError("PROTOTYPE_RUNTIME_EVIDENCE_REQUIRED", path + "/interactionIds", subject))
+    for index, observation in enumerate(result["observations"]):
         if observation["scopeRelation"] in {"CONFIRMS", "SUPPLEMENTS", "ADDITIONAL"}:
             if observation["runtimeStatus"] in {"BROKEN", "NOT_EXERCISED"}:
-                raise PrototypeError("PROTOTYPE_SCOPE_EVIDENCE_REQUIRED")
+                emit(PrototypeError("PROTOTYPE_SCOPE_EVIDENCE_REQUIRED", "/observations/" + str(index) + "/runtimeStatus", (observation["localKey"],)))
             if observation["runtimeStatus"] == "CODE_ONLY":
                 intent_review.append(observation["localKey"])
     return {"authority": "TARGET_SCOPE_ONLY", "requiresIntentReviewLocalKeys": sorted(intent_review)}
@@ -326,9 +352,35 @@ def validate_bound_prototype_context(action_kind, payload) -> None:
             raise PrototypeError("PROTOTYPE_PROFILE_CONTEXT_INVALID")
 
 
-def validate_bound_prototype_result(action_kind, payload, normalized_result: bytes) -> None:
+def _preserve_prototype_candidate(action_kind, packet, result):
+    from candidate_repair import repair_baseline, preserve_roots
+    baseline = repair_baseline(packet, action_kind + "-v1")
+    if baseline is None:
+        return
+    previous, diagnostic = baseline
+    if not diagnostic["code"].startswith("PROTOTYPE_") and diagnostic["code"] != "INCOMPLETE_BUDGET":
+        return
+    roots = set(diagnostic["subjectIds"])
+    if action_kind == "PROTOTYPE_SCENARIO":
+        # Scenario IDs remain the public contract; localKey is a transient helper projection.
+        def projected(value):
+            return {**value, "scenarios": [{**item, "localKey": item["scenarioId"]} for item in value["scenarios"]]}
+        fields = (diagnostic["path"][1:],) if diagnostic["path"] in {"/bundleSha256", "/round"} else ()
+        preserve_roots(projected(previous), projected(result), "scenarios", roots, mutable_fields=fields)
+        before = [item["scenarioId"] for item in previous["scenarios"] if item["scenarioId"] not in roots]
+        after = [item["scenarioId"] for item in result["scenarios"] if item["scenarioId"] not in roots]
+        if before != after:
+            raise InvalidActionResult("修复不得改变无关场景的执行顺序。", diagnostic=AttemptDiagnostic(
+                "REPAIR_SCOPE_VIOLATION", "/scenarios", tuple(sorted(set(before + after)))))
+    else:
+        preserve_roots(previous, result, "observations", roots)
+
+
+def validate_bound_prototype_result(action_kind, payload, normalized_result: bytes, packet=None) -> None:
     """Pure binding checks on strictly normalized IR and prevalidated context."""
     result = json.loads(normalized_result)
+    if packet is not None and action_kind in {"PROTOTYPE_SCENARIO", "PROTOTYPE_ANALYZE"}:
+        _preserve_prototype_candidate(action_kind, packet, result)
     if action_kind in {"PROTOTYPE_BROWSER", "PROTOTYPE_ANALYZE"}:
         _verify_scenario_bindings(payload["inventory"], payload["scenario"]["normalizedResult"], payload["identity"]["round"])
     if action_kind == "PROTOTYPE_ANALYZE":
@@ -356,6 +408,77 @@ def validate_bound_prototype_result(action_kind, payload, normalized_result: byt
             "PROTOTYPE_TRACE_SCREENSHOT_INVALID", "PROTOTYPE_DISCOVERY_BINDING_INVALID",
         }
         if error.code in current_invalid or (action_kind == "PROTOTYPE_BROWSER" and error.code in trace_invalid) or (action_kind == "PROTOTYPE_SCENARIO" and error.code == "INCOMPLETE_BUDGET"):
-            raise InvalidActionResult(error.code) from error
+            raise InvalidActionResult(error.code, diagnostic=error.diagnostic) from error
         if error.code not in {"PROTOTYPE_SCOPE_EVIDENCE_REQUIRED", "INCOMPLETE_BUDGET", "PROTOTYPE_UNSTABLE"}:
             raise
+
+
+def diagnose_candidate(action_kind, packet, candidate, **owner_context):
+    from candidate_repair import schema_issues, diagnostic_report, issues_from_diagnostics
+    raw=candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate);value=json.loads(raw)
+    issues=schema_issues(owner_context.get('action_contract_id',action_kind+'-v1'),value,'PROTOTYPE')
+    blocked=[];domains=['SCHEMA'];payload=packet['workItems'][0]['payload'];diagnostics=[]
+    try:
+        if action_kind=='PROTOTYPE_SCENARIO':
+            _verify_scenario_bindings(payload['inventory'],value,payload['identity']['round'],diagnostics=diagnostics)
+            try:_verify_scenario_plan(payload['inventory'],value,{**payload['demoLimits'],**payload['demoRemaining']},payload['identity']['round'])
+            except PrototypeError as error:
+                if error.code=='INCOMPLETE_BUDGET':diagnostics.append(error.diagnostic)
+        elif action_kind=='PROTOTYPE_ANALYZE':
+            _verify_observation_bindings(payload['inventory'],payload['scenario']['normalizedResult'],payload['trace']['normalizedResult'],value,diagnostics=diagnostics)
+        else:
+            try:validate_bound_prototype_result(action_kind,payload,raw,packet=packet)
+            except InvalidActionResult as error:diagnostics.append(error.diagnostic)
+    except (KeyError,TypeError,IndexError):
+        blocked.append('PROTOTYPE_BINDINGS')
+    else:
+        domains.append('PROTOTYPE_BINDINGS')
+    issues+=issues_from_diagnostics(diagnostics,'PROTOTYPE',value)
+    if action_kind=='PROTOTYPE_BROWSER':
+        for issue in issues:issue['repairClass']='EXECUTION'
+    return diagnostic_report(raw,issues,owner='PROTOTYPE',checker_file=__file__,packet=packet,
+        origin=owner_context.get('origin'),blocked=blocked,domains=domains)
+
+
+def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **owner_context):
+    from candidate_repair import group_fields, build_repair_plan
+    if action_kind=='PROTOTYPE_BROWSER':raise InvalidActionResult('浏览器观察必须由实际工具执行，不能由模型修补运行事实。')
+    selected={issue['issueId']:issue['paths'] for issue in report['issues']}
+    groups=group_fields(candidate,report,owner_context.get('action_contract_id',action_kind+'-v1'),selected)
+    if not groups:raise InvalidActionResult('原型缺口需要真实执行或输入，不能改写已有观察。')
+    return build_repair_plan(candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate),report,groups,origin=origin)
+
+
+def candidate_repair_context(action_kind, packet, candidate, plan, group):
+    value=json.loads(candidate);payload=packet['workItems'][0]['payload'];inventory=payload['inventory']
+    index={r['objectId']:r for r in plan['objectIndex']};interactions=set();evidence=set();scenario_ids=set()
+    scenario_rows=payload.get('scenario',{}).get('normalizedResult',{}).get('scenarios',[])
+    scenario_keys={row['scenarioId'] for row in scenario_rows}
+    for slot in group['slots']:
+        parts=index.get(slot['objectId'],{}).get('path','').split('/')
+        if len(parts)>2 and parts[1] in {'observations','scenarios'}:
+            row=value[parts[1]][int(parts[2])];interactions.update(row.get('interactionIds',[]));evidence.update(row.get('evidenceIds',[]))
+            if 'scenarioId' in row:scenario_ids.add(row['scenarioId'])
+            elif row.get('localKey') in scenario_keys:scenario_ids.add(row['localKey'])
+    if not scenario_ids:
+        for scenario in scenario_rows:
+            if interactions.intersection(scenario['interactionIds']):
+                scenario_ids.add(scenario['scenarioId'])
+    selected=[row for row in inventory['interactions'] if row['interactionId'] in interactions]
+    evidence.update(key for row in selected for key in row.get('evidenceIds',[]))
+    result=[{'kind':'PROTOTYPE_BOUND_CONTEXT','bundleSha256':inventory['bundleSha256'],'round':payload['identity']['round'],
+             'routes':sorted({row['page'] for row in selected}),'interactions':selected,
+             'evidence':[row for row in inventory['evidence'] if row['evidenceId'] in evidence]}]
+    if 'trace' in payload:
+        trace=payload['trace']['normalizedResult']
+        selected_runs=[]
+        for run in trace['runs']:
+            if run['scenarioId'] not in scenario_ids:continue
+            steps=[step for step in run['steps'] if not interactions or step['interactionId'] in interactions]
+            if steps:selected_runs.append({**run,'steps':steps})
+        filtered={**trace,'runs':selected_runs,
+            'unresolvedDiscoveries':[row for row in trace['unresolvedDiscoveries']
+                                     if evidence.intersection(row['sourceEvidenceIds'])]}
+        result.append({'kind':'READ_ONLY_RUNTIME_FACTS','trace':filtered})
+    if 'demoLimits' in payload:result.append({'demoLimits':payload['demoLimits'],'demoRemaining':payload['demoRemaining']})
+    return result

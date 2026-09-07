@@ -275,13 +275,13 @@ def scope_owner_result(kind, packet):
         return {"entities": [{"localKey": item["workItemId"] + ":entity", "sourceId": item["payload"]["sourceId"],
             "entityKind": "CONTRACT_ENTITY", "semanticSummary": "查询订单", "deliveryStatus": "CURRENT_BY_CONTRACT",
             "evidenceIds": item["payload"]["evidenceIds"]} for item in packet["workItems"]],
-            "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": []}
+            "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": [], "unextractedEvidence": []}
     if kind == "PRIOR_CONSOLIDATE":
         result = {key: [item for dependency in dependencies for item in dependency[key]] for key in ["entities", "sourceRelations", "entitySupersessions", "unsupportedRegions"]}
         if len(result["entities"]) == 2:
             previous, current = sorted(result["entities"], key=lambda item: item["sourceId"])
             result["entitySupersessions"] = [{"predecessorLocalKeys": [previous["localKey"]], "successorLocalKeys": [current["localKey"]], "evidenceIds": current["evidenceIds"]}]
-        return result
+        return {key: result[key] for key in ("sourceRelations", "entitySupersessions")}
     if kind == "SCOPE_JOIN":
         children = [item for dependency in dependencies for item in dependency["decisions"] if item["decisionKind"] != "POLICY_INSTANCE"]
         return with_required_scope_policies({"decisions": children})
@@ -350,7 +350,7 @@ def seal_scope_work(runtime, logical_id, result_override=None, *, revision_numbe
         value["inputRevisionSha256"] = scope_context["inputRevisionSha256"]
     if ledger.envelopes_by_sha256:
         value["runId"] = next(iter(ledger.envelopes_by_sha256.values())).value["runId"]
-    value["executionLimits"] = {"estimatedInputTokens": estimate_action_input_tokens(SKILL_ROOT, kind + "-v1", payload,
+    value["executionLimits"] = {"estimatedInputTokens": estimate_action_input_tokens(SKILL_ROOT, value["actionContractId"], payload,
         budget_policy=run_budget_policy_value(sizing), max_output_tokens=sizing.output_reserve_tokens),
         "maxOutputTokens": sizing.output_reserve_tokens, "maxHydrateTokens": sizing.hydrate_reserve_tokens}
     envelope = ActionEnvelope(value, "actions/" + value["actionId"] + "/envelope.json", sha256_bytes(canonical_json_bytes(value)))
@@ -358,7 +358,7 @@ def seal_scope_work(runtime, logical_id, result_override=None, *, revision_numbe
     if kind in {"SOURCE_SCAN", "SOURCE_AUDIT", "SCOPE_SYNTHESIS", "SCOPE_PROPOSAL", "SCOPE_JOIN"}:
         scope_compiler_module.validate_bound_scope_context(kind, packet)
         callback = lambda normalized: scope_compiler_module.validate_bound_scope_result(kind, packet, normalized)
-    ledger, record = finish(issue(ledger, envelope), envelope, successful_completion(canonical_json_bytes(result)), bound_result_validator=callback)
+    ledger, record = finish(issue(ledger, envelope), envelope, successful_completion(canonical_json_bytes(result)), bound_result_validator=callback, packet_payload=payload)
     runtime[3] = ledger
     if not allow_failure:
         assert record.outcome == "SUCCEEDED", record
@@ -422,7 +422,7 @@ def test_scope_owner_e2e_multi_prior_consumes_real_unique_root_and_full_superses
         sheet = workbook.active
         sheet.title = "合同"
         sheet.append(["ID", "交付物"])
-        sheet.append([f"prior-visible-{i}", "替代旧版本并已交付" + "x" * 9000])
+        sheet.append([f"prior-visible-{i}", "替代旧版本并已交付" + "x" * 18000])
         workbook.save(path)
         workbook.close()
         inventories.append(inventory_prior_workbook(path))
@@ -460,7 +460,7 @@ def test_scope_owner_e2e_preserves_visible_prior_only_for_unchanged_unique_match
             prior_key = item.work_item_id + ":entity"
             result = {"entities": [{"localKey": prior_key, "sourceId": "prior-0", "entityKind": "CONTRACT_ENTITY", "semanticSummary": "订单查询",
                 "deliveryStatus": "CURRENT_BY_CONTRACT", "evidenceIds": item.work_item_payload["evidenceIds"], "visiblePriorId": "prior-visible-1"}],
-                "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": []}
+                "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": [], "unextractedEvidence": []}
         elif kind == "SCOPE_SYNTHESIS":
             result = complete_scope_ir()
             feature, epic = result["decisions"]
@@ -479,8 +479,8 @@ def test_scope_owner_e2e_preserves_visible_prior_only_for_unchanged_unique_match
     candidate, graph = json.loads(material.candidate_bytes), json.loads(material.change_graph_bytes)
     assert candidate["features"][0]["featureId"] == "prior-visible-1"
     assert graph["changeGroups"] == [{"kind": "REUSE_DEPENDENCY", "priorEntityIds": ["prior-visible-1"], "targetEntityIds": ["prior-visible-1"], "evidenceIds": ["block-000"]}]
-    assert material.review_obligations[0]["kind"] == "PRIOR_IDENTITY"
-    assert material.review_obligations[0]["targetEntityIds"] == ["prior-visible-1"]
+    identity = next(row for row in material.review_obligations if row["kind"] == "PRIOR_IDENTITY")
+    assert identity["targetEntityIds"] == ["prior-visible-1"]
 
 
 def test_scope_decision_ir_bound_finish_rejects_invalid_refs_without_schema_reads(monkeypatch):
@@ -761,7 +761,7 @@ def change_scope_packet_result():
         "logicalWorkId": "prior", "attemptRecordSha256": "c" * 64, "normalizedResult": {
             "entities": [{"localKey": key, "sourceId": "prior", "entityKind": "CONTRACT_ENTITY", "semanticSummary": "合同能力",
                 "deliveryStatus": "CURRENT_BY_CONTRACT", "evidenceIds": ["d" * 64]} for key in ["p1", "p2"]],
-            "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": []}}})
+            "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": [], "unextractedEvidence": []}}})
     return packet, result
 
 

@@ -37,12 +37,12 @@
         "revision": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 2
+          "maximum": 10
         },
         "attempt": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 2
+          "maximum": 10
         },
         "envelopeSha256": {
           "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
@@ -172,6 +172,14 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "findings": {
+          "description": "同一次候选检查发现的全部具体问题，保留对象、路径与关联身份；旧记录可省略。",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/attemptDiagnostic"
+          }
         }
       }
     },
@@ -298,12 +306,12 @@
         "revision": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 2
+          "maximum": 10
         },
         "attempt": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 2
+          "maximum": 10
         },
         "stageKind": {
           "type": "string",

@@ -159,6 +159,48 @@ def bound_task_ir(packet, *, target_key=None, work_type='FE-VIEW'):
 
 
 @pytest.mark.unit
+def test_task_identity_collision_is_precise_preseal_invalid_ir():
+    import task_compiler as owner
+    from contracts import InvalidActionResult
+    from models import AttemptDiagnostic
+    packet = task_packet(exact_task_inputs())
+    result = bound_task_ir(packet)
+    other = copy.deepcopy(result['tasks'][0])
+    other.update(localKey='other', workTypeId='FE-EDIT', deliverableBoundary='独立编辑场景')
+    result['tasks'].append(other)
+    assert owner.verify_task_decision(packet, result) == ()
+    with pytest.raises(owner.TaskInputRequired): list(owner._task_node_bindings(packet, result))
+    with pytest.raises(InvalidActionResult) as error:
+        owner.validate_bound_task_result(packet, canonical_json_bytes(result))
+    keys = tuple(sorted(task['localKey'] for task in result['tasks']))
+    assert error.value.diagnostic == AttemptDiagnostic('TASK_IDENTITY_COLLISION', '/tasks', keys)
+    other.update(localKey='renamed', deliverableBoundary='改变描述仍保持相同来源')
+    with pytest.raises(InvalidActionResult) as renamed:
+        owner.validate_bound_task_result(packet, canonical_json_bytes(result))
+    assert renamed.value.diagnostic.subject_ids == tuple(sorted(task['localKey'] for task in result['tasks']))
+
+
+@pytest.mark.unit
+def test_task_preseal_returns_all_located_failures_for_one_repair():
+    import task_compiler as owner
+    from contracts import InvalidActionResult
+    packet = task_packet(exact_task_inputs())
+    result = bound_task_ir(packet)
+    first = result['tasks'][0]
+    second = {**copy.deepcopy(first), 'localKey':'second', 'workTypeId':'FE-EDIT', 'workModeDecision':'调整'}
+    result['tasks'].append(second)
+    first['evidenceIds'] = ['not-in-this-packet']
+    with pytest.raises(InvalidActionResult) as caught:
+        owner.validate_bound_task_result(packet, canonical_json_bytes(result))
+    diagnostic = caught.value.diagnostic
+    assert set(diagnostic.subject_ids) == {first['localKey'], 'second'}
+    findings = {item.code:item for item in diagnostic.findings}
+    assert findings['TASK_EVIDENCE_UNBOUND'].subject_ids == (first['localKey'],)
+    assert findings['TASK_EVIDENCE_UNBOUND'].path.endswith('/evidenceIds')
+    assert findings['TASK_EFFECTIVE_START_EVIDENCE_MISSING'].subject_ids == ('second',)
+
+
+@pytest.mark.unit
 def test_task_obligation_coverage_sealed_input_and_checkpoint_projection_plan():
     import task_compiler as owner
     from stage_planner import plan_stage
@@ -187,7 +229,10 @@ def test_task_obligation_coverage_sealed_input_and_checkpoint_projection_plan():
         with pytest.raises(ValueError): owner.prepare_task_inputs(candidate,cp,checkpoint_sha256='0'*64 if mutation=='hash' else sha256_bytes(cp),task_catalog=source,input_revision_bytes=revision)
     with pytest.raises(ValueError): owner.build_task_work_descriptors((replace(inputs.work_items[0],block_ordinal=99),*inputs.work_items[1:]),inputs.context_refs,policy())
     locked=json.loads((FIXTURES/'planner/task-plan-hash.json').read_bytes())
-    assert sha256_bytes(canonical_json_bytes(plan))==locked['stagePlanSha256']
+    legacy_ids={'TASK':'TASK-v1'}
+    legacy_works=owner.build_task_work_descriptors(inputs.work_items,inputs.context_refs,policy(),action_contract_ids=legacy_ids)
+    legacy_plan=plan_stage('TASK',inputs.work_items,inputs.context_refs,legacy_works,[inputs.checkpoint_sha256],policy(),action_contract_ids=legacy_ids)
+    assert sha256_bytes(canonical_json_bytes(legacy_plan))==locked['stagePlanSha256']
 
 
 @pytest.mark.unit
@@ -220,6 +265,83 @@ def test_demo_task_authority_rejects_technical_types_and_evidence_free_upgrade(w
     assert 'TASK_DEMO_TECHNICAL_AUTHORITY' in {d.code for d in owner.verify_task_decision(packet,valid)}
     task['workTypeId']='FE-VIEW';task['complexityDecision']='L'
     assert 'TASK_COMPLEXITY_EVIDENCE_MISSING' in {d.code for d in owner.verify_task_decision(packet,valid)}
+
+
+def ui_policy_task_case(policy_id='policy-sit-automation', *, source_role='PRD'):
+    from ir_samples import task_story_model
+    model = task_story_model()
+    model['policyInstances'] = [{'policyInstanceId':'policy-ui', 'policyId':policy_id,
+        'targetNodeIds':['feature-query'], 'inclusionPolicy':'DEFAULT_INCLUDED',
+        'sourceRefs':[{'sourceId':'policy-source', 'blockId':'automation-policy',
+                       'sha256':'a'*64, 'locator':'section:automation'}]}]
+    for item in model['stories'] + model['acceptanceCriteria']:
+        item['policyRefs'] = ['policy-ui']
+    inputs = exact_task_inputs(model, {'policy-source':source_role})
+    packet = task_packet(inputs)
+    target = next(ref['canonicalContent'] for ref in packet['contextRefs']
+                  if ref['canonicalContent'].get('targetKind') == 'POLICY_INSTANCE')
+    result = bound_task_ir(packet, target_key=target['targetKey'], work_type='TEST-UI-E2E')
+    result['tasks'][0]['evidenceIds'] = sorted(set(target['evidenceIds']) | {
+        key for item in packet['workItems'] for key in item['payload']['evidenceIds']})
+    return inputs, packet, result
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('policy_id', ['policy-sit-automation', 'policy-uat-automation'])
+def test_prd_ui_automation_policy_closes_ac_without_invented_technical_design(policy_id):
+    import task_compiler as owner
+    inputs, packet, result = ui_policy_task_case(policy_id)
+    assert owner.verify_task_decision(packet, result) == ()
+    owner.validate_bound_task_result(packet, canonical_json_bytes(result))
+    runtime, record = seal_task_work(task_runtime(inputs), result)
+    assert record.outcome == 'SUCCEEDED'
+    material = owner.materialize_task_candidate(*runtime)
+    assert owner.validate_task_candidate(material) == ()
+    model = json.loads(material.candidate_bytes)
+    assert model['tasks'][0]['policyInstanceIds'] == ['policy-ui']
+    assert model['designItems'] == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('work_type', ['FE-QUERY-API', 'DATA-MODEL-STORAGE',
+    'IN-INTEGRATION', 'IN-IDENTITY', 'ENG-RUNTIME', 'REL-EXECUTION', 'TEST-API', 'TEST-INTEGRATION'])
+def test_prd_ui_policy_does_not_authorize_other_technical_work(work_type):
+    import task_compiler as owner
+    _, packet, result = ui_policy_task_case()
+    result['tasks'][0]['workTypeId'] = work_type
+    assert 'TASK_DEMO_TECHNICAL_AUTHORITY' in {d.code for d in owner.verify_task_decision(packet, result)}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mutation,code', [
+    ('missing-policy-evidence', 'TASK_DEMO_TECHNICAL_AUTHORITY'),
+    ('missing-ac-evidence', 'TASK_DEMO_TECHNICAL_AUTHORITY'),
+    ('demo-policy', 'TASK_DEMO_TECHNICAL_AUTHORITY'),
+    ('release-policy', 'TASK_DEMO_TECHNICAL_AUTHORITY'),
+    ('ui-target', 'TASK_TARGET_TYPE_INVALID'),
+    ('missing-ac', 'TASK_STORY_AC_COVERAGE_INCOMPLETE'),
+    ('foreign-evidence', 'TASK_EVIDENCE_UNBOUND'),
+    ('mode', 'TASK_EFFECTIVE_START_EVIDENCE_MISSING'),
+    ('complexity', 'TASK_COMPLEXITY_EVIDENCE_MISSING'),
+])
+def test_prd_ui_policy_exception_preserves_evidence_coverage_and_estimation_gates(mutation, code):
+    import task_compiler as owner
+    _, packet, result = ui_policy_task_case(
+        'policy-go-live' if mutation == 'release-policy' else 'policy-sit-automation',
+        source_role='DEMO' if mutation == 'demo-policy' else 'PRD')
+    task = result['tasks'][0]
+    obligations, targets, _, _ = owner._task_packet_catalog(packet)
+    if mutation == 'missing-policy-evidence':
+        task['evidenceIds'] = sorted(set(task['evidenceIds']) - set(targets[task['technicalTarget']]['evidenceIds']))
+    elif mutation == 'missing-ac-evidence':
+        task['evidenceIds'] = targets[task['technicalTarget']]['evidenceIds']
+    elif mutation == 'ui-target':
+        task['technicalTarget'] = next(key for key, target in targets.items() if target['targetKind'] == 'USER_INTERFACE')
+    elif mutation == 'missing-ac': task['acceptanceCriterionKeys'].pop()
+    elif mutation == 'foreign-evidence': task['evidenceIds'].append('evidence-from-another-story')
+    elif mutation == 'mode': task['workModeDecision'] = '调整'
+    elif mutation == 'complexity': task['complexityDecision'] = 'L'
+    assert code in {d.code for d in owner.verify_task_decision(packet, result)}
 
 
 def technical_model(*, demo=False, integration=False):
@@ -352,7 +474,7 @@ def seal_task_work(runtime,result=None,*,revision=1,attempt=1,completion=None,wo
         'inputRevisionSha256':sha256_bytes(inputs.input_revision_bytes),'baseCandidateSha256':sha256_bytes(inputs.story_candidate_bytes),
         'packetSha256':sha256_bytes(payload),'revision':revision,'attempt':attempt}
     value['actionId']+='-r'+str(revision)+'-a'+str(attempt)
-    value['executionLimits']={'estimatedInputTokens':estimate_action_input_tokens(SKILL_ROOT,'TASK-v1',payload,
+    value['executionLimits']={'estimatedInputTokens':estimate_action_input_tokens(SKILL_ROOT,value['actionContractId'],payload,
         budget_policy=run_budget_policy_value(sizing),max_output_tokens=sizing.output_reserve_tokens),
         'maxOutputTokens':sizing.output_reserve_tokens,'maxHydrateTokens':sizing.hydrate_reserve_tokens}
     envelope=ActionEnvelope(value,'actions/'+value['actionId']+'/envelope.json',sha256_bytes(canonical_json_bytes(value)))
@@ -759,6 +881,53 @@ def shared_test_asset_model():
         model['stories'].append(story)
         model['acceptanceCriteria'][i].update(storyId=story['storyId'],policyRefs=[policy])
     return model
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mutation', [None, 'foreign-ac-evidence', 'foreign-policy-evidence', 'unauthorized'])
+def test_shared_prd_ui_automation_requires_each_covered_story_own_evidence(mutation):
+    import task_compiler as owner
+    model = shared_test_asset_model()
+    model['designItems'] = []
+    for item in model['stories'] + model['acceptanceCriteria']:
+        item['designRefs'] = []
+    for index, policy in enumerate(model['policyInstances']):
+        policy['sourceRefs'] = [{'sourceId':'prd', 'blockId':'policy-'+str(index),
+            'sha256':str(index)*64, 'locator':'section:policy-'+str(index)}]
+    inputs = exact_task_inputs(model)
+    packet = task_packet(inputs)
+    obligations, targets, _, _ = owner._task_packet_catalog(packet)
+    original = {'tasks':[]}
+    for phase in ('sit', 'uat'):
+        task = bound_task_ir(packet, target_key='target:policy-'+phase+':story:story-'+phase,
+                             work_type='TEST-UI-E2E')['tasks'][0]
+        task['localKey'] = phase
+        task['evidenceIds'] = sorted(set(task['evidenceIds']) | {
+            key for ac in task['acceptanceCriterionKeys'] for key in obligations[ac]['evidenceIds']})
+        original['tasks'].append(task)
+    assert owner.verify_task_decision(packet, original) == ()
+    review = {'decision':'REPAIRABLE_SEMANTIC', 'findings':[{'subjectIds':['sit','uat']}]}
+    repaired_packet = owner.prepare_task_repair_packet(packet, original, review,
+        inputs.story_candidate_bytes, inputs.input_revision_bytes)
+    merged = copy.deepcopy(original['tasks'][0])
+    for field in ('acceptanceCriterionKeys','evidenceIds'):
+        merged[field] = sorted({key for task in original['tasks'] for key in task[field]})
+    result = {'tasks':[merged]}
+    if mutation == 'foreign-ac-evidence':
+        foreign = original['tasks'][1]['acceptanceCriterionKeys'][0]
+        merged['evidenceIds'] = sorted(set(merged['evidenceIds']) - set(obligations[foreign]['evidenceIds']))
+    elif mutation == 'foreign-policy-evidence':
+        foreign = targets[original['tasks'][1]['technicalTarget']]
+        merged['evidenceIds'] = sorted(set(merged['evidenceIds']) - set(foreign['evidenceIds']))
+    elif mutation == 'unauthorized': repaired_packet = packet
+    codes = {d.code for d in owner.verify_task_decision(repaired_packet, result)}
+    if mutation is None:
+        assert codes == set()
+        task = next(node for collection,node in owner._task_node_bindings(repaired_packet, result) if collection == 'tasks')
+        assert task['policyInstanceIds'] == ['policy-sit','policy-uat']
+        assert task['acceptanceCriterionIds'] == ['ac-empty','ac-success']
+    else:
+        assert 'TASK_DEMO_TECHNICAL_AUTHORITY' in codes
 
 
 @pytest.mark.unit

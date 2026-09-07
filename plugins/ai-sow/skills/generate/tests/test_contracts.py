@@ -72,6 +72,7 @@ NEXT_SCHEMA_IDS = {
     "change-graph.schema.json": "urn:ai-sow:generate:next:change-graph:1",
     "prior-state-snapshot.schema.json": "urn:ai-sow:generate:next:prior-state-snapshot:1",
     "prior-state-decision.schema.json": "urn:ai-sow:generate:next:prior-state-decision:1",
+    "prior-state-decision-v2.schema.json": "urn:ai-sow:generate:next:prior-state-decision:2",
     "prototype-scenario.schema.json": "urn:ai-sow:generate:next:prototype-scenario:1",
     "prototype-trace.schema.json": "urn:ai-sow:generate:next:prototype-trace:1",
     "prototype-observation.schema.json": "urn:ai-sow:generate:next:prototype-observation:1",
@@ -898,7 +899,7 @@ def test_result_schema_dispatch_uses_registered_action_contract_only() -> None:
     assert registry_path.exists()
     registry = read_json(registry_path)
     contracts = registry["contracts"]
-    assert len(contracts) == 19
+    assert len(contracts) == 24
     assert {item["actionContractId"] for item in contracts if item["actionContractId"].startswith("PROTOTYPE_")} == {
         "PROTOTYPE_SCENARIO-v1", "PROTOTYPE_BROWSER-v1", "PROTOTYPE_ANALYZE-v1",
     }
@@ -1103,6 +1104,7 @@ def test_nine_contract_families_have_stable_ids_and_reject_extra_fields() -> Non
         "change-graph.schema.json": {"changeGroups": [], "retiredPrior": []},
         "prior-state-snapshot.schema.json": {"contractVersion": "prior-state-snapshot-v1", "inputRevisionSha256": HEX_A, "evidence": [], "entities": [], "sourceRelations": [], "entitySupersessions": []},
         "prior-state-decision.schema.json": {"entities": [], "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": []},
+        "prior-state-decision-v2.schema.json": {"entities": [], "sourceRelations": [], "entitySupersessions": [], "unsupportedRegions": [], "unextractedEvidence": []},
         "prototype-scenario.schema.json": scenario,
         "prototype-trace.schema.json": trace_fixture(inventory, scenario),
         "prototype-observation.schema.json": {"observations": [observation_fixture(inventory)]},

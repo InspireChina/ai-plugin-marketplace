@@ -178,7 +178,10 @@ def analyze_packet(inventories, revision):
     items = [AtomicWorkItemDescriptor(f"item-{i}", "PRIOR_ANALYZE", "PRIOR_SOW", inventory["workbookSha256"], i, {"sourceId": f"source-{i}", "evidenceIds": [item["priorEvidenceId"] for item in inventory["evidence"]]}) for i, inventory in enumerate(inventories)]
     contexts = [build_project_effective_start_context(revision)]
     descriptors = [make_planned_work("PRIOR_ANALYZE", items, contexts, [])]
-    plan = plan_stage("SCOPE", items, contexts, descriptors, [], policy())
+    # These historical fixtures keep the v1 contract; v2 is exercised separately.
+    from unittest.mock import patch
+    with patch("stage_planner.current_action_contract_id", lambda kind: kind + "-v1"):
+        plan = plan_stage("SCOPE", items, contexts, descriptors, [], policy())
     packet = materialize_packet(plan, plan["works"][0]["logicalWorkId"], 1, items, contexts, [], ActionLedger())
     return plan, json.loads(packet)
 
@@ -211,7 +214,10 @@ def prior_plan_case(tmp_path, count, *, consolidate=True, replacement=False, pac
         descriptors = [make_planned_work("PRIOR_ANALYZE", items[:2], contexts, []), make_planned_work("PRIOR_ANALYZE", items[2:], contexts, [])]
     if count > 1 and consolidate:
         descriptors.append(make_planned_work("PRIOR_CONSOLIDATE", [], contexts, [item.work_key for item in descriptors]))
-    plan = plan_stage("SCOPE", items, contexts, descriptors, [], policy())
+    # These historical fixtures keep the v1 contract; v2 is exercised separately.
+    from unittest.mock import patch
+    with patch("stage_planner.current_action_contract_id", lambda kind: kind + "-v1"):
+        plan = plan_stage("SCOPE", items, contexts, descriptors, [], policy())
     ledger, refs, packets = ActionLedger(), {}, {}
     for work in plan["works"]:
         logical_id, packet_plan = work["logicalWorkId"], work["packetPlan"]
@@ -274,20 +280,20 @@ def test_prior_multi_file_relations_root_rejects_unproven_or_wrong_topology(tmp_
         provided.append(list(refs.values())[0])
     elif mutation in {"failed_root", "superseded_root", "failed_leaf"}:
         selected = list(refs.values())[0] if mutation == "failed_leaf" else root
-        record = ledger.attempt_records[selected.attempt_record_sha256]
+        record = ledger.attempt_records[selected.result_sha256]
         record = replace(record, outcome="SUPERSEDED" if mutation == "superseded_root" else "FAILED")
-        records = {key: item for key, item in ledger.attempt_records.items() if key != selected.attempt_record_sha256}
+        records = {key: item for key, item in ledger.attempt_records.items() if key != selected.result_sha256}
         records[sha256_bytes(canonical_json_bytes(attempt_record_value(record)))] = record
         ledger = replace(ledger, attempt_records=records)
     elif mutation == "wrong_kind":
-        record = ledger.attempt_records[root.attempt_record_sha256]
+        record = ledger.attempt_records[root.result_sha256]
         old = ledger.envelopes_by_sha256[record.envelope_sha256]
         value = {**old.value, "actionContractId": "PRIOR_ANALYZE-v1"}
         value["actionContractSha256"] = action_contract_binding(SKILL_ROOT, value["actionContractId"])[1]
         envelope = replace(old, value=value, sha256=sha256_bytes(canonical_json_bytes(value)))
         record = replace(record, envelope_sha256=envelope.sha256)
         digest = sha256_bytes(canonical_json_bytes(attempt_record_value(record)))
-        records = {key: item for key, item in ledger.attempt_records.items() if key != root.attempt_record_sha256}
+        records = {key: item for key, item in ledger.attempt_records.items() if key != root.result_sha256}
         records[digest] = record
         envelopes = {key: item for key, item in ledger.envelopes_by_sha256.items() if key != old.sha256}
         envelopes[envelope.sha256] = envelope
@@ -330,9 +336,9 @@ def test_prior_multi_file_relations_consolidation_preserves_dependencies_lossles
     else:
         result["entitySupersessions"] = [{"predecessorLocalKeys": ["item-0:entity"], "successorLocalKeys": ["item-1:entity"], "evidenceIds": result["entities"][0]["evidenceIds"]}]
     validate_bound_prior_context("PRIOR_CONSOLIDATE", packet, inventories=inventories, input_revision_bytes=revision)
-    root_record = ledger.attempt_records[root.attempt_record_sha256]
+    root_record = ledger.attempt_records[root.result_sha256]
     envelope = ledger.envelopes_by_sha256[root_record.envelope_sha256]
-    pending = replace(ledger, attempt_records={key: item for key, item in ledger.attempt_records.items() if key != root.attempt_record_sha256})
+    pending = replace(ledger, attempt_records={key: item for key, item in ledger.attempt_records.items() if key != root.result_sha256})
     completed, record = finish(pending, envelope, successful_completion(canonical_json_bytes(result)), bound_result_validator=lambda raw: validate_bound_prior_result("PRIOR_CONSOLIDATE", packet, raw, inventories=inventories, input_revision_bytes=revision))
     assert record.failure_kind == "INVALID_IR"
     assert record.normalized_result_sha256 is None
@@ -459,7 +465,10 @@ def test_prior_leaf_all_references_are_limited_to_issued_source_evidence(tmp_pat
     items = [AtomicWorkItemDescriptor(f"item-{i}", "PRIOR_ANALYZE", "PRIOR_SOW", inventory["workbookSha256"], i, {"sourceId": f"source-{i}", "evidenceIds": decision["entities"][i]["evidenceIds"]}) for i, inventory in enumerate(inventories[:2])]
     contexts = [build_project_effective_start_context(revision)]
     descriptors = [make_planned_work("PRIOR_ANALYZE", items, contexts, [])]
-    plan = plan_stage("SCOPE", items, contexts, descriptors, [], policy())
+    # These historical fixtures keep the v1 contract; v2 is exercised separately.
+    from unittest.mock import patch
+    with patch("stage_planner.current_action_contract_id", lambda kind: kind + "-v1"):
+        plan = plan_stage("SCOPE", items, contexts, descriptors, [], policy())
     logical_id = plan["works"][0]["logicalWorkId"]
     packet = json.loads(materialize_packet(plan, logical_id, 1, items, contexts, [], ActionLedger()))
     selected = decision["entities"][0]["evidenceIds"]

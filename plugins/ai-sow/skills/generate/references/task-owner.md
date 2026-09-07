@@ -24,7 +24,7 @@ TaskDecisionIR 顶层只有 `tasks`；每项精确为 `localKey / storyLocalKey 
 
 `STORY_IMPLEMENTATION` 目标表达在批准设计约束下实现本 Story 的业务结果。它只承接本 Story 明确引用、适用于所属 Feature 且有批准技术来源的设计；未引用设计、其他 Feature、PRD/Demo 不形成该目标的技术授权。各业务事务可继承共享部署或存储约束，共享运行环境等独立计量对象仍只计一次，不能按 Story 数重复建设。UI 目标保持原来源和覆盖边界。完整设计落实、独立交付物是否遗漏以及共享对象是否重复计量仍须 fresh Review 判断。
 
-UI 可使用 Demo 交互证据，包括 hash 绑定的整文件锚点。非 UI 工作类型必须有该目标的 HLD/ADR/补充决定/用户答案技术依据；Demo 和 PRD 本身不能升级为后台、数据、集成、认证或部署设计。L 档必须有目标技术依据或明确计量约束；同一批准设计可按独立来源锚点拆为多个计量对象；只改localKey或边界文案不构成另一次计价。机械验证只验证证据绑定和合法选择，计量充分性、工作类型/目标语义与 S/M/L 标准符合性由 fresh Review 判断。
+UI 可使用 Demo 交互证据，包括 hash 绑定的整文件锚点。非 UI 工作类型通常必须有该目标的 HLD/ADR/补充决定/用户答案技术依据；唯一窄例外是 `TEST-UI-E2E` 对既有 `policy-sit-automation / policy-uat-automation` 的界面自动化表达。例外要求覆盖目标有效、每条 AC 与其所属 Story 均无设计引用且明确引用对应政策、选中对应政策目标的 PRD 原文，并逐条选中该 AC 自身的 PRD/Demo 证据。共享修复逐 AC→Story→政策目标验证，不能跨 Story 借证据；无授权覆盖不适用。例外不扩展 UI 目标类型，也不提供 L、调整或复用依据。Demo 和 PRD 本身仍不能升级为后台、数据、集成、认证或部署设计。L 档必须有目标技术依据或明确计量约束；同一批准设计可按独立来源锚点拆为多个计量对象；只改localKey或边界文案不构成另一次计价。机械验证只验证证据绑定和合法选择，计量充分性、工作类型/目标语义与 S/M/L 标准符合性由 fresh Review 判断。
 
 `validate_bound_task_context` 在当前输出错误转换之外检查冻结 context。`validate_bound_task_result(packet, normalized_bytes)` 只做纯绑定校验，无 Schema/文件读取、写记录或预算决定；复用唯一 normalization 和 INVALID_IR/revision 2 路径。
 
@@ -54,3 +54,5 @@ UI 可使用 Demo 交互证据，包括 hash 绑定的整文件锚点。非 UI �
 仅实施澄清时使用[阶段澄清恢复](stage-seal.md)：用户明确选择当前问题 Task 的既有批准目标，答案同时进入 Repair 与 fresh Review；累计授权保留之前已通过的共享覆盖，不复活已合并 Task。新增组件或业务范围不属于该入口。
 
 达到自动修复上限后，支持阶段合同中的明确人工裁定恢复，仅调整被批准的既有字段。完整共享覆盖、此前澄清、失败链和累计次数持续保留；不全量重新生成 Task。
+
+未来 Task 计划使用 `TASK-v2`，其对应 `TASK_REPAIR-v2` 的完整规则读取上限为 65536；有效额度仍取 Action 合同与显式 run hydrate reserve 的较小值。原 v1 合同、prompt/schema、请求和冻结计划保留，Repair、物化及离线证明跟随冻结 Author 版本。增加 reserve 不放宽两轮累计响应或完整请求 context 检查；可用输入空间不足时仍等待。Task 身份碰撞在成功封存前按 `TASK_IDENTITY_COLLISION`/`INVALID_IR` 返回两个问题 localKey，沿既有 revision 2 修正；身份算法与后置复核不变，不按名称或工作类型制造新身份。

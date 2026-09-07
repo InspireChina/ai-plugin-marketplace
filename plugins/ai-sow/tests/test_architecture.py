@@ -15,6 +15,7 @@ RUNTIME = PLUGIN_ROOT / "runtime"
 SCRIPTS = SKILL_ROOT / "scripts"
 EXPECTED_RUNTIME = {"__init__.py", "diagnostics.py", "project_io.py"}
 REQUIRED_PYTHON_MODULES = {'action_ledger.py',
+ 'candidate_repair.py',
  'change_graph.py',
  'contracts.py',
  'delivery_compiler.py',

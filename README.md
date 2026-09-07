@@ -2,7 +2,7 @@
 
 一个面向实用、可审查 AI 工作流的开源插件市场，同时发布 Codex 与 Claude Code 安装入口。
 首个插件 AI SOW 通过唯一入口 `ai-sow:generate`，把 PRD、HLD、适用的往期 SOW 和补充材料
-自动转换为可追溯的 SOW 工作簿及配套说明。
+自动转换为可追溯的 SOW 工作簿及配套说明。往期工作簿分析通过无损请求表示保留完整证据，结果仍须独立语义评审。
 
 ## 插件
 
@@ -112,12 +112,16 @@ request start，创建新 run 并完整编译；上一份有效 SOW 始终不被
 .ai-sow/generations/<generation>/output/sow-notes.md
 ```
 
+AI SOW 的未封存候选采用 Owner 授权的受限 Patch 收敛：原失败 Attempt 保留，正确对象由程序继承，
+完整 Owner 校验形成 CandidateResolution，语义修复后必须经过 distinct fresh Review。已发行旧 Repair
+按冻结合同恢复；新 Patch、预算、读取和确定性步骤沿同一 run 累计。
+
 `.ai-sow/current.json` 始终指向最近一次成功结果。每个新 run 都是 `FULL_COMPILE`，只读取本次完整
 request 明列的来源与政策；旧 generation 和隐藏 work 不参与业务输入。Brownfield 的往期 SOW 必须显式
 列为 `PRIOR_SOW`，本次 `declaredChangeContext` 只约束本轮。
 
-同 run 唯一允许的输入更新是 `resume --budget-policy ...`：至少增加一项 planned token、active-time 或
-Demo 限额，其余配置保持原值。正文相同、限额降低、model/estimator/reserves/concurrency 变化均拒绝；
+同 run 唯一允许的输入更新是 `resume --budget-policy ...`：至少增加一项 planned token、active-time、未来上下文容量、hydrate reserve 或
+Demo 限额，其余配置保持原值。正文相同、限额降低、model/estimator/output reserve/concurrency 变化均拒绝；
 政策替换不创建业务 input revision，也不改写旧计划、Attempt 或 checkpoint。
 
 自动生成结果用于评审和估算，不代表客户已经签署、接受或赋予 SOW 法律效力。
@@ -205,3 +209,11 @@ pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后
 生成后的 Scope、Story/AC 和 Task 优先按 findings 及影响范围局部修复，保留正确结果；普通 Repair 可调整、合并或拆分授权对象；共享测试资产保留独立 Story/AC，只计量一次，工作簿展示覆盖与费用归属。自动停止后，`resume --decision` 可绑定原终态与失败 Review，按明确用户裁定仅修允许字段、追加一个候选并 fresh Review，完整保留累计次数与消耗。具体合同见 [阶段自动封存](plugins/ai-sow/skills/generate/references/stage-seal.md)。
 
 往期 Excel 大表按完整证据行分组，保留全部单元格、位置、哈希与表头，避免整张 Sheet 超出单次请求容量。阶段尚未发行计划工作便因容量等待时，修复分组后可从原 run 恢复，复用已完成的原型观察和检查点，不提高模型容量或重置消耗。
+
+往期 XLSX 无需固定格式：同次分析理解表头、横纵布局与附注，区分本项目合同交付和通用目录/示例/重复汇总；未提取行保留理由，合同限定保留原文依据。小文件优先整本分析，必要时按行分组并补读同来源的跨 Sheet 条款；程序无损汇总，现有独立评审核对被排除原文。无法解释或容量不足时明确报告，不承诺任意工作簿自动成功。
+
+Task 按所选模板目录读取完整规则；未来 Task 合同允许最多 65536 的累计规则读取额度，实际仍受本 run 的显式 hydrate reserve 与上下文容量约束。旧冻结 Action、计划、Repair 与证明不升级。
+
+已批准的界面自动化测试可依据具体业务验收条件生成测试资产，无需虚构额外后台设计；系统仍核对每条测试的政策、来源、工作类型与独立交付边界。
+
+机械候选默认最多 2 版、每版执行 2 次；达到次数上限后保留进度，显式增加有限预算可沿原工作继续。Scope、Story、Task、Prior 与原型候选保护无关对象，保留定位及失败原文；工件步骤失败也按有限次数接续并复用成功输出；详见[机械候选接续](plugins/ai-sow/skills/generate/references/stage-seal.md#机械候选的有限接续)。

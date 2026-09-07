@@ -1,11 +1,12 @@
 from __future__ import annotations
+from action_ledger import effective_result, effective_result_bytes
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
 
-from contracts import canonical_json_bytes, load_registry, sha256_bytes, validate_contract
+from contracts import InvalidActionResult, canonical_json_bytes, load_registry, sha256_bytes, validate_contract
 from models import Diagnostic, TaskStandardCatalog
 from sow_model import validate as validate_sow_model
 from task_standard_catalog import hydrate
@@ -149,6 +150,12 @@ class TaskInputs:
 
 class TaskInputRequired(ValueError):
     pass
+
+
+class TaskIdentityCollision(TaskInputRequired):
+    def __init__(self, first_key, second_key):
+        super().__init__('Task 来源身份碰撞；需要独立技术对象证据，不能使用名称或序号后缀。')
+        self.subject_ids = tuple(sorted((first_key, second_key)))
 
 
 def task_review_rules(candidate, task_catalog):
@@ -563,7 +570,7 @@ def _task_contexts_for_items(items, contexts):
     return selected
 
 
-def build_task_work_descriptors(work_items, context_refs, budget_policy):
+def build_task_work_descriptors(work_items, context_refs, budget_policy, *, action_contract_ids=None):
     from stage_planner import estimate_work_input_tokens, StagePlanningBlocked, run_budget_policy_value
     from contracts import usable_action_input_tokens
     ordered = sorted(work_items,key=lambda item:(item.work_item_payload['storyId'],item.work_item_payload['acceptanceCriterionId']))
@@ -579,10 +586,10 @@ def build_task_work_descriptors(work_items, context_refs, budget_policy):
     usable = usable_action_input_tokens(run_budget_policy_value(budget_policy))
     works, current = [], []
     for unit in units.values():
-        if current and estimate_work_input_tokens('TASK',current+unit,_task_contexts_for_items(current+unit,context_refs),budget_policy)>usable:
+        if current and estimate_work_input_tokens('TASK',current+unit,_task_contexts_for_items(current+unit,context_refs),budget_policy,action_contract_ids=action_contract_ids)>usable:
             works.append(make_planned_work('TASK',current,_task_contexts_for_items(current,context_refs),[]));current=[]
         current += unit
-        if estimate_work_input_tokens('TASK',current,_task_contexts_for_items(current,context_refs),budget_policy)>usable:
+        if estimate_work_input_tokens('TASK',current,_task_contexts_for_items(current,context_refs),budget_policy,action_contract_ids=action_contract_ids)>usable:
             raise StagePlanningBlocked('BUDGET_EXHAUSTED')
     if current: works.append(make_planned_work('TASK',current,_task_contexts_for_items(current,context_refs),[]))
     return tuple(works)
@@ -615,18 +622,45 @@ def validate_bound_task_context(packet):
     if any(target['storyKeys']==[] for target in targets.values()): raise ValueError('Task target 无 Story 归属。')
 
 
+def _task_ui_policy_authority(task, covered_targets, obligations, evidence):
+    """Bind UI automation to its own sealed policy and observable AC evidence."""
+    if task['workTypeId'] != 'TEST-UI-E2E' or not covered_targets:
+        return False
+    selected = set(task['evidenceIds'])
+    for key in task['acceptanceCriterionKeys']:
+        obligation = obligations[key]
+        story, criterion = obligation['story'], obligation['acceptanceCriterion']
+        if story['designRefs'] or criterion['designRefs']:
+            return False
+        if not any(evidence[key]['sourceRole'] in {'PRD', 'DEMO'}
+                   for key in selected.intersection(obligation['evidenceIds'])):
+            return False
+        matching = [target for target in covered_targets
+                    if obligation['storyLocalKey'] in target['storyKeys']]
+        if not any(target['targetKind'] == 'POLICY_INSTANCE'
+                   and target['name'] in {'policy-sit-automation', 'policy-uat-automation'}
+                   and target['nodeId'] in story['policyRefs']
+                   and target['nodeId'] in criterion['policyRefs']
+                   and any(evidence[key]['sourceRole'] == 'PRD'
+                           for key in selected.intersection(target['evidenceIds']))
+                   for target in matching):
+            return False
+    return True
+
+
 def _task_decision_diagnostics(packet, result):
     obligations,targets,evidence,rows = _task_packet_catalog(packet)
     diagnostics, covered, local_keys, charges, counts, integration_owners = [],set(),set(),set(),defaultdict(int),defaultdict(int)
     stories = {item['storyLocalKey'] for item in obligations.values()}
     closed_designs, closed_policies = defaultdict(set), defaultdict(set)
     diagnostic_keys=set(); current_path='/tasks'; current_key=None
-    def add(code):
-        identity=(code,current_path,current_key)
+    def add(code, field=''):
+        path = current_path + ('/'+field if field else '')
+        identity=(code,path,current_key)
         if identity not in diagnostic_keys:
             diagnostic_keys.add(identity)
             diagnostics.append(Diagnostic(code=code,message='Task 决策未关闭当前义务、目录或来源权威。',
-                path=current_path,details={'subjectIds':[current_key]} if current_key else {}))
+                path=path,details={'subjectIds':[current_key]} if current_key else {}))
     for index,task in enumerate(result['tasks']):
         current_path='/tasks/'+str(index);current_key=task['localKey']
         story_key, keys, work_type = task['storyLocalKey'],set(task['acceptanceCriterionKeys']),task['workTypeId']
@@ -642,7 +676,7 @@ def _task_decision_diagnostics(packet, result):
         if row is None: add('TASK_STANDARD_UNKNOWN')
         elif task['workModeDecision'] not in row['modes']: add('TASK_WORK_MODE_NOT_ALLOWED')
         selected = set(task['evidenceIds'])
-        if not selected.issubset(evidence): add('TASK_EVIDENCE_UNBOUND')
+        if not selected.issubset(evidence): add('TASK_EVIDENCE_UNBOUND', 'evidenceIds')
         target = targets.get(task['technicalTarget'])
         if target is None or story_key not in target['storyKeys']:
             add('TASK_TARGET_UNBOUND');continue
@@ -650,16 +684,18 @@ def _task_decision_diagnostics(packet, result):
         allowed = {key for entry in bound_targets for key in entry['evidenceIds']}
         allowed.update(key for ac in keys if ac in obligations for key in obligations[ac]['evidenceIds'])
         allowed.update(item['evidenceId'] for item in _task_start_evidence(task,evidence))
-        if not selected.issubset(allowed): add('TASK_EVIDENCE_UNBOUND')
+        if not selected.issubset(allowed): add('TASK_EVIDENCE_UNBOUND', 'evidenceIds')
         for covered_story in covered_stories:
             for entry in bound_targets:
                 if covered_story in entry['storyKeys']:
                     closed_designs[covered_story].update(entry['designItemIds'])
                     closed_policies[covered_story].update(entry['policyInstanceIds'])
-        if not selected.intersection(target['evidenceIds']): add('TASK_EVIDENCE_UNBOUND')
+        if not selected.intersection(target['evidenceIds']): add('TASK_EVIDENCE_UNBOUND', 'evidenceIds')
         target_evidence = [evidence[key] for key in selected.intersection(target['evidenceIds'])]
         technical = any(item['sourceRole'] in _TECHNICAL_ROLES for item in target_evidence)
-        if work_type not in _UI_WORK_TYPES and not technical: add('TASK_DEMO_TECHNICAL_AUTHORITY')
+        if (work_type not in _UI_WORK_TYPES and not technical
+                and not _task_ui_policy_authority(task, covered_targets, obligations, evidence)):
+            add('TASK_DEMO_TECHNICAL_AUTHORITY')
         if target['targetKind']=='USER_INTERFACE' and work_type not in _UI_WORK_TYPES: add('TASK_TARGET_TYPE_INVALID')
         if target['targetKind']=='INTEGRATION':
             if row is None or row['sitEligibility']!='PER_INTEGRATION': add('TASK_INTEGRATION_TYPE_INVALID')
@@ -680,7 +716,9 @@ def _task_decision_diagnostics(packet, result):
         if charge in charges: add('TASK_DUPLICATE_CHARGE')
         charges.add(charge)
     current_path='/tasks';current_key=None
-    if covered!=set(obligations): add('TASK_STORY_AC_COVERAGE_INCOMPLETE')
+    for key in sorted(set(obligations) - covered):
+        current_path='/obligations/'+key;current_key=obligations[key]['storyLocalKey']
+        add('TASK_STORY_AC_COVERAGE_INCOMPLETE')
     for item in obligations.values():
         current_path='/stories/'+item['storyLocalKey'];current_key=item['storyLocalKey']
         if not set(item['story']['designRefs']).issubset(closed_designs[item['storyLocalKey']]): add('TASK_STORY_DESIGN_COVERAGE_INCOMPLETE')
@@ -690,7 +728,11 @@ def _task_decision_diagnostics(packet, result):
         if value>4: add('TASK_STORY_TASK_LIMIT')
     current_path='/integrations';current_key=None
     integration_ids = {key for target in targets.values() for key in target['integrationIds']}
-    if any(integration_owners[key]!=1 for key in integration_ids): add('TASK_INTEGRATION_OWNER_NON_UNIQUE')
+    for key in sorted(integration_ids):
+        if integration_owners[key] == 1: continue
+        current_path='/integrations/'+key
+        for story in sorted({story for target in targets.values() if key in target['integrationIds'] for story in target['storyKeys']}):
+            current_key=story;add('TASK_INTEGRATION_OWNER_NON_UNIQUE')
     return _sort(diagnostics)
 
 
@@ -701,10 +743,44 @@ def verify_task_decision(packet, result):
     return _task_decision_diagnostics(packet,result)
 
 
+def _preserve_task_candidate(packet, result):
+    from candidate_repair import repair_baseline, preserve_roots
+    baseline = repair_baseline(packet, 'TASK-v1')
+    if baseline is None: return
+    previous, diagnostic = baseline
+    if diagnostic['code'] not in {'TASK_DECISION_INVALID', 'TASK_IDENTITY_COLLISION'}: return
+    roots = set(diagnostic['subjectIds'])
+    stories = {key for item in diagnostic.get('findings', []) for key in item['subjectIds']
+               if key not in {row['localKey'] for row in previous['tasks']}}
+    roots.update(row['localKey'] for row in previous['tasks'] if row['storyLocalKey'] in stories)
+    def allowed_new(row):
+        if row['storyLocalKey'] in stories: return True
+        return any(old['localKey'] in roots and old['storyLocalKey'] == row['storyLocalKey']
+            and old['technicalTarget'] == row['technicalTarget']
+            and set(row['acceptanceCriterionKeys']) <= set(old['acceptanceCriterionKeys'])
+            for old in previous['tasks'])
+    preserve_roots(previous, result, 'tasks', roots, allow_new=allowed_new)
+
+
 def validate_bound_task_result(packet, normalized_result):
     """Pure bytes-only pre-seal check after shared schema/normalization."""
-    if _task_decision_diagnostics(packet,json.loads(normalized_result)):
-        raise InvalidActionResult('Task IR 未关闭当前义务与来源权威。')
+    result = json.loads(normalized_result)
+    _preserve_task_candidate(packet, result)
+    diagnostics = _task_decision_diagnostics(packet,result)
+    if diagnostics:
+        from models import AttemptDiagnostic
+        findings = tuple(AttemptDiagnostic(item.code, item.path,
+            tuple(item.details.get('subjectIds', ()))) for item in diagnostics)
+        raise InvalidActionResult('Task IR 未关闭当前义务与来源权威。', diagnostic=AttemptDiagnostic(
+            'TASK_DECISION_INVALID', '/tasks',
+            tuple(sorted({key for item in findings for key in item.subject_ids})), findings=findings))
+    try:
+        for _ in _task_node_bindings(packet, result):
+            pass
+    except TaskIdentityCollision as error:
+        from models import AttemptDiagnostic
+        raise InvalidActionResult(str(error), diagnostic=AttemptDiagnostic(
+            'TASK_IDENTITY_COLLISION', '/tasks', error.subject_ids)) from error
 
 
 def _task_start_evidence(task, evidence):
@@ -725,7 +801,7 @@ class TaskMaterialization:
 
 
 def _complete_task_results(inputs, plan, ledger, budget_policy):
-    from stage_planner import validate_stage_plan, materialize_packet, _effective_envelope, _effective_success
+    from stage_planner import validate_stage_plan, materialize_packet, _effective_envelope, bound_action_contract_ids
     from action_ledger import build_attempt_repair_context
     expected = prepare_task_inputs(inputs.story_candidate_bytes,inputs.checkpoint_bytes,
         checkpoint_sha256=inputs.checkpoint_sha256,task_catalog=inputs.task_catalog,input_revision_bytes=inputs.input_revision_bytes,
@@ -734,17 +810,17 @@ def _complete_task_results(inputs, plan, ledger, budget_policy):
     if (sorted(inputs.work_items,key=lambda item:item.work_item_id)!=sorted(expected.work_items,key=lambda item:item.work_item_id)
             or sorted(inputs.context_refs,key=lambda ref:ref.ref_id)!=sorted(expected.context_refs,key=lambda ref:ref.ref_id)):
         raise ValueError('Task work/context 不是 sealed 上游的确定性投影。')
-    descriptors=build_task_work_descriptors(inputs.work_items,inputs.context_refs,budget_policy)
-    validate_stage_plan(plan,inputs.work_items,inputs.context_refs,descriptors,[inputs.checkpoint_sha256],budget_policy)
+    contract_ids=bound_action_contract_ids(plan)
+    descriptors=build_task_work_descriptors(inputs.work_items,inputs.context_refs,budget_policy,action_contract_ids=contract_ids)
+    validate_stage_plan(plan,inputs.work_items,inputs.context_refs,descriptors,[inputs.checkpoint_sha256],budget_policy,action_contract_ids=contract_ids)
     checkpoint=json.loads(inputs.checkpoint_bytes)
     results=[]
     for work in plan['works']:
         key,packet_plan=work['logicalWorkId'],work['packetPlan']
         envelope=_effective_envelope(ledger,key)
-        if envelope is None or not any(record.envelope_sha256==envelope.sha256 and record.outcome=='SUCCEEDED'
-                for record in ledger.attempt_records.values()):
+        if envelope is None or effective_result_bytes(ledger,key) is None:
             raise TaskInputRequired('Task plan 尚有未 sealed 的 LogicalWork。')
-        _,record=_effective_success(ledger,key)
+        _,record=effective_result(ledger,key)
         if (envelope.value['actionContractId']!=packet_plan['actionContractId']
                 or envelope.value['actionContractSha256']!=packet_plan['actionContractSha256']
                 or envelope.value['inputRevisionSha256']!=sha256_bytes(inputs.input_revision_bytes)
@@ -754,9 +830,9 @@ def _complete_task_results(inputs, plan, ledger, budget_policy):
         normalized=ledger.normalized_results[record.normalized_result_sha256]
         if sha256_bytes(normalized)!=record.normalized_result_sha256: raise ValueError('Task normalized hash 漂移。')
         repair=None
-        if envelope.value['revision']==2:
+        if envelope.value['revision']>1:
             failed=[digest for digest,item in ledger.attempt_records.items()
-                if item.logical_work_id==key and item.revision==1 and item.failure_kind=='INVALID_IR']
+                if item.logical_work_id==key and item.revision==envelope.value['revision']-1 and item.failure_kind in {'INVALID_JSON','INVALID_IR'}]
             if len(failed)!=1: raise ValueError('Task revision 2 没有唯一 INVALID_IR Attempt。')
             repair=build_attempt_repair_context(key,failed[0],ledger.attempt_records,ledger.raw_outputs,
                 envelopes_by_sha256=ledger.envelopes_by_sha256)
@@ -772,7 +848,7 @@ def _task_node_bindings(packet, result):
     """Single-node binding rules shared with independent complete validation."""
     from stable_ids import stable_entity_id
     obligations,targets,evidence,rows=_task_packet_catalog(packet)
-    identities=set()
+    identities={}
     for task in result['tasks']:
         target=targets[task['technicalTarget']]
         criteria=[obligations[key] for key in task['acceptanceCriterionKeys']]
@@ -785,8 +861,8 @@ def _task_node_bindings(packet, result):
         anchors += [canonical_json_bytes({'role':'TARGET','sourceRef':ref}).decode() for entry in bound_targets for ref in entry['sourceRefs']]
         task_id=stable_entity_id('task-id-v1','TASK',story['storyId'],sorted(set(anchors)),(target['targetKind'],))
         if task_id in identities:
-            raise TaskInputRequired('Task 来源身份碰撞；需要独立技术对象证据，不能使用名称或序号后缀。')
-        identities.add(task_id)
+            raise TaskIdentityCollision(identities[task_id], task['localKey'])
+        identities[task_id] = task['localKey']
         yield 'tasks', {'taskId':task_id,'storyId':story['storyId'],'name':target['name'],
             'workTypeId':task['workTypeId'],'rowSemanticSha256':rows[task['workTypeId']]['rowSemanticSha256'],
             'workMode':task['workModeDecision'],'actualMeasurementScope':task['deliverableBoundary'],
@@ -912,3 +988,92 @@ def publish_task_candidate(files,run_id,material):
     if sha256_bytes(material.candidate_bytes)!=material.candidate_sha256: raise ValueError('Task candidate hash 漂移。')
     files.publish_new(f'.ai-sow/work/runs/{run_id}/stages/TASK/candidates/{material.candidate_sha256}.json',material.candidate_bytes)
     return {'candidateSha256':material.candidate_sha256}
+
+
+def diagnose_candidate(action_kind, packet, candidate, **owner_context):
+    from candidate_repair import schema_issues, diagnostic_report, issues_from_diagnostics
+    from contracts import current_action_contract_id
+    contract_id = owner_context.get('action_contract_id', current_action_contract_id(action_kind))
+    raw = candidate if isinstance(candidate, bytes) else canonical_json_bytes(candidate)
+    value = json.loads(raw)
+    issues = schema_issues(contract_id, value, 'TASK')
+    blocked=[];domains=['SCHEMA']
+    try:
+        diagnostics=_task_decision_diagnostics(packet,value)
+    except (KeyError,TypeError,IndexError):
+        blocked.append('TASK_BINDINGS')
+    else:
+        issues+=issues_from_diagnostics(diagnostics,'TASK',value);domains.append('TASK_BINDINGS')
+        if not issues:
+            try:
+                list(_task_node_bindings(packet,value))
+            except TaskIdentityCollision as error:
+                from models import AttemptDiagnostic
+                issues+=issues_from_diagnostics([AttemptDiagnostic('TASK_IDENTITY_COLLISION','/tasks',error.subject_ids)],'TASK',value)
+    return diagnostic_report(raw,issues,owner='TASK',checker_file=__file__,packet=packet,
+        origin=owner_context.get('origin'),blocked=blocked,domains=domains)
+
+
+def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **owner_context):
+    from candidate_repair import group_fields, build_repair_plan
+    from contracts import current_action_contract_id
+    contract_id=owner_context.get('action_contract_id',current_action_contract_id(action_kind))
+    fields = {'TASK_STORY_NOT_ASSIGNED':['storyLocalKey'], 'TASK_AC_STORY_MISMATCH':['acceptanceCriterionKeys'],
+        'TASK_STANDARD_UNKNOWN':['workTypeId'], 'TASK_WORK_MODE_NOT_ALLOWED':['workModeDecision'],
+        'TASK_TARGET_UNBOUND':['technicalTarget'], 'TASK_TARGET_TYPE_INVALID':['workTypeId'],
+        'TASK_INTEGRATION_TYPE_INVALID':['workTypeId'], 'TASK_EFFECTIVE_START_EVIDENCE_MISSING':['workModeDecision','evidenceIds'],
+        'TASK_COMPLEXITY_EVIDENCE_MISSING':['complexityDecision','evidenceIds'],
+        'TASK_DEMO_TECHNICAL_AUTHORITY':['workTypeId','evidenceIds']}
+    selected={}
+    for issue in report['issues']:
+        path=issue['paths'][0]
+        selected[issue['issueId']] = ([path+'/'+field for field in fields[issue['code']]]
+            if issue['code'] in fields else [path])
+    groups=group_fields(candidate,report,contract_id,selected)
+    from candidate_repair import append_object_group, schema_at, index_candidate, remove_object_group
+    raw=candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate);value=json.loads(raw)
+    obligations,targets,evidence,rows=_task_packet_catalog(packet)
+    missing=[issue for issue in report['issues'] if issue['code']=='TASK_STORY_AC_COVERAGE_INCOMPLETE']
+    for issue in missing:
+        key=issue['paths'][0].removeprefix('/obligations/');story=obligations[key]['storyLocalKey']
+        related=[i['issueId'] for i in report['issues'] if i['code'].endswith('COVERAGE_INCOMPLETE')
+                 and (i['paths'][0]=='/stories/'+story or i['paths'][0].startswith('/obligations/') and obligations.get(i['paths'][0].removeprefix('/obligations/'),{}).get('storyLocalKey')==story)]
+        if any(set(related)&set(g['issueIds']) for g in groups):continue
+        schema=schema_at(contract_id,'/tasks/0')
+        schema={**schema,'properties':{**schema['properties'],'storyLocalKey':{'const':story},
+            'acceptanceCriterionKeys':{'type':'array','items':{'enum':[k for k,o in obligations.items() if o['storyLocalKey']==story]},'contains':{'const':key},'minItems':1,'uniqueItems':True}}}
+        groups.append(append_object_group(raw,'tasks',schema,related,group_id='missing-'+issue['issueId']))
+    for issue in report['issues']:
+        if issue['code'] not in {'TASK_DUPLICATE_CHARGE','TASK_LOCAL_KEY_DUPLICATE'}:continue
+        path=issue['paths'][0];entry=next((e for e in index_candidate(raw,inherited=report.get('objectIndex',())) if e['path']==path),None)
+        if entry is not None:groups.append(remove_object_group(raw,entry,[issue['issueId']]))
+    if not groups: raise InvalidActionResult('当前 Task 问题需要明确根对象或真实输入，不能扩大字段授权。')
+    return build_repair_plan(candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate),report,groups,origin=origin)
+
+
+def candidate_repair_context(action_kind, packet, candidate, plan, group):
+    value=json.loads(candidate);index={r['objectId']:r for r in plan['objectIndex']}
+    selected=[];stories=set()
+    for slot in group['slots']:
+        path=index.get(slot['objectId'],{}).get('path','').split('/')
+        if len(path)>2 and path[1]=='tasks' and path[2].isdigit():
+            selected.append(value['tasks'][int(path[2])])
+        story=slot.get('valueSchema',{}).get('properties',{}).get('storyLocalKey',{}).get('const')
+        if isinstance(story,str):stories.add(story)
+    stories.update(row['storyLocalKey'] for row in selected)
+    selected.extend(row for row in value['tasks'] if row['storyLocalKey'] in stories and row not in selected)
+    items=[item for item in packet['workItems'] if item['payload']['storyLocalKey'] in stories]
+    evidence={eid for item in items for eid in item['payload']['evidenceIds']}
+    contexts=[]
+    for ref in packet['contextRefs']:
+        body=ref['canonicalContent']
+        if body.get('kind')=='TASK_TARGET' and stories.intersection(body['storyKeys']):
+            contexts.append(body);evidence.update(body['evidenceIds'])
+        elif body.get('kind')=='TASK_CATALOG':
+            rows={row['workTypeId']:row for row in body['rows']}
+            selected_types={row['workTypeId'] for row in selected if row.get('workTypeId') in rows}
+            challenger_types=selected_types | {key for work_type in selected_types for key in rows[work_type]['neighbors']}
+            contexts.append({**body,'rows':[row for row in body['rows'] if row['workTypeId'] in challenger_types]})
+    contexts.extend(ref['canonicalContent'] for ref in packet['contextRefs']
+        if ref['canonicalContent'].get('evidenceId') in evidence)
+    return [{'kind':'OWNER_OBLIGATION','value':item['payload']} for item in items]+contexts

@@ -140,15 +140,17 @@ Story 必须是 Feature 下单一、可独立移交、验收和关闭的具体�
 四个 Task。Task 一行只对应模板目录中的一个计数对象、一种工作模式和一个 S/M/L 复杂度；模板语义不
 允许由 Python 或模型复制计算。
 
-## 6. 阶段自动封存与返修
+## 6. 阶段自动封存与受限修复
 
-每个 Owner 的完整 StagePlan 全部成功后，只物化一次当前 sealed IR，并执行完整机械验证，再发行独立 fresh Review。Review 只读候选、证据、root localKey 索引和 obligations；只有 REPAIRABLE_SEMANTIC 触发同一 Owner 窄 IR 的完整 root replacement。第二版重新物化、验证和 Review；后继 PASS 关闭前一版全部 findings，非 PASS 不关闭。不存在通用 PATCH、Theme Join 或 Adjudication 路由。
-
-完整字段、精确控制身份、Prior/CODE_ONLY 审查义务、实际容量与恢复证明见[阶段自动封存](../skills/generate/references/stage-seal.md)。StageCheckpoint 绑定 plan、实际 Attempt chain、候选、validator、fresh Review packet/PASS 及上游 checkpoint；Scope 有 Prior 时另绑定 snapshot。PASS 自动继续，无阶段批准。
+每个 Owner 的 StagePlan 取得有效结果后，只物化当前 IR，执行完整机械验证，再发行 fresh Review。
+机械候选失败和新发生的 `REPAIRABLE_SEMANTIC` 使用 `CANDIDATE_PATCH-v1`：Owner 发放字段、追加、删除或
+原子 root 变换槽位，程序继承其余数据并生成 CandidateResolution。语义来源另绑定 Review Attempt、
+Review decision/candidate、程序侧 Owner IR base 与 semantic source descriptor；Patch 不能写 PASS。
+修复后必须重新物化、完整验证和发行 distinct fresh Review。已物理发行的旧 `*_REPAIR-v1/v2` 原字节完成。
 
 ## 7. 新 run 与恢复
 
-公开 start 只执行 FULL_COMPILE，不读取旧 generation 决定业务内容。同一未完成 run 从自己的不可变 StagePlan、Attempt 和 checkpoint 恢复；已完成的物化/校验不重做。业务输入变化先 abandon，再以完整新 request 启动。政策只允许至少一项 token、active-time、未来请求的上下文容量或 Demo 限额严格增加，其余值保持原值；正文相同也拒绝。替换只发布 content-addressed policy 和 RunEvent，不创建业务 revision 或重排冻结计划。Brownfield 只消费本次明列的 PRIOR_SOW 与 declaredChangeContext。
+公开 start 只执行 FULL_COMPILE，不读取旧 generation 决定业务内容。同一未完成 run 从自己的不可变 StagePlan、Attempt 和 checkpoint 恢复；已完成的物化/校验不重做。业务输入变化先 abandon，再以完整新 request 启动。政策只允许至少一项 token、active-time、未来请求的上下文容量、hydrate reserve、候选/执行次数或 Demo 限额严格增加，其余值保持原值；正文相同也拒绝。替换只发布 content-addressed policy 和 RunEvent，不创建业务 revision 或重排冻结计划。Brownfield 只消费本次明列的 PRIOR_SOW 与 declaredChangeContext。
 
 只保留 FULL_COMPILE 与同 run 恢复。
 
@@ -261,7 +263,7 @@ MATERIALIZE、VALIDATE、OFFICE 和复读独立检查 active-time，并记录实
 
 往期 Excel 大表按完整证据行分组，保留全部单元格、位置、哈希与表头，避免整张 Sheet 超出单次请求容量。阶段尚未发行计划工作便因容量等待时，修复分组后可从原 run 恢复，复用已完成的原型观察和检查点，不提高模型容量或重置消耗。
 
-Prior 实体跨同 packet、同 source/Sheet 的已授权行分区引用时保留所属 namespace anchor。Attempt repair 可使用可逆表传输，解码后 packet hash 完全一致；尚未发行的 retry 重新满足原容量后由 `FITTING_UNISSUED_RETRY` 接续。具体权限、完整字节绑定及中断恢复见[阶段自动封存](../skills/generate/references/stage-seal.md)。
+Prior v2 允许通过冻结 priorContext 与现有 hydrate 读取同一 source/workbook 的跨分区、跨 Sheet 原文，实体仍需所属 namespace 主证据。提取、覆盖、精确单元格身份和窄关系汇总的权威合同见[Scope Owner](../skills/generate/references/scope-owner.md)。v1 IR 保留原约束，历史 run 仍绑定原源码和冻结合同，不自动迁移。
 
 ABANDON 恢复完成后立即结束恢复后缀，避免再次读取已移除的 active marker。artifact 取证从最终 Task checkpoint 及预览修复授权事件恢复不可变候选绑定，离线读取不依赖当前候选指针。
 
@@ -270,3 +272,20 @@ Task Repair 的 AC 重分配限于本轮受影响 roots 已有的覆盖；历史
 ARTIFACT RENDER 的真实导出在成功事件前持久暂存；恢复只复用该事件精确 hash 绑定的原字节，复核篡改并记录恢复 I/O 时间。没有成功事件的孤儿暂存不授权复用；旧运行缺少暂存时仍重算并匹配原 hash。此规则不改变 renderer、工作簿或已批准预览。
 
 XLSX 数组公式按原始公式文本提取证据，不使用带进程地址的对象字符串；缺少公式文本和无原公式文本的数据表公式明确拒绝。已冻结输入保持原字节，后续新 Prepare 使用确定性结果。
+
+新冻结计划采用 `PRIOR_ANALYZE-v3`，以版本固定既有无损表传输并覆盖初始请求；专业 prompt、Prior v2 schema 和限额不变，Consolidate 仍为 v2。现有支持布局的旧计划从已绑定合同版本重建估算、物化和证明，不跟随当前默认选择。旧请求保持原字节，历史输入布局不自动迁移。具体规则见[阶段自动封存](../skills/generate/references/stage-seal.md)。
+
+未来 Task 计划使用 `TASK-v2`，其对应 `TASK_REPAIR-v2` 的完整规则读取上限为 65536；有效额度仍取 Action 合同与显式 run hydrate reserve 的较小值。原 v1 合同、prompt/schema、请求和冻结计划保留，Repair、物化及离线证明跟随冻结 Author 版本。增加 reserve 不放宽两轮累计响应或完整请求 context 检查；可用输入空间不足时仍等待。Task 身份碰撞在成功封存前按 `TASK_IDENTITY_COLLISION`/`INVALID_IR` 返回两个问题 localKey，沿既有 revision 2 修正；身份算法与后置复核不变，不按名称或工作类型制造新身份。
+
+已批准的 SIT/UAT 界面自动化政策可直接以其 PRD 政策与各条 AC 的 PRD/Demo 证据支持 `TEST-UI-E2E`，适用范围限于无设计引用的对应 Story/AC。共享测试仍逐 Story 核对政策与证据；工作类型、模式、复杂度、计价和完整性继续由模板规则及独立评审验证，不据此推导后台或部署设计。
+
+
+机械失败沿同一逻辑工作保留候选 raw、完整 `AttemptDiagnostic.findings` 和已成功依赖。默认每个逻辑工作最多 2 个候选版本、每个版本最多执行 2 次；用尽后进入 `WAITING_INPUT`，不因次数耗尽进入 `SYSTEM_FAILED`。可在 `resume --budget-policy ...` 中显式增加 `maxActionRevisions` 或 `maxExecutionAttempts`（各项 2–10，省略为 2），继续累计 revision/attempt；已发行 Envelope、旧失败、成功 checkpoint 与原计量不回写。新版本只绑定紧邻的前一次失败。该入口不会恢复已放弃的 run。
+
+Scope 的 Scan/Audit/决策、Story/Task、Prior Analyze 和原型 Scenario/Observation 的机械诊断保留问题对象及具体路径。Prior Consolidate 保留已成功的依赖实体，只修新增关系。修复只允许这些 roots 及 Owner 定位的覆盖范围变化，无关对象和字段保持一致；跨 Story 边界拆分只使用被诊断 Story 已有的义务。越界候选被拒绝，中间的非法 JSON/Schema 也不能撤销先前的保护基线。成功后仍执行完整验证和 fresh Review，失败 raw 不作为成功成果发布。首版 Schema 不完整时，已经符合 Schema 的其他对象仍受保护；后续非法候选不能撤销该基线。
+
+每个 Action 提交一次完整候选，错误也必须进入插件的正式 submit/Attempt 诊断链；宿主不得在同一 Action 内循环预检、重写到通过才提交。新的候选由插件绑定原失败、定位及保留要求后发行。
+
+确定性 MATERIALIZE、VALIDATE、OFFICE、OFFICE_REFERENCE、RENDER、FINAL_VALIDATE 保存阶段、语义版本、步骤、失败次数和定位。成功输出先落盘，再绑定完成事件；resume 复用原成功字节。默认每步骤最多失败 2 次，用尽进入预算等待，可显式增加 `maxDeterministicAttempts`（2–10，省略为 2）。失败响应给出同阶段下一步；预算等待列出 `pendingSteps`，不清空候选、其他步骤或 checkpoint。外部文件或工具故障必须实际解决后复验，诊断记录不会代替验证成功。
+
+Action 发放与 Envelope 复验按其冻结的 `maxHydrateTokens` 预留读取空间（不超过 run 的 hydrate reserve），避免为其他阶段较大的读取额度重复占用容量；阶段分组仍沿用原保守规划。原请求、预算、次数与完整 hydration 请求容量复核保持有效，尚未发行的修复满足原限额即可从同一 run 接续。

@@ -4,28 +4,105 @@
   "description": "由运行事件选择的不可变运行预算正文。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contractVersion", "modelProfileId", "modelContextLimitTokens", "estimatorVersion", "maxPlannedTokens", "maxActiveSeconds", "outputReserveTokens", "hydrateReserveTokens", "safetyMarginTokens", "referenceOverheadTokens", "maxConcurrency", "demoLimits"],
+  "required": [
+    "contractVersion",
+    "modelProfileId",
+    "modelContextLimitTokens",
+    "estimatorVersion",
+    "maxPlannedTokens",
+    "maxActiveSeconds",
+    "outputReserveTokens",
+    "hydrateReserveTokens",
+    "safetyMarginTokens",
+    "referenceOverheadTokens",
+    "maxConcurrency",
+    "demoLimits"
+  ],
   "properties": {
-    "contractVersion": {"const": "ai-sow-run-budget-policy-v1"},
-    "modelProfileId": {"type": "string", "minLength": 1},
-    "modelContextLimitTokens": {"type": "integer", "minimum": 1},
-    "estimatorVersion": {"type": "string", "minLength": 1},
-    "maxPlannedTokens": {"type": "integer", "minimum": 1},
-    "maxActiveSeconds": {"type": "integer", "minimum": 1},
-    "outputReserveTokens": {"type": "integer", "minimum": 0},
-    "hydrateReserveTokens": {"type": "integer", "minimum": 0},
-    "safetyMarginTokens": {"type": "integer", "minimum": 0},
-    "referenceOverheadTokens": {"type": "integer", "minimum": 1},
-    "maxConcurrency": {"type": "integer", "minimum": 1, "maximum": 8},
+    "contractVersion": {
+      "const": "ai-sow-run-budget-policy-v1"
+    },
+    "modelProfileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "modelContextLimitTokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "estimatorVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "maxPlannedTokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maxActiveSeconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "outputReserveTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hydrateReserveTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "safetyMarginTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "referenceOverheadTokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maxConcurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8
+    },
     "demoLimits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxDiscoveryRounds", "maxScenarioSteps", "maxScreenshots"],
+      "required": [
+        "maxDiscoveryRounds",
+        "maxScenarioSteps",
+        "maxScreenshots"
+      ],
       "properties": {
-        "maxDiscoveryRounds": {"type": "integer", "minimum": 1},
-        "maxScenarioSteps": {"type": "integer", "minimum": 1},
-        "maxScreenshots": {"type": "integer", "minimum": 1}
+        "maxDiscoveryRounds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxScenarioSteps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxScreenshots": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
+    },
+    "maxActionRevisions": {
+      "description": "每个逻辑工作的累计候选版本上限；省略为 2，暂停后可显式增加。",
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 10
+    },
+    "maxExecutionAttempts": {
+      "description": "每个候选版本的累计执行次数上限；省略为 2，暂停后可显式增加。",
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 10
+    },
+    "maxDeterministicAttempts": {
+      "description": "每个阶段及语义版本中各确定性步骤的累计失败尝试上限；省略为 2，成功步骤复用原结果，暂停后可显式增加。",
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 10
     }
   }
 }

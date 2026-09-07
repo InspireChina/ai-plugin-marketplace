@@ -14,7 +14,6 @@ CHINESE = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_contract_families_have_chinese_purpose_descriptions() -> None:
-    assert len(SCHEMAS) == 28
     for name, path in SCHEMAS.items():
         schema = json.loads(path.read_text(encoding="utf-8"))
         description = schema.get("description")

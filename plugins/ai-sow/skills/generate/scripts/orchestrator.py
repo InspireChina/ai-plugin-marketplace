@@ -1,4 +1,5 @@
 from __future__ import annotations
+from action_ledger import CandidateResult, effective_result, effective_result_bytes, source_record_for_result
 
 import argparse
 from copy import deepcopy
@@ -21,11 +22,14 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from contracts import action_contract_binding, action_provider_request, canonical_json_bytes, estimate_action_input_tokens, load_registry, load_schema_registry, sha256_bytes, usable_action_input_tokens, validate_contract, validate_action_envelope, validate_state_combination
+from contracts import InvalidActionResult, action_contract_binding, action_provider_request, canonical_json_bytes, estimate_action_input_tokens, load_registry, load_schema_registry, sha256_bytes, usable_action_input_tokens, validate_contract, validate_action_envelope, validate_state_combination
 from generation_store import load_current, promote  # noqa: E402
 from intake import prepare as prepare_input_revision  # noqa: E402
 from action_ledger import (
     ActionLedger,
+    AttemptLimitReached,
+    diagnostic_from_value,
+    diagnostic_value,
     attempt_record_from_value,
     attempt_record_value,
     issue as issue_attempt,
@@ -164,19 +168,25 @@ def _advance_artifact(files, state):
     run_root = f"{RUNS_ROOT}/{state['runId']}"
     repair_plan=_current_artifact_repair_plan(files,state)
     temporary = files.ensure_dir(f"{RUNS_ROOT}/{state['runId']}/render-temp")
-    def step(kind, operation):
+    def step(kind, operation, actual_inputs):
         revision=repair_plan['stepRevisions'][kind]
         directory=artifact_step_directory(run_root,kind,revision)
-        raw = _read_step_output(files,state,'ARTIFACT',revision,kind,directory)
+        implementation={'MATERIALIZE':['package_renderer.py','workbook.py','story_notes.py'],
+            'OFFICE':['office_engine.py'],'OFFICE_REFERENCE':['office_engine.py'],
+            'VALIDATE':['package_renderer.py','workbook.py'], 'RENDER':['package_renderer.py','office_engine.py'],
+            'FINAL_VALIDATE':['generation_store.py','final_review.py','candidate_repair.py']}[kind]
+        fingerprint=_step_fingerprint(actual_inputs,parameters={'stage':'ARTIFACT','revision':revision,'kind':kind},
+            implementations=implementation,tool=_office_tool_fingerprint() if kind in {'OFFICE','OFFICE_REFERENCE','RENDER'} else None)
+        raw = _read_step_output(files,state,'ARTIFACT',revision,kind,directory,fingerprint=fingerprint)
         if raw is None:
-            raw = _deterministic_step(files,state,kind,operation,stage='ARTIFACT',revision=revision)
+            raw = _deterministic_step(files,state,kind,operation,stage='ARTIFACT',revision=revision,fingerprint=fingerprint)
             _content(files,directory,raw)
         return json.loads(raw)
-    projection = step('MATERIALIZE',lambda:renderer.project_artifact(model,template,temporary,{'decision':'PASS'}))
-    calculated = step('OFFICE',lambda:renderer.calculate_artifact(projection,temporary))
-    reference = step('OFFICE_REFERENCE',lambda:renderer.calculate_artifact(projection,temporary))
-    verification = step('VALIDATE',lambda:renderer.verify_artifact(model,template,projection,calculated,reference,temporary))
-    renders = step('RENDER',lambda:renderer.render_artifact(calculated,temporary))
+    projection = step('MATERIALIZE',lambda:renderer.project_artifact(model,template,temporary,{'decision':'PASS'}),[model,sha256_bytes(template.read_bytes())])
+    calculated = step('OFFICE',lambda:renderer.calculate_artifact(projection,temporary),projection)
+    reference = step('OFFICE_REFERENCE',lambda:renderer.calculate_artifact(projection,temporary),projection)
+    verification = step('VALIDATE',lambda:renderer.verify_artifact(model,template,projection,calculated,reference,temporary),[model,sha256_bytes(template.read_bytes()),projection,calculated,reference])
+    renders = step('RENDER',lambda:renderer.render_artifact(calculated,temporary),calculated)
     _artifact_budget_guard(files,state)
     artifact_root = f"{RUNS_ROOT}/{state['runId']}/artifacts/{repair_plan['revision']:06d}-{state['currentCandidateSha256']}"
     workbook = renderer.decode_binary(calculated['workbook']); workbook_hash=sha256_bytes(workbook)
@@ -195,7 +205,7 @@ def _advance_artifact(files, state):
     ledger=_load_action_ledger(files,state['runId'])
     if _effective_envelope(ledger,logical) is None:
         return _issue_singleton(files,state,'ARTIFACT',group,logical,'ARTIFACT_VISUAL_REVIEW-v1',canonical_json_bytes(packet))
-    record_hash,record=_effective_success(ledger,logical)
+    record_hash,record=effective_result(ledger,logical)
     renderer.validate_visual_result(packet,ledger.normalized_results[record.normalized_result_sha256])
     if json.loads(ledger.normalized_results[record.normalized_result_sha256])['overallDecision']!='PASS':
         terminal=_write_active_state(files,marker,{**state,'phase':'DONE','wait':'NONE','result':'MANUAL_REVIEW_REQUIRED','expectedActionIds':[]})
@@ -209,7 +219,7 @@ def _advance_artifact(files, state):
             proof=collect_artifact_proof(files,state,marker['inputRevisionPath'],repair_entries=_artifact_repair_entries(files,state)),calculated=calculated,
             projection=projection,verification=verification,renders=renders,renderer_fingerprint=fingerprint,
             visual_record_sha256=record_hash)
-    sealed=step('FINAL_VALIDATE',manifest_operation)
+    sealed=step('FINAL_VALIDATE',manifest_operation,[state['currentCandidateSha256'],projection,calculated,reference,verification,renders,record_hash])
     _artifact_budget_guard(files,state)
     files.publish_new(sealed['manifestPath'],canonical_json_bytes(sealed['manifest']))
     # This immutable event is the benchmark's verified terminal boundary. A
@@ -709,10 +719,16 @@ def _prototype_bundles(files,state):
     for key in keys:
         envelope=_effective_envelope(ledger,key)
         if not is_group_ready(ledger,[key]): continue
-        digest,record=_effective_success(ledger,key)
-        bundles.append({'attemptRecord':attempt_record_value(record),'envelope':dict(envelope.value),
+        digest,result=effective_result(ledger,key)
+        source=source_record_for_result(ledger,digest)
+        source_sha=sha256_bytes(canonical_json_bytes(attempt_record_value(source)))
+        normalized=effective_result_bytes(ledger,key)
+        bundles.append({'attemptRecord':attempt_record_value(source),
+            **({'candidateResolutionSha256':digest,'sourceAttemptRecordSha256':source_sha}
+               if isinstance(result,CandidateResult) else {}),
+            'normalizedResultSha256':result.normalized_result_sha256,'envelope':dict(envelope.value),
             'packet':_mapping(files,envelope.value['packetPath']),
-            'normalizedResult':json.loads(ledger.normalized_results[record.normalized_result_sha256])})
+            'normalizedResult':json.loads(normalized)})
     return bundles
 
 
@@ -744,9 +760,10 @@ def _issue_prototype(files,state,action_kind,round):
 
 
 def _prototype_result_ref(bundle):
-    return {"logicalWorkId": bundle["envelope"]["logicalWorkId"],
+    return {**({'candidateResolutionSha256':bundle['candidateResolutionSha256']} if 'candidateResolutionSha256' in bundle else {}),
+            "logicalWorkId": bundle["envelope"]["logicalWorkId"],
             "attemptRecordSha256": sha256_bytes(canonical_json_bytes(bundle["attemptRecord"])),
-            "normalizedResultSha256": bundle["attemptRecord"]["normalizedResultSha256"],
+            "normalizedResultSha256": bundle["normalizedResultSha256"],
             "normalizedResult": bundle["normalizedResult"]}
 
 
@@ -782,6 +799,10 @@ def _publish_prototype_ledger(files, state):
             if item['packet']['workItems'][0]['payload']['identity']['round']==round_number:
                 work=item['envelope']['logicalWorkId']
                 attempts.extend(digest for digest,record in sorted(ledger.attempt_records.items(),key=lambda pair:(pair[1].revision,pair[1].attempt)) if record.logical_work_id==work)
+                from candidate_repair import patch_context
+                attempts.extend(d for d,r in ledger.attempt_records.items() if
+                    ledger.envelopes_by_sha256[r.envelope_sha256].value['actionContractId']=='CANDIDATE_PATCH-v1'
+                    and patch_context(files.read_json(ledger.envelopes_by_sha256[r.envelope_sha256].value['packetPath']))['origin']['originLogicalWorkId']==work)
         observations = bundle["normalizedResult"]["observations"]
         round_dispositions = {item["interactionId"]: item["disposition"] for item in evidence["interactionDispositions"]}
         for observation in observations:
@@ -794,7 +815,7 @@ def _publish_prototype_ledger(files, state):
                     round_dispositions[interaction_id] = observation["runtimeStatus"]
         evidence["interactionDispositions"] = [{"interactionId": key, "disposition": value} for key, value in sorted(round_dispositions.items())]
         rounds.append({"round": round_number, "attemptRecordSha256s": attempts,
-                       "observationRefs": [{"localKey": item["localKey"], "attemptRecordSha256": sha256_bytes(canonical_json_bytes(bundle["attemptRecord"])), "normalizedResultSha256": bundle["attemptRecord"]["normalizedResultSha256"], "pointer": f"/observations/{index}"} for index, item in enumerate(observations)],
+                       "observationRefs": [{**({'candidateResolutionSha256':bundle['candidateResolutionSha256']} if 'candidateResolutionSha256' in bundle else {}), "localKey": item["localKey"], "attemptRecordSha256": sha256_bytes(canonical_json_bytes(bundle["attemptRecord"])), "normalizedResultSha256": bundle["normalizedResultSha256"], "pointer": f"/observations/{index}"} for index, item in enumerate(observations)],
                        "interactionDispositions": evidence["interactionDispositions"]})
         dispositions.update({item["interactionId"]: item["disposition"] for item in evidence["interactionDispositions"]})
     value = {"bundleSha256": inventory["bundleSha256"], "rounds": rounds,
@@ -857,7 +878,7 @@ def _scope_plan_inputs(files, state):
 
 
 def _frozen_scope_plan(files, state):
-    from stage_planner import plan_stage, validate_stage_plan
+    from stage_planner import plan_stage, bound_action_contract_ids
     from scope_compiler import build_scope_work_descriptors
     root = files.ensure_dir(f"{RUNS_ROOT}/{state['runId']}/stages/SCOPE/plans")
     paths = list(root.glob('*.json'))
@@ -868,8 +889,9 @@ def _frozen_scope_plan(files, state):
                     if existing else _effective_budget_policy(files, state['runId'])[1])
     policy = _planning_policy(policy_value)
     items, contexts = _scope_plan_inputs(files, state)
-    works = build_scope_work_descriptors(items, contexts, policy)
-    plan = plan_stage('SCOPE', items, contexts, works, [], policy)
+    contract_ids = bound_action_contract_ids(existing) if existing else None
+    works = build_scope_work_descriptors(items, contexts, policy, action_contract_ids=contract_ids)
+    plan = plan_stage('SCOPE', items, contexts, works, [], policy, action_contract_ids=contract_ids)
     if existing:
         if existing != plan or paths[0].stem != sha256_bytes(canonical_json_bytes(existing)):
             raise ValueError('StagePlan 与完整冻结输入不一致。')
@@ -916,8 +938,9 @@ def _issue_frozen_group(files, state, plan, items, contexts, group):
         descriptor = works[key]
         dependencies = []
         for dependency in descriptor['dependencyLogicalWorkIds']:
-            digest, record = _effective_success(ledger, dependency)
-            dependencies.append(DependencyResultRef(dependency, digest, ledger.normalized_results[record.normalized_result_sha256]))
+            digest, result = effective_result(ledger, dependency)
+            dependencies.append(DependencyResultRef(dependency, digest, effective_result_bytes(ledger,dependency),
+                result.source_attempt_record_sha256 if isinstance(result,CandidateResult) else None))
         packet = materialize_packet(plan, key, 1, items, contexts, dependencies, ledger)
         envelope = _envelope_for_work(files, state, plan['stageKind'], group['groupId'], key, descriptor['actionContractId'], packet)
         prepared.append((envelope, packet))
@@ -932,7 +955,7 @@ def _issue_frozen_group(files, state, plan, items, contexts, group):
     for key in group['requiredLogicalWorkIds']:
         envelope = _effective_envelope(ledger, key)
         record = next((record for record in ledger.attempt_records.values() if record.envelope_sha256 == envelope.sha256), None)
-        if record is None or record.outcome != 'SUCCEEDED': expected.append(envelope.value['actionId'])
+        if effective_result_bytes(ledger,key) is None: expected.append(envelope.value['actionId'])
     state = _write_active_state(files, _read_active_marker(files), {**state,
         'phase':_phase_for_action_stage(plan['stageKind']), 'wait':'MODEL' if expected else 'NONE', 'expectedActionIds':expected})
     return _public_active_result(files, state)
@@ -1063,7 +1086,7 @@ def _frozen_stage_inputs(files, state, stage):
         return plan, items, contexts, policy, None
     from delivery_compiler import prepare_story_inputs, build_story_work_descriptors
     from task_compiler import prepare_task_inputs, build_task_work_descriptors
-    from stage_planner import plan_stage
+    from stage_planner import plan_stage, bound_action_contract_ids
     upstream = 'SCOPE' if stage == 'STORY_AC' else 'STORY_AC'
     checkpoint_raw = _checkpoint_bytes(files, state, upstream)
     checkpoint = json.loads(checkpoint_raw)
@@ -1087,72 +1110,145 @@ def _frozen_stage_inputs(files, state, stage):
     policy_value=(_published_budget_policy(files,state['runId'],json.loads(existing)['budgetPolicySha256'])
                   if existing else _effective_budget_policy(files,state['runId'])[1])
     policy=_planning_policy(policy_value)
-    plan=plan_stage(stage,inputs.work_items,inputs.context_refs,builder(inputs.work_items,inputs.context_refs,policy),
-        [sha256_bytes(checkpoint_raw)],policy)
+    contract_ids=bound_action_contract_ids(json.loads(existing)) if existing else None
+    options={'action_contract_ids':contract_ids} if stage=='TASK' else {}
+    plan=plan_stage(stage,inputs.work_items,inputs.context_refs,builder(inputs.work_items,inputs.context_refs,policy,**options),
+        [sha256_bytes(checkpoint_raw)],policy,action_contract_ids=contract_ids)
     raw=canonical_json_bytes(plan)
     if existing is not None and raw!=existing: raise ValueError('阶段计划不再匹配 sealed 上游。')
     _content(files,_stage_root(state,stage)+'/plans',raw)
     return plan,inputs.work_items,inputs.context_refs,policy,inputs
 
 
-def _step_output_hash(files, state, stage, revision, kind):
-    hashes = {event.payload['outputSha256'] for event in _read_run_events(files, state['runId'])
-        if event.type == 'DETERMINISTIC_STEP_FINISHED' and event.payload['outcome'] == 'SUCCEEDED'
-        and event.payload.get('stageKind') == stage and event.payload.get('semanticRevision') == revision
-        and event.payload['stepKind'] == kind}
-    if len(hashes) > 1:
-        raise ValueError('同一阶段 revision 的完成事件存在冲突输出。')
-    return next(iter(hashes), None)
+def _step_output_hash(files, state, stage, revision, kind, *, fingerprint=None):
+    events=[e for e in _read_run_events(files,state['runId']) if e.type=='DETERMINISTIC_STEP_FINISHED'
+            and e.payload['outcome']=='SUCCEEDED' and e.payload.get('stageKind')==stage
+            and e.payload.get('semanticRevision')==revision and e.payload['stepKind']==kind]
+    if fingerprint is None and events:
+        fingerprint=events[-1].payload.get('stepFingerprint')
+    hashes={e.payload['outputSha256'] for e in events if e.payload.get('stepFingerprint')==fingerprint}
+    if len(hashes)>1:raise ValueError('相同实际输入与指纹的步骤有冲突输出。')
+    return next(iter(hashes),None)
 
 
-def _read_step_output(files, state, stage, revision, kind, directory):
-    expected = _step_output_hash(files, state, stage, revision, kind)
-    raw = _one_content(files, directory)
-    if raw is not None and (expected is None or sha256_bytes(raw) != expected):
-        raise ValueError('确定性输出未绑定实际完成事件。')
+def _read_step_output(files, state, stage, revision, kind, directory, *, fingerprint=None):
+    expected=_step_output_hash(files,state,stage,revision,kind,fingerprint=fingerprint)
+    if expected is None:return None
+    try:raw=files.read_bytes(f'{directory}/{expected}.json')
+    except ProjectIOError as error:
+        if error.code=='PROJECT_PATH_MISSING':return None
+        raise
+    if sha256_bytes(raw)!=expected:raise ValueError('确定性输出未绑定实际完成事件。')
     return raw
 
 
-def _deterministic_step(files, state, kind, operation, *, stage, revision):
+def _step_fingerprint(inputs, *, parameters, implementations, tool=None):
+    return {'contract':'ai-sow-step-fingerprint-v1','inputSha256':sha256_bytes(canonical_json_bytes(inputs)),
+        'parametersSha256':sha256_bytes(canonical_json_bytes(parameters)),
+        'implementationSha256':sha256_bytes(canonical_json_bytes({name:sha256_bytes((SKILL_ROOT/'scripts'/name).read_bytes()) for name in implementations})),
+        'toolSha256':sha256_bytes(canonical_json_bytes(tool))}
+
+
+def _office_tool_fingerprint():
+    # Identity is path-free and never launches Office.
+    import os,shutil,platform
+    configured=os.environ.get('AI_SOW_OFFICE_BIN')
+    if configured:
+        executable=configured;selection='AI_SOW_OFFICE_BIN'
+    else:
+        executable=shutil.which('soffice')
+        selection='PATH_SOFFICE'
+        if executable is None:
+            executable=shutil.which('libreoffice');selection='PATH_LIBREOFFICE'
+    path=Path(executable).expanduser().resolve() if executable else None
+    return {'selectionSource':selection if path else 'UNAVAILABLE',
+            'executableBasename':path.name if path else None,
+            'executableSha256':sha256_bytes(path.read_bytes()) if path and path.is_file() else None,
+            'platform':platform.system(),'normalizedArguments':['--headless']}
+
+
+class DeterministicStepFailure(ValueError):
+    def __init__(self, message, diagnostic, *, stage, revision, kind, attempt, limit):
+        super().__init__(message)
+        self.diagnostic = diagnostic
+        self.stage, self.revision, self.kind = stage, revision, kind
+        self.attempt, self.limit = attempt, limit
+
+
+def _failed_deterministic_steps(files, state):
+    latest = {}
+    for event in _read_run_events(files, state['runId']):
+        if event.type != 'DETERMINISTIC_STEP_FINISHED' or 'stageKind' not in event.payload: continue
+        item = event.payload
+        key = (item['stageKind'], item['semanticRevision'], item['stepKind'])
+        latest[key] = item
+    return [item for _, item in sorted(latest.items()) if item['outcome'] == 'FAILED']
+
+
+def _deterministic_step(files, state, kind, operation, *, stage, revision, fingerprint=None):
     ledger = _load_action_ledger(files, state['runId'])
     if _active_seconds(ledger, _read_run_events(files, state['runId'])) >= _effective_budget_policy(files, state['runId'])[1]['maxActiveSeconds']:
         raise StagePlanningBlocked('BUDGET_EXHAUSTED')
-    previous = _step_output_hash(files, state, stage, revision, kind)
+    previous = _step_output_hash(files, state, stage, revision, kind, fingerprint=fingerprint)
+    limit = _effective_budget_policy(files, state['runId'])[1].get('maxDeterministicAttempts', 2)
+    failures = [event for event in _read_run_events(files, state['runId'])
+        if event.type == 'DETERMINISTIC_STEP_FINISHED' and event.payload['outcome'] == 'FAILED'
+        and event.payload.get('stageKind') == stage and event.payload.get('semanticRevision') == revision
+        and event.payload['stepKind'] == kind]
+    if previous is None and len(failures) >= limit:
+        raise StagePlanningBlocked('BUDGET_EXHAUSTED')
+    attempt = len(failures) + 1
     started = datetime.now(UTC).isoformat().replace('+00:00', 'Z')
-    outcome = 'SUCCEEDED'; failure = None; digest = None
+    outcome = 'SUCCEEDED'; failure = None; digest = None; diagnostic = None; record_event = True
     try:
         raw = None
-        durable_render = stage == 'ARTIFACT' and kind == 'RENDER'
-        recovery_root = f"{RUNS_ROOT}/{state['runId']}/step-recovery/ARTIFACT/{revision}/RENDER"
-        if durable_render and previous is not None:
+        recovery_root = f"{RUNS_ROOT}/{state['runId']}/step-recovery/{stage}/{revision}/{kind}"
+        if previous is not None:
             try:
                 raw = files.read_bytes(f'{recovery_root}/{previous}.json')
             except ProjectIOError as error:
                 if error.code != 'PROJECT_PATH_MISSING':
                     raise
+        if (raw is None or (previous is not None and sha256_bytes(raw) != previous)) and len(failures) >= limit:
+            record_event = False
+            raise StagePlanningBlocked('BUDGET_EXHAUSTED')
         if raw is None:
             raw = operation()
         digest = sha256_bytes(raw)
         if previous is not None and digest != previous:
             raise ValueError('恢复运算与原完成事件输出不一致。')
-        if durable_render:
-            # Office PDF font fallback is not byte deterministic across processes.
-            # Durably save the actual export before its completion event; only a
-            # matching successful event authorizes recovery of these exact bytes.
-            files.publish_new(f'{recovery_root}/{digest}.json', raw)
+        # Preserve the actual result before its completion event. Recovery uses
+        # only an exact hash bound to success, including nondeterministic Office bytes.
+        files.publish_new(f'{recovery_root}/{digest}.json', raw)
         return raw
-    except Exception as error:
-        outcome = 'FAILED'; failure = type(error).__name__
+    except StagePlanningBlocked:
+        record_event = False
         raise
+    except Exception as error:
+        from models import AttemptDiagnostic
+        outcome = 'FAILED'; failure = getattr(error, 'code', type(error).__name__)
+        diagnostic = getattr(error, 'diagnostic', None) or AttemptDiagnostic(
+            str(failure), f'/{stage}/{revision}/{kind}', ())
+        from scope_compiler import ScopeInputRequired
+        from prior_state import PriorInputRequired
+        from delivery_compiler import StoryInputRequired
+        from task_compiler import TaskInputRequired
+        if isinstance(error, (ScopeInputRequired, PriorInputRequired, StoryInputRequired, TaskInputRequired)):
+            raise
+        raise DeterministicStepFailure(str(error), diagnostic, stage=stage, revision=revision,
+            kind=kind, attempt=attempt, limit=limit) from error
     finally:
         payload = {'stepKind': kind, 'outcome': outcome, 'startedAtUtc': started,
             'endedAtUtc': datetime.now(UTC).isoformat().replace('+00:00', 'Z')}
         if failure is not None:
-            payload['failureCode'] = failure
+            payload.update(failureCode=failure, stageKind=stage, semanticRevision=revision,
+                attempt=attempt, diagnostic=diagnostic_value(diagnostic))
         else:
             payload.update(stageKind=stage, semanticRevision=revision, outputSha256=digest)
         # Record the completed computation and its exact output before any output publication.
-        _append_run_event(files, state['runId'], 'DETERMINISTIC_STEP_FINISHED', payload)
+        if fingerprint is not None:payload['stepFingerprint']=fingerprint
+        if record_event:
+            _append_run_event(files, state['runId'], 'DETERMINISTIC_STEP_FINISHED', payload)
 
 
 def _stage_ir(files,state,stage,plan,items,contexts,policy,inputs):
@@ -1207,26 +1303,129 @@ def _review_packet_for_candidate(files,state,stage,candidate_hash):
     return matches[0]
 
 
+def _control_contract_id(files,state,stage,kind):
+    from final_review import REVIEW_CONTRACT, repair_action_contract_id
+    if kind=='REVIEW': return REVIEW_CONTRACT[stage]
+    plan=_one_content(files,_stage_root(state,stage)+'/plans')
+    if plan is None: raise ValueError('Owner Repair 缺少冻结计划。')
+    return repair_action_contract_id(stage,json.loads(plan))
+
+
 def _control_bundle(files,state,stage,kind,subject_hash):
     from final_review import control_identity,REVIEW_CONTRACT
     from stage_planner import _effective_envelope,_effective_success
-    contract_id=REVIEW_CONTRACT[stage] if kind=='REVIEW' else stage+'_REPAIR-v1'
+    contract_id=_control_contract_id(files,state,stage,kind)
     _,digest=action_contract_binding(SKILL_ROOT,contract_id)
     logical,group=control_identity(stage,kind,subject_hash,digest)
     ledger=_load_action_ledger(files,state['runId'])
     envelope=_effective_envelope(ledger,logical)
     if envelope is None: return logical,group,None
-    record_hash,record=_effective_success(ledger,logical)
+    record_hash,record=effective_result(ledger,logical)
     return logical,group,{'envelope':envelope.value,'record':record,'recordSha256':record_hash,
                          'result':json.loads(ledger.normalized_results[record.normalized_result_sha256])}
 
 
 def _issue_control(files,state,stage,kind,subject_hash,packet):
     from final_review import control_identity,REVIEW_CONTRACT
-    contract_id=REVIEW_CONTRACT[stage] if kind=='REVIEW' else stage+'_REPAIR-v1'
+    contract_id=_control_contract_id(files,state,stage,kind)
     _,digest=action_contract_binding(SKILL_ROOT,contract_id)
     logical,group=control_identity(stage,kind,subject_hash,digest)
     return _issue_singleton(files,state,stage,group,logical,contract_id,canonical_json_bytes(packet))
+
+def _semantic_owner_contract(stage,plan):
+    from stage_planner import bound_action_contract_ids
+    if stage=='SCOPE':return 'SCOPE_SYNTHESIS-v1'
+    if stage=='STORY_AC':return 'STORY_AC-v1'
+    return bound_action_contract_ids(plan)['TASK']
+
+
+def _semantic_repair_paths(run_id,base_sha256,source_sha256):
+    root=f"{RUNS_ROOT}/{run_id}/candidate-repairs"
+    return (f"{root}/bases/{base_sha256}.json",
+            f"{root}/semantic-sources/{source_sha256}.json")
+
+
+def _semantic_repair_bundle(files,state,stage,review_bundle,original,resolution):
+    from final_review import candidate_repair_replacement,semantic_repair_lineage
+    _,contract_sha=action_contract_binding(SKILL_ROOT,'CANDIDATE_PATCH-v1')
+    review_sha=review_bundle['record'].normalized_result_sha256
+    lineage=semantic_repair_lineage(stage,review_sha,contract_sha)
+    ledger=_load_action_ledger(files,state['runId'])
+    raw=effective_result_bytes(ledger,lineage)
+    if raw is None:
+        issued=[envelope for envelope in ledger.envelopes_by_sha256.values()
+                if envelope.value['actionContractId']=='CANDIDATE_PATCH-v1'
+                and any(json.loads(files.read_bytes(
+                    f"{RUNS_ROOT}/{state['runId']}/candidate-repairs/plans/{json.loads(files.read_bytes(envelope.value['packetPath']))['contextRefs'][0]['canonicalContent']['repairPlanSha256']}.json"
+                ))['origin']['originLogicalWorkId']==lineage for _ in (0,))]
+        return {'pending':True} if issued else None
+    proof=json.loads(ledger.candidate_resolutions[lineage])
+    semantic_sha=proof['origin']['semanticSourceSha256']
+    _,source_path=_semantic_repair_paths(state['runId'],proof['authorRawSha256'],semantic_sha)
+    source=files.read_json(source_path)
+    if sha256_bytes(canonical_json_bytes(source))!=semantic_sha:
+        raise ValueError('语义修复来源描述符 hash 漂移。')
+    repaired=json.loads(raw)
+    replacement=candidate_repair_replacement(stage,original,repaired,review_bundle['result'],resolution)
+    return {'replacement':replacement,'repaired':repaired,'resolutionSha256':sha256_bytes(ledger.candidate_resolutions[lineage])}
+
+
+def _issue_semantic_candidate_repair(files,state,stage,plan,owner_packet,owner_ir,review_packet,review_bundle,resolution):
+    from candidate_repair import _at
+    from final_review import candidate_owner_callbacks,semantic_repair_lineage
+    review=review_bundle['result'];review_sha=review_bundle['record'].normalized_result_sha256
+    patch_contract,patch_contract_sha=action_contract_binding(SKILL_ROOT,'CANDIDATE_PATCH-v1')
+    lineage=semantic_repair_lineage(stage,review_sha,patch_contract_sha)
+    owner_raw=canonical_json_bytes(owner_ir);owner_sha=sha256_bytes(owner_raw)
+    owner_contract=_semantic_owner_contract(stage,plan)
+    descriptor={'stageKind':stage,'ownerPacket':owner_packet,'ownerIRSha256':owner_sha,
+        'ownerActionContractId':owner_contract,'ownerIndex':review_packet['workItems'][0]['payload']['ownerIndex'],
+        'reviewDecision':review,'reviewDecisionSha256':review_sha,
+        'reviewAttemptRecordSha256':review_bundle['recordSha256'],
+        'reviewCandidateSha256':review_packet['workItems'][0]['payload']['candidateSha256']}
+    if resolution is not None:descriptor['ownerResolution']=resolution
+    semantic_sha=sha256_bytes(canonical_json_bytes(descriptor))
+    base_path,source_path=_semantic_repair_paths(state['runId'],owner_sha,semantic_sha)
+    files.publish_new(base_path,owner_raw);files.publish_new(source_path,canonical_json_bytes(descriptor))
+    policy_sha,policy=_effective_budget_policy(files,state['runId'])
+    origin={'runId':state['runId'],'inputRevisionSha256':state['currentInputRevisionSha256'],
+        'originLogicalWorkId':lineage,'sourceKind':'SEMANTIC_REVIEW',
+        'sourceActionContractId':review_bundle['envelope']['actionContractId'],
+        'sourceAttemptRecordSha256':review_bundle['recordSha256'],'stageKind':stage,
+        'repairRound':2,'budgetPolicySha256':policy_sha,'reviewDecisionSha256':review_sha,
+        'reviewCandidateSha256':descriptor['reviewCandidateSha256'],'semanticSourceSha256':semantic_sha}
+    diagnose,make_plan,_=candidate_owner_callbacks(
+        review_bundle['envelope'],json.loads(files.read_bytes(review_bundle['envelope']['packetPath'])),
+        semantic_source=descriptor)
+    report=diagnose(owner_raw,origin);plan_raw=make_plan(owner_raw,report,origin)
+    repair_plan=json.loads(plan_raw);group=repair_plan['groups'][0]
+    index={row['objectId']:row for row in repair_plan['objectIndex']};candidate=json.loads(owner_raw)
+    evidence=[{'kind':'SEMANTIC_REVIEW_FINDINGS','value':review['findings']}]
+    for read in group['readSet']:
+        row=_at(candidate,index[read['objectId']]['path'])
+        evidence.append({'objectId':read['objectId'],'fields':row if not read['fields']
+                         else {field:row[field] for field in read['fields'] if field in row}})
+    repair_packet=_patch_request_packet(plan_raw,group['groupId'],review_packet,evidence_values=evidence)
+    identity={'originLogicalWorkId':lineage,'round':2,'groupId':group['groupId'],'planSha256':sha256_bytes(plan_raw)}
+    logical='candidate-patch-'+sha256_bytes(canonical_json_bytes(identity))
+    envelope=_envelope_for_work(files,state,stage,review_bundle['envelope']['groupId'],logical,
+        'CANDIDATE_PATCH-v1',canonical_json_bytes(repair_packet))
+    files.publish_new(f"{RUNS_ROOT}/{state['runId']}/candidate-repairs/plans/{sha256_bytes(plan_raw)}.json",plan_raw)
+    ledger=_load_action_ledger(files,state['runId'])
+    prepared=ActionEnvelope(envelope,_action_paths(state['runId'],envelope['actionId'])['envelope'],
+        sha256_bytes(canonical_json_bytes(envelope)))
+    _guard_action_budget(ledger,_read_run_events(files,state['runId']),policy,[prepared])
+    selection={'originLogicalWorkId':lineage,'sourceAttemptRecordSha256':review_bundle['recordSha256'],
+        'sourceActionContractId':review_bundle['envelope']['actionContractId'],'selectionKind':'SEMANTIC_REVIEW',
+        'repairRound':2,'candidatePatchActionContractSha256':patch_contract_sha,
+        'candidateRepairSchemaSha256':sha256_bytes((SKILL_ROOT/'contracts/candidate-repair.schema.json').read_bytes())}
+    selections=[event for event in _read_run_events(files,state['runId'])
+                if event.type=='CANDIDATE_REPAIR_PROTOCOL_SELECTED' and event.payload['originLogicalWorkId']==lineage]
+    if not selections:_append_run_event(files,state['runId'],'CANDIDATE_REPAIR_PROTOCOL_SELECTED',selection)
+    elif len(selections)!=1 or dict(selections[0].payload)!=selection:raise ValueError('语义修复协议选择事件冲突。')
+    _persist_issued_action(files,envelope,canonical_json_bytes(repair_packet))
+    updated=_write_active_state(files,_read_active_marker(files),{**state,'wait':'MODEL','expectedActionIds':[envelope['actionId']]})
+    return _public_active_result(files,updated)
 
 
 def _issue_singleton(files,state,stage,group,logical,contract_id,packet):
@@ -1246,8 +1445,9 @@ def _prior_business_gate(files,state,plan):
     if not is_group_ready(ledger,[work['logicalWorkId'] for work in works]): return
     consumed={key for work in works for key in work['packetPlan']['dependencyLogicalWorkIds']}
     root=next(work['logicalWorkId'] for work in works if work['logicalWorkId'] not in consumed)
-    digest,record=_effective_success(ledger,root)
-    reference=resolve_prior_root(plan,ledger,[DependencyResultRef(root,digest,ledger.normalized_results[record.normalized_result_sha256])])
+    digest,result=effective_result(ledger,root)
+    reference=resolve_prior_root(plan,ledger,[DependencyResultRef(root,digest,effective_result_bytes(ledger,root),
+        result.source_attempt_record_sha256 if isinstance(result,CandidateResult) else None)])
     revision=files.read_bytes(_read_active_marker(files)['inputRevisionPath'])
     inventories=_prior_inventories(files,state)
     verify_prior_decision(inventories,json.loads(reference.normalized_result),input_revision_bytes=revision)
@@ -1293,7 +1493,8 @@ def _manual_repair_records(files,state,stage):
         records[value['reviewDecisionSha256']]={'answer':answer,'event':event,'terminal':terminal}
     from final_review import verify_manual_authorization_records
     verify_manual_authorization_records({key:{'authorization':value['answer'],'terminalState':value['terminal']} for key,value in records.items()},
-        [run_event_value(event) for event in _read_run_events(files,state['runId'])],stage,state['runId'],state['currentInputRevisionSha256'])
+        [run_event_value(event) for event in _read_run_events(files,state['runId'])],stage,state['runId'],state['currentInputRevisionSha256'],
+        stage_plan=json.loads(_one_content(files,_stage_root(state,stage)+'/plans')) if records and stage=='TASK' else None)
     return records
 
 
@@ -1461,7 +1662,10 @@ def _seal_stage(files,state,stage,plan,items,contexts,policy,inputs):
             for operation in semantic_repairs: merged=replace_owner_decisions(stage,merged,*operation)
         resolution_fields=review_resolution_fields(semantic_repairs)
         directory=root+f'/review-inputs/{revision}'
-        review_raw=_read_step_output(files,state,stage,revision,'MATERIALIZE',directory)
+        material_fingerprint=_step_fingerprint([plan,current_packet,merged,semantic_repairs],
+            parameters={'stage':stage,'revision':revision,'kind':'MATERIALIZE'},
+            implementations=[owner.__name__+'.py','stable_ids.py','sow_model.py'])
+        review_raw=_read_step_output(files,state,stage,revision,'MATERIALIZE',directory,fingerprint=material_fingerprint)
         if review_raw is None:
             def materialize():
                 current_ledger=_load_action_ledger(files,state['runId'])
@@ -1486,17 +1690,20 @@ def _seal_stage(files,state,stage,plan,items,contexts,policy,inputs):
                     body['changeGraph']=json.loads(material.change_graph_bytes)
                     body['priorState']=json.loads(material.prior_state_bytes) if material.prior_state_bytes else None
                     expected=owner.scope_review_obligations(merged,material.identity_by_local_key,contexts,current_ledger,
-                        body['priorState'],body['changeGraph'],_prior_business_gate(files,state,plan))
+                        body['priorState'],body['changeGraph'],_prior_business_gate(files,state,plan),prior_work_items=items)
                     if sorted(obligations,key=canonical_json_bytes)!=list(expected):
                         raise ValueError('Scope candidate 缺少完整 intent/identity review obligations。')
                     if material.prior_state_bytes:
                         body['evidenceIds']=sorted(set(evidence)|{row['priorEvidenceId'] for row in body['priorState']['evidence']})
+                        body['evidenceIds']=sorted(set(body['evidenceIds'])|{row['priorEvidenceId']
+                            for obligation in obligations if obligation['kind']=='PRIOR_EXTRACTION'
+                            for row in obligation['priorContext']['evidence']})
                         obligations.append({'kind':'PRIOR_SOURCE_EQUIVALENCE','priorStateSha256':sha256_bytes(material.prior_state_bytes),
                             'sourceRelations':body['priorState']['sourceRelations'], 'entities':body['priorState']['entities']})
                 review_packet={'workItems':[{'workItemId':'review-candidate','payload':body}],'contextRefs':[]}
                 raw=canonical_json_bytes(review_packet)
                 return raw
-            review_raw=_deterministic_step(files,state,'MATERIALIZE',materialize,stage=stage,revision=revision)
+            review_raw=_deterministic_step(files,state,'MATERIALIZE',materialize,stage=stage,revision=revision,fingerprint=material_fingerprint)
             _content(files,directory,review_raw)
         review_packet=json.loads(review_raw);body=review_packet['workItems'][0]['payload']
         candidate_bytes=canonical_json_bytes(body['candidate']);candidate_hash=sha256_bytes(candidate_bytes)
@@ -1514,7 +1721,8 @@ def _seal_stage(files,state,stage,plan,items,contexts,policy,inputs):
             if body['priorState'] != prior_state:
                 raise ValueError('Review Prior snapshot 未绑定原 inventory 和 sealed Prior root。')
             expected_index = owner.scope_review_owner_index(candidate_bytes,merged,items,
-                prototype_inventory=_prototype_inventory(files,state),prior_decision=prior_decision,prior_state=prior_state)
+                prototype_inventory=_prototype_inventory(files,state),prior_decision=prior_decision,prior_state=prior_state,
+                context_refs=contexts,ledger=_load_action_ledger(files,state['runId']))
             if body['ownerIndex'] != expected_index:
                 raise ValueError('Scope Review root index 未绑定冻结 IR 的精确实体。')
             identities = {key:value['id'] for key,value in expected_index.items()}
@@ -1522,7 +1730,7 @@ def _seal_stage(files,state,stage,plan,items,contexts,policy,inputs):
             if body['changeGraph'] != graph:
                 raise ValueError('Review ChangeGraph 未绑定 sealed Scope/Prior decisions。')
             expected = list(owner.scope_review_obligations(merged,identities,contexts,
-                _load_action_ledger(files,state['runId']),prior_state,graph,prior_root))
+                _load_action_ledger(files,state['runId']),prior_state,graph,prior_root,prior_work_items=items))
             if prior_state is not None:
                 expected.append({'kind':'PRIOR_SOURCE_EQUIVALENCE','priorStateSha256':sha256_bytes(canonical_json_bytes(prior_state)),
                     'sourceRelations':prior_state['sourceRelations'],'entities':prior_state['entities']})
@@ -1543,15 +1751,21 @@ def _seal_stage(files,state,stage,plan,items,contexts,policy,inputs):
             _content(files,root+'/change-graphs',material.change_graph_bytes)
             if material.prior_state_bytes is not None:
                 _content(files,root+'/prior-states',material.prior_state_bytes)
-        validator_raw=_read_step_output(files,state,stage,revision,'VALIDATE',root+f'/validators/{revision}')
+        validator_fingerprint=_step_fingerprint([candidate_hash,body],parameters={'stage':stage,'revision':revision,'kind':'VALIDATE'},
+            implementations=[owner.__name__+'.py','sow_model.py'])
+        validator_raw=_read_step_output(files,state,stage,revision,'VALIDATE',root+f'/validators/{revision}',fingerprint=validator_fingerprint)
         if validator_raw is None:
             def validate():
                 diagnostics=(owner.validate_scope_candidate if stage=='SCOPE' else owner.validate_story_candidate if stage=='STORY_AC' else owner.validate_task_candidate)(material)
-                if diagnostics: raise ValueError('完整机械校验失败：'+','.join(item.code for item in diagnostics))
+                if diagnostics:
+                    from models import AttemptDiagnostic
+                    raise InvalidActionResult('完整机械校验失败。', diagnostic=AttemptDiagnostic(
+                        'STAGE_VALIDATION_FAILED', '/' + stage, (), tuple(AttemptDiagnostic(
+                            item.code, item.path, tuple(item.details.get('subjectIds', ()))) for item in diagnostics)))
                 value={'stageKind':stage,'candidateSha256':candidate_hash,
                     'validatorContractSha256':sha256_bytes((SKILL_ROOT/'contracts/sow-model.schema.json').read_bytes()),'diagnostics':[]}
                 return canonical_json_bytes(value)
-            validator_raw=_deterministic_step(files,state,'VALIDATE',validate,stage=stage,revision=revision)
+            validator_raw=_deterministic_step(files,state,'VALIDATE',validate,stage=stage,revision=revision,fingerprint=validator_fingerprint)
             _content(files,root+f'/validators/{revision}',validator_raw)
         validator=json.loads(validator_raw)
         if validator!={'stageKind':stage,'candidateSha256':candidate_hash,'validatorContractSha256':sha256_bytes((SKILL_ROOT/'contracts/sow-model.schema.json').read_bytes()),'diagnostics':[]}:
@@ -1572,13 +1786,21 @@ def _seal_stage(files,state,stage,plan,items,contexts,policy,inputs):
         if route=='REPAIR':
             review_hash=bundle['record'].normalized_result_sha256
             logical,group,repair_bundle=_control_bundle(files,state,stage,'REPAIR',review_hash)
-            repair_packet=_owner_repair_packet(stage,current_packet,merged,review,inputs,resolution)
-            if repair_bundle is None:
-                return _issue_control(files,state,stage,'REPAIR',review_hash,repair_packet)
-            actual_repair=json.loads(files.read_bytes(repair_bundle['envelope']['packetPath']))
-            if actual_repair['workItems'] != repair_packet['workItems']:
-                raise ValueError('Repair 未绑定原 IR、影响闭包和确定性上下文。')
-            semantic_repair=(review,repair_bundle['result'],resolution) if resolution is not None else (review,repair_bundle['result'])
+            if repair_bundle is not None:
+                repair_packet=_owner_repair_packet(stage,current_packet,merged,review,inputs,resolution)
+                actual_repair=json.loads(files.read_bytes(repair_bundle['envelope']['packetPath']))
+                if actual_repair['workItems'] != repair_packet['workItems']:
+                    raise ValueError('已发行 legacy Repair 未绑定原 IR、影响闭包和确定性上下文。')
+                replacement=repair_bundle['result']
+            else:
+                semantic=_semantic_repair_bundle(files,state,stage,bundle,merged,resolution)
+                if semantic is None:
+                    return _issue_semantic_candidate_repair(
+                        files,state,stage,plan,current_packet,merged,review_packet,bundle,resolution)
+                if semantic.get('pending'):
+                    return _public_active_result(files,state)
+                replacement=semantic['replacement']
+            semantic_repair=(review,replacement,resolution) if resolution is not None else (review,replacement)
             semantic_repairs.append(semantic_repair);previous_review=review
             continue
         upstream=[_checkpoint_bytes(files,state,'SCOPE' if stage=='STORY_AC' else 'STORY_AC')] if stage!='SCOPE' else []
@@ -1666,13 +1888,20 @@ def _attempt_stop_response(
             charged, unfinished, planned = _model_token_totals(ledger)
             active_seconds = _active_seconds(ledger, events)
             _, policy = _effective_budget_policy(files, str(state["runId"]))
+            latest = {}
+            for envelope in ledger.envelopes_by_sha256.values():
+                key = envelope.value['logicalWorkId']
+                if key not in latest or (envelope.value['revision'], envelope.value['attempt']) > (latest[key].value['revision'], latest[key].value['attempt']):
+                    latest[key] = envelope
+            pending_repairs = [attempt_record_value(record) for record in ledger.attempt_records.values()
+                if record.outcome == 'FAILED' and record.envelope_sha256 == latest[record.logical_work_id].sha256]
             return {
                 "outcome": "WAITING_INPUT", "state": {**state, "wait": "INPUT", "expectedActionIds": [], "resumeFromPhase": state["phase"]}, "nextAction": None,
                 "budgetVarianceTokens": charged - planned,
                 "activeSeconds": active_seconds,
                 "diagnostics": [{
-                    **_diagnostic_value(_diagnostic("BUDGET_EXHAUSTED", "请求容量或运行预算不足；尚未发行的阶段工作或修复请求可在无损调整输入并重新通过预算检查后继续。")),
-                    "details": {"chargedTokens": charged, "unfinishedPlannedTokens": unfinished, "maxPlannedTokens": policy["maxPlannedTokens"], "activeSeconds": active_seconds, "maxActiveSeconds": policy["maxActiveSeconds"]},
+                    **_diagnostic_value(_diagnostic("BUDGET_EXHAUSTED", "请求容量、运行预算或候选/执行次数已用尽；保留现有候选和成功进度，按诊断修复并显式增加所需有限预算后继续。")),
+                    "details": {"chargedTokens": charged, "unfinishedPlannedTokens": unfinished, "maxPlannedTokens": policy["maxPlannedTokens"], "activeSeconds": active_seconds, "maxActiveSeconds": policy["maxActiveSeconds"], "maxActionRevisions": policy.get("maxActionRevisions", 2), "maxExecutionAttempts": policy.get("maxExecutionAttempts", 2), "pendingRepairs": pending_repairs, "maxDeterministicAttempts": policy.get("maxDeterministicAttempts", 2), "pendingSteps": _failed_deterministic_steps(files, state)},
                 }],
             }
     routes = {
@@ -1795,7 +2024,21 @@ def _reconcile_active_state(
             if key not in latest or (envelope.value['revision'],envelope.value['attempt']) > (latest[key].value['revision'],latest[key].value['attempt']):
                 latest[key]=envelope
         records={record.envelope_sha256:record for record in ledger.attempt_records.values()}
-        pending=[item for item in latest.values() if item.sha256 not in records or records[item.sha256].outcome!='SUCCEEDED']
+        from candidate_repair import patch_context
+        patch_by_source={}
+        for item in latest.values():
+            if item.value['actionContractId']!='CANDIDATE_PATCH-v1':continue
+            view=patch_context(json.loads(files.read_bytes(item.value['packetPath'])))
+            origin_id=view['origin']['originLogicalWorkId']
+            if effective_result_bytes(ledger,origin_id) is not None:continue
+            if item.sha256 in records and records[item.sha256].outcome=='SUCCEEDED':continue
+            head=ledger.repair_heads.get(origin_id)
+            if head and view['baseCandidateSha256']!=sha256_bytes(head[0]):continue
+            score=(view['origin']['repairRound'],item.value['attempt'],item.value['actionId'])
+            if origin_id not in patch_by_source or score>patch_by_source[origin_id][0]:patch_by_source[origin_id]=(score,item)
+        pending=[item for key,item in latest.items() if item.value['actionContractId']!='CANDIDATE_PATCH-v1'
+                 and key not in patch_by_source and effective_result_bytes(ledger,key) is None]
+        pending.extend(entry[1] for entry in patch_by_source.values())
         if pending:
             groups={item.value['groupId'] for item in pending}
             if len(groups)!=1: raise ValueError('未完成工作不能越过当前 frozen group。')
@@ -1808,7 +2051,6 @@ def _reconcile_active_state(
     ]
     if reconciled.get("wait") == "MODEL" and expected_ids:
         remaining: list[str] = []
-        exhausted = False
         failure_route = None
         for action_id in expected_ids:
             record = _optional_json(files, _action_paths(run_id, action_id)["record"])
@@ -1823,7 +2065,7 @@ def _reconcile_active_state(
                     _action_paths(run_id, action_id)["record"],
                     "恢复时发现无效 AttemptRecord。",
                 )
-            if record.get("outcome") == "SUCCEEDED":
+            if record.get("outcome") == "SUCCEEDED" or effective_result_bytes(ledger,record['logicalWorkId']) is not None:
                 changed = True
                 continue
             if record.get("outcome") not in {"FAILED", "SUPERSEDED"}:
@@ -1850,10 +2092,16 @@ def _reconcile_active_state(
                 transition = _materialize_action_retry(
                     files, action_id, envelope, record
                 )
-            except ValueError:
-                exhausted = True
-                changed = True
-                continue
+            except CandidateRepairRoute as routed:
+                failure_route=routed.failure_kind
+                if failure_route=='INPUT_REQUIRED':
+                    _enter_attempt_input_wait(files,reconciled,{**record,'diagnostic':{
+                        'code':routed.reason_code,'path':'','subjectIds':[]}})
+                changed=True
+                break
+            except (AttemptLimitReached,StagePlanningBlocked):
+                # Only real capacity/attempt limits use the cumulative budget wait.
+                return _wait_for_budget(files)['state']
             remaining.append(str(transition["actionId"]))
             changed = True
         if failure_route is not None:
@@ -1871,16 +2119,6 @@ def _reconcile_active_state(
                     ),
                     "wait": "INPUT" if failure_route == "INPUT_REQUIRED" else "NONE",
                     "result": result_by_kind.get(failure_route),
-                    "expectedActionIds": [],
-                    "resumeFromPhase": None,
-                }
-            )
-        elif exhausted:
-            reconciled.update(
-                {
-                    "phase": "DONE",
-                    "wait": "NONE",
-                    "result": "SYSTEM_FAILED",
                     "expectedActionIds": [],
                     "resumeFromPhase": None,
                 }
@@ -1986,9 +2224,12 @@ def _budget_at_issuance(
 
 
 def _validate_budget_replacement(previous: Mapping[str, object], policy: Mapping[str, object]) -> None:
-    variable_keys = {"maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens", "demoLimits"}
-    old_limits = [previous[key] for key in ("maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens")]
-    new_limits = [policy[key] for key in ("maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens")]
+    variable_keys = {"maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens", "hydrateReserveTokens", "demoLimits", "maxActionRevisions", "maxExecutionAttempts", "maxDeterministicAttempts"}
+    old_limits = [previous[key] for key in ("maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens", "hydrateReserveTokens")]
+    new_limits = [policy[key] for key in ("maxPlannedTokens", "maxActiveSeconds", "modelContextLimitTokens", "hydrateReserveTokens")]
+    for key in ("maxActionRevisions", "maxExecutionAttempts", "maxDeterministicAttempts"):
+        old_limits.append(previous.get(key, 2))
+        new_limits.append(policy.get(key, 2))
     for key in ("maxDiscoveryRounds", "maxScenarioSteps", "maxScreenshots"):
         old_limits.append(previous["demoLimits"][key])
         new_limits.append(policy["demoLimits"][key])
@@ -1999,7 +2240,7 @@ def _validate_budget_replacement(previous: Mapping[str, object], policy: Mapping
     ):
         raise ProjectIOError(
             "RUN_BUDGET_REPLACEMENT_INVALID", "",
-            "同 run 必须严格增加至少一项 token、active time、未来请求的上下文容量或 Demo 限额；已发放 Envelope 和冻结计划保持原绑定。正文相同、降低限额或改变其它配置均拒绝，需要新 run。",
+            "同 run 必须严格增加至少一项 token、active time、未来请求的上下文容量、hydrate reserve 或 Demo 限额；已发放 Envelope 和冻结计划保持原绑定。正文相同、降低限额或改变其它配置均拒绝，需要新 run。",
         )
 
 
@@ -2833,12 +3074,15 @@ def _resume_fitting_unissued_retry(files,state):
     for digest,record in ledger.attempt_records.items():
         original=ledger.envelopes_by_sha256[record.envelope_sha256].value
         if (record.outcome!='FAILED' or record.failure_kind not in {'INVALID_JSON','INVALID_IR'}
-                or record.revision!=1 or original['actionId'] not in earlier): continue
+                or original['actionId'] not in earlier): continue
         later=[env for env in ledger.envelopes_by_sha256.values() if env.value['logicalWorkId']==record.logical_work_id
             and (env.value['revision'],env.value['attempt'])>(record.revision,record.attempt)]
         if any(env.value['actionId'] in earlier or any(item.envelope_sha256==env.sha256
                 for item in ledger.attempt_records.values()) for env in later): continue
-        retry=_materialize_action_retry(files,original['actionId'],original,attempt_record_value(record))
+        try:
+            retry=_materialize_action_retry(files,original['actionId'],original,attempt_record_value(record))
+        except AttemptLimitReached:
+            return
         _append_run_event(files,state['runId'],'WAITING_INPUT_EXITED',{
             'waitId':waiting.payload['waitId'],'resolutionKind':'FITTING_UNISSUED_RETRY',
             'actionId':retry['actionId'],'envelopeSha256':sha256_bytes(canonical_json_bytes(retry)),
@@ -2875,7 +3119,6 @@ def _resume_fitting_unissued_plan(files, state):
 
 
 def _resume_fitting_owner_repair(files, state):
-    from final_review import control_identity
     if state.get('wait') != 'INPUT' or state.get('result') is not None or state['phase'] not in {'SCOPE','STORY_AC','TASK'}: return
     events = _read_run_events(files,state['runId'])
     closed = {event.payload['waitId'] for event in events if event.type=='WAITING_INPUT_EXITED'}
@@ -2888,21 +3131,17 @@ def _resume_fitting_owner_repair(files, state):
     ledger=_load_action_ledger(files,state['runId'])
     earlier={event.payload['actionId'] for event in events if event.type=='ACTION_ISSUED' and event.sequence<waiting.sequence}
     if any(env.value['actionId'] in earlier and env.value['stageKind']==stage
-           and env.value['actionContractId'].endswith('_REPAIR-v1') for env in ledger.envelopes_by_sha256.values()): return
+           and env.value['actionContractId'] in {'SCOPE_REPAIR-v1','STORY_AC_REPAIR-v1','TASK_REPAIR-v1','TASK_REPAIR-v2'}
+           for env in ledger.envelopes_by_sha256.values()): return
     plan,items,contexts,planning,inputs=_frozen_stage_inputs(files,state,stage)
     packet,decisions=_stage_ir(files,state,stage,plan,items,contexts,planning,inputs)
-    raw=canonical_json_bytes(_owner_repair_packet(stage,packet,decisions,review['result'],inputs))
-    contract_id=stage+'_REPAIR-v1';_,digest=action_contract_binding(SKILL_ROOT,contract_id)
-    logical,group=control_identity(stage,'REPAIR',review['record'].normalized_result_sha256,digest)
-    envelope=_envelope_for_work(files,state,stage,group,logical,contract_id,raw)
-    prepared=ActionEnvelope(envelope,_action_paths(state['runId'],envelope['actionId'])['envelope'],sha256_bytes(canonical_json_bytes(envelope)))
-    _guard_action_budget(ledger,events,_effective_budget_policy(files,state['runId'])[1],[prepared])
-    # Publishing the guarded Action before closing the wait makes interrupted
-    # recovery use the exact existing Envelope, with no new budget or retry.
-    _persist_issued_action(files,envelope,raw)
+    review_packet=_review_packet_for_candidate(files,state,stage,state['currentCandidateSha256'])
+    response=_issue_semantic_candidate_repair(
+        files,state,stage,plan,packet,decisions,review_packet,review,None)
+    envelope=response['nextAction'];envelope_sha=sha256_bytes(canonical_json_bytes(envelope))
     _append_run_event(files,state['runId'],'WAITING_INPUT_EXITED',{
-        'waitId':waiting.payload['waitId'],'resolutionKind':'FITTING_UNISSUED_REPAIR',
-        'actionId':envelope['actionId'],'envelopeSha256':prepared.sha256})
+        'waitId':waiting.payload['waitId'],'resolutionKind':'FITTING_UNISSUED_CANDIDATE_REPAIR',
+        'actionId':envelope['actionId'],'envelopeSha256':envelope_sha})
 
 
 def _exit_budget_wait(files: ProjectFiles, policy_sha256: str) -> None:
@@ -2932,14 +3171,14 @@ def _reconcile_budget_wait(
         _append_run_event(files, run_id, "WAITING_INPUT_EXITED", {
             "waitId": entered.payload["waitId"], "resolutionKind": "BUDGET_POLICY", "budgetPolicySha256": replacement.payload["budgetPolicySha256"],
         })
-    elif exited.payload["resolutionKind"] == "FITTING_UNISSUED_REPAIR":
+    elif exited.payload["resolutionKind"] in {"FITTING_UNISSUED_REPAIR","FITTING_UNISSUED_CANDIDATE_REPAIR"}:
         issuance = next((event for event in events if event.type=='ACTION_ISSUED'
             and event.payload['actionId']==exited.payload['actionId']
             and event.payload['envelopeSha256']==exited.payload['envelopeSha256']
             and entered.sequence < event.sequence < exited.sequence),None)
         if issuance is None: raise ValueError('容量恢复缺少等待期间实际发行的 Repair 证明。')
         action=_mapping(files,_action_paths(run_id,exited.payload['actionId'])['envelope'])
-        if not action['actionContractId'].endswith('_REPAIR-v1'):
+        if action['actionContractId'] != _control_contract_id(files,state,action['stageKind'],'REPAIR'):
             raise ValueError('容量恢复只能复用尚未发行的 Owner Repair。')
     elif exited.payload["resolutionKind"] == "FITTING_UNISSUED_RETRY":
         ledger=_load_action_ledger(files,run_id)
@@ -2960,6 +3199,7 @@ def _reconcile_budget_wait(
         prior=_mapping(files,original['packetPath'])
         ref=build_attempt_repair_context(record.logical_work_id,exited.payload['failedAttemptRecordSha256'],
             ledger.attempt_records,ledger.raw_outputs,envelopes_by_sha256=ledger.envelopes_by_sha256)
+        prior['contextRefs']=[item for item in prior['contextRefs'] if not str(item.get('refId','')).startswith('repair-from-attempt-')]
         prior['contextRefs'].append({'refId':ref.ref_id,'canonicalContent':json.loads(ref.canonical_content),'contentSha256':sha256_bytes(ref.canonical_content)})
         if packet!=prior: raise ValueError('IR 修复容量恢复不得改变原 packet 或丢失失败输出。')
     elif exited.payload["resolutionKind"] == "FITTING_UNISSUED_PLAN":
@@ -3111,6 +3351,31 @@ def _load_action_ledger(files: ProjectFiles, run_id: str) -> ActionLedger:
         _validate_attempt_repair_packet(
             envelope.value, json.loads(packet_payload), ledger
         )
+    if any(e.value['actionContractId']=='CANDIDATE_PATCH-v1' for e in envelopes.values()):
+        from candidate_repair import replay_candidate_ledger, patch_context
+        from final_review import candidate_owner_callbacks
+        packets={e.value['packetSha256']:files.read_bytes(e.value['packetPath']) for e in envelopes.values()}
+        plans={}
+        for e in envelopes.values():
+            if e.value['actionContractId']=='CANDIDATE_PATCH-v1':
+                digest=patch_context(json.loads(packets[e.value['packetSha256']]))['repairPlanSha256']
+                plans[digest]=files.read_bytes(f'{RUNS_ROOT}/{run_id}/candidate-repairs/plans/{digest}.json')
+        marker=_read_active_marker(files)
+        revision=files.read_bytes(marker['inputRevisionPath']) if marker else None
+        inventories=_prior_inventories(files, {'runId':run_id}) if marker and any(
+            json.loads(raw)['origin']['sourceActionContractId'].startswith('PRIOR_') for raw in plans.values()) else ()
+        bases={};semantic_sources={}
+        for raw in plans.values():
+            value=json.loads(raw);origin=value['origin']
+            if origin['sourceKind']=='SEMANTIC_REVIEW':
+                bases[value['baseCandidateSha256']]=files.read_bytes(
+                    f"{RUNS_ROOT}/{run_id}/candidate-repairs/bases/{value['baseCandidateSha256']}.json")
+                semantic_sources[origin['semanticSourceSha256']]=files.read_bytes(
+                    f"{RUNS_ROOT}/{run_id}/candidate-repairs/semantic-sources/{origin['semanticSourceSha256']}.json")
+        ledger=replay_candidate_ledger(ledger,packets,plans,
+            owner_callbacks=lambda e,p,semantic_source=None:candidate_owner_callbacks(
+                e,p,inventories=inventories,revision_bytes=revision,semantic_source=semantic_source),
+            events=_read_run_events(files,run_id),bases=bases,semantic_sources=semantic_sources)
     return ledger
 
 
@@ -3122,7 +3387,7 @@ def _validate_attempt_repair_packet(
         for item in packet["contextRefs"]
         if str(item.get("refId", "")).startswith("repair-from-attempt-")
     ]
-    if envelope["revision"] == 2:
+    if envelope["revision"] > 1:
         contract, contract_hash = action_contract_binding(
             SKILL_ROOT, envelope["actionContractId"]
         )
@@ -3134,6 +3399,9 @@ def _validate_attempt_repair_packet(
         if len(repair_refs) != 1:
             raise ValueError("revision 2 必须绑定唯一 attempt repair context。")
         ref = repair_refs[0]
+        failed = ledger.attempt_records.get(ref.get('canonicalContent', {}).get('attemptRecordSha256'))
+        if failed is None or failed.revision != envelope['revision'] - 1:
+            raise ValueError('repair 必须绑定紧邻前一候选的失败，不能重置累计次数。')
         content = canonical_json_bytes(ref.get("canonicalContent"))
         if (
             set(ref) != {"refId", "canonicalContent", "contentSha256"}
@@ -3201,14 +3469,16 @@ def _guard_action_budget(
             continue
         contract, _ = action_contract_binding(SKILL_ROOT, str(envelope.value["actionContractId"]))
         if contract["executionKind"] == "MODEL_PROVIDER":
-            if envelope.value["executionLimits"]["estimatedInputTokens"] > usable_action_input_tokens(policy):
+            hydrate = envelope.value["executionLimits"]["maxHydrateTokens"]
+            usable = usable_action_input_tokens(policy, max_hydrate_tokens=hydrate)
+            if envelope.value["executionLimits"]["estimatedInputTokens"] > usable:
                 raise StagePlanningBlocked("BUDGET_EXHAUSTED", {
                     "reason":"ACTION_CONTEXT_CAPACITY", "actionContractId":envelope.value["actionContractId"],
                     "estimatedInputTokens":envelope.value["executionLimits"]["estimatedInputTokens"],
-                    "usableInputTokens":usable_action_input_tokens(policy),
+                    "usableInputTokens":usable,
                     "modelContextLimitTokens":policy["modelContextLimitTokens"],
                     "outputReserveTokens":policy["outputReserveTokens"],
-                    "hydrateReserveTokens":policy["hydrateReserveTokens"],
+                    "hydrateReserveTokens":min(hydrate, policy["hydrateReserveTokens"]),
                     "safetyMarginTokens":policy["safetyMarginTokens"]})
             new_model_actions.append(envelope)
     if not new_model_actions:
@@ -3245,7 +3515,8 @@ def _persist_issued_action(
             _guard_action_budget(ledger, _read_run_events(files, run_id), policy, [prepared])
         raise ValueError("Action Envelope 合同或 packet 绑定无效。")
     _validate_attempt_repair_packet(envelope, json.loads(packet_payload), ledger)
-    issue_attempt(ledger, prepared)
+    issue_attempt(ledger, prepared, max_revisions=policy.get("maxActionRevisions", 2),
+                  max_attempts=policy.get("maxExecutionAttempts", 2))
     _guard_action_budget(ledger, _read_run_events(files, run_id), policy, [prepared])
     files.publish_new(paths["packet"], packet_payload)
     files.publish_new(paths["envelope"], payload)
@@ -3364,13 +3635,20 @@ def _hydrate_evidence(files, state, packet, requested):
                 references[value['blockId']] = {key: value[key] for key in ('sourceId', 'blockId', 'sha256', 'locator')}
             for row in value.values(): visit(row)
     visit(packet)
+    prior = {}
+    if any(source['role'] == 'PRIOR_SOW' for source in sources.values()):
+        from prior_state import hydrate_prior_evidence
+        prior = hydrate_prior_evidence(packet, requested, inventories=_prior_inventories(files, state),
+                                       input_revision_bytes=files.read_bytes(revision_path))
     for key in declared.intersection(blocks):
         block = blocks[key]
         references.setdefault(key, {'sourceId': block['sourceId'], 'blockId': key,
             'sha256': block['contentSha256'], 'locator': block['locator']})
     result = {}
     for key in requested:
-        if key.startswith('task-rule:') and catalog is not None:
+        if key in prior:
+            content = prior[key]
+        elif key.startswith('task-rule:') and catalog is not None:
             selected = key.removeprefix('task-rule:')
             rows = {row['workTypeId']: row for row in catalog['rows']}
             if selected not in rows: continue
@@ -3510,6 +3788,14 @@ def hydrate(
 def _is_non_negative_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
+class CandidateRepairRoute(ValueError):
+    def __init__(self, failure_kind, reason_code):
+        self.failure_kind=failure_kind
+        self.reason_code=reason_code
+        super().__init__(reason_code)
+
+
+
 
 def _materialize_action_retry(
     files: ProjectFiles,
@@ -3519,9 +3805,22 @@ def _materialize_action_retry(
 ) -> Mapping[str, object]:
     run_id = str(envelope["runId"])
     ledger = _load_action_ledger(files, run_id)
+    if failed_record['failureKind'] in {'INVALID_JSON','INVALID_IR'}:
+        try:
+            patch = _issue_candidate_patch(files, envelope, failed_record, ledger)
+        except CandidateRepairRoute as routed:
+            if routed.failure_kind!='EXECUTION':
+                raise
+            failed_record={**failed_record,'failureKind':'EXECUTION'}
+        else:
+            if patch is not None:return patch
     paths = _action_paths(run_id, action_id)
     revision, attempt = int(envelope["revision"]), int(envelope["attempt"])
     packet = json.loads(files.read_bytes(paths["packet"]))
+    policy = _effective_budget_policy(files, run_id)[1]
+    if ((failed_record['failureKind'] in {'INVALID_JSON', 'INVALID_IR'} and revision >= policy.get('maxActionRevisions', 2))
+            or (failed_record['failureKind'] == 'EXECUTION' and attempt >= policy.get('maxExecutionAttempts', 2))):
+        raise AttemptLimitReached('当前候选/执行次数已用尽；显式增加对应有限预算后接续。')
     if failed_record["failureKind"] in {"INVALID_JSON", "INVALID_IR"}:
         revision, attempt = revision + 1, 1
         digest = sha256_bytes(canonical_json_bytes(failed_record))
@@ -3533,7 +3832,7 @@ def _materialize_action_retry(
             envelopes_by_sha256=ledger.envelopes_by_sha256,
         )
         packet["contextRefs"] = [
-            *packet["contextRefs"],
+            *(item for item in packet["contextRefs"] if not str(item.get('refId', '')).startswith('repair-from-attempt-')),
             {
                 "refId": ref.ref_id,
                 "canonicalContent": json.loads(ref.canonical_content),
@@ -3588,6 +3887,7 @@ def submit(
         digest = sha256_bytes(files.read_bytes(paths["envelope"]))
         envelope = ledger.envelopes_by_sha256[digest]
         validator = None
+        normalizer = None
         if value["actionContractId"] in {"PROTOTYPE_SCENARIO-v1", "PROTOTYPE_BROWSER-v1", "PROTOTYPE_ANALYZE-v1"}:
             from prototype_analysis import validate_bound_prototype_context, validate_bound_prototype_result
 
@@ -3595,14 +3895,16 @@ def submit(
             validate_bound_prototype_context(payload["identity"]["actionKind"], payload)
 
             def validator(normalized_result: bytes) -> None:
-                validate_bound_prototype_result(payload["identity"]["actionKind"], payload, normalized_result)
+                validate_bound_prototype_result(payload["identity"]["actionKind"], payload, normalized_result, packet=packet)
 
+        elif value['actionContractId']=='CANDIDATE_PATCH-v1':
+            normalizer=lambda raw:_normalize_candidate_patch(files,state,value,packet,raw,ledger)
         elif value['actionContractId'] in {'SOURCE_SCAN-v1','SOURCE_AUDIT-v1','SCOPE_SYNTHESIS-v1','SCOPE_PROPOSAL-v1','SCOPE_JOIN-v1'}:
             from scope_compiler import validate_bound_scope_context, validate_bound_scope_result
             kind = value['actionContractId'][:-3]
             validate_bound_scope_context(kind, packet)
             validator = lambda normalized: validate_bound_scope_result(kind, packet, normalized)
-        elif value['actionContractId'] in {'PRIOR_ANALYZE-v1','PRIOR_CONSOLIDATE-v1'}:
+        elif value['actionContractId'] in {'PRIOR_ANALYZE-v1','PRIOR_CONSOLIDATE-v1','PRIOR_ANALYZE-v2','PRIOR_ANALYZE-v3','PRIOR_CONSOLIDATE-v2'}:
             from prior_state import validate_bound_prior_context, validate_bound_prior_result
             kind = value['actionContractId'][:-3]
             inventories = _prior_inventories(files, state)
@@ -3613,7 +3915,7 @@ def submit(
             from delivery_compiler import validate_bound_story_context, validate_bound_story_result
             validate_bound_story_context(packet)
             validator = lambda normalized: validate_bound_story_result(packet, normalized)
-        elif value['actionContractId'] == 'TASK-v1':
+        elif value['actionContractId'] in {'TASK-v1','TASK-v2'}:
             from task_compiler import validate_bound_task_context, validate_bound_task_result
             validate_bound_task_context(packet)
             validator = lambda normalized: validate_bound_task_result(packet, normalized)
@@ -3627,7 +3929,7 @@ def submit(
         elif value['actionContractId'] in {'SOURCE_SCOPE-v1','STORY_DESIGN-v1','TASK_ESTIMATION-v1'}:
             from final_review import validate_bound_review_result
             validator=lambda normalized:validate_bound_review_result(packet,normalized)
-        elif value['actionContractId'] in {'SCOPE_REPAIR-v1','STORY_AC_REPAIR-v1','TASK_REPAIR-v1'}:
+        elif value['actionContractId'] in {'SCOPE_REPAIR-v1','STORY_AC_REPAIR-v1','TASK_REPAIR-v1','TASK_REPAIR-v2'}:
             from final_review import replace_owner_decisions, owner_resolution
             from contracts import InvalidActionResult
             body=packet['workItems'][0]['payload'];stage=body['stageKind'];owner_packet=body['ownerPacket']
@@ -3651,7 +3953,8 @@ def submit(
                     merged=replace_owner_decisions(stage,body['ownerIR'],body['reviewDecision'],replacement,owner_resolution(body))
                 except ValueError as error: raise InvalidActionResult(str(error)) from error
                 bound(canonical_json_bytes(merged))
-        ledger, record = finish_attempt(ledger, envelope, completion, bound_result_validator=validator)
+        ledger, record = finish_attempt(ledger, envelope, completion, bound_result_validator=validator,
+                                        packet_payload=canonical_json_bytes(packet), bound_result_normalizer=normalizer)
         record_value = attempt_record_value(record)
         if record.raw_sha256 is not None:
             files.publish_new(paths["raw"], ledger.raw_outputs[record.raw_sha256])
@@ -3827,7 +4130,7 @@ def run_mode(
                     diagnostic is not None
                     and (
                         not isinstance(diagnostic, Mapping)
-                        or set(diagnostic) != {"code", "path", "subjectIds"}
+                        or set(diagnostic) not in ({"code", "path", "subjectIds"}, {"code", "path", "subjectIds", "findings"})
                     )
                 )
             ):
@@ -3857,11 +4160,7 @@ def run_mode(
                 (
                     None
                     if diagnostic is None
-                    else AttemptDiagnostic(
-                        diagnostic["code"],
-                        diagnostic["path"],
-                        tuple(diagnostic["subjectIds"]),
-                    )
+                    else diagnostic_from_value(diagnostic)
                 ),
                 Usage(
                     usage["provenance"],
@@ -3904,6 +4203,15 @@ def run_mode(
                 return _blocked("CLI_ARGUMENTS_INVALID", "status 不接受工件参数。")
             return status(project_root)
         return _blocked("CLI_MODE_INVALID", "不支持的运行模式。")
+    except DeterministicStepFailure as error:
+        files = ProjectFiles.open(project_root)
+        if error.attempt >= error.limit:
+            return _wait_for_budget(files)
+        return {**_blocked('DETERMINISTIC_STEP_FAILED', '步骤失败已保存；按定位修复后 resume，仅接续未完成步骤。',
+            error.diagnostic.path), 'nextStep': {'mode':'resume', 'stageKind':error.stage,
+                'semanticRevision':error.revision, 'stepKind':error.kind,
+                'attempt':error.attempt, 'remainingAttempts':error.limit-error.attempt,
+                'diagnostic':diagnostic_value(error.diagnostic)}}
     except StagePlanningBlocked as error:
         response = _wait_for_budget(ProjectFiles.open(project_root))
         if error.details:
@@ -3977,6 +4285,196 @@ def main(argv: Sequence[str] | None = None) -> int:
         exit_code = 0 if result["outcome"] != "BLOCKED" else 2
     sys.stdout.buffer.write(canonical_json_bytes(result))
     return exit_code
+
+
+
+
+def _candidate_callbacks(files, envelope, packet, semantic_source=None):
+    from final_review import candidate_owner_callbacks
+    inventories=();revision=None
+    if envelope['actionContractId'].startswith('PRIOR_'):
+        inventories=_prior_inventories(files,{'runId':envelope['runId']})
+        revision=files.read_bytes(_read_active_marker(files)['inputRevisionPath'])
+    return candidate_owner_callbacks(envelope,packet,inventories=inventories,
+        revision_bytes=revision,semantic_source=semantic_source)
+
+
+def _candidate_source(files, envelope, ledger):
+    from candidate_repair import patch_context
+    if envelope['actionContractId']=='CANDIDATE_PATCH-v1':
+        view=patch_context(json.loads(files.read_bytes(envelope['packetPath'])))
+        plan=json.loads(files.read_bytes(f"{RUNS_ROOT}/{envelope['runId']}/candidate-repairs/plans/{view['repairPlanSha256']}.json"))
+        digest=plan['origin']['sourceAttemptRecordSha256']
+    else:
+        matches=[(d,r) for d,r in ledger.attempt_records.items() if r.envelope_sha256==sha256_bytes(canonical_json_bytes(envelope))]
+        if len(matches)!=1:return None
+        digest=matches[0][0]
+    record=ledger.attempt_records[digest];source=ledger.envelopes_by_sha256[record.envelope_sha256].value
+    return digest,record,source,json.loads(files.read_bytes(source['packetPath']))
+
+
+def _patch_request_packet(plan_raw, group_id, source_packet, *, evidence_values):
+    from candidate_repair import _at
+    plan=json.loads(plan_raw);group=next(g for g in plan['groups'] if g['groupId']==group_id)
+    issues=[i for i in plan['diagnostic']['issues'] if i['issueId'] in group['issueIds']]
+    view={'contract':'ai-sow-candidate-patch-context-v1','repairPlanSha256':sha256_bytes(plan_raw),
+          'baseCandidateSha256':plan['baseCandidateSha256'],'origin':plan['origin'],
+          'role':'REVIEWER' if plan['diagnostic']['owner']=='REVIEWER' else 'AUTHOR',
+          'group':group,'issues':issues,'evidence':evidence_values}
+    # Caller fills only Owner-selected field slices; full bases never enter packet.
+    return {'workItems':[{'workItemId':group_id,'payload':{'groupId':group_id}}],
+            'contextRefs':[{'refId':'candidate-repair-plan-v1','canonicalContent':view,
+                            'contentSha256':sha256_bytes(canonical_json_bytes(view))}]}
+
+
+def _issue_candidate_patch(files, envelope, failed_record, ledger):
+    from candidate_repair import _read_candidate, _at, patch_context, repair_progress_sha256
+    from contracts import InvalidActionResult
+    supported={'SOURCE_SCAN','SOURCE_AUDIT','SCOPE_SYNTHESIS','SCOPE_PROPOSAL','SCOPE_JOIN','PRIOR_ANALYZE','PRIOR_CONSOLIDATE',
+               'STORY_AC','TASK','PROTOTYPE_SCENARIO','PROTOTYPE_ANALYZE','SOURCE_SCOPE','STORY_DESIGN','TASK_ESTIMATION','CANDIDATE_PATCH'}
+    if envelope['actionContractId'].rpartition('-v')[0] not in supported:return None
+    source_info=_candidate_source(files,envelope,ledger)
+    if source_info is None:return None
+    source_digest,source_record,source,packet=source_info
+    last_plan=None
+    if envelope['actionContractId']=='CANDIDATE_PATCH-v1':
+        last_view=patch_context(json.loads(files.read_bytes(envelope['packetPath'])))
+        last_plan=json.loads(files.read_bytes(
+            f"{RUNS_ROOT}/{source['runId']}/candidate-repairs/plans/{last_view['repairPlanSha256']}.json"))
+    source_kind=last_plan['origin']['sourceKind'] if last_plan is not None else 'AUTHOR_FAILURE'
+    lineage=last_plan['origin']['originLogicalWorkId'] if last_plan is not None else source['logicalWorkId']
+    semantic_source=None
+    if source_kind=='SEMANTIC_REVIEW':
+        semantic_sha=last_plan['origin']['semanticSourceSha256']
+        semantic_path=f"{RUNS_ROOT}/{source['runId']}/candidate-repairs/semantic-sources/{semantic_sha}.json"
+        semantic_source=files.read_json(semantic_path)
+        if sha256_bytes(canonical_json_bytes(semantic_source))!=semantic_sha:
+            raise ValueError('语义来源描述符 hash 漂移。')
+        initial=files.read_bytes(
+            f"{RUNS_ROOT}/{source['runId']}/candidate-repairs/bases/{last_plan['baseCandidateSha256']}.json")
+    else:
+        if source_record.raw_sha256 is None:return None
+        initial=ledger.raw_outputs[source_record.raw_sha256]
+    base,chain,old_index=ledger.repair_heads.get(lineage,(initial,[],None))
+    try:_read_candidate(base)
+    except InvalidActionResult:return None  # Existing bounded format recovery only.
+    policy_hash,policy=_effective_budget_policy(files,source['runId'])
+    rounds=[json.loads(item['plan'])['origin']['repairRound'] for item in chain]
+    round_number=max([source['revision']+1,*rounds])
+    if last_plan is not None:
+        round_number=max(round_number,last_plan['origin']['repairRound']+1)
+    if round_number>policy.get('maxActionRevisions',2):
+        raise AttemptLimitReached('当前逻辑工作的累计内容轮数已达上限。')
+    origin={'runId':source['runId'],'inputRevisionSha256':source['inputRevisionSha256'],
+            'originLogicalWorkId':lineage,'sourceKind':source_kind,
+            'sourceActionContractId':source['actionContractId'],'sourceAttemptRecordSha256':source_digest,
+            'stageKind':source['stageKind'],'repairRound':round_number,'budgetPolicySha256':policy_hash}
+    if source_kind=='SEMANTIC_REVIEW':
+        for key in ('reviewDecisionSha256','reviewCandidateSha256','semanticSourceSha256'):
+            origin[key]=last_plan['origin'][key]
+    if chain:
+        origin['previousReceiptSha256']=sha256_bytes(chain[-1]['receipt'])
+    diagnose,make_plan,_=_candidate_callbacks(files,source,packet,semantic_source)
+    report=diagnose(base,origin)
+    if old_index is not None:report['objectIndex']=old_index
+    if not report['issues']:return None
+    classes={issue['repairClass'] for issue in report['issues']}
+    for repair_class,failure_kind in (('OWNER_BUG','OWNER_BUG'),('CONTRACT_GAP','CONTRACT_GAP'),('INPUT_REQUIRED','INPUT_REQUIRED')):
+        if repair_class in classes:
+            issue=next(item for item in report['issues'] if item['repairClass']==repair_class)
+            raise CandidateRepairRoute(failure_kind,issue['code'])
+    if classes=={'EXECUTION'}:
+        raise CandidateRepairRoute('EXECUTION',report['issues'][0]['code'])
+    if not classes<={'DATA','FORMAT','EVIDENCE'}:
+        raise CandidateRepairRoute('CONTRACT_GAP','CANDIDATE_REPAIR_CLASS_UNSUPPORTED')
+    try:plan_raw=make_plan(base,report,origin)
+    except InvalidActionResult as error:
+        raise CandidateRepairRoute('CONTRACT_GAP','CANDIDATE_REPAIR_GRANT_UNAVAILABLE') from error
+    plan=json.loads(plan_raw);group=plan['groups'][0]
+    values=[];index={row['objectId']:row for row in plan['objectIndex']};candidate=json.loads(base)
+    for read in group['readSet']:
+        row=_at(candidate,index[read['objectId']]['path'])
+        values.append({'objectId':read['objectId'],'fields':row if not read['fields'] else {f:row[f] for f in read['fields'] if f in row}})
+    if semantic_source is not None:
+        values.append({'kind':'SEMANTIC_REVIEW_FINDINGS','value':semantic_source['reviewDecision']['findings']})
+    elif source['actionContractId'].startswith('PRIOR_'):
+        from prior_state import _inventory_evidence,_verified_revision
+        revision=files.read_bytes(_read_active_marker(files)['inputRevisionPath'])
+        evidence=_inventory_evidence(_prior_inventories(files,{'runId':source['runId']}),_verified_revision(revision))
+        needed={(s['sourceId'],s['evidenceId']) for i in report['issues'] if i['issueId'] in group['issueIds'] for s in i['subjects'] if 'sourceId' in s and 'evidenceId' in s}
+        values.extend({'kind':'PRIOR_EVIDENCE','value':evidence[key]} for key in sorted(needed) if key in evidence)
+    else:
+        import scope_compiler,delivery_compiler,task_compiler,prototype_analysis
+        kind=source['actionContractId'].rpartition('-v')[0]
+        owner=(task_compiler if kind=='TASK' else delivery_compiler if kind=='STORY_AC'
+            else prototype_analysis if kind.startswith('PROTOTYPE_') else scope_compiler)
+        if report['owner']=='REVIEWER':
+            values.extend({'kind':'REVIEW_OBLIGATIONS','value':item} for item in packet['workItems'])
+        else:values.extend(owner.candidate_repair_context(kind,packet,base,plan,group))
+    proposal=ledger.raw_outputs.get(failed_record.get('rawSha256')) if envelope['actionContractId']=='CANDIDATE_PATCH-v1' else None
+    if proposal is not None:
+        progress=repair_progress_sha256(base,report,group,values,proposal)
+        current_record_sha=sha256_bytes(canonical_json_bytes(failed_record))
+        for record_sha,prior_record in ledger.attempt_records.items():
+            if record_sha==current_record_sha or prior_record.outcome!='FAILED' or prior_record.raw_sha256 is None:
+                continue
+            prior_envelope=ledger.envelopes_by_sha256[prior_record.envelope_sha256].value
+            if prior_envelope['actionContractId']!='CANDIDATE_PATCH-v1':continue
+            prior_packet=json.loads(files.read_bytes(prior_envelope['packetPath']));prior_view=patch_context(prior_packet)
+            prior_plan=json.loads(files.read_bytes(
+                f"{RUNS_ROOT}/{source['runId']}/candidate-repairs/plans/{prior_view['repairPlanSha256']}.json"))
+            if prior_plan['baseCandidateSha256']!=sha256_bytes(base):continue
+            if repair_progress_sha256(base,prior_plan['diagnostic'],prior_view['group'],
+                    prior_view['evidence'],ledger.raw_outputs[prior_record.raw_sha256])==progress:
+                raise CandidateRepairRoute('INPUT_REQUIRED','CANDIDATE_REPAIR_NO_PROGRESS')
+    repair_packet=_patch_request_packet(plan_raw,group['groupId'],packet,evidence_values=values)
+    identity={'originLogicalWorkId':lineage,'round':round_number,'groupId':group['groupId'],'planSha256':sha256_bytes(plan_raw)}
+    logical='candidate-patch-'+sha256_bytes(canonical_json_bytes(identity))
+    state={'runId':source['runId'],'currentInputRevisionSha256':source['inputRevisionSha256'],
+           'currentCandidateSha256':source['baseCandidateSha256'],'checkpointRefs':[{'sha256':h} for h in source['upstreamCheckpointSha256s']]}
+    result=_envelope_for_work(files,state,source['stageKind'],source['groupId'],logical,'CANDIDATE_PATCH-v1',canonical_json_bytes(repair_packet))
+    files.publish_new(f"{RUNS_ROOT}/{source['runId']}/candidate-repairs/plans/{sha256_bytes(plan_raw)}.json",plan_raw)
+    result_envelope=ActionEnvelope(result,_action_paths(source['runId'],result['actionId'])['envelope'],sha256_bytes(canonical_json_bytes(result)))
+    _guard_action_budget(ledger,_read_run_events(files,source['runId']),policy,[result_envelope])
+    selection_round=(json.loads(chain[0]['plan'])['origin']['repairRound'] if chain
+                     else last_plan['origin']['repairRound'] if last_plan is not None else round_number)
+    selection={'originLogicalWorkId':lineage,'sourceAttemptRecordSha256':source_digest,
+        'sourceActionContractId':source['actionContractId'],
+        'selectionKind':'SEMANTIC_REVIEW' if source_kind=='SEMANTIC_REVIEW' else 'AUTHOR_FAILURE',
+        'repairRound':selection_round,'candidatePatchActionContractSha256':result['actionContractSha256'],
+        'candidateRepairSchemaSha256':sha256_bytes((SKILL_ROOT/'contracts/candidate-repair.schema.json').read_bytes())}
+    selections=[event for event in _read_run_events(files,source['runId'])
+                if event.type=='CANDIDATE_REPAIR_PROTOCOL_SELECTED' and event.payload['originLogicalWorkId']==lineage]
+    if not selections:_append_run_event(files,source['runId'],'CANDIDATE_REPAIR_PROTOCOL_SELECTED',selection)
+    elif len(selections)!=1 or dict(selections[0].payload)!=selection:raise ValueError('候选修复协议选择事件冲突。')
+    _persist_issued_action(files,result,canonical_json_bytes(repair_packet))
+    return result
+
+
+def _normalize_candidate_patch(files,state,envelope,packet,raw,ledger):
+    from candidate_repair import patch_context, apply_repair_patch, verify_group_progress
+    view=patch_context(packet)
+    plan_raw=files.read_bytes(f"{RUNS_ROOT}/{envelope['runId']}/candidate-repairs/plans/{view['repairPlanSha256']}.json")
+    plan=json.loads(plan_raw);_,record,source,source_packet=_candidate_source(files,envelope,ledger)
+    origin=plan['origin'];semantic_source=None
+    if origin['sourceKind']=='SEMANTIC_REVIEW':
+        semantic_source=files.read_json(
+            f"{RUNS_ROOT}/{envelope['runId']}/candidate-repairs/semantic-sources/{origin['semanticSourceSha256']}.json")
+        initial=files.read_bytes(
+            f"{RUNS_ROOT}/{envelope['runId']}/candidate-repairs/bases/{plan['baseCandidateSha256']}.json")
+    else:
+        initial=ledger.raw_outputs[record.raw_sha256]
+    base=ledger.repair_heads.get(origin['originLogicalWorkId'],(initial,))[0]
+    # Duplicate submit must replay against its original base, even after head advanced.
+    for head,chain,index in ledger.repair_heads.values():
+        for item in chain:
+            if sha256_bytes(item['plan'])==sha256_bytes(plan_raw) and item['envelope']==canonical_json_bytes(envelope):
+                if item['patch']!=raw:raise ValueError('同一 Action 不允许不同补丁。')
+                return item['receipt']
+    diagnose,_,_=_candidate_callbacks(files,source,source_packet,semantic_source)
+    _,receipt=apply_repair_patch(base,plan_raw,raw,group_id=view['group']['groupId'],
+        verify_group=lambda result,group:verify_group_progress(plan['diagnostic'],diagnose(result,plan['origin']),group))
+    return receipt
 
 
 if __name__ == "__main__":

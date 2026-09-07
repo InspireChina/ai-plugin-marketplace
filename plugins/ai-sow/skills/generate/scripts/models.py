@@ -10,6 +10,7 @@ from typing import Literal, Mapping
 RunEventType = Literal[
     "RUN_BUDGET_POLICY_PUBLISHED",
     "ACTION_ISSUED",
+    "CANDIDATE_REPAIR_PROTOCOL_SELECTED",
     "INPUT_REVISION_CREATED",
     "WAITING_INPUT_ENTERED",
     "WAITING_INPUT_EXITED",
@@ -71,6 +72,7 @@ class AttemptDiagnostic:
     code: str
     path: str
     subject_ids: tuple[str, ...]
+    findings: tuple[AttemptDiagnostic, ...] = ()
 
 
 @dataclass(frozen=True)

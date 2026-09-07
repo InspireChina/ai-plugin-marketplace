@@ -146,6 +146,12 @@ def action_contract_binding(
     contract = matches[0]
     if set(contract) != _ACTION_CONTRACT_KEYS:
         raise ValueError(f"Action contract 字段不完整或包含额外字段：{action_contract_id}")
+    if action_contract_id in {"TASK-v2", "TASK_REPAIR-v2"}:
+        original, _ = action_contract_binding(skill_root, action_contract_id[:-1] + "1")
+        expected = {**original, "actionContractId": action_contract_id,
+                    "limits": {**original["limits"], "maxHydrateTokens": 65536}}
+        if contract != expected:
+            raise ValueError("Task v2 只增加完整规则读取容量，必须保留 v1 专业合同。")
     if action_contract_id in {"PRIOR_ANALYZE-v1", "PRIOR_CONSOLIDATE-v1"}:
         prompt = "prompts/" + action_contract_id.removesuffix("-v1").lower().replace("_", "-") + ".md"
         if (
@@ -154,6 +160,13 @@ def action_contract_binding(
             or contract["resultSchema"].get("id") != "urn:ai-sow:generate:next:prior-state-decision:1#/$defs/priorStateDecision"
         ):
             raise ValueError("Prior Action 必须绑定自身 prompt 与唯一 PriorStateDecision schema。")
+    if action_contract_id in {"PRIOR_ANALYZE-v2", "PRIOR_ANALYZE-v3", "PRIOR_CONSOLIDATE-v2"}:
+        kind = action_contract_id[:-3]
+        definition = "priorStateDecision" if kind == "PRIOR_ANALYZE" else "priorRelations"
+        if (contract["instruction"].get("path") != "prompts/" + kind.lower().replace("_", "-") + "-v2.md"
+                or contract["resultSchema"].get("path") != "contracts/prior-state-decision-v2.schema.json"
+                or contract["resultSchema"].get("id") != "urn:ai-sow:generate:next:prior-state-decision:2#/$defs/" + definition):
+            raise ValueError("Prior v2 必须绑定自身 prompt 与精确 Analyze/relations schema。")
     if contract.get("executionKind") not in ("MODEL_PROVIDER", "HOST_BROWSER"):
         raise ValueError(f"Action contract executionKind 无效：{action_contract_id}")
     if contract.get("usageCategory") not in ("AUTHOR", "HYDRATE", "REVIEW", "REPAIR"):
@@ -233,12 +246,19 @@ def action_provider_request(
     assert isinstance(instruction, Mapping)
     instruction_path = _registered_skill_file(skill_root, instruction["path"])
     packet=json.loads(packet_payload)
-    prior_retry=(action_contract_id=='PRIOR_ANALYZE-v1'
+    prior_retry=(action_contract_id in {'PRIOR_ANALYZE-v1','PRIOR_ANALYZE-v2'}
         and any(ref['canonicalContent'].get('kind')=='ATTEMPT_REPAIR' for ref in packet.get('contextRefs',[]))
         and any(item['payload'].get('priorInputLayout')=='ai-sow-prior-row-partition-v1' for item in packet.get('workItems',[])))
     instruction_text=instruction_path.read_text(encoding='utf-8')
-    if prior_retry:
+    if prior_retry and action_contract_id == 'PRIOR_ANALYZE-v1':
         instruction_text+='\n行分区只定义本请求分配的输入；同一请求内、同来源和 Sheet 的已授权分区可以共同支撑一个实体，但须保留所属 namespace 中的证据。sheet.usedRange 是全表结构，分区外未分配给本请求的行由其它计划工作处理，不能仅因本请求未包含它们而声明 unsupportedRegions。修复已有结果，保留正确实体；不要把分区边界当作合同缺失。'
+    if action_contract_id == "PRIOR_ANALYZE-v3":
+        responses = tuple(hydration_responses)
+        requests = [canonical_provider_request(
+            str(budget_policy["modelProfileId"]), instruction_text, packet_payload,
+            max_output_tokens, responses, lossless_tables=compact,
+        ) for compact in (False, True)]
+        return min(requests, key=len)
     return canonical_provider_request(
         str(budget_policy["modelProfileId"]),
         instruction_text,
@@ -272,8 +292,13 @@ def estimate_action_input_tokens(
     )
 
 
-def usable_action_input_tokens(policy: Mapping[str, object]) -> int:
-    return int(policy["modelContextLimitTokens"]) - sum(int(policy[name]) for name in ("outputReserveTokens", "hydrateReserveTokens", "safetyMarginTokens"))
+def usable_action_input_tokens(policy: Mapping[str, object], *, max_hydrate_tokens: int | None = None) -> int:
+    # Unbound planning stays conservative; issued Actions cannot hydrate beyond
+    # their own immutable limit, even when a later Owner needs a larger reserve.
+    hydrate = int(policy["hydrateReserveTokens"])
+    if max_hydrate_tokens is not None:
+        hydrate = min(hydrate, max_hydrate_tokens)
+    return int(policy["modelContextLimitTokens"]) - int(policy["outputReserveTokens"]) - hydrate - int(policy["safetyMarginTokens"])
 
 
 def validate_action_envelope(
@@ -308,6 +333,9 @@ def validate_action_envelope(
                 errorType=type(error).__name__,
             ),
         )
+    if (envelope['revision'] > effective_budget_policy.get('maxActionRevisions', 2)
+            or envelope['attempt'] > effective_budget_policy.get('maxExecutionAttempts', 2)):
+        diagnostics.append(_diagnostic('ACTION_RETRY_LIMIT_EXCEEDED', '/revision', 'Action 超出其发行时预算的有限次数。'))
     if envelope.get("actionContractSha256") != contract_sha256:
         diagnostics.append(
             _diagnostic(
@@ -366,7 +394,7 @@ def validate_action_envelope(
                     "Envelope 输入估值与绑定 estimator 对实际 request bytes 的结果不一致。",
                 )
             )
-        if estimated_input_tokens > usable_action_input_tokens(effective_budget_policy):
+        if estimated_input_tokens > usable_action_input_tokens(effective_budget_policy, max_hydrate_tokens=execution_limits["maxHydrateTokens"]):
             diagnostics.append(_diagnostic("ACTION_INPUT_CAPACITY_EXCEEDED", "/executionLimits/estimatedInputTokens", "完整request超过policy声明的usable input容量。"))
     contract_limits = contract["limits"]
     assert isinstance(contract_limits, Mapping)
@@ -437,7 +465,8 @@ def validate_action_result(
     if not diagnostics and envelope.get("actionContractId") == "PROTOTYPE_ANALYZE-v1":
         keys = [item["localKey"] for item in result["observations"]]
         if len(set(keys)) != len(keys):
-            diagnostics.append(_diagnostic("ACTION_RESULT_LOCAL_KEY_DUPLICATE", "/observations", "本轮 observation localKey 必须唯一。"))
+            diagnostics.extend(_diagnostic("ACTION_RESULT_LOCAL_KEY_DUPLICATE", f"/observations/{index}", "本轮 observation localKey 必须唯一。")
+                for index, key in enumerate(keys) if keys.count(key) > 1)
     return _sort_diagnostics(diagnostics)
 
 
@@ -449,11 +478,124 @@ class InvalidActionResult(ValueError):
         self.diagnostic = diagnostic or AttemptDiagnostic("INVALID_IR", "", ())
 
 
+def current_action_contract_id(action_kind: str) -> str:
+    if action_kind == "PRIOR_ANALYZE":
+        return "PRIOR_ANALYZE-v3"
+    return action_kind + ("-v2" if action_kind in {"PRIOR_CONSOLIDATE", "TASK", "TASK_REPAIR"} else "-v1")
+
+
+def prior_dependencies(action_kind, packet):
+    dependencies = []
+    for ref in packet["contextRefs"]:
+        body = ref["canonicalContent"]
+        if body.get("kind") == "DEPENDENCY_RESULT":
+            if set(ref) != {"refId", "canonicalContent"} or set(body) not in ({"kind", "logicalWorkId", "attemptRecordSha256", "normalizedResult"}, {"kind", "logicalWorkId", "candidateResolutionSha256", "sourceAttemptRecordSha256", "normalizedResult"}) or ref["refId"] != "dependency-result-" + body["logicalWorkId"]:
+                raise ValueError("Prior dependency 必须使用唯一 planner wrapper。")
+            dependencies.append(body["normalizedResult"])
+    if (action_kind == "PRIOR_ANALYZE" and dependencies) or (action_kind == "PRIOR_CONSOLIDATE" and len(dependencies) < 2):
+        raise ValueError("Prior Analyze/Consolidate dependency 数量无效。")
+    return dependencies
+
+
+def assemble_prior_result(packet, additions, *, skill_root):
+    """Normalize narrow v2 relations by retaining the frozen successful inputs."""
+    dependencies = prior_dependencies("PRIOR_CONSOLIDATE", packet)
+    registry = load_schema_registry(skill_root)
+    for dependency in dependencies:
+        if validate_contract(dependency, "prior-state-decision-v2.schema.json", registry):
+            raise ValueError("Prior v2 dependency schema 无效；不升级旧结果。")
+    result = {key: [item for dependency in dependencies for item in dependency[key]]
+              for key in ("entities", "unextractedEvidence")}
+    keys = [item["localKey"] for item in result["entities"]]
+    if len(keys) != len(set(keys)):
+        raise InvalidActionResult("Prior dependencies 重复 entity localKey。")
+    for collection in ("sourceRelations", "entitySupersessions", "unsupportedRegions"):
+        retained = {canonical_json_bytes(item): item for dependency in dependencies for item in dependency[collection]}
+        for item in additions.get(collection, []):
+            key = canonical_json_bytes(item)
+            if key in retained:
+                raise InvalidActionResult("Consolidate 只能返回新增关系，不能重报已有关系。")
+            retained[key] = item
+        result[collection] = [retained[key] for key in sorted(retained)]
+    return result
+
+
+def preserve_schema_candidate(packet, action_id, current):
+    """Preserve schema-valid sibling objects using the previous located schema failures.
+
+    This is structural only. The Owner still validates the repaired candidate's
+    meaning and dependencies before it can succeed.
+    """
+    from copy import deepcopy
+    refs = [ref['canonicalContent'] for ref in packet.get('contextRefs', ())
+            if str(ref.get('refId', '')).startswith('repair-from-attempt-')]
+    if not refs: return
+    if len(refs) != 1: raise ValueError('候选修复必须绑定唯一前次失败。')
+    base = refs[0].get('preservationBase', refs[0])
+    diagnostic = base.get('diagnostic', {})
+    if diagnostic.get('code') != 'INVALID_IR': return
+    paths = [item['path'] for item in diagnostic.get('findings', ())
+             if item['code'] in {'ACTION_RESULT_SCHEMA_INVALID', 'ACTION_RESULT_LOCAL_KEY_DUPLICATE'}]
+    if not paths: return
+    try: previous = json.loads(base['rawOutputUtf8'])
+    except (ValueError, KeyError): return
+    if not isinstance(previous, (dict, list)): return
+    def normalized_row(collection, row):
+        wrapper = [deepcopy(row)] if collection is None else {
+            **{key: [] for key, value in previous.items() if isinstance(value, list)},
+            collection: [deepcopy(row)]}
+        try:
+            value = normalize_result_sets(action_id, wrapper)
+            return canonical_json_bytes(value[0] if collection is None else value[collection][0])
+        except (KeyError, TypeError, AttributeError):
+            return canonical_json_bytes(row)
+    def identity(row):
+        if not isinstance(row, dict): return None
+        for key in ('localKey', 'scenarioId', 'coverageRootId'):
+            if isinstance(row.get(key), str):
+                return (key, row[key], row.get('category') if key == 'coverageRootId' else None)
+        return None
+    changed = []
+    collections = [(None, previous)] if isinstance(previous, list) else list(previous.items())
+    for collection, old in collections:
+        prefix = '' if collection is None else '/' + collection
+        new = current if collection is None else current.get(collection)
+        relevant = [path for path in paths if path == prefix or path.startswith(prefix + '/')]
+        if not isinstance(old, list):
+            if not relevant and '' not in paths and new != old: changed.append(prefix)
+            continue
+        if not isinstance(new, list):
+            changed.append(prefix); continue
+        bad_indices = {int(path[len(prefix)+1:].split('/')[0]) for path in relevant
+            if path.startswith(prefix + '/') and path[len(prefix)+1:].split('/')[0].isdigit()}
+        bad_ids = {identity(old[index]) for index in bad_indices if index < len(old)}
+        protected = [normalized_row(collection, row) for index, row in enumerate(old)
+                     if index not in bad_indices]
+        replacements = [normalized_row(collection, row) for row in new]
+        # Collection-level cardinality/uniqueness errors can remove duplicate
+        # copies, but cannot erase the distinct valid objects already present.
+        if prefix in relevant: protected = list(set(protected))
+        remaining = replacements[:]
+        for row in protected:
+            if row not in remaining: changed.append(prefix); break
+            remaining.remove(row)
+        can_add = prefix in relevant or None in bad_ids
+        if not can_add:
+            allowed = [normalized_row(collection, row) for row in new if identity(row) in bad_ids]
+            for row in remaining:
+                if row not in allowed: changed.append(prefix); break
+                allowed.remove(row)
+    if changed:
+        raise InvalidActionResult('修复改变了 Schema 诊断范围之外的有效对象；恢复原值后再提交。',
+            diagnostic=AttemptDiagnostic('REPAIR_SCOPE_VIOLATION', '/', tuple(sorted(set(changed)))))
+
+
 def normalize_action_result(
     envelope: Mapping[str, object],
     raw_output: bytes,
     *,
     skill_root: Path,
+    packet_payload: bytes | None = None,
 ) -> bytes:
     def unique_object(pairs):
         value = {}
@@ -473,9 +615,25 @@ def normalize_action_result(
     )
     diagnostics = validate_action_result(envelope, result, skill_root=skill_root)
     if diagnostics:
-        raise InvalidActionResult("Action result 未通过精确 IR schema。")
+        findings = tuple(AttemptDiagnostic(item.code, item.path, ()) for item in diagnostics)
+        raise InvalidActionResult("Action result 未通过精确 IR schema。",
+            diagnostic=AttemptDiagnostic('INVALID_IR', '', (), findings))
     action_id = envelope.get("actionContractId")
-    action_id = {"SCOPE_REPAIR-v1":"SCOPE_SYNTHESIS-v1", "STORY_AC_REPAIR-v1":"STORY_AC-v1", "TASK_REPAIR-v1":"TASK-v1"}.get(action_id, action_id)
+    if packet_payload is not None:
+        preserve_schema_candidate(json.loads(packet_payload), action_id, result)
+    if action_id == "PRIOR_CONSOLIDATE-v2":
+        if packet_payload is None or sha256_bytes(packet_payload) != envelope.get("packetSha256"):
+            raise ValueError("Prior Consolidate normalization 必须绑定实际冻结 packet。")
+        packet = json.loads(packet_payload)
+        if canonical_json_bytes(packet) != packet_payload:
+            raise ValueError("Prior Consolidate packet 必须是 canonical bytes。")
+        result = assemble_prior_result(packet, result, skill_root=skill_root)
+    return canonical_json_bytes(normalize_result_sets(action_id, result))
+
+
+def normalize_result_sets(action_id, result):
+    """Pure set normalization; callers separately validate schema before success."""
+    action_id = {"SCOPE_REPAIR-v1":"SCOPE_SYNTHESIS-v1", "STORY_AC_REPAIR-v1":"STORY_AC-v1", "TASK_REPAIR-v1":"TASK-v1", "TASK_REPAIR-v2":"TASK-v2"}.get(action_id, action_id)
     if action_id in {"SOURCE_SCOPE-v1", "STORY_DESIGN-v1", "TASK_ESTIMATION-v1"}:
         for finding in result["findings"]:
             finding["subjectIds"].sort()
@@ -507,7 +665,7 @@ def normalize_action_result(
                 relation["evidenceIds"].sort()
             item["relations"].sort(key=canonical_json_bytes)
         result["decisions"].sort(key=lambda item: item["localKey"])
-    if action_id == "TASK-v1":
+    if action_id in {"TASK-v1", "TASK-v2"}:
         for task in result["tasks"]:
             task["acceptanceCriterionKeys"].sort()
             task["evidenceIds"].sort()
@@ -520,24 +678,27 @@ def normalize_action_result(
                 criterion["sourceFactIds"].sort()
             story["acceptanceCriteria"].sort(key=lambda item: item["localKey"])
         result["stories"].sort(key=lambda item: item["localKey"])
-    if envelope.get("actionContractId") == "PROTOTYPE_ANALYZE-v1":
+    if action_id == "PROTOTYPE_ANALYZE-v1":
         result["observations"].sort(key=lambda item: item["localKey"])
         for observation in result["observations"]:
             for key in ("evidenceIds", "interactionIds", "relatedFactIds"):
                 observation[key].sort()
-    if envelope.get("actionContractId") == "PROTOTYPE_BROWSER-v1":
+    if action_id == "PROTOTYPE_BROWSER-v1":
         for discovery in result["unresolvedDiscoveries"]:
             discovery["sourceEvidenceIds"].sort()
-    if envelope.get("actionContractId") in {"PRIOR_ANALYZE-v1", "PRIOR_CONSOLIDATE-v1"}:
-        for collection in ("entities", "sourceRelations", "entitySupersessions"):
-            for item in result[collection]:
+    if action_id in {"PRIOR_ANALYZE-v1", "PRIOR_CONSOLIDATE-v1", "PRIOR_ANALYZE-v2", "PRIOR_ANALYZE-v3", "PRIOR_CONSOLIDATE-v2"}:
+        for collection in ("entities", "sourceRelations", "entitySupersessions", "unextractedEvidence"):
+            for item in result.get(collection, []):
                 for key in ("evidenceIds", "predecessorLocalKeys", "successorLocalKeys"):
                     if key in item:
                         item[key].sort()
+                if "cellAnchors" in item:
+                    item["cellAnchors"].sort(key=canonical_json_bytes)
         result["entities"].sort(key=lambda item: item["localKey"])
-        for collection in ("sourceRelations", "entitySupersessions", "unsupportedRegions"):
-            result[collection].sort(key=canonical_json_bytes)
-    return canonical_json_bytes(result)
+        for collection in ("sourceRelations", "entitySupersessions", "unsupportedRegions", "unextractedEvidence"):
+            if collection in result:
+                result[collection].sort(key=canonical_json_bytes)
+    return result
 
 
 @lru_cache(maxsize=128)
@@ -568,6 +729,8 @@ def load_schema_registry(skill_root: Path) -> Registry:
 
 
 def _schema_ids(schema_name: str) -> tuple[str, ...]:
+    if schema_name == "prior-state-decision-v2.schema.json":
+        return ("urn:ai-sow:generate:next:prior-state-decision:2",)
     suffix = ".schema.json"
     if not schema_name.endswith(suffix):
         raise ValueError(f"Schema 名称必须以 {suffix} 结尾")
@@ -848,3 +1011,27 @@ def classify_diagnostic(
         return _DIAGNOSTIC_CLASSIFICATIONS[code]
     except KeyError as error:
         raise ValueError(f"未知诊断码：{code}") from error
+
+
+def parse_repair_document(payload: bytes, definition: str) -> object:
+    """Strict versioned repair values; callers own execution and business validation."""
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError('修复 JSON 包含重复属性。')
+            value[key] = item
+        return value
+    def reject_constant(value):
+        raise ValueError('修复 JSON 数字必须有限。')
+    try:
+        value = json.loads(payload.decode('utf-8'), object_pairs_hook=unique, parse_constant=reject_constant)
+        root = Path(__file__).resolve().parents[1]
+        validator = Draft202012Validator({'$ref': 'urn:ai-sow:generate:next:candidate-repair:1#/$defs/' + definition},
+                                        registry=load_schema_registry(root))
+        errors = list(validator.iter_errors(value))
+        if errors:
+            raise ValueError('修复记录不符合封闭 Schema：' + ', '.join(_json_pointer(e.absolute_path) for e in errors))
+        return value
+    except (ValueError, UnicodeError) as error:
+        raise InvalidActionResult(str(error)) from error

@@ -574,7 +574,25 @@ def collect_artifact_proof(files, state, revision_path, *, repair_entries=None):
     events = [files.read_json(p.relative_to(files.root).as_posix()) for p in sorted(files.resolve(run_root+'/events',expect='dir').glob('*.json'))]
     cutoff=max(i for i,e in enumerate(events) if e['type']=='ACTION_ISSUED')
     proof={'inputRevision':files.read_json(revision_path),'stages':stages,'actions':actions,'events':events[:cutoff+1]}
-    ledger,packets=_proof_ledger(proof)
+    patch_actions=[a for a in actions if a['envelope']['actionContractId']=='CANDIDATE_PATCH-v1']
+    if patch_actions:
+        from candidate_repair import patch_context
+        hashes={patch_context(a['packet'])['repairPlanSha256'] for a in patch_actions}
+        proof['candidateRepairPlans']={h:files.read_json(run_root+'/candidate-repairs/plans/'+h+'.json') for h in hashes}
+        inventory_root=files.resolve(run_root+'/stages/SCOPE',expect='dir')/'prior-inventories'
+        proof['candidateRepairInventories']=[files.read_json(p.relative_to(files.root).as_posix()) for p in sorted(inventory_root.glob('*.json'))]
+        semantic_plans=[proof['candidateRepairPlans'][digest] for digest in hashes
+                        if proof['candidateRepairPlans'][digest]['origin']['sourceKind']=='SEMANTIC_REVIEW']
+        if semantic_plans:
+            proof['candidateRepairBases']={plan['baseCandidateSha256']:
+                files.read_json(run_root+'/candidate-repairs/bases/'+plan['baseCandidateSha256']+'.json')
+                for plan in semantic_plans}
+            proof['candidateRepairSemanticSources']={plan['origin']['semanticSourceSha256']:
+                files.read_json(run_root+'/candidate-repairs/semantic-sources/'+plan['origin']['semanticSourceSha256']+'.json')
+                for plan in semantic_plans}
+    ledger,packets=_proof_ledger(proof,require_bundled_resolutions=False)
+    if ledger.candidate_resolutions:
+        proof['candidateResolutions']={key:json.loads(raw) for key,raw in ledger.candidate_resolutions.items()}
     # The final checkpoint owns this artifact's candidate, independently of the
     # mutable active state (offline readers only need the immutable run identity).
     candidate_hash=stages['TASK']['checkpoint']['candidateSha256']
@@ -590,15 +608,17 @@ def collect_artifact_proof(files, state, revision_path, *, repair_entries=None):
             repair_entries[digest]={'authorization':answer,'terminalState':files.read_json(
                 run_root+'/states/state-'+answer['terminalStateSha256']+'.json')}
     plan=artifact_repair_plan(repair_entries,proof['events'],ledger,packets,state['runId'],candidate_hash)
-    steps={kind:files.read_json(next(files.resolve(artifact_step_directory(run_root,kind,plan['stepRevisions'][kind]),expect='dir').glob('*.json')).relative_to(files.root).as_posix())
+    steps={kind:files.read_json(artifact_step_directory(run_root,kind,plan['stepRevisions'][kind])+'/'+_artifact_step_digest(proof['events'],kind,plan['stepRevisions'][kind])+'.json')
         for kind in (*ARTIFACT_PREFIX_STEPS,'RENDER')}
     proof['artifactSteps']=steps
+    from orchestrator import _office_tool_fingerprint
+    proof['officeToolFingerprint']=_office_tool_fingerprint()
     if repair_entries:
         proof.update(artifactRepairAuthorizations=repair_entries,artifactRevision=plan['revision'],artifactStepRevisions=plan['stepRevisions'])
     return proof
 
 
-def _proof_ledger(proof):
+def _proof_ledger(proof, *, expected_resolutions=None, require_bundled_resolutions=True):
     from action_ledger import ActionLedger, attempt_record_from_value
     from models import ActionEnvelope, RunEvent
     from contracts import normalize_action_result, validate_action_envelope
@@ -623,10 +643,27 @@ def _proof_ledger(proof):
         if record.raw_sha256: raw[record.raw_sha256] = decode_binary(action['raw'])
         if record.normalized_result_sha256:
             payload = decode_binary(action['normalized']); normalized[record.normalized_result_sha256] = payload
-            if normalize_action_result(envelope,raw[record.raw_sha256],skill_root=SKILL_ROOT) != payload:
+            if envelope['actionContractId']!='CANDIDATE_PATCH-v1' and normalize_action_result(envelope,raw[record.raw_sha256],skill_root=SKILL_ROOT,
+                                       packet_payload=packets[envelope['packetSha256']]) != payload:
                 raise ValueError('artifact normalized result/schema binding invalid')
     if set(issued)!=set(envelopes): raise ValueError('artifact omits issued Attempt proof')
-    return ActionLedger(envelopes,records,raw,normalized), packets
+    ledger=ActionLedger(envelopes,records,raw,normalized)
+    if any(e.value['actionContractId']=='CANDIDATE_PATCH-v1' for e in envelopes.values()):
+        from candidate_repair import replay_candidate_ledger
+        from final_review import candidate_owner_callbacks
+        plans={h:canonical_json_bytes(value) for h,value in proof.get('candidateRepairPlans',{}).items()}
+        ledger=replay_candidate_ledger(ledger,packets,plans,
+            owner_callbacks=lambda e,p,semantic_source=None:candidate_owner_callbacks(
+                e,p,inventories=proof.get('candidateRepairInventories',()),
+                revision_bytes=canonical_json_bytes(proof['inputRevision']),semantic_source=semantic_source),
+            events=events,bases=proof.get('candidateRepairBases',{}),
+            semantic_sources=proof.get('candidateRepairSemanticSources',{}))
+    bundled_resolutions={key:canonical_json_bytes(value) for key,value in proof.get('candidateResolutions',{}).items()}
+    if (require_bundled_resolutions or bundled_resolutions) and bundled_resolutions!=dict(ledger.candidate_resolutions):
+        raise ValueError('portable proof 缺少或篡改 CandidateResolution。')
+    if expected_resolutions is not None and {key:sha256_bytes(raw) for key,raw in ledger.candidate_resolutions.items()}!=expected_resolutions:
+        raise ValueError('离线 Resolution 与调用方冻结的证明根不一致。')
+    return ledger, packets
 
 
 def verify_artifact_proof(proof, model, manifest):
@@ -640,16 +677,31 @@ def verify_artifact_proof(proof, model, manifest):
     if (proof.get('artifactRevision',1)!=repair_plan['revision']
             or proof.get('artifactStepRevisions',repair_plan['stepRevisions'])!=repair_plan['stepRevisions']):
         raise ValueError('工件修复步骤未绑定已验证前缀。')
-    if repair_plan['revision']>1:
-        last=next(event for event in reversed(proof['events']) if event['type']=='ARTIFACT_REPAIR_AUTHORIZED')
-        if proof['artifactRepairAuthorizations'][last['payload']['authorizationSha256']]['authorization']['rendererSha256']!=manifest['rendererSha256']:
-            raise ValueError('最终预览未绑定批准的 renderer 实现。')
-    from package_renderer import decode_binary
+    from orchestrator import _step_fingerprint
+    tool=proof.get('officeToolFingerprint')
+    if not isinstance(tool,dict):
+        raise ValueError('artifact proof 缺少无路径 Office 工具身份。')
+    artifact_inputs={
+        'MATERIALIZE':[model,proof['inputRevision']['templateSha256']],
+        'OFFICE':proof['artifactSteps']['MATERIALIZE'],
+        'OFFICE_REFERENCE':proof['artifactSteps']['MATERIALIZE'],
+        'VALIDATE':[model,proof['inputRevision']['templateSha256'],
+            proof['artifactSteps']['MATERIALIZE'],proof['artifactSteps']['OFFICE'],
+            proof['artifactSteps']['OFFICE_REFERENCE']],
+        'RENDER':proof['artifactSteps']['OFFICE']}
+    implementations={'MATERIALIZE':['package_renderer.py','workbook.py','story_notes.py'],
+        'OFFICE':['office_engine.py'],'OFFICE_REFERENCE':['office_engine.py'],
+        'VALIDATE':['package_renderer.py','workbook.py'],
+        'RENDER':['package_renderer.py','office_engine.py']}
     for kind,value in proof['artifactSteps'].items():
-        hashes={e['payload'].get('outputSha256') for e in proof['events'] if e['type']=='DETERMINISTIC_STEP_FINISHED'
-            and e['payload'].get('stageKind')=='ARTIFACT' and e['payload'].get('semanticRevision')==repair_plan['stepRevisions'][kind]
-            and e['payload']['stepKind']==kind and e['payload']['outcome']=='SUCCEEDED'}
-        if hashes!={sha256_bytes(canonical_json_bytes(value))}: raise ValueError('artifact actual deterministic step proof invalid')
+        revision=repair_plan['stepRevisions'][kind]
+        fingerprint=_step_fingerprint(artifact_inputs[kind],
+            parameters={'stage':'ARTIFACT','revision':revision,'kind':kind},
+            implementations=implementations[kind],
+            tool=tool if kind in {'OFFICE','OFFICE_REFERENCE','RENDER'} else None)
+        expected=_artifact_step_digest(proof['events'],kind,revision,fingerprint=fingerprint)
+        if expected!=sha256_bytes(canonical_json_bytes(value)):
+            raise ValueError('工件步骤未绑定可重算的实际输入指纹与成功输出。')
     if set(proof['artifactSteps'])!={'MATERIALIZE','OFFICE','OFFICE_REFERENCE','VALIDATE','RENDER'}:
         raise ValueError('artifact deterministic step closure incomplete')
     if (sha256_bytes(decode_binary(proof['artifactSteps']['OFFICE']['workbook']))!=manifest['workbook']['sha256']
@@ -681,7 +733,7 @@ def verify_artifact_proof(proof, model, manifest):
             upstream_bytes=checkpoints[-1:],ledger=ledger,candidates=byte_map('candidates'),validators=byte_map('validators'),
             review_inputs=byte_map('reviewInputs'),packets=packets,prior_states=byte_map('priorStates'),
             manual_authorizations=verify_manual_authorization_records(body.get('manualRepairs',{}),proof['events'],
-                stage,manifest['runId'],sha256_bytes(revision),require_repair=True,review_inputs=body['reviewInputs']))
+                stage,manifest['runId'],sha256_bytes(revision),require_repair=True,review_inputs=body['reviewInputs'],stage_plan=body['plan']))
         checkpoints.append(canonical_json_bytes(checkpoint))
     final = proof['stages']['TASK']['checkpoint']
     if (manifest['stageCheckpointSha256s'] != [sha256_bytes(raw) for raw in checkpoints]
@@ -816,3 +868,17 @@ def prepare_artifact_manifest(files, state, *, template_path, proof, calculated,
     # All dependent bytes are immutable before the manifest becomes addressable.
     _validate_artifact_contents(files,root,manifest)
     return canonical_json_bytes({'manifestPath':root+'/artifact-manifest.json','manifestSha256':digest,'manifest':manifest})
+
+
+def _artifact_step_digest(events, kind, revision, *, fingerprint=None):
+    matches=[e['payload'] for e in events if e['type']=='DETERMINISTIC_STEP_FINISHED'
+        and e['payload']['outcome']=='SUCCEEDED' and e['payload'].get('stageKind')=='ARTIFACT'
+        and e['payload'].get('semanticRevision')==revision and e['payload']['stepKind']==kind]
+    if fingerprint is None:
+        if not matches:raise ValueError('工件缺少实际步骤完成事实。')
+        fingerprint=matches[-1].get('stepFingerprint')
+    if fingerprint is None:
+        raise ValueError('旧成功事件缺少完整指纹，不能由新生产路径复用。')
+    hashes={e['outputSha256'] for e in matches if e.get('stepFingerprint')==fingerprint}
+    if len(hashes)!=1:raise ValueError('相同工件输入与工具身份缺失或存在冲突输出。')
+    return next(iter(hashes))

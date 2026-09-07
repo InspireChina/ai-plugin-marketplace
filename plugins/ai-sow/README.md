@@ -24,6 +24,7 @@ AI SOW `0.1.0-beta.2` 通过唯一公开 Skill `ai-sow:generate`，把 PRD、HLD
 
 业务输入变化时先明确 abandon 当前 run，再以完整新 request start，创建新的不可变 revision 并完整编译。
 同一 run 的 resume 只恢复已冻结的计划与执行事实，上一份有效 SOW 不会被覆盖。
+往期工作簿的新分析请求使用无损编码，在相同预算内共同读取更多完整行；原证据和独立语义评审要求保持不变。旧计划保留其冻结版本。
 
 每个模型 action 都强制 `FRESH_NO_HISTORY`，只接收本 action 的 prompt、packet、reference 和按需
 hydrate 的证据。同一 action 的工具往返可复用自身上下文，但主对话、兄弟 action、前序阶段和后续
@@ -87,7 +88,7 @@ Brownfield 由 Scope 一次解释明确提供的往期 SOW，按本期计划生�
 核对形成授权 snapshot。旧 generation 不作为隐藏业务缓存。业务输入变化采用 abandon/start；同一
 run 的 resume 沿用完整冻结 StagePlan、原始 Envelope、Attempt 与 checkpoint，不重复转换已封存 revision。
 `declaredChangeContext` 进入本轮冻结的 Scope 上下文，不从旧 generation 注入。
-预算替换须严格增加至少一项 token、active-time、未来请求的上下文容量或 Demo 限额；正文相同、限额降低或其它配置变化均拒绝。
+预算替换须严格增加至少一项 token、active-time、未来请求的上下文容量、hydrate reserve 或 Demo 限额；正文相同、限额降低或其它配置变化均拒绝。
 合法替换发布不可变 policy 与 RunEvent，不创建业务 revision，也不改写已冻结计划和执行记录。
 
 
@@ -136,7 +137,7 @@ Table、全部输入行、公式缓存、校验结果、参数/目录、汇总�
 
 Epic 和 Feature 使用稳定领域能力的名词或名词短语，并以共同投入理由维持同质边界，不能用“平台”“闭环”“保障”等抽象词把无关主题装入同一层级。Story 使用自然的
 `[模块/接口] 角色或对象＋动作` 标题，只归属一个 Feature、至少包含两条 AC 且最多包含四个 Task。
-每个 Owner 的完整 StagePlan 全部成功后才物化候选，独立完成机械验证和 fresh Review 后封存。模型只返回窄 IR，稳定 ID、SourceRef 和跨节点引用由程序注入。下游只消费 sealed checkpoint；有条件语义 Repair 时保留旧候选，完整验证新 revision 并重新 Review。
+每个 Owner 的 StagePlan 形成有效结果后才物化候选，完整机械验证后发行 fresh Review。机械失败和新发生的语义 finding 使用受限 `CANDIDATE_PATCH-v1`；Owner 发放槽位，程序保留无关数据并重放 CandidateResolution。语义 Patch 绑定真实 Review 和程序侧 Owner IR base，不能写 PASS；修复后必须由 distinct fresh Review 通过。已发行旧 Repair 保留冻结语义。
 来源中的每个原子目标、指标、阈值或控制先逐项进入全部适用具体 Story 的来源可追溯 AC，同一语义义务可
 以不同 AC ID 出现在多个 Story；项目级且没有 Story 特定行为的义务留在 NFR、DoD 或质量门禁。Story 必须
 命名一个可独立移交并关闭的具体结果，并共同具备具体交付物或能力、责任方或消费者、独立验收、独立关闭
@@ -208,10 +209,20 @@ pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后
 只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
 都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
 
-生成后的 Scope、Story/AC 和 Task 优先按 findings 及影响范围局部修复，保留正确结果；普通 Repair 可调整、合并或拆分授权对象；共享测试资产保留独立 Story/AC，只计量一次，工作簿展示覆盖与费用归属。自动停止后，`resume --decision` 可绑定原终态与失败 Review，按明确用户裁定仅修允许字段、追加一个候选并 fresh Review，完整保留累计次数与消耗。具体合同见 [阶段自动封存](skills/generate/references/stage-seal.md)。
+生成后的 Scope、Story/AC 和 Task 按 findings 使用受限 Patch：精确字段直接修改，宽 root 只处理 Owner 授权闭包；无关对象、上游 checkpoint、物理失败记录和累计使用量不变。自动停止后的 `resume --decision` 仍绑定原终态与失败 Review，并与 `allowedFields` 取交集。完整合同见 [阶段自动封存](skills/generate/references/stage-seal.md)。
 
 往期 Excel 大表按完整证据行分组，保留全部单元格、位置、哈希与表头，避免整张 Sheet 超出单次请求容量。阶段尚未发行计划工作便因容量等待时，修复分组后可从原 run 恢复，复用已完成的原型观察和检查点，不提高模型容量或重置消耗。
 
 往期资料的失败重试可通过无损表表示减少请求体，完整资料和原失败结果保持可复原；尚未发行的重试重新满足原容量后继续。网络中断保留原调用证据并按执行重试接续，未知 provider 用量单独披露。放弃决定在中断后可恢复为终态；工件取证从最终检查点恢复，不依赖可变当前候选。完整边界见[阶段自动封存](skills/generate/references/stage-seal.md)。
 
 恢复会保留真实 Office PDF：导出原字节先持久暂存，再记录成功完成事件，避免中断后重复导出的字体差异；已完成结果和 renderer 不变。XLSX 数组公式按原公式文本取证，无原公式文本的数据表公式明确拒绝，读取不执行公式。
+
+往期 XLSX 无需固定格式：同次分析理解表头、横纵布局与附注，区分本项目合同交付和通用目录/示例/重复汇总；未提取行保留理由，合同限定保留原文依据。小文件优先整本分析，必要时按行分组并补读同来源的跨 Sheet 条款；程序无损汇总，现有独立评审核对被排除原文。无法解释或容量不足时明确报告，不承诺任意工作簿自动成功。
+
+Task 按所选模板目录读取完整规则；未来 Task 合同允许最多 65536 的累计规则读取额度，实际仍受本 run 的显式 hydrate reserve 与上下文容量约束。旧冻结 Action、计划、Repair 与证明不升级。
+
+已批准的界面自动化测试可依据具体业务验收条件生成测试资产，无需虚构额外后台设计；系统仍核对每条测试的政策、来源、工作类型与独立交付边界。
+
+机械候选默认最多 2 版、每版执行 2 次；达到次数上限后保留进度，显式增加有限预算可沿原工作继续。Scope、Story、Task、Prior 与原型候选保护无关对象，保留定位及失败原文；工件步骤失败也按有限次数接续并复用成功输出；详见[机械候选接续](skills/generate/references/stage-seal.md#机械候选的有限接续)。
+
+Action 发放与 Envelope 复验按其冻结的 `maxHydrateTokens` 预留读取空间（不超过 run 的 hydrate reserve），避免为其他阶段较大的读取额度重复占用容量；阶段分组仍沿用原保守规划。原请求、预算、次数与完整 hydration 请求容量复核保持有效，尚未发行的修复满足原限额即可从同一 run 接续。

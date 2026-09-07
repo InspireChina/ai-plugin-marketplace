@@ -300,7 +300,7 @@ def test_stable_stage_plan_packet_materializes_verified_dependency_wrapper():
     packet = materialize_packet(plan, logical_id, 1, items, contexts, [ref], ledger)
     value = json.loads(packet)
     assert [context["refId"] for context in value["contextRefs"]] == ["ctx-base", "dependency-result-" + ref.logical_work_id]
-    assert value["contextRefs"][1] == {"refId": "dependency-result-" + ref.logical_work_id, "canonicalContent": {"kind": "DEPENDENCY_RESULT", "logicalWorkId": ref.logical_work_id, "attemptRecordSha256": ref.attempt_record_sha256, "normalizedResult": json.loads(ref.normalized_result)}}
+    assert value["contextRefs"][1] == {"refId": "dependency-result-" + ref.logical_work_id, "canonicalContent": {"kind": "DEPENDENCY_RESULT", "logicalWorkId": ref.logical_work_id, "attemptRecordSha256": ref.result_sha256, "normalizedResult": json.loads(ref.normalized_result)}}
     assert canonical_json_bytes(plan) == frozen
     validate_packet_against_plan(plan, logical_id, 1, items, contexts, [ref], ledger, packet)
 
@@ -309,7 +309,7 @@ def test_stable_stage_plan_packet_materializes_verified_dependency_wrapper():
 def test_stable_stage_plan_packet_dependency_requires_unique_effective_success(mutation):
     plan, logical_id, items, contexts, ledger, ref = dependency_case()
     refs = [ref]
-    record = ledger.attempt_records[ref.attempt_record_sha256]
+    record = ledger.attempt_records[ref.result_sha256]
     if mutation == "missing":
         refs = []
     elif mutation == "extra":
@@ -413,7 +413,7 @@ def test_stable_stage_plan_packet_repair_proof_and_exact_packet_reject_changes(m
         if mutation == "raw_tamper":
             content["rawOutputUtf8"] = "different"
         else:
-            content["attemptRecordSha256"] = "f" * 64 if mutation == "unknown_record" else dependency.attempt_record_sha256
+            content["attemptRecordSha256"] = "f" * 64 if mutation == "unknown_record" else dependency.result_sha256
         repair = ContextRefDescriptor("repair-from-attempt-" + content["attemptRecordSha256"], canonical_json_bytes(content))
     if mutation in {"revision_one", "unknown_record", "cross_logical", "raw_tamper"}:
         with pytest.raises(ValueError):

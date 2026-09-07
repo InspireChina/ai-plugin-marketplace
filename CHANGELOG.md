@@ -4,6 +4,24 @@
 
 ## 0.1.0-beta.2 - 未发布
 
+- 新增 Owner 授权的 `CANDIDATE_PATCH-v1`：机械失败与新发生的 `REPAIRABLE_SEMANTIC` 只修改精确槽位，绑定 RepairReceipt、CandidateResolution、Review/base/semantic source 与协议选择事件；原失败和已发行旧 Repair 保持冻结。补丁组、hydrate、内容/执行次数和用量累计恢复，无进展、输入、合同、Owner、执行与预算分别停止。
+- 派生结果不再冒充 Attempt；dependency、Prototype、checkpoint 与 portable proof 区分物理 record 和 CandidateResolution，并重放 base、对象索引、语义来源、事件和完整 Patch 链。确定性缓存绑定实际输入、参数、相关实现和无绝对路径 Office 身份；旧无指纹成功不在新路径复用。
+
+- 修复 Action 容量门禁按全局 hydrate reserve 过量预留的问题：发放与独立校验使用该 Action 冻结的读取上限；原容量、总预算、输入与失败记录不变，未发行修复可从原等待处接续。
+
+- 机械候选/执行次数耗尽改为保留进度的预算等待；候选、执行及确定性步骤三个可选次数限额默认 2，可显式增加至不超过 10，沿原逻辑工作接续。Scope/Story/Task、Prior、原型保留定位并保护无关对象；首版 Schema 不完整也保留有效对象，工件失败保存下一步并复用成功字节，非法中间输出不能清空保护基线；旧记录和冻结预算不回写。
+
+- 修正 Task 来源权威门禁误拒绝 PRD 支持的 SIT/UAT 界面自动化：仅对无设计引用、逐 Story/AC/政策证据闭合的 `TEST-UI-E2E` 允许表达；保留后台、数据、集成、认证、部署及估算门禁，旧失败记录不追认。
+
+- 新 Task/Repair v2 将完整规则读取上限提高到 65536，允许同 run 显式单调追加 hydrate reserve；旧 Action/retry、冻结计划、Repair 和离线证明保留原版本与额度。Task 身份碰撞在成功封存前返回精确 INVALID_IR，不改变身份算法或计量依据。
+- 新计划以 `PRIOR_ANALYZE-v3` 固定已有无损表传输用于初始与修复请求，复用 v2 专业 prompt/schema/限额；旧 v1/v2 请求原字节保持，现有支持布局的旧计划按冻结合同重放分组、物化与证明，不新增业务 IR 或历史布局迁移。
+
+- Scope 从真实有效 Analyze 结果补齐每个对象选中观察的原型来源，并让候选、稳定身份和独立评审索引使用同一证据集合；保留来源权威、排除门禁及原来完整枚举来源的合法输入兼容性。
+- 保持既有 Scope Review v1 合同可复读；Prior v2 的新增提取核验随本轮评审义务绑定，不使已验证 Greenfield 候选失效。
+- 大型 Prior 的完整位置索引单独计作上下文，行分组保留原目标；完整模型请求仍受原预算守卫，避免索引挤掉正常证据行。
+
+- 修正非固定格式往期 XLSX 解析：Prior Analyze v2 区分项目交付与目录/示例/汇总，补齐按行覆盖说明、同来源跨 Sheet hydrate、全局限定和必要单元格身份；Scope Review 可读取被排除行原文。Consolidate v2 只返回新增关系，程序确定性保留全部成功依赖，并纳入原有 Attempt/raw 回放。v1 IR 保留原合同，旧 run 不自动迁移；未新增布局阶段、稳定分类模型或终态恢复。
+
 - 修复 RENDER 完成事件与输出发布之间中断后的恢复：先持久保存真实 Office PDF，再记录成功事件；恢复复用事件绑定原字节并校验篡改，避免字体替代引起的重复导出漂移。已验证 renderer、工作簿和预览保持不变。
 
 - 修复 XLSX 数组公式被转为含内存地址的 Python 对象字符串而导致证据块 ID 漂移的问题；按原公式文本读取，缺少公式或无原公式文本的数据表公式明确失败，不执行公式。已冻结的 revision 原字节保留，新 Prepare 得到确定性证据。

@@ -90,7 +90,7 @@ def test_calculate_benchmark_result_from_sequential_sealed_raw_records(tmp_path,
                             if step['screenshotSha256']: step['screenshotSha256'] = image_hash
                 elif kind == 'PROTOTYPE_ANALYZE': response = {'observations': []}
                 elif kind == 'PRIOR_ANALYZE':
-                    response = {'entities': [], 'sourceRelations': [], 'entitySupersessions': [], 'unsupportedRegions': []}
+                    response = {'entities': [], 'sourceRelations': [], 'entitySupersessions': [], 'unsupportedRegions': [], 'unextractedEvidence': []}
                     for item in packet['workItems']:
                         selected = [row['priorEvidenceId'] for row in item['payload']['evidence']
                             if any(cell['value'] == 'SourceRef' for cell in row['canonicalCellValues'])]
@@ -98,11 +98,12 @@ def test_calculate_benchmark_result_from_sequential_sealed_raw_records(tmp_path,
                             response['entities'].append({'localKey': item['workItemId'] + ':entity', 'sourceId': item['payload']['sourceId'],
                                 'entityKind': 'CONTRACT_ENTITY', 'semanticSummary': '已交付的订单查询能力',
                                 'deliveryStatus': 'CURRENT_BY_CONTRACT', 'evidenceIds': selected})
+                        unused = sorted(set(item['payload']['evidenceIds']) - set(selected))
+                        if unused:
+                            response['unextractedEvidence'].append({'sourceId': item['payload']['sourceId'], 'evidenceIds': unused,
+                                'reason': '测试夹具的表头、估算和重复展示，不形成独立交付'})
                 elif kind == 'PRIOR_CONSOLIDATE':
-                    dependencies = [ref['canonicalContent']['normalizedResult'] for ref in packet['contextRefs']
-                        if ref['canonicalContent'].get('kind') == 'DEPENDENCY_RESULT']
-                    response = {key: [row for dependency in dependencies for row in dependency[key]]
-                        for key in ('entities', 'sourceRelations', 'entitySupersessions', 'unsupportedRegions')}
+                    response = {'sourceRelations': [], 'entitySupersessions': []}
                 else:
                     response = stage_result(kind, packet)
                     if kind == 'SOURCE_SCAN':

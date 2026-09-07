@@ -115,6 +115,28 @@ def test_bound_invalid_ir_preserves_actionable_diagnostic_in_retry_context():
     assert json.loads(context.canonical_content)['diagnostic'] == {'code': expected.code, 'path': expected.path, 'subjectIds': ['design-root']}
 
 
+def test_bound_invalid_ir_preserves_all_findings_without_changing_legacy_records():
+    from action_ledger import ActionLedger, issue, finish, build_attempt_repair_context, attempt_record_value, attempt_record_from_value
+    from contracts import InvalidActionResult
+    from models import AttemptDiagnostic
+    findings = (AttemptDiagnostic('TASK_EVIDENCE_UNBOUND', '/tasks/0/evidenceIds', ('first',)),
+                AttemptDiagnostic('TASK_WORK_MODE_NOT_ALLOWED', '/tasks/1/workModeDecision', ('second',)))
+    expected = AttemptDiagnostic('TASK_DECISION_INVALID', '/tasks', ('first','second'), findings=findings)
+    def reject(raw): raise InvalidActionResult('候选存在两处局部问题。', diagnostic=expected)
+    envelope = prepared_envelope()
+    ledger, record = finish(issue(ActionLedger(), envelope), envelope, successful_completion(), bound_result_validator=reject)
+    value = attempt_record_value(record)
+    assert value['diagnostic']['findings'] == [
+        {'code':item.code,'path':item.path,'subjectIds':list(item.subject_ids)} for item in findings]
+    assert attempt_record_from_value(value) == record
+    context = build_attempt_repair_context(record.logical_work_id, next(iter(ledger.attempt_records)),
+        ledger.attempt_records, ledger.raw_outputs, envelopes_by_sha256=ledger.envelopes_by_sha256)
+    assert json.loads(context.canonical_content)['diagnostic'] == value['diagnostic']
+    from dataclasses import replace
+    legacy = replace(record, diagnostic=AttemptDiagnostic('INVALID_IR','',()))
+    assert attempt_record_value(legacy)['diagnostic'] == {'code':'INVALID_IR','path':'','subjectIds':[]}
+
+
 def test_successful_attempt_record():
     from dataclasses import FrozenInstanceError
     from action_ledger import ActionLedger, issue, finish, attempt_record_value
@@ -222,11 +244,12 @@ def test_attempt_failure_kinds(kind):
     assert record.failure_kind == kind
     assert record.normalized_result_sha256 is None
     assert record.usage == base.usage and record.timing == base.timing
-    assert record.diagnostic == (
-        AttemptDiagnostic(kind, "", ())
-        if kind in {"INVALID_JSON", "INVALID_IR"}
-        else diagnostic
-    )
+    if kind == "INVALID_IR":
+        assert record.diagnostic.code == "INVALID_IR"
+        assert record.diagnostic.findings
+        assert all(item.code == 'ACTION_RESULT_SCHEMA_INVALID' for item in record.diagnostic.findings)
+    else:
+        assert record.diagnostic == (AttemptDiagnostic(kind, "", ()) if kind == "INVALID_JSON" else diagnostic)
     value = attempt_record_value(record)
     assert list(final.attempt_records) == [sha256_bytes(canonical_json_bytes(value))]
     validator = Draft202012Validator(
@@ -408,7 +431,7 @@ def test_bounded_retry_diagnostic_recovery(tmp_path, group_id, failure_kind):
         "kind": "ATTEMPT_REPAIR",
         "attemptRecordSha256": digest,
         "rawOutputUtf8": raw.decode(),
-        "diagnostic": {"code": failure_kind, "path": "", "subjectIds": []},
+        "diagnostic": attempt_record_value(failed)["diagnostic"],
     }
     validate_attempt_repair_context(
         context,
@@ -654,3 +677,13 @@ def test_successful_attempt_record_public_completion_cutover(tmp_path):
         == record
     )
     assert orchestrator.status(tmp_path)["state"]["expectedActionIds"] == []
+
+
+def test_resolved_result_prefers_verified_resolution_without_same_id_envelope():
+    from action_ledger import ActionLedger,resolved_result
+    from contracts import canonical_json_bytes,sha256_bytes
+    logical='author-with-derived-result';raw=canonical_json_bytes({'value':'resolved'})
+    proof=canonical_json_bytes({'origin':{'originLogicalWorkId':logical},
+        'ownerIrSha256':sha256_bytes(raw)})
+    ledger=ActionLedger(candidate_resolutions={logical:proof})
+    assert resolved_result(ledger,logical,verify_resolution=lambda actual:raw if actual==proof else None)==raw

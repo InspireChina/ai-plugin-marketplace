@@ -106,11 +106,12 @@ Task 名称必须点明与 `workTypeId` 匹配的单一计数对象；一个接�
 估算的接口。Task 保存当前模板行的 `rowSemanticSha256`，避免把旧 Task 套入新任务规则。Stage 3 只能
 写 Task、Dependency、Effective Start Match 和 Estimation Annotation，不能扩大 Story/AC。
 
-## 7. fresh Review 与语义 Repair
+## 7. fresh Review、Patch 与 CandidateResolution
 
-Review 是当前候选完整机械验证后才发行的 singleton control Action，不属于预先冻结的 StagePlan。ReviewDecisionIR 只有 decision/findings；REPAIRABLE_SEMANTIC 的 subjectIds 必须解析为当前 Owner root localKeys。Repair 使用同一 Owner IR schema，定向调整、合并或拆分问题 roots，保留其它正确结果；普通路径最多两个语义 revisions；Task 的精确实施澄清可追加一次；三个 Owner 达到自动上限后，原终态绑定的明确人工裁定可逐次授权一个字段修复候选，不清零次数或消耗，后继 PASS 才关闭原 findings。INPUT_REQUIRED 进入 WAITING_INPUT，CONTRACT_GAP / OWNER_BUG 安全终止。
-
-完整证据字段和控制身份见[阶段自动封存](../skills/generate/references/stage-seal.md)。
+Review 是完整机械验证后的 singleton control Action。`REPAIRABLE_SEMANTIC` 的 subjectIds 解析为当前
+Owner root localKeys；新发修复使用 Review-bound `CANDIDATE_PATCH-v1`，只开放可证明的字段或 root 闭包。
+Patch 成功产生物理 RepairReceipt，完整 Owner 校验后产生派生 CandidateResolution；它不把原失败 Author
+改为成功，也不能提供 Review PASS。新候选必须由 distinct fresh Review 复核。已发行旧 Repair 保留冻结合同。
 
 ## 8. 新 run、恢复与稳定 ID
 
@@ -157,7 +158,7 @@ Scope 独占 PriorStateSnapshot 与 ChangeGraph。CODE_ONLY 是有剩余 intent 
 
 大表 Prior 分区采用 `ai-sow-prior-row-partition-v1`：evidence 保留全部完整证据行，sheet 保留结构元数据，headerEvidence 只供解释列与上下文，不扩大授权证据。阶段首组尚未发行时，可通过原 run 的 `FITTING_UNISSUED_PLAN` 容量恢复记录继续；已冻结计划、原型记录和消耗保持不变。
 
-实体可以引用同 packet、同 source/Sheet 的已授权行分区，保留所属 namespace anchor。Prior retry 的 `ai-sow-lossless-tables-v1` 仅改变传输表示，canonical packet SHA 不变；尚未发行且恢复到原容量内的 retry 由 `FITTING_UNISSUED_RETRY` 接续，保留失败 Attempt。完整约束见[阶段自动封存](../skills/generate/references/stage-seal.md)。
+Prior v2 允许通过冻结 priorContext 与现有 hydrate 读取同一 source/workbook 的跨分区、跨 Sheet 原文，实体仍需所属 namespace 主证据。提取、覆盖、精确单元格身份和窄关系汇总的权威合同见[Scope Owner](../skills/generate/references/scope-owner.md)。v1 IR 保留原约束，历史 run 仍绑定原源码和冻结合同，不自动迁移。
 
 终态恢复在 ABANDON 决定落实后结束；不可变 artifact 的候选由最终 Task checkpoint 决定，取证不依赖 active state 的当前候选。宿主中断保留原调用证据，未知用量与本地估算分开记录，再沿执行重试继续。
 
@@ -166,3 +167,18 @@ Task Repair 的 AC 重分配限于本轮受影响 roots 已有的覆盖；历史
 XLSX 数组公式证据按原始公式文本读取，不执行公式或使用对象字符串；缺少公式时拒绝。修正后的新 Prepare 会生成确定性证据块，已发行的冻结 revision 和调用证据不回写。
 
 ARTIFACT RENDER 的真实导出在成功事件前持久暂存；恢复只复用该事件精确 hash 绑定的原字节，复核篡改并记录恢复 I/O 时间。没有成功事件的孤儿暂存不授权复用；旧运行缺少暂存时仍重算并匹配原 hash。此规则不改变 renderer、工作簿或已批准预览。
+
+Prior v2 的新增提取核验要求随 `PRIOR_EXTRACTION.reviewInstruction` 进入 hash-bound Review packet；既有 `SOURCE_SCOPE-v1` 提示词及合同 hash 保持不变，以便复读已封存的 Greenfield 候选。新义务与来源索引一起由 Scope Owner 生成和回放校验，不回写历史 packet。
+
+新冻结计划采用 `PRIOR_ANALYZE-v3`，以版本固定既有无损表传输并覆盖初始请求；专业 prompt、Prior v2 schema 和限额不变，Consolidate 仍为 v2。现有支持布局的旧计划从已绑定合同版本重建估算、物化和证明，不跟随当前默认选择。旧请求保持原字节，历史输入布局不自动迁移。具体规则见[阶段自动封存](../skills/generate/references/stage-seal.md)。
+
+未来 Task 计划使用 `TASK-v2`，其对应 `TASK_REPAIR-v2` 的完整规则读取上限为 65536；有效额度仍取 Action 合同与显式 run hydrate reserve 的较小值。原 v1 合同、prompt/schema、请求和冻结计划保留，Repair、物化及离线证明跟随冻结 Author 版本。增加 reserve 不放宽两轮累计响应或完整请求 context 检查；可用输入空间不足时仍等待。Task 身份碰撞在成功封存前按 `TASK_IDENTITY_COLLISION`/`INVALID_IR` 返回两个问题 localKey，沿既有 revision 2 修正；身份算法与后置复核不变，不按名称或工作类型制造新身份。
+
+已批准的 SIT/UAT 界面自动化政策可直接以其 PRD 政策与各条 AC 的 PRD/Demo 证据支持 `TEST-UI-E2E`，适用范围限于无设计引用的对应 Story/AC。共享测试仍逐 Story 核对政策与证据；工作类型、模式、复杂度、计价和完整性继续由模板规则及独立评审验证，不据此推导后台或部署设计。
+
+
+机械失败沿同一逻辑工作保留候选 raw、完整 `AttemptDiagnostic.findings` 和已成功依赖。默认每个逻辑工作最多 2 个候选版本、每个版本最多执行 2 次；用尽后进入 `WAITING_INPUT`，不因次数耗尽进入 `SYSTEM_FAILED`。可在 `resume --budget-policy ...` 中显式增加 `maxActionRevisions` 或 `maxExecutionAttempts`（各项 2–10，省略为 2），继续累计 revision/attempt；已发行 Envelope、旧失败、成功 checkpoint 与原计量不回写。新版本只绑定紧邻的前一次失败。该入口不会恢复已放弃的 run。
+
+Story/Task 的机械诊断保留问题 roots 和全部具体路径。修复只允许这些 roots 及 Owner 定位的覆盖范围变化，无关对象和字段保持一致；跨 Story 边界拆分只使用被诊断 Story 已有的义务。越界候选被拒绝，中间的非法 JSON/Schema 也不能撤销先前的保护基线。成功后仍执行完整验证和 fresh Review，失败 raw 不作为成功成果发布。
+
+候选收敛统一采用“候选 → 检查与诊断 → 最小范围修复 → 复验 → 推进”。Schema 不完整也保护有效的其他对象；Scan/Audit、Scope、Story/Task、Prior 和原型定位各自拥有的对象与依赖。宿主一次 Action 只提交一个候选，失败由插件安排后继。确定性步骤用 `maxDeterministicAttempts` 限定累计失败次数（默认 2），保存定位、下一步及原成功输出，与候选和执行限额一样可在原 run 显式有限增加。

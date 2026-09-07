@@ -1,0 +1,905 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:generate:next:candidate-repair:1",
+  "description": "当前未封存候选的机械授权、补丁与可重放证明；不拥有业务数据。",
+  "$defs": {
+    "Subject": {
+      "type": "object",
+      "description": "Subject 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "objectId": {
+          "type": "string",
+          "description": "精确objectId",
+          "minLength": 1
+        },
+        "sourceId": {
+          "type": "string",
+          "description": "精确sourceId",
+          "minLength": 1
+        },
+        "evidenceId": {
+          "type": "string",
+          "description": "精确evidenceId",
+          "minLength": 1
+        }
+      },
+      "required": []
+    },
+    "EvidenceRef": {
+      "type": "object",
+      "description": "EvidenceRef 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "refId": {
+          "type": "string",
+          "description": "冻结引用标识。",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "description": "引用正文哈希。",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "refId",
+        "sha256"
+      ]
+    },
+    "Issue": {
+      "type": "object",
+      "description": "Issue 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "issueId": {
+          "type": "string",
+          "description": "稳定问题标识。",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "description": "检查规则代码。",
+          "minLength": 1
+        },
+        "subjects": {
+          "type": "array",
+          "description": "问题对象。",
+          "items": {
+            "$ref": "#/$defs/Subject",
+            "description": "对象或来源身份。"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "description": "人可读 JSON Pointer；不是写权限。",
+          "items": {
+            "type": "string",
+            "description": "人可读 JSON Pointer；不是写权限。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "observed": {
+          "description": "当前失败值或缺口。"
+        },
+        "expectedConstraint": {
+          "type": "string",
+          "description": "须满足的约束，不预填业务答案。",
+          "minLength": 1
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "description": "必要证据。",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef",
+            "description": "证据引用。"
+          }
+        },
+        "dependencyRefs": {
+          "type": "array",
+          "description": "只读依赖。",
+          "items": {
+            "$ref": "#/$defs/EvidenceRef",
+            "description": "依赖引用。"
+          }
+        },
+        "repairOwner": {
+          "type": "string",
+          "description": "负责本问题的 Owner。",
+          "minLength": 1
+        },
+        "repairClass": {
+          "type": "string",
+          "description": "问题责任分类。",
+          "enum": [
+            "DATA",
+            "EVIDENCE",
+            "FORMAT",
+            "EXECUTION",
+            "ARTIFACT",
+            "INPUT_REQUIRED",
+            "CONTRACT_GAP",
+            "OWNER_BUG"
+          ]
+        },
+        "causedBy": {
+          "type": "array",
+          "description": "根因问题标识。",
+          "items": {
+            "type": "string",
+            "description": "根因问题标识。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "issueId",
+        "code",
+        "subjects",
+        "paths",
+        "observed",
+        "expectedConstraint",
+        "evidenceRefs",
+        "dependencyRefs",
+        "repairOwner",
+        "repairClass",
+        "causedBy"
+      ]
+    },
+    "IndexEntry": {
+      "type": "object",
+      "description": "IndexEntry 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "objectId": {
+          "type": "string",
+          "description": "沿修复链保持的内部对象身份。",
+          "minLength": 1
+        },
+        "collection": {
+          "type": "string",
+          "description": "所属集合地址。",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "description": "冻结候选中的展示位置。"
+        },
+        "sha256": {
+          "type": "string",
+          "description": "当前对象规范字节哈希。",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "objectId",
+        "collection",
+        "path",
+        "sha256"
+      ]
+    },
+    "DiagnosticReport": {
+      "type": "object",
+      "description": "DiagnosticReport 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "candidateSha256": {
+          "type": "string",
+          "description": "待诊断候选原字节哈希。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "inputRevisionSha256": {
+          "type": "string",
+          "description": "冻结输入哈希。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sourceAttemptRecordSha256": {
+          "type": "string",
+          "description": "原始失败 Attempt 哈希。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "owner": {
+          "type": "string",
+          "description": "检查器所属 Owner。",
+          "minLength": 1
+        },
+        "checkerFingerprint": {
+          "type": "string",
+          "description": "检查器实现指纹。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "checkedDomains": {
+          "type": "array",
+          "description": "已安全执行的检查域。",
+          "items": {
+            "type": "string",
+            "description": "已安全执行的检查域。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "blockedChecks": {
+          "type": "array",
+          "description": "因先决条件受阻的检查域。",
+          "items": {
+            "type": "string",
+            "description": "因先决条件受阻的检查域。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "issues": {
+          "type": "array",
+          "description": "全部安全可检查的问题。",
+          "items": {
+            "$ref": "#/$defs/Issue",
+            "description": "完整问题。"
+          }
+        },
+        "objectIndex": {
+          "type": "array",
+          "description": "前序有效候选对象索引。",
+          "items": {
+            "$ref": "#/$defs/IndexEntry",
+            "description": "继承对象身份。"
+          }
+        }
+      },
+      "required": [
+        "candidateSha256",
+        "inputRevisionSha256",
+        "sourceAttemptRecordSha256",
+        "owner",
+        "checkerFingerprint",
+        "checkedDomains",
+        "blockedChecks",
+        "issues"
+      ]
+    },
+    "Origin": {
+      "type": "object",
+      "description": "Origin 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string",
+          "description": "当前 run。",
+          "minLength": 1
+        },
+        "inputRevisionSha256": {
+          "type": "string",
+          "description": "冻结输入。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "originLogicalWorkId": {
+          "type": "string",
+          "description": "原始逻辑工作。",
+          "minLength": 1
+        },
+        "sourceKind": {
+          "type": "string",
+          "description": "补丁来源是 Author 机械失败或成功的非 PASS Review。",
+          "enum": [
+            "AUTHOR_FAILURE",
+            "SEMANTIC_REVIEW"
+          ]
+        },
+        "sourceActionContractId": {
+          "type": "string",
+          "description": "原始冻结合同。",
+          "minLength": 1
+        },
+        "sourceAttemptRecordSha256": {
+          "type": "string",
+          "description": "原始 Attempt。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "stageKind": {
+          "type": "string",
+          "description": "当前阶段。",
+          "minLength": 1
+        },
+        "repairRound": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "累计内容候选轮数。"
+        },
+        "budgetPolicySha256": {
+          "type": "string",
+          "description": "本次原有预算关联。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "previousReceiptSha256": {
+          "type": "string",
+          "description": "继承对象身份时紧邻的成功 RepairReceipt；首个计划不得提供。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reviewDecisionSha256": {
+          "type": "string",
+          "description": "既有 Review 决定。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reviewCandidateSha256": {
+          "type": "string",
+          "description": "语义 Review 实际检查的完整阶段候选。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "semanticSourceSha256": {
+          "type": "string",
+          "description": "程序侧语义来源描述符。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "semanticRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "既有累计语义次数。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sourceKind": {
+                "const": "SEMANTIC_REVIEW"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reviewDecisionSha256",
+              "reviewCandidateSha256",
+              "semanticSourceSha256"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reviewCandidateSha256"
+                  ]
+                },
+                {
+                  "required": [
+                    "semanticSourceSha256"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "required": [
+        "runId",
+        "inputRevisionSha256",
+        "originLogicalWorkId",
+        "sourceKind",
+        "sourceActionContractId",
+        "sourceAttemptRecordSha256",
+        "stageKind",
+        "repairRound",
+        "budgetPolicySha256"
+      ]
+    },
+    "ReadEntry": {
+      "type": "object",
+      "description": "ReadEntry 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "objectId": {
+          "type": "string",
+          "description": "只读对象。",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "description": "必须呈现的字段。",
+          "items": {
+            "type": "string",
+            "description": "必须呈现的字段。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "objectId",
+        "fields"
+      ]
+    },
+    "ReferenceLimit": {
+      "type": "object",
+      "description": "ReferenceLimit 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "受限引用字段。",
+          "minLength": 1
+        },
+        "allowedValues": {
+          "type": "array",
+          "description": "可引用值。",
+          "items": {
+            "description": "允许的冻结引用。"
+          }
+        },
+        "retainedValues": {
+          "type": "array",
+          "description": "须继承的引用。",
+          "items": {
+            "description": "不得移除的旧引用。"
+          }
+        }
+      },
+      "required": [
+        "field",
+        "allowedValues",
+        "retainedValues"
+      ]
+    },
+    "Slot": {
+      "type": "object",
+      "description": "Slot 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "slotId": {
+          "type": "string",
+          "description": "不可由模型扩张的槽位标识。",
+          "minLength": 1
+        },
+        "operation": {
+          "type": "string",
+          "description": "封闭操作。",
+          "enum": [
+            "SET_FIELD",
+            "APPEND_OBJECT",
+            "REMOVE_OBJECT",
+            "TRANSFORM_ROOTS"
+          ]
+        },
+        "collection": {
+          "type": "string",
+          "description": "Owner 授权集合。",
+          "minLength": 1
+        },
+        "objectId": {
+          "type": "string",
+          "description": "明确目标或新增槽位身份。",
+          "minLength": 1
+        },
+        "field": {
+          "type": "string",
+          "description": "单个属性名；不接受任意路径。",
+          "minLength": 1
+        },
+        "oldValueSha256": {
+          "type": "string",
+          "description": "旧值哈希；缺失值使用明确存在性标记。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "valueSchema": {
+          "type": [
+            "object",
+            "boolean"
+          ],
+          "description": "Owner 提供的 JSON Schema，按 Draft 2020-12 机械验证；不是业务授权。"
+        },
+        "referenceLimits": {
+          "type": "array",
+          "description": "引用保护约束。",
+          "items": {
+            "$ref": "#/$defs/ReferenceLimit",
+            "description": "引用额度。"
+          }
+        },
+        "maxNewObjects": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "最多新增对象数。"
+        },
+        "inputObjectIds": {
+          "type": "array",
+          "description": "原子变换输入对象。",
+          "items": {
+            "type": "string",
+            "description": "原子变换输入对象。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "outputNamespace": {
+          "type": "string",
+          "description": "新增 root localKey 命名空间。",
+          "minLength": 1
+        },
+        "referenceClosure": {
+          "type": "array",
+          "description": "变换必须同时处理的引用槽位。",
+          "items": {
+            "type": "string",
+            "description": "变换必须同时处理的引用槽位。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "alternativeSet": {
+          "type": "string",
+          "minLength": 1,
+          "description": "同一集合的替代槽位恰选一个，未选槽位不赋予写入；由 Owner 发放。"
+        }
+      },
+      "required": [
+        "slotId",
+        "operation",
+        "collection",
+        "objectId",
+        "oldValueSha256"
+      ]
+    },
+    "Group": {
+      "type": "object",
+      "description": "Group 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "description": "原子组身份。",
+          "minLength": 1
+        },
+        "issueIds": {
+          "type": "array",
+          "description": "本组必须关闭的问题。",
+          "items": {
+            "type": "string",
+            "description": "本组必须关闭的问题。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "readSet": {
+          "type": "array",
+          "description": "必要上下文。",
+          "items": {
+            "$ref": "#/$defs/ReadEntry",
+            "description": "只读内容。"
+          }
+        },
+        "slots": {
+          "type": "array",
+          "description": "全部写权限。",
+          "items": {
+            "$ref": "#/$defs/Slot",
+            "description": "Owner 授权。"
+          },
+          "minItems": 1
+        },
+        "verificationObligations": {
+          "type": "array",
+          "description": "Owner 局部及依赖复验义务。",
+          "items": {
+            "type": "string",
+            "description": "Owner 局部及依赖复验义务。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "groupId",
+        "issueIds",
+        "readSet",
+        "slots",
+        "verificationObligations"
+      ]
+    },
+    "RepairPlan": {
+      "type": "object",
+      "description": "RepairPlan 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "type": "string",
+          "description": "修复协议。",
+          "const": "ai-sow-candidate-repair-plan-v1"
+        },
+        "baseCandidateSha256": {
+          "type": "string",
+          "description": "本组起始候选。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "diagnosticSha256": {
+          "type": "string",
+          "description": "完整诊断。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/DiagnosticReport",
+          "description": "冻结诊断正文。"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin",
+          "description": "原逻辑工作与累计预算。"
+        },
+        "objectIndex": {
+          "type": "array",
+          "description": "完整对象索引。",
+          "items": {
+            "$ref": "#/$defs/IndexEntry",
+            "description": "冻结定位。"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "description": "串行执行组。",
+          "items": {
+            "$ref": "#/$defs/Group",
+            "description": "原子修复组。"
+          },
+          "minItems": 1
+        },
+        "protectedSha256": {
+          "type": "string",
+          "description": "全部基线字节的保护根。",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "contract",
+        "baseCandidateSha256",
+        "diagnosticSha256",
+        "diagnostic",
+        "origin",
+        "objectIndex",
+        "groups",
+        "protectedSha256"
+      ]
+    },
+    "Operation": {
+      "type": "object",
+      "description": "Operation 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "slotId": {
+          "type": "string",
+          "description": "已有槽位。",
+          "minLength": 1
+        },
+        "value": {
+          "description": "仅该槽位允许的新值。"
+        }
+      },
+      "required": [
+        "slotId"
+      ]
+    },
+    "PatchResult": {
+      "type": "object",
+      "description": "PatchResult 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "repairPlanSha256": {
+          "type": "string",
+          "description": "实际 RepairPlan。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "baseCandidateSha256": {
+          "type": "string",
+          "description": "原始工作基线。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "唯一原子组。",
+          "minLength": 1
+        },
+        "operations": {
+          "type": "array",
+          "description": "本组操作。",
+          "items": {
+            "$ref": "#/$defs/Operation",
+            "description": "增量提议。"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "repairPlanSha256",
+        "baseCandidateSha256",
+        "groupId",
+        "operations"
+      ]
+    },
+    "Change": {
+      "type": "object",
+      "description": "Change 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "slotId": {
+          "type": "string",
+          "description": "实际修改槽位。",
+          "minLength": 1
+        },
+        "beforeSha256": {
+          "type": "string",
+          "description": "修改前值。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "afterSha256": {
+          "type": "string",
+          "description": "修改后值。",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "slotId",
+        "beforeSha256",
+        "afterSha256"
+      ]
+    },
+    "RepairReceipt": {
+      "type": "object",
+      "description": "RepairReceipt 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "type": "string",
+          "description": "合并证明版本。",
+          "const": "ai-sow-candidate-repair-receipt-v1"
+        },
+        "baseCandidateSha256": {
+          "type": "string",
+          "description": "基线。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "repairPlanSha256": {
+          "type": "string",
+          "description": "授权。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "patchSha256": {
+          "type": "string",
+          "description": "实际增量。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "已复验组。",
+          "minLength": 1
+        },
+        "mergedCandidateSha256": {
+          "type": "string",
+          "description": "合并后候选。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "changes": {
+          "type": "array",
+          "description": "可重算差异。",
+          "items": {
+            "$ref": "#/$defs/Change",
+            "description": "实际改动。"
+          }
+        },
+        "objectIndex": {
+          "type": "array",
+          "description": "合并后定位。",
+          "items": {
+            "$ref": "#/$defs/IndexEntry",
+            "description": "连续身份。"
+          }
+        },
+        "verifiedObligations": {
+          "type": "array",
+          "description": "实际执行的局部义务；必须重放。",
+          "items": {
+            "type": "string",
+            "description": "实际执行的局部义务；必须重放。",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "contract",
+        "baseCandidateSha256",
+        "repairPlanSha256",
+        "patchSha256",
+        "groupId",
+        "mergedCandidateSha256",
+        "changes",
+        "objectIndex",
+        "verifiedObligations"
+      ]
+    },
+    "ChainEntry": {
+      "type": "object",
+      "description": "ChainEntry 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "planSha256": {
+          "type": "string",
+          "description": "物理来源 planSha256",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "patchSha256": {
+          "type": "string",
+          "description": "物理来源 patchSha256",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "receiptSha256": {
+          "type": "string",
+          "description": "物理来源 receiptSha256",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "recordSha256": {
+          "type": "string",
+          "description": "物理来源 recordSha256",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "envelopeSha256": {
+          "type": "string",
+          "description": "物理来源 envelopeSha256",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "packetSha256": {
+          "type": "string",
+          "description": "物理来源 packetSha256",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "planSha256",
+        "patchSha256",
+        "receiptSha256",
+        "recordSha256",
+        "envelopeSha256",
+        "packetSha256"
+      ]
+    },
+    "CandidateResolution": {
+      "type": "object",
+      "description": "CandidateResolution 的版本化封闭记录。",
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "type": "string",
+          "description": "有效结果解析协议。",
+          "const": "ai-sow-candidate-resolution-v1"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin",
+          "description": "原 Author 与预算。"
+        },
+        "authorRawSha256": {
+          "type": "string",
+          "description": "原始失败 raw。",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "chain": {
+          "type": "array",
+          "description": "真实已提交补丁。",
+          "items": {
+            "$ref": "#/$defs/ChainEntry",
+            "description": "物理来源链。"
+          },
+          "minItems": 1
+        },
+        "ownerIrSha256": {
+          "type": "string",
+          "description": "完整 Owner 复验后的 IR。",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "contract",
+        "origin",
+        "authorRawSha256",
+        "chain",
+        "ownerIrSha256"
+      ]
+    }
+  },
+  "$ref": "#/$defs/RepairPlan"
+}
