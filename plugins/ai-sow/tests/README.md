@@ -45,6 +45,34 @@ copy smoke 每个 Action 启动独立 fixture 解释器并核对 request hash、
 真实 Office 与 fixture 进程配置；不作为真实模型调用、模型容量、token 用量或基准批准证据。
 必须执行实际模型宿主验证后才可将真实基准提交共同终审。
 
+## 真实宿主功能 E2E
+
+真实 Prior/Task、Greenfield 和 Brownfield 验收必须从新的宿主 Controller Session 启动，使用宿主当前配置模型，不在插件或测试输入中固定 provider/model。Controller 固定 `maxConcurrency = 1`，但每个 `MODEL_PROVIDER` Action 仍创建新的 `FRESH_NO_HISTORY` Action Worker；同一 Action 的 hydrate/tool loop 可以继续使用该 worker，新 Action 不继承 Controller、兄弟或前序 Action 对话。`HOST_BROWSER` 留在 Controller。
+
+每个模型 Action 按以下顺序执行：
+
+1. Controller 调用 `read_provider_request` 取得初始 Plugin-Controlled Request；
+2. 通过宿主原生能力创建 fresh worker，只提供本 Action 的 Plugin-Controlled Request 和绑定附件；
+3. worker 请求 hydrate 时，Controller 调用正式 `hydrate`，再复读 `read_provider_request`；新增 response 只回到同一 worker，最新 bytes 成为本 Action 的完整 Plugin-Controlled Request；
+4. worker 返回唯一 raw，Controller 写入 Action 的 `resultPath`，并对最后一次 `read_provider_request` 的完整 canonical bytes 计算 `pluginRequestSha256`；
+5. 宿主能取得 completion usage 时在 execution facts 中写 `PROVIDER_REPORTED`；否则写现有 `LOCALLY_ESTIMATED`，不得猜测实际 token；
+6. 写实际 UTC timing 并执行正式 `submit`；
+7. Action 完成后记录 `side/runId/actionId/pluginRequestSha256`、`FRESH_NO_HISTORY` 和 `freshWorker=true`，下一 Action 创建新 worker。
+
+两侧 Action 完成后，Controller 把唯一 canonical 报告写入：
+
+```text
+<pair-root>/host-invocations/<canonical-json-sha256>.json
+```
+
+报告使用 `ai-sow-host-invocation-observation-v1`，必须精确覆盖两个 ledger 中每个已发行 `MODEL_PROVIDER` Action；非空 `workerInvocationIdSha256` 不得重复。`host`、`model` 和 worker ID 可以为 null；不得保存 message 正文、客户输入、凭据、本机绝对路径或 provider wire request。然后执行：
+
+```text
+run_paired_benchmark.py verify-host-invocations --output-root <pair-root> --pair-run-id <pair-id>
+```
+
+功能顺序固定为 Prior/Task 小样本 → Greenfield → Brownfield（绑定 Greenfield verified XLSX）→ Office/visual → 宿主调用验证 → Functional Acceptance。Functional Acceptance 必需且阻断；Timing Observation 始终记录但不设本轮阈值；Token Observation 按 `COMPLETE / PARTIAL / UNAVAILABLE` 报告且不阻断功能。实际绝对 token 只汇总 `PROVIDER_REPORTED` 的 `inputTokens + outputTokens`，cached/reasoning 只作 breakdown；不统计费用。
+
 ## Task 10 协议切换与测试承接
 
 旧 PATCH、动态 group plan、R1 / Theme Join / Adjudication 和跨 run 增量复用合同已取代，相关测试及
@@ -130,7 +158,7 @@ Pair review 的 `__all__` 导出保持以下三个函数：
 
 ### 冻结基准与只读计算入口
 
-基准支持另提供以下三个 CLI 子命令，以及显式导入的
+基准支持另提供以下四个 CLI 子命令，以及显式导入的
 `calculate_benchmark_result(pair_root, pair_run_id)`。CLI 成功输出 canonical JSON 并返回 0；
 缺少输入、输入漂移或未完成预算输出结构化 JSON 并返回非零。prepare 不启动模型或生产 run。
 
@@ -138,6 +166,7 @@ Pair review 的 `__all__` 导出保持以下三个函数：
 run_paired_benchmark.py prepare --baseline-root <baseline> --output-root <pair-root> --expectation-draft <draft.json>
 run_paired_benchmark.py instantiate-brownfield-request --output-root <pair-root> --pair-run-id <pair-id> --prior-path <greenfield.xlsx>
 run_paired_benchmark.py verify-browser-evidence --output-root <pair-root> --pair-run-id <pair-id> --side greenfield|brownfield
+run_paired_benchmark.py verify-host-invocations --output-root <pair-root> --pair-run-id <pair-id>
 ```
 
 prepare 要求预先在独立 output-root 中准备 canonical `run-budget-policy-source.json`，以及
@@ -166,11 +195,17 @@ Analyze 处置，包含合法的 EXCLUDED/NOT_EXERCISED；仅完成 Browser 而�
 Attempt/Envelope/packet/raw/normalized 字节，重验生产 checkpoint proof，并用冻结 oracle 的
 精确 locator 计算 Scope、Brownfield ChangeGraph、覆盖、token 和时间指标。Prior 来源只经
 ScopeCheckpoint 绑定的快照及工作簿可见 SourceRef 恢复；四个传递点必须大小和 SHA256 相同。
-两侧必须顺序完成且均停在 AWAITING_FINAL_REVIEW；最终结果经过闭合 schema 的全部精确门槛。
-完整交付文件集合仍由生产 resume、prepare_pair_review 和批准入口的 artifact validator 复读；
-指标计算通过不替代这些交付门禁。三类 Owner repair Action 的 versioned usageCategory 均为 REPAIR。
-只有实际宿主满足 fresh canonical request、输出限制和逐 Action usage 证据后，真实基准才可执行。
-`test_benchmark_calculation_e2e.py` 使用 synthetic IR 与实际 Office，仅为完整记录链回归。
+两侧必须顺序完成且均停在 AWAITING_FINAL_REVIEW；test-only 宿主观察报告必须覆盖全部模型 Action，
+证明新 Controller、`maxConcurrency = 1`、逐 Action fresh worker 和 Plugin-Controlled Request hash。
+
+`ai-sow-benchmark-result-v2` 在同一内容寻址结果中分开 Functional Acceptance、Timing Observation
+和 Token Observation。前两者分别保持严格功能门禁与必需时间记录；token 仅在每个已启动模型
+Attempt 都有 `PROVIDER_REPORTED` 时为 `COMPLETE` 并生成完整比率，部分覆盖为 `PARTIAL`，完全不可见
+为 `UNAVAILABLE`。后两种状态保留可用 subtotal 或 null，不阻断功能。完整交付文件集合仍由生产
+resume、prepare_pair_review 和批准入口的 artifact validator 复读；指标计算通过不替代这些交付门禁。
+三类 Owner repair Action 的 versioned usageCategory 均为 REPAIR。
+`test_benchmark_calculation_e2e.py` 使用 synthetic IR、`LOCALLY_ESTIMATED` 和实际 Office，只证明
+完整记录链在 Token Observation = `UNAVAILABLE` 时仍可通过 Functional Acceptance。
 
 APPROVE 顺序发布，只有两份 GenerationManifest 与 current 都深验并绑定同一 pair decision 与获批
 Excel 才返回 `PUBLISHED`。相同 decision/artifact 在 current 切换前后中断均不复制 generation。

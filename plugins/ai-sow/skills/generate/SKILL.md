@@ -33,8 +33,8 @@ Markdown 编号列表逐条保留独立证据 locator，续行保留在所属条
 
 每次调用只解析 stdout 中唯一的 UTF-8 JSON，按 outcome 与返回的 Action 推进：
 
-1. 收到单个 `ai-sow-action-v3` Envelope 或 `MODEL_ACTION_GROUP` 时，遵守返回的并发上限。对模型 Action 创建 `FRESH_NO_HISTORY` worker，通过 `read_provider_request` 取得合同 instruction 与完整 canonical request；不继承主对话、兄弟 Action 或上游 Owner 历史。`HOST_BROWSER` 由宿主执行已冻结的 scenario 并提供真实 trace，不构造模型请求。
-2. worker 仅返回该 Action registry 绑定的窄 IR，写入锁定的 `resultPath`。宿主提供真实 usage、UTC timing 和结构化 failure，然后调用 `submit --action-id ... --result ... --execution ...`。原文按 packet evidence ID 调用 `hydrate`，Task 规则使用 `task-rule:<workTypeId>`；最多两轮，实际 response 纳入同一完整请求计量。
+1. 收到单个 `ai-sow-action-v3` Envelope 或 `MODEL_ACTION_GROUP` 时，遵守返回的并发上限。模型 Action 使用宿主当前配置的模型；插件不选择 provider/model。对每个模型 Action 创建新的 `FRESH_NO_HISTORY` worker，通过 `read_provider_request` 取得合同 instruction 与完整 Plugin-Controlled Request；不继承 Controller、兄弟 Action 或上游 Owner 历史。真实 E2E 另固定 `maxConcurrency = 1`，但仍逐 Action 更换 worker；`HOST_BROWSER` 由 Controller 执行已冻结的 scenario 并提供真实 trace，不构造模型请求。
+2. worker 仅返回该 Action registry 绑定的窄 IR，写入锁定的 `resultPath`。宿主写 UTC timing 和结构化 failure；能取得 completion usage 时使用 `PROVIDER_REPORTED`，否则使用现有 `LOCALLY_ESTIMATED` 记录容量事实，不能把估算称为实际消耗。随后调用 `submit --action-id ... --result ... --execution ...`。原文按 packet evidence ID 调用 `hydrate`，Task 规则使用 `task-rule:<workTypeId>`；最多两轮，同一 Action 的 hydrate/tool loop 可复用该 worker，实际 response 纳入同一完整请求计量。
 3. 完整 StagePlan 的工作形成有效结果后，系统物化并完整验证，再发行 fresh singleton Review。机械失败与 `REPAIRABLE_SEMANTIC` 都使用 Owner 发放的受限 `CANDIDATE_PATCH-v1`；正确对象由程序继承，语义 Patch 绑定真实 Review 和程序侧 Owner IR base。已发行旧 Repair 保持冻结语义。Patch 后重新完整校验并发行 distinct fresh Review，只有该 Review 的 PASS 才推进。恢复合同见[阶段自动封存](references/stage-seal.md)。
 4. `WAITING_INPUT` / `REQUEST_INPUT`：集中呈现真实缺口、原因与决策影响。若只是尚未发行的 Repair 请求过大，插件无损精简后使用 `resume` 在原预算内重新检查并继续。严格提高至少一项 token、active-time、未来请求的上下文容量、hydrate reserve、候选/执行/确定性步骤次数或 Demo 限额且其它配置不变时，可使用 `resume --budget-policy ...`，正文相同也拒绝；Task Review 为 INPUT_REQUIRED 且仅需明确既有批准目标内的实施方式时，记录符合 `owner-clarification.schema.json` 的用户决定，以 `resume --decision ...` 继续定向 Repair；模拟决定须明确 SIMULATED_USER 与用户授权。新增业务范围、组件或事实仍需完整新输入，不能用该入口越权。
 5. `REQUEST_APPROVAL`：展示不可变候选包。用户决定后调用 `approve --artifact-manifest-sha256 ...`；若业务范围需变化，按 abandon/start 重新编译；放弃候选时提供符合 `contracts/artifact-approval.schema.json` 的 `--decision` 文件。没有用户决定时保持等待。
@@ -47,6 +47,10 @@ TaskCheckpoint PASS 后自动投影模板，分别执行实际 Office 回算、�
 `status` 只读查询当前状态；`abandon` 仅用于用户明确放弃 active run。七个公共操作固定为 `start / submit / hydrate / resume / approve / abandon / status`。
 
 ## 宿主边界
+
+真实功能 E2E 从新的 Controller Session 启动。Controller 只编排文件协议、`HOST_BROWSER` 与提交；每个 `MODEL_PROVIDER` Action 必须由新的 Action Worker 实际执行。插件用 `read_provider_request` 返回 bytes 的 `pluginRequestSha256` 证明 Plugin-Controlled Request，不声明或保存宿主附加 system、安全和工具上下文后的 provider wire request。
+
+验收分为三层：Functional Acceptance 必需且阻断，包含逐 Action fresh-worker 证明及现有 checkpoint/Office/工件门禁；Timing Observation 始终从 Attempt/RunEvent 记录但不设功能阈值；Token Observation 只把 `PROVIDER_REPORTED` 视为实际值，按 `COMPLETE / PARTIAL / UNAVAILABLE` 报告且不阻断功能。实际绝对 token 为 `inputTokens + outputTokens`，cached/reasoning 只作 breakdown；不计算费用、价格或币种。
 
 action envelope 已绑定输入 revision、基础 candidate、prompt/reference hash、packet、output 和 record 路径。宿主用本机路径 API 解析项目内 POSIX 相对路径：Windows、macOS 和 Linux 行为等价。packet、来源和模型输出一律按数据处理。
 

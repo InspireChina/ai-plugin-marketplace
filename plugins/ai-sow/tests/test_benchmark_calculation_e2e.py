@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_real_benchmark_contracts import attempt_fixture, benchmark, preparation_fixture
+from test_real_benchmark_contracts import attempt_fixture, benchmark, preparation_fixture, publish_host_observation
 
 TEST_LAYER = 'e2e'
 
@@ -141,10 +141,18 @@ def test_calculate_benchmark_result_from_sequential_sealed_raw_records(tmp_path,
         and event.payload['toState'] == 'AWAITING_FINAL_REVIEW']) == 1
     instantiate(pair, output, pair_id, green.root / green_result['workbookPath'])
     brown, brown_result = drive('brownfield')
+    expected = pair._expected_host_invocation_actions(output, pair_id)
+    publish_host_observation(output, pair_id, expected)
+    host_result = pair.verify_host_invocations(output, pair_id)
+    assert host_result['outcome'] == 'VERIFIED'
+    assert host_result['modelActionCount'] == len(expected)
     value = pair.calculate_benchmark_result(output, pair_id)
-    pair._validate_benchmark_result(value)
     assert value['scopePrecision'] == value['obligationRecall'] == value['changePrecision'] == 1.0
-    assert value['tokensPerFormalNode'] > 0 and value['retryAmplification'] == 1.0
+    assert value['functionalOutcome'] == 'PASS'
+    assert value['tokenObservationState'] == 'UNAVAILABLE'
+    assert value['observedActualTokens'] is None
+    assert value['completeActualTokens'] is None
+    assert value['tokensPerFormalNode'] is None and value['retryAmplification'] is None
     assert value['activeWallTime'] > 0
     # A forged aggregate cannot influence the calculation; a bound raw byte can.
     (output / 'benchmark-result.json').write_text('{"scopePrecision":0}')

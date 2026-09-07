@@ -57,6 +57,91 @@ def calculate_benchmark_result(pair_root, pair_run_id):
     from benchmark_calculation import calculate
     return calculate(sys.modules[__name__], pair_root, pair_run_id)
 
+def _load_host_invocation_observation(pair_root, pair_run_id):
+    files = ProjectFiles.open(Path(pair_root))
+    directory = files.resolve('host-invocations', expect='dir')
+    matches = []
+    for path in sorted(directory.glob('*.json')):
+        relative = path.relative_to(files.root).as_posix()
+        raw = files.read_bytes(relative)
+        digest = sha256_bytes(raw)
+        if path.name != digest + '.json':
+            raise ValueError('host invocation observation filename does not bind canonical bytes')
+        value = json.loads(raw)
+        if canonical_json_bytes(value) != raw:
+            raise ValueError('host invocation observation is not canonical JSON')
+        _validate(value, 'host-invocation-observation')
+        if value['pairRunId'] == pair_run_id:
+            matches.append((digest, value))
+    if len(matches) != 1:
+        raise ValueError('pairRunId requires exactly one host invocation observation')
+    return matches[0]
+
+
+def _host_actions_for_run(side, project, run_id, events, ledger):
+    from contracts import action_contract_binding
+    expected = []
+    for event in events:
+        if event.type != 'ACTION_ISSUED':
+            continue
+        envelope = ledger.envelopes_by_sha256[event.payload['envelopeSha256']].value
+        contract, _ = action_contract_binding(SKILL_ROOT, envelope['actionContractId'])
+        if contract['executionKind'] != 'MODEL_PROVIDER':
+            continue
+        expected.append({'side': side.upper(), 'runId': run_id,
+            'actionId': envelope['actionId'],
+            'pluginRequestSha256': sha256_bytes(
+                orchestrator.read_provider_request(project.root, envelope['actionId']))})
+    return expected
+
+
+def _expected_host_invocation_actions(pair_root, pair_run_id):
+    from benchmark_execution import prepared, select_run
+    files, _, _, _ = prepared(sys.modules[__name__], pair_root, pair_run_id)
+    expected = []
+    for side in ('greenfield', 'brownfield'):
+        project = ProjectFiles.open(files.resolve(f'runs/{pair_run_id}/{side}/project', expect='dir'))
+        run_id, events, _ = select_run(sys.modules[__name__], project)
+        ledger = orchestrator._load_action_ledger(project, run_id)
+        expected.extend(_host_actions_for_run(side, project, run_id, events, ledger))
+    return expected
+
+
+def _validate_host_invocation_observation(value, expected):
+    _validate(value, 'host-invocation-observation')
+    action_ids = [row['actionId'] for row in value['actions']]
+    if len(action_ids) != len(set(action_ids)):
+        raise ValueError('host observation actionId must be globally unique')
+    invocation_ids = [row['workerInvocationIdSha256'] for row in value['actions']
+        if row['workerInvocationIdSha256'] is not None]
+    if len(invocation_ids) != len(set(invocation_ids)):
+        raise ValueError('fresh workers cannot reuse a host invocation ID')
+    for row in value['actions']:
+        for key in ('host', 'model'):
+            observed = row[key]
+            if observed is not None and (Path(observed).is_absolute()
+                    or observed.startswith(('~', '\\\\')) or re.match(r'^[A-Za-z]:[\\/]', observed)):
+                raise ValueError(key + ' observation must not contain an absolute path')
+    keys = ('side', 'runId', 'actionId', 'pluginRequestSha256')
+    actual_rows = [tuple(row[key] for key in keys) for row in value['actions']]
+    expected_rows = [tuple(row[key] for key in keys) for row in expected]
+    if len(expected_rows) != len(set(expected_rows)):
+        raise ValueError('expected model Action inventory is not unique')
+    if sorted(actual_rows) != sorted(expected_rows):
+        raise ValueError('host observation does not cover the exact model Action inventory')
+
+
+def _verify_host_invocations(pair_root, pair_run_id, expected=None):
+    digest, value = _load_host_invocation_observation(pair_root, pair_run_id)
+    expected = _expected_host_invocation_actions(pair_root, pair_run_id) if expected is None else expected
+    _validate_host_invocation_observation(value, expected)
+    return {'outcome': 'VERIFIED', 'pairRunId': pair_run_id,
+        'modelActionCount': len(expected), 'observationSha256': digest}
+
+
+def verify_host_invocations(pair_root, pair_run_id):
+    return _verify_host_invocations(pair_root, pair_run_id)
+
 
 def _benchmark_cli_main(argv=None):
     import argparse
@@ -79,12 +164,19 @@ def _benchmark_cli_main(argv=None):
     browser.add_argument('--output-root', required=True, type=Path)
     browser.add_argument('--pair-run-id', required=True)
     browser.add_argument('--side', choices=['greenfield', 'brownfield'], required=True)
+    host_invocations = commands.add_parser('verify-host-invocations')
+    host_invocations.add_argument('--output-root', required=True, type=Path)
+    host_invocations.add_argument('--pair-run-id', required=True)
     try:
         args = parser.parse_args(argv)
-        if args.command == 'prepare': result = _prepare_benchmark(args.baseline_root, args.output_root, args.expectation_draft)
+        if args.command == 'prepare':
+            result = _prepare_benchmark(args.baseline_root, args.output_root, args.expectation_draft)
         elif args.command == 'instantiate-brownfield-request':
             result = instantiate(sys.modules[__name__], args.output_root, args.pair_run_id, args.prior_path)
-        else: result = verify_browser(sys.modules[__name__], args.output_root, args.pair_run_id, args.side)
+        elif args.command == 'verify-browser-evidence':
+            result = verify_browser(sys.modules[__name__], args.output_root, args.pair_run_id, args.side)
+        else:
+            result = verify_host_invocations(args.output_root, args.pair_run_id)
         print(canonical_json_bytes(result).decode('utf-8'), end='')
         return 0 if result['outcome'] in {'PREPARED', 'INSTANTIATED', 'VERIFIED'} else 2
     except (ValueError, OSError, KeyError, TypeError) as error:
@@ -108,22 +200,68 @@ def _validate_expectation_manifest(value):
             raise ValueError('change expectation requires source evidence')
 
 
-def _validate_benchmark_result(value):
+def _validate_functional_acceptance(value, host_observation):
     _validate(value, 'benchmark-result')
+    if host_observation.get('outcome') != 'VERIFIED':
+        raise ValueError('host invocation observation is not verified')
+    if value['modelAttemptCount'] != host_observation.get('modelActionCount'):
+        raise ValueError('host invocation inventory differs from started model Attempts')
+    if any(value[key] != 0 for key in ('unresolvedDiagnostics', 'unsupportedFormalClaims',
+            'forbiddenScopeClaims', 'unresolvedReviewerFindings', 'implicitRetireCount')):
+        raise ValueError('functional acceptance requires zero unresolved defects')
+    if any(value[key] != 1.0 for key in ('workItemDispositionRate', 'obligationRecall',
+            'scopePrecision', 'sourceRefResolutionRate', 'changeGraphClosureRate',
+            'changeRecall', 'changePrecision', 'unchangedRetention',
+            'demoInteractionDispositionRate')):
+        raise ValueError('functional acceptance requires complete coverage')
     checks = value['priorTransferChecks']
     if len({item['point'] for item in checks}) != 4:
         raise ValueError('four distinct prior transfer points are required')
     if len({(item['size'], item['sha256']) for item in checks}) != 1:
         raise ValueError('prior transfer bytes changed')
-    if value['tokensPerFormalNode'] is None or value['retryAmplification'] is None:
-        raise ValueError('real benchmark requires formal nodes and effective provider success')
+    ids = [item['formalClaimId'] for item in value['claimMappings']]
+    if len(ids) != len(set(ids)):
+        raise ValueError('formal claim mappings must be unique')
+
+
+def _validate_performance_observation(value):
+    _validate(value, 'benchmark-result')
+    model_count = value['modelAttemptCount']
+    provider_count = value['providerReportedAttemptCount']
+    if provider_count > model_count:
+        raise ValueError('provider-reported Attempt count exceeds started model Attempts')
+    expected_state = ('UNAVAILABLE' if provider_count == 0 else
+        'COMPLETE' if provider_count == model_count else 'PARTIAL')
+    if value['tokenObservationState'] != expected_state:
+        raise ValueError('token observation state does not match Attempt coverage')
     cells = [(item['usageCategory'], item['provenance'], item['tokenKind'])
         for item in value['tokensByCategoryProvenanceAndKind']]
     if len(cells) != len(set(cells)):
         raise ValueError('token cells must retain unique category, provenance and kind')
-    ids = [item['formalClaimId'] for item in value['claimMappings']]
-    if len(ids) != len(set(ids)):
-        raise ValueError('formal claim mappings must be unique')
+    provider_rows = [item for item in value['tokensByCategoryProvenanceAndKind']
+        if item['provenance'] == 'PROVIDER_REPORTED']
+    local_rows = [item for item in value['tokensByCategoryProvenanceAndKind']
+        if item['provenance'] == 'LOCALLY_ESTIMATED']
+    if expected_state == 'COMPLETE' and local_rows:
+        raise ValueError('complete token observation cannot contain locally estimated Attempts')
+    if expected_state != 'COMPLETE' and not local_rows:
+        raise ValueError('incomplete token observation must retain locally estimated Attempts')
+    observed = sum(item['tokens'] for item in provider_rows
+        if item['tokenKind'] in {'INPUT', 'OUTPUT'})
+    if provider_count == 0:
+        if provider_rows or value['observedActualTokens'] is not None:
+            raise ValueError('unavailable token observation cannot report actual token values')
+    elif not provider_rows or value['observedActualTokens'] != observed:
+        raise ValueError('observed actual token subtotal differs from provider-reported cells')
+    complete_only_fields = ('tokensPerFormalNode', 'retryAmplification', 'budgetVarianceTokens')
+    if expected_state == 'COMPLETE':
+        if value['completeActualTokens'] != value['observedActualTokens']:
+            raise ValueError('complete actual token total differs from observed subtotal')
+        if value['budgetVarianceTokens'] is None:
+            raise ValueError('complete token observation requires budget variance')
+    elif value['completeActualTokens'] is not None or any(
+            value[key] is not None for key in complete_only_fields):
+        raise ValueError('incomplete token observation cannot report complete totals or ratios')
 
 
 def _benchmark_disposition_rate(ids, rows, *, id_key, terminal, sealed):
@@ -261,7 +399,8 @@ def _benchmark_attempt_observations(ledger, formal_node_count):
         validate_action_usage(envelope, record.usage, skill_root=SKILL_ROOT)
         started = record.timing.started_at_utc is not None
         validate_usage(record.usage, provider_started=started)
-        if contract['executionKind'] != 'MODEL_PROVIDER' or not started: continue
+        if contract['executionKind'] != 'MODEL_PROVIDER' or not started:
+            continue
         invoked.append(record)
         category = contract['usageCategory']; provenance = record.usage.provenance
         for kind, amount in (('INPUT', record.usage.input_tokens), ('OUTPUT', record.usage.output_tokens),
@@ -273,26 +412,40 @@ def _benchmark_attempt_observations(ledger, formal_node_count):
             previous = effective.get(record.logical_work_id)
             if previous is None or (record.revision, record.attempt) > (previous.revision, previous.attempt):
                 effective[record.logical_work_id] = record
-    charged = sum(record.usage.charged_tokens for record in invoked)
-    success_charged = sum(record.usage.charged_tokens for record in effective.values())
+    provider = [record for record in invoked if record.usage.provenance == 'PROVIDER_REPORTED']
+    actual = sum(record.usage.charged_tokens for record in provider)
+    effective_actual = sum(record.usage.charged_tokens for record in effective.values()
+        if record.usage.provenance == 'PROVIDER_REPORTED')
     successful_by_category = {category: {record.logical_work_id for record in effective.values()
         if categories[record.envelope_sha256]['usageCategory'] == category}
         for category in ('AUTHOR', 'REPAIR')}
     authors, repairs = map(len, (successful_by_category['AUTHOR'], successful_by_category['REPAIR']))
-    if not authors and repairs: raise ValueError('repair numerator has no sealed author denominator')
+    if not authors and repairs:
+        raise ValueError('repair numerator has no sealed author denominator')
+    state = ('UNAVAILABLE' if not provider else
+        'COMPLETE' if len(provider) == len(invoked) else 'PARTIAL')
+    complete = state == 'COMPLETE'
     return {
-        'chargedTokens': charged, 'effectiveSuccessTokens': success_charged,
-        'providerAttemptCount': len(invoked),
-        'invalidIrCount': sum(record.outcome == 'FAILED' and record.failure_kind == 'INVALID_IR' for record in invoked),
-        'successfulAuthorCount': authors, 'successfulRepairCount': repairs,
+        'tokenObservationState': state,
+        'modelAttemptCount': len(invoked),
+        'providerReportedAttemptCount': len(provider),
+        'providerActualTokens': actual,
+        'providerEffectiveSuccessTokens': effective_actual,
+        'plannedTokens': planned,
+        'observedActualTokens': actual if provider else None,
+        'completeActualTokens': actual if complete else None,
+        'invalidIrCount': sum(record.outcome == 'FAILED' and record.failure_kind == 'INVALID_IR'
+            for record in invoked),
+        'successfulAuthorCount': authors,
+        'successfulRepairCount': repairs,
         'tokensByCategoryProvenanceAndKind': [{'usageCategory': key[0], 'provenance': key[1],
             'tokenKind': key[2], 'tokens': amount} for key, amount in sorted(cells.items())],
-        'tokensPerFormalNode': charged / formal_node_count if formal_node_count else None,
-        'retryAmplification': charged / success_charged if success_charged else None,
+        'tokensPerFormalNode': actual / formal_node_count if complete and formal_node_count else None,
+        'retryAmplification': actual / effective_actual if complete and effective_actual else None,
         'invalidIrRate': sum(record.outcome == 'FAILED' and record.failure_kind == 'INVALID_IR'
             for record in invoked) / len(invoked) if invoked else 1.0,
         'repairRate': repairs / authors if authors else 1.0,
-        'budgetVarianceTokens': charged - planned,
+        'budgetVarianceTokens': actual - planned if complete else None,
     }
 
 

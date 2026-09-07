@@ -128,7 +128,7 @@ def _read_side(api, root, pair_id, side, inputs, oracle):
     rate = api._benchmark_disposition_rate(inventory, dispositions, id_key='workItemId', terminal={'SUCCEEDED'}, sealed=True)
     return {'project': project, 'request': request, 'runId': run_id, 'events': events, 'state': state,
         'revision': revision, 'manifest': manifest, 'artifactRoot': artifact_root, 'proof': proof,
-        'scope': scope, 'refs': refs, 'aliases': aliases,
+        'ledger': ledger, 'scope': scope, 'refs': refs, 'aliases': aliases,
         'workRate': rate, 'browserRate': browser['demoInteractionDispositionRate'], 'browserProfileSha256': browser['browserProfileSha256'],
         'counts': api._benchmark_final_counts(proof['stages'], ledger, packets),
         'observations': api._benchmark_attempt_observations(ledger, scope['formalNodeCount']),
@@ -171,19 +171,32 @@ def calculate(api, pair_root, pair_id):
         prior_refs=green['refs'], aliases=green['aliases'])
     check('BROWNFIELD_FINAL', brown['project'], prior['path'], prior['expectedSha256'])
     sides = [green, brown]; scopes = [row['scope'] for row in sides]; observations = [row['observations'] for row in sides]
+    host_expected = []
+    for side_name, side in zip(('greenfield', 'brownfield'), sides):
+        host_expected.extend(api._host_actions_for_run(
+            side_name, side['project'], side['runId'], side['events'], side['ledger']))
+    host_observation = api._verify_host_invocations(files.root, pair_id, host_expected)
     nodes = sum(row['formalNodeCount'] for row in scopes)
     matched = set().union(*(set(row['matchedExpectationIds']) for row in scopes))
     total_refs = sum(row['sourceRefCount'] for row in scopes)
     mappings, cells = {}, {}
     for scope in scopes:
-        for row in scope['claimMappings']: mappings.setdefault(row['formalClaimId'], set()).update(row['expectationIds'])
+        for row in scope['claimMappings']:
+            mappings.setdefault(row['formalClaimId'], set()).update(row['expectationIds'])
     for observation in observations:
         for row in observation['tokensByCategoryProvenanceAndKind']:
-            key = (row['usageCategory'], row['provenance'], row['tokenKind']); previous = cells.get(key, 0)
+            key = (row['usageCategory'], row['provenance'], row['tokenKind'])
+            previous = cells.get(key, 0)
             cells[key] = None if previous is None or row['tokens'] is None else previous + row['tokens']
     def total(key): return sum(row[key] for row in observations)
     def ratio(numerator, denominator, empty=1.0): return numerator / denominator if denominator else empty
-    result = {'contract': 'ai-sow-benchmark-result-v1',
+    model_attempts = total('modelAttemptCount')
+    provider_attempts = total('providerReportedAttemptCount')
+    token_state = ('UNAVAILABLE' if provider_attempts == 0 else
+        'COMPLETE' if provider_attempts == model_attempts else 'PARTIAL')
+    actual_tokens = total('providerActualTokens')
+    complete = token_state == 'COMPLETE'
+    result = {'contract': 'ai-sow-benchmark-result-v2', 'functionalOutcome': 'PASS',
         **{key: changes[key] for key in ('changeGraphClosureRate', 'changeRecall', 'changePrecision', 'unchangedRetention', 'implicitRetireCount')},
         **{key: sum(row['counts'][key] for row in sides) for key in ('unresolvedDiagnostics', 'unresolvedReviewerFindings')},
         **{key: sum(row[key] for row in scopes) for key in ('unsupportedFormalClaims', 'forbiddenScopeClaims')},
@@ -193,14 +206,21 @@ def calculate(api, pair_root, pair_id):
         'scopePrecision': ratio(sum(len(row['claimMappings']) for row in scopes), nodes),
         'sourceRefResolutionRate': ratio(sum(row['resolvedSourceRefCount'] for row in scopes), total_refs),
         'greenfieldRunState': green['state'], 'brownfieldRunState': brown['state'], 'priorTransferChecks': checks,
-        'claimMappings': [{'formalClaimId': key, 'expectationIds': sorted(value)} for key, value in sorted(mappings.items())],
-        'tokensByCategoryProvenanceAndKind': [{'usageCategory': key[0], 'provenance': key[1], 'tokenKind': key[2], 'tokens': value}
-            for key, value in sorted(cells.items())],
-        'tokensPerFormalNode': ratio(total('chargedTokens'), nodes, None),
-        'retryAmplification': ratio(total('chargedTokens'), total('effectiveSuccessTokens'), None),
-        'invalidIrRate': ratio(total('invalidIrCount'), total('providerAttemptCount')),
+        'claimMappings': [{'formalClaimId': key, 'expectationIds': sorted(value)}
+            for key, value in sorted(mappings.items())],
+        'tokenObservationState': token_state,
+        'modelAttemptCount': model_attempts,
+        'providerReportedAttemptCount': provider_attempts,
+        'observedActualTokens': actual_tokens if provider_attempts else None,
+        'completeActualTokens': actual_tokens if complete else None,
+        'tokensByCategoryProvenanceAndKind': [{'usageCategory': key[0], 'provenance': key[1],
+            'tokenKind': key[2], 'tokens': value} for key, value in sorted(cells.items())],
+        'tokensPerFormalNode': ratio(actual_tokens, nodes, None) if complete else None,
+        'retryAmplification': ratio(actual_tokens, total('providerEffectiveSuccessTokens'), None) if complete else None,
+        'invalidIrRate': ratio(total('invalidIrCount'), model_attempts),
         'repairRate': ratio(total('successfulRepairCount'), total('successfulAuthorCount')),
-        'budgetVarianceTokens': total('budgetVarianceTokens'),
+        'budgetVarianceTokens': actual_tokens - total('plannedTokens') if complete else None,
         **{key: sum(row['time'][key] for row in sides) for key in ('activeWallTime', 'userWaitingTime')}}
-    api._validate_benchmark_result(result)
+    api._validate_functional_acceptance(result, host_observation)
+    api._validate_performance_observation(result)
     return result

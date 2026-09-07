@@ -152,6 +152,10 @@ pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后
 只取得一个 PairDecision。APPROVE 深绑定共同 manifest 与双方工作簿；两个 generation/current
 都匹配才算发布。中断重放同一决定；REJECT 使用 hash 寻址的完整新 request，按受影响侧重跑后重新共同评审。
 
+模型选择属于宿主：`generate` 使用当前宿主已配置的模型，不维护 provider/model registry。Fresh Controller Session 指整次真实 E2E 的外层宿主 session 不继承开发或先前测试对话；Fresh Action Worker 指每个 `MODEL_PROVIDER` Action 使用新的 `FRESH_NO_HISTORY` worker。同一 Action 的 hydrate/tool loop 可复用上下文，但单并发顺序执行不等于跨 Action 复用对话。
+
+Plugin-Controlled Request 是 `read_provider_request` 返回并可由插件 hash 绑定的 canonical bytes；宿主附加的 system、安全、工具或 sandbox context 属于不可观察的 provider wire request，不进入精确字节合同。Functional Acceptance 是必需功能门禁；Timing Observation 必须记录但不阻断；Token Observation 按 `COMPLETE / PARTIAL / UNAVAILABLE` 表示 `PROVIDER_REPORTED` 覆盖度，缺少实际 usage 不阻断功能。`LOCALLY_ESTIMATED` 只表示容量与规划值，实际绝对 token 只取 `inputTokens + outputTokens`，不含重复的 cached/reasoning breakdown，也不换算费用。
+
 Scope 独占 PriorStateSnapshot 与 ChangeGraph。CODE_ONLY 是有剩余 intent review 义务的候选；全部 round 的采用项必须绑定 Scope fresh Review/PASS 后才构成正式范围。
 
 生成后优先使用同一 Owner 的条件 Repair 收敛：保留正确结果与已封存上游，定向调整、合并或拆分，完整校验及 fresh Review 后继续。共享测试资产保留独立 Story/AC，只计量一次；工作簿明确展示覆盖与费用归属。

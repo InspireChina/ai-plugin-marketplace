@@ -75,10 +75,8 @@ Python 环境并调用同一个 orchestrator；运行时不调用 Codex CLI、Cl
 
 宿主循环按 `nextAction.kind` 处理：
 
-1. `MODEL_ACTION_GROUP`：在 `maxConcurrency` 内运行一个或多个 action。每个 worker 只读取 envelope
-   指定的 `promptPath`、`packetPath`、`referencePaths` 与本 action hydrate 返回的证据；
-2. worker 把唯一 typed result 写入锁定的 `resultPath`。宿主另写 execution JSON，记录 provider/model、
-   工具、耗时、尝试次数和真实 token usage；无法取得 usage 时必须显式标记本地估算；
+1. `MODEL_ACTION_GROUP`：在 `maxConcurrency` 内运行一个或多个 action。每个模型 Action 使用宿主当前配置模型和新的 `FRESH_NO_HISTORY` worker，只读取 envelope 指定的 `promptPath`、`packetPath`、`referencePaths` 与本 Action hydrate 返回的证据；
+2. worker 把唯一 typed result 写入锁定的 `resultPath`。宿主另写 execution JSON，记录 UTC timing、结构化 failure 和 Usage；能取得 completion usage 时使用 `PROVIDER_REPORTED`，否则使用 `LOCALLY_ESTIMATED`，不猜测 provider/model 或实际 token；
 3. `submit` 校验 result、execution、packet 与 action hash，并封存不可变 record。只有整组必需 shard
    全部完成，`resume` 才一次应用，绝不部分推进；
 4. `WAITING_INPUT` 集中展示最少问题。业务输入变化先 abandon，再以完整新 request start；
@@ -249,13 +247,15 @@ visiblePriorId 必须是源单元格中的精确完整 ID，且语义唯一、�
 Scope 消费所有轮次的 ObservationIR。采用的 CODE_ONLY candidate、source evidence 和 round/Attempt 绑定进入唯一 Scope Review packet；
 ReviewDecisionIR 的 PASS 显式确认完整 intent obligations，缺项或 stale/unrelated proof 不能封 checkpoint。
 
-宿主读取 read_provider_request 的 canonical messages/maxOutputTokens。host-canonical-messages-v1 与 utf8-bytes-v1
-只定义规划表示和 UTF-8 byte-count；它们不证明真实 tokenizer、模型容量或 provider 用量。宿主必须验证实际 fresh invocation、
-最终请求与输出上限；实际 benchmark 用量来自 completion。不能把估算、fixture usage、线程多调用合计当作单次 provider 事实。
+模型由宿主当前配置选择，插件不接收 provider/model 选择参数。宿主读取 `read_provider_request` 的 canonical Plugin-Controlled Request 与 `maxOutputTokens`；`host-canonical-messages-v1` 和 `utf8-bytes-v1` 只定义规划表示与 UTF-8 byte-count，不是模型身份，也不证明真实 tokenizer、模型容量或 provider 用量。宿主可附加自身 system、安全、工具和 sandbox context；这些 provider wire request 内容不属于插件控制面。
+
+每个 `MODEL_PROVIDER` Action 使用新的 `FRESH_NO_HISTORY` worker；同一 Action 的 hydrate/tool loop 可复用该 worker，但新 Action 不继承 Controller、兄弟或前序 Action 历史。真实 E2E 还要求全新的外层 Controller Session 和 `maxConcurrency = 1`，逐 Action worker 隔离不能由“外层 session 是新的”替代。测试以每个 Action 的 `pluginRequestSha256` 和 test-only 宿主观察报告证明该边界，不修改生产 Action、Usage、Attempt 或 generation。
 packet 只有 workItems/contextRefs；基础 context 是 refId/canonicalContent/contentSha256，dependency context 是
 refId/canonicalContent，其正文为 kind=DEPENDENCY_RESULT、logicalWorkId、attemptRecordSha256、normalizedResult。
 规划只计已知 bytes，发放前再次验证包含全部 dependency/repair 的实际请求容量；不足时等待，不修改冻结计划。
 MATERIALIZE、VALIDATE、OFFICE 和复读独立检查 active-time，并记录实际完成区间；等待不计时，重叠区间只算一次。
+
+真实验收分为三层：Functional Acceptance 对实际模型执行、fresh worker、业务/checkpoint/Office/工件闭包保持必需且阻断；Timing Observation 始终从 Attempt/RunEvent 重算但不设功能阈值；Token Observation 只汇总 `PROVIDER_REPORTED`，按 `COMPLETE / PARTIAL / UNAVAILABLE` 报告且不阻断功能。实际绝对 token 为 `inputTokens + outputTokens`，cached/reasoning 只作 breakdown；`LOCALLY_ESTIMATED` 只用于容量与计划，不冒充实际消耗。当前验收不计算金额、价格、币种或费用门禁。
 
 上述历史 32 样本比较器仅分析历史收据，不是当前执行入口；当前真实配对验收的 B.a–B.p、oracle、浏览器、
 严格顺序双 workbook 和逐项硬门槛必须另行完成。当前仓库 fixture 通过不代表这些实际验收已完成。

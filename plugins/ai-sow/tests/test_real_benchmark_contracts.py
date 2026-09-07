@@ -62,42 +62,178 @@ ONE_GATES = ('workItemDispositionRate', 'obligationRecall', 'scopePrecision',
     'unchangedRetention', 'demoInteractionDispositionRate')
 
 
-def result():
-    return {'contract': 'ai-sow-benchmark-result-v1',
+def result(token_state='COMPLETE'):
+    provider_count = {'COMPLETE': 3, 'PARTIAL': 2, 'UNAVAILABLE': 0}[token_state]
+    observed = {'COMPLETE': 42, 'PARTIAL': 28, 'UNAVAILABLE': None}[token_state]
+    rows = ([{'usageCategory': 'AUTHOR', 'provenance': 'PROVIDER_REPORTED',
+        'tokenKind': 'INPUT', 'tokens': observed - 12 if token_state == 'COMPLETE' else observed - 8},
+        {'usageCategory': 'AUTHOR', 'provenance': 'PROVIDER_REPORTED',
+        'tokenKind': 'OUTPUT', 'tokens': 12 if token_state == 'COMPLETE' else 8}]
+        if observed is not None else [])
+    if token_state != 'COMPLETE':
+        rows.append({'usageCategory': 'AUTHOR', 'provenance': 'LOCALLY_ESTIMATED',
+            'tokenKind': 'INPUT', 'tokens': 10})
+    complete = token_state == 'COMPLETE'
+    return {'contract': 'ai-sow-benchmark-result-v2', 'functionalOutcome': 'PASS',
         **dict.fromkeys(ZERO_GATES, 0), **dict.fromkeys(ONE_GATES, 1.0),
         'greenfieldRunState': 'AWAITING_FINAL_REVIEW', 'brownfieldRunState': 'AWAITING_FINAL_REVIEW',
         'priorTransferChecks': [{'point': point, 'size': 42, 'sha256': 'a' * 64}
             for point in ('GREENFIELD_FROZEN', 'BROWNFIELD_INPUT', 'BROWNFIELD_REVISION', 'BROWNFIELD_FINAL')],
-        'tokensByCategoryProvenanceAndKind': [], 'tokensPerFormalNode': 2.5,
-        'retryAmplification': 1.0, 'invalidIrRate': 0.0, 'repairRate': 0.0,
-        'budgetVarianceTokens': -10, 'activeWallTime': 3.0, 'userWaitingTime': 2.0,
+        'tokenObservationState': token_state, 'modelAttemptCount': 3,
+        'providerReportedAttemptCount': provider_count,
+        'observedActualTokens': observed, 'completeActualTokens': observed if complete else None,
+        'tokensByCategoryProvenanceAndKind': rows,
+        'tokensPerFormalNode': 2.5 if complete else None,
+        'retryAmplification': 1.0 if complete else None,
+        'invalidIrRate': 0.0, 'repairRate': 0.0,
+        'budgetVarianceTokens': -10 if complete else None,
+        'activeWallTime': 3.0, 'userWaitingTime': 2.0,
         'claimMappings': [],
     }
 
 
+def verified_host(action_count=3):
+    return {'outcome': 'VERIFIED', 'modelActionCount': action_count}
+
+
 @pytest.mark.parametrize('field', [*ZERO_GATES, *ONE_GATES, 'greenfieldRunState',
     'brownfieldRunState', 'prior-size', 'prior-hash', 'prior-duplicate',
-    'tokensPerFormalNode', 'retryAmplification', 'reasoning', 'extra'])
-def test_benchmark_hard_gates_each_failure(field):
-    value = result()
+    'functionalOutcome', 'host'])
+def test_benchmark_functional_gates_each_failure(field):
+    value = result('PARTIAL'); host = verified_host()
     if field in ZERO_GATES: value[field] = 1
     elif field in ONE_GATES: value[field] = .99
     elif field.endswith('RunState'): value[field] = 'PUBLISHED'
     elif field == 'prior-size': value['priorTransferChecks'][3]['size'] += 1
     elif field == 'prior-hash': value['priorTransferChecks'][3]['sha256'] = 'b' * 64
     elif field == 'prior-duplicate': value['priorTransferChecks'][3] = copy.deepcopy(value['priorTransferChecks'][0])
-    elif field == 'reasoning': value['tokensByCategoryProvenanceAndKind'] = [
-        {'usageCategory': 'AUTHOR', 'provenance': 'PROVIDER_REPORTED', 'tokenKind': 'INPUT', 'tokens': None}]
-    elif field == 'extra': value['runLevelAggregate'] = {}
-    else: value[field] = None
-    with pytest.raises(ValueError): benchmark()._validate_benchmark_result(value)
+    elif field == 'functionalOutcome': value[field] = 'FAIL'
+    else: host['outcome'] = 'ERROR'
+    with pytest.raises(ValueError):
+        benchmark()._validate_functional_acceptance(value, host)
 
 
-def test_benchmark_hard_gates_accepts_only_complete_result():
-    benchmark()._validate_benchmark_result(result())
+@pytest.mark.parametrize('token_state', ['COMPLETE', 'PARTIAL', 'UNAVAILABLE'])
+def test_benchmark_functional_acceptance_is_independent_of_token_observation(token_state):
+    value = result(token_state)
+    benchmark()._validate_functional_acceptance(value, verified_host())
+    benchmark()._validate_performance_observation(value)
+
+def test_complete_token_observation_allows_undefined_zero_denominator_ratio():
+    value = result('COMPLETE')
+    value['retryAmplification'] = None
+    benchmark()._validate_functional_acceptance(value, verified_host())
+    benchmark()._validate_performance_observation(value)
+
+
+def test_benchmark_result_v2_closed_schema_requires_every_field():
     for field in result():
         value = result(); del value[field]
-        with pytest.raises(ValueError): benchmark()._validate_benchmark_result(value)
+        with pytest.raises(ValueError):
+            benchmark()._validate_performance_observation(value)
+
+
+@pytest.mark.parametrize('mutation', ['state', 'count', 'subtotal', 'complete-total',
+    'ratio', 'variance', 'duplicate-cell', 'reasoning-null'])
+def test_benchmark_token_observation_semantics_are_closed(mutation):
+    value = result('PARTIAL')
+    if mutation == 'state': value['tokenObservationState'] = 'COMPLETE'
+    elif mutation == 'count': value['providerReportedAttemptCount'] = 4
+    elif mutation == 'subtotal': value['observedActualTokens'] += 1
+    elif mutation == 'complete-total': value['completeActualTokens'] = value['observedActualTokens']
+    elif mutation == 'ratio': value['tokensPerFormalNode'] = 2.5
+    elif mutation == 'variance': value['budgetVarianceTokens'] = -10
+    elif mutation == 'duplicate-cell': value['tokensByCategoryProvenanceAndKind'].append(
+        copy.deepcopy(value['tokensByCategoryProvenanceAndKind'][0]))
+    else: value['tokensByCategoryProvenanceAndKind'] = [
+        {'usageCategory': 'AUTHOR', 'provenance': 'PROVIDER_REPORTED',
+            'tokenKind': 'INPUT', 'tokens': None}]
+    with pytest.raises(ValueError):
+        benchmark()._validate_performance_observation(value)
+
+
+def host_observation():
+    pair_id = 'pair-' + 'a' * 64
+    actions = [
+        {'side': side, 'runId': 'run-' + side.lower(), 'actionId': 'action-' + side.lower(),
+            'pluginRequestSha256': digest * 64, 'contextPolicy': 'FRESH_NO_HISTORY',
+            'freshWorker': True, 'workerInvocationIdSha256': worker * 64,
+            'host': None, 'model': None}
+        for side, digest, worker in (('GREENFIELD', 'b', 'd'), ('BROWNFIELD', 'c', 'e'))]
+    expected = [{key: row[key] for key in ('side', 'runId', 'actionId', 'pluginRequestSha256')}
+        for row in actions]
+    return {'contract': 'ai-sow-host-invocation-observation-v1', 'pairRunId': pair_id,
+        'controllerSessionFresh': True, 'maxConcurrency': 1, 'actions': actions}, expected
+
+
+@pytest.mark.parametrize('mutation', ['valid', 'missing', 'duplicate', 'request-hash',
+    'fresh-worker', 'worker-reuse', 'extra', 'absolute-host'])
+def test_host_invocation_observation_covers_exact_fresh_actions(mutation):
+    value, expected = host_observation()
+    if mutation == 'missing': value['actions'].pop()
+    elif mutation == 'duplicate':
+        duplicate = copy.deepcopy(value['actions'][0])
+        duplicate['workerInvocationIdSha256'] = 'f' * 64
+        value['actions'].append(duplicate)
+    elif mutation == 'request-hash': value['actions'][0]['pluginRequestSha256'] = '0' * 64
+    elif mutation == 'fresh-worker': value['actions'][0]['freshWorker'] = False
+    elif mutation == 'worker-reuse':
+        value['actions'][1]['workerInvocationIdSha256'] = value['actions'][0]['workerInvocationIdSha256']
+    elif mutation == 'extra': value['actions'][0]['messages'] = []
+    elif mutation == 'absolute-host': value['actions'][0]['host'] = '/private/host'
+    if mutation == 'valid':
+        benchmark()._validate_host_invocation_observation(value, expected)
+    else:
+        with pytest.raises(ValueError):
+            benchmark()._validate_host_invocation_observation(value, expected)
+
+def publish_host_observation(root, pair_id, expected):
+    pair = benchmark()
+    actions = []
+    for index, row in enumerate(expected, 1):
+        actions.append({**row, 'contextPolicy': 'FRESH_NO_HISTORY', 'freshWorker': True,
+            'workerInvocationIdSha256': f'{index:064x}', 'host': None, 'model': None})
+    value = {'contract': 'ai-sow-host-invocation-observation-v1', 'pairRunId': pair_id,
+        'controllerSessionFresh': True, 'maxConcurrency': 1, 'actions': actions}
+    raw = pair.canonical_json_bytes(value)
+    directory = root / 'host-invocations'
+    directory.mkdir(exist_ok=True)
+    path = directory / f'{pair.sha256_bytes(raw)}.json'
+    path.write_bytes(raw)
+    return path
+
+
+def test_host_invocation_observation_is_canonical_content_addressed_and_unique(tmp_path):
+    pair = benchmark()
+    value, expected = host_observation()
+    path = publish_host_observation(tmp_path, value['pairRunId'], expected)
+    other = copy.deepcopy(value)
+    other['pairRunId'] = 'pair-' + 'f' * 64
+    other_raw = pair.canonical_json_bytes(other)
+    (path.parent / f'{pair.sha256_bytes(other_raw)}.json').write_bytes(other_raw)
+    digest, loaded = pair._load_host_invocation_observation(tmp_path, value['pairRunId'])
+    assert digest == path.stem and loaded['pairRunId'] == value['pairRunId']
+    duplicate = copy.deepcopy(value)
+    duplicate['actions'][0]['host'] = 'Codex'
+    duplicate_raw = pair.canonical_json_bytes(duplicate)
+    (path.parent / f'{pair.sha256_bytes(duplicate_raw)}.json').write_bytes(duplicate_raw)
+    with pytest.raises(ValueError, match='exactly one'):
+        pair._load_host_invocation_observation(tmp_path, value['pairRunId'])
+
+@pytest.mark.parametrize('mutation', ['filename', 'canonical'])
+def test_host_invocation_observation_rejects_unbound_storage(tmp_path, mutation):
+    pair = benchmark()
+    value, expected = host_observation()
+    path = publish_host_observation(tmp_path, value['pairRunId'], expected)
+    raw = path.read_bytes()
+    path.unlink()
+    if mutation == 'filename':
+        (path.parent / ('0' * 64 + '.json')).write_bytes(raw)
+    else:
+        raw = json.dumps(value, ensure_ascii=False, sort_keys=True).encode()
+        (path.parent / f'{pair.sha256_bytes(raw)}.json').write_bytes(raw)
+    with pytest.raises(ValueError):
+        pair._load_host_invocation_observation(tmp_path, value['pairRunId'])
 
 
 @pytest.mark.parametrize('ids,rows,sealed,expected', [
@@ -153,7 +289,7 @@ def test_benchmark_scope_evidence_typed_join(mutation):
     assert value['scopePrecision'] == (0.0 if mutation == 'forbidden' else .75 if mutation == 'unsupported' else 1.0)
 
 
-def attempt_fixture():
+def attempt_fixture(token_state='PARTIAL'):
     benchmark()
     sys.path.insert(0, str(SUPPORT.parents[1] / 'skills/generate/tests'))
     from test_action_ledger import prepared_envelope, changed_envelope, successful_completion
@@ -163,11 +299,16 @@ def attempt_fixture():
     first = prepared_envelope()
     retry = changed_envelope(first, actionId='action-retry', attempt=2)
     ledger = issue(issue(ActionLedger(), first), retry)
-    ledger, _ = finish(ledger, retry, successful_completion())
-    ledger, _ = finish(ledger, first, successful_completion())
+    success = successful_completion()
+    if token_state == 'UNAVAILABLE':
+        success = replace(success, usage=Usage('LOCALLY_ESTIMATED', 10, 4, 3, None))
+    ledger, _ = finish(ledger, retry, success)
+    ledger, _ = finish(ledger, first, success)
     bad = changed_envelope(first, logicalWorkId='logical-bad', actionId='action-bad')
     ledger = issue(ledger, bad)
-    ledger, _ = finish(ledger, bad, replace(successful_completion(b'{}'), usage=Usage('LOCALLY_ESTIMATED', 10, 4, 3, None)))
+    bad_provenance = 'PROVIDER_REPORTED' if token_state == 'COMPLETE' else 'LOCALLY_ESTIMATED'
+    ledger, _ = finish(ledger, bad, replace(
+        successful_completion(b'{}'), usage=Usage(bad_provenance, 10, 4, 3, None)))
     pre = changed_envelope(first, logicalWorkId='logical-pre', actionId='action-pre')
     ledger = issue(ledger, pre)
     ledger, _ = finish(ledger, pre, AttemptCompletion(None, 'SYSTEM',
@@ -176,7 +317,7 @@ def attempt_fixture():
     return ledger
 
 
-def test_benchmark_token_totals_include_failed_superseded_and_provenance():
+def test_benchmark_partial_token_totals_retain_actual_subtotal_and_provenance():
     ledger = attempt_fixture()
     value = benchmark()._benchmark_attempt_observations(ledger, 2)
     cells = {(r['usageCategory'], r['provenance'], r['tokenKind']): r['tokens']
@@ -187,12 +328,35 @@ def test_benchmark_token_totals_include_failed_superseded_and_provenance():
     assert cells[('AUTHOR', 'PROVIDER_REPORTED', 'REASONING')] == 2
     assert cells[('AUTHOR', 'LOCALLY_ESTIMATED', 'REASONING')] is None
     assert cells[('AUTHOR', 'LOCALLY_ESTIMATED', 'INPUT')] == 10
-    assert value['tokensPerFormalNode'] == 21
-    assert value['retryAmplification'] == 3
+    assert value['tokenObservationState'] == 'PARTIAL'
+    assert value['modelAttemptCount'] == 3
+    assert value['providerReportedAttemptCount'] == 2
+    assert value['observedActualTokens'] == 28
+    assert value['completeActualTokens'] is None
+    assert value['tokensPerFormalNode'] is None
+    assert value['retryAmplification'] is None
+    assert value['budgetVarianceTokens'] is None
     assert value['invalidIrRate'] == 1 / 3
     assert value['repairRate'] == 0
-    estimated = sum(sum(e.value['executionLimits'].values()) for e in ledger.envelopes_by_sha256.values())
-    assert value['budgetVarianceTokens'] == 42 - estimated
+
+
+@pytest.mark.parametrize('token_state,observed', [('COMPLETE', 42), ('UNAVAILABLE', None)])
+def test_benchmark_complete_and_unavailable_token_observations(token_state, observed):
+    ledger = attempt_fixture(token_state)
+    value = benchmark()._benchmark_attempt_observations(ledger, 2)
+    assert value['tokenObservationState'] == token_state
+    assert value['observedActualTokens'] == observed
+    assert value['completeActualTokens'] == observed
+    if token_state == 'COMPLETE':
+        estimated = sum(sum(e.value['executionLimits'].values())
+            for e in ledger.envelopes_by_sha256.values())
+        assert value['tokensPerFormalNode'] == 21
+        assert value['retryAmplification'] == 3
+        assert value['budgetVarianceTokens'] == 42 - estimated
+    else:
+        assert value['tokensPerFormalNode'] is None
+        assert value['retryAmplification'] is None
+        assert value['budgetVarianceTokens'] is None
 
 
 def test_benchmark_token_ratios_empty_denominators_are_explicit():
@@ -481,7 +645,8 @@ def test_frozen_baseline_migrates_legacy_status_and_current_state_delta(tmp_path
     ['prepare', '--baseline-root', 'missing', '--output-root', 'missing', '--expectation-draft', 'missing.json'],
     ['instantiate-brownfield-request', '--output-root', 'missing', '--pair-run-id', 'pair-missing', '--prior-path', 'missing.xlsx'],
     ['verify-browser-evidence', '--output-root', 'missing', '--pair-run-id', 'pair-missing', '--side', 'greenfield'],
-    ['verify-browser-evidence', '--side', 'invalid'], ['unknown-command']])
+    ['verify-host-invocations', '--output-root', 'missing', '--pair-run-id', 'pair-missing'],
+    ['verify-browser-evidence', '--side', 'invalid'], ['verify-host-invocations'], ['unknown-command']])
 def test_benchmark_cli_contract_stable_json_and_nonzero_failure(arguments, capsys):
     pair = benchmark()
     assert pair._benchmark_cli_main(arguments) == 2

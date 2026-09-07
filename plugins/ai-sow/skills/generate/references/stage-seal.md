@@ -60,7 +60,7 @@ Prior Analyze 的行分区 Attempt repair 可采用 `ai-sow-lossless-tables-v1` 
 
 INVALID_JSON/INVALID_IR 后尚未发行的 retry 若因输入容量等待，当前完整请求在原预算内变得可容纳时，可公开 resume。`FITTING_UNISSUED_RETRY` 绑定原失败 record、Envelope、packet 和合同以及实际新 Action；等待退出前后中断复用同一发行证明。失败记录、累计消耗、冻结计划和重试次数保持原值。
 
-宿主为每次原生调用保存独立请求、输出、事件和结束记录，按 Action group deadline 设置有限等待。重入时先核实进程与已有证据；中断或超时作为 EXECUTION 提交，再沿正式 Attempt retry 继续。保留旧 bytes/hash；无 completion usage 或可靠退出码时明确 unknown，并把协议所需本地估算与真实 provider 用量分开。
+宿主为每个 `MODEL_PROVIDER` Action 使用当前配置模型创建新的 `FRESH_NO_HISTORY` worker，并为每次原生调用保存独立请求、输出、事件和结束记录；同一 Action 的 hydrate/tool loop 可复用该 worker，新 Action 不得继承 Controller 或其它 Action 历史。插件只绑定 `read_provider_request` 返回的 Plugin-Controlled Request bytes，不声明宿主附加 system、安全或工具上下文后的 provider wire request 可观察。按 Action group deadline 设置有限等待；重入时先核实进程与已有证据，中断或超时作为 EXECUTION 提交，再沿正式 Attempt retry 继续。保留旧 bytes/hash；能取得 completion usage 时记录 `PROVIDER_REPORTED`，否则以 `LOCALLY_ESTIMATED` 保留协议所需容量事实并将实际 token 标为不可用，不影响功能推进。
 
 已持久化的 ABANDON 决定恢复成 DONE 后即结束恢复后缀，移除 active marker 后不再进入容量恢复。artifact 取证从不可变 Task checkpoint 绑定候选，并从授权事件及原终态复读预览修复链；离线取证不依赖可变当前候选。
 

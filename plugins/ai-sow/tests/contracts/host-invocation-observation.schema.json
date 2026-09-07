@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sow:benchmark:host-invocation-observation:1",
+  "description": "真实顺序基准中由宿主声明的 Controller 与逐 Action worker 隔离事实。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "pairRunId",
+    "controllerSessionFresh",
+    "maxConcurrency",
+    "actions"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ai-sow-host-invocation-observation-v1"
+    },
+    "pairRunId": {
+      "type": "string",
+      "pattern": "^pair-[a-f0-9]{64}$"
+    },
+    "controllerSessionFresh": {
+      "const": true
+    },
+    "maxConcurrency": {
+      "const": 1
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "side",
+          "runId",
+          "actionId",
+          "pluginRequestSha256",
+          "contextPolicy",
+          "freshWorker",
+          "workerInvocationIdSha256",
+          "host",
+          "model"
+        ],
+        "properties": {
+          "side": {
+            "enum": [
+              "GREENFIELD",
+              "BROWNFIELD"
+            ]
+          },
+          "runId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "actionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "pluginRequestSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "contextPolicy": {
+            "const": "FRESH_NO_HISTORY"
+          },
+          "freshWorker": {
+            "const": true
+          },
+          "workerInvocationIdSha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\r\\n]+$"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\r\\n]+$"
+          }
+        }
+      }
+    }
+  }
+}
