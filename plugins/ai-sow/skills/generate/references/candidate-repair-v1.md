@@ -9,7 +9,7 @@ Owner 诊断并提供 `SET_FIELD / SET_FIELDS / REMOVE_FIELD / APPEND_OBJECT / R
 过期 base、越权引用、身份复用和不完整引用闭包。RepairReceipt 绑定规范化 Patch bytes；物理 Attempt 仍绑定模型原始 raw，因此带缩进或空白的合法 JSON 可确定性重放且不会改写证据。后续计划以 `previousReceiptSha256` 绑定紧邻的成功
 RepairReceipt；匿名重复行沿 receipt 保持 occurrence 身份。
 
-同一 SOURCE_SCAN 候选中，写入对象互不相交且没有 `alternativeSet` 的字段型 Schema issues 合并为一个原子 group；一个 Patch 同时提交全部精确 slots 并完整复验。对象重叠、集合增删、root 变换和替代选择仍保持独立，不能为减少 Action 数扩大写 footprint。
+同一 SOURCE_SCAN 候选中，没有 `alternativeSet` 且写 footprint 不重叠的字段型 Schema issues 合并为一个原子 group；`SET_FIELDS` 的每个授权字段保持独立 footprint，可与同对象其它非重叠字段删除一起提交。候选以旧 `decision/reason` 表达 `NO_RELEVANT_FACT` 且 `facts` 为空时，Owner 用现存值约束 `disposition/facts/noRelevantReason` 联动并同步删除旧字段，不要求模型编造事实。一个 Patch 同时提交全部精确 slots 并完整复验；集合增删、root 变换、替代选择或实际重叠写入仍保持独立，不能为减少 Action 数扩大写 footprint。
 
 模型只接收本组问题、当前字段、必要证据与邻居。完整候选、保护索引和语义 Owner IR base 留在程序侧。
 非法 JSON 仍走既有有界格式恢复；可解析的 Schema-invalid 候选走槽位修复，后续非法 raw 不能撤销

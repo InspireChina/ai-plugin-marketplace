@@ -216,8 +216,8 @@ def test_source_scan_batches_disjoint_schema_repairs_into_one_patch(tmp_path):
     files,author,_,good,_=local_failed_work(tmp_path)
     assert len(good)>=2
     candidate=copy.deepcopy(good)
-    candidate[0]['reason']='多余字段一'
-    candidate[1]['reason']='多余字段二'
+    candidate[0].update(facts=[],reason='标题未陈述可交付事实。',decision='NO_RELEVANT_FACT')
+    candidate[1].update(facts=[],reason='审批状态未陈述可交付事实。',decision='NO_RELEVANT_FACT')
     raw=encode(candidate)
     packet=json.loads(files.read_bytes(author['packetPath']))
     origin={
@@ -240,16 +240,19 @@ def test_source_scan_batches_disjoint_schema_repairs_into_one_patch(tmp_path):
         'SOURCE_SCAN',packet,raw,report,origin=origin,
         action_contract_id='SOURCE_SCAN-v1')
     plan=json.loads(plan_raw)
-    assert len(report['issues'])==2
+    assert len(report['issues'])==6
     assert len(plan['groups'])==1
     group=plan['groups'][0]
-    assert len(group['slots'])==2
-    assert {slot['operation'] for slot in group['slots']}=={'REMOVE_FIELD'}
+    assert len(group['slots'])==6
+    assert {slot['operation'] for slot in group['slots']}=={'SET_FIELDS','REMOVE_FIELD'}
     patch=encode({
         'repairPlanSha256':digest(plan_raw),
         'baseCandidateSha256':digest(raw),
         'groupId':group['groupId'],
-        'operations':[{'slotId':slot['slotId']} for slot in group['slots']]})
+        'operations':[{'slotId':slot['slotId'],**(
+            {'value':slot['valueSchema']['const']}
+            if slot['operation']=='SET_FIELDS' else {})}
+            for slot in group['slots']]})
     def verify(merged,current_group):
         updated=diagnose_candidate(
             'SOURCE_SCAN',packet,merged,origin=origin,
@@ -257,7 +260,10 @@ def test_source_scan_batches_disjoint_schema_repairs_into_one_patch(tmp_path):
         verify_group_progress(report,updated,current_group)
     merged,_=apply_repair_patch(
         raw,plan_raw,patch,group_id=group['groupId'],verify_group=verify)
-    assert all('reason' not in row for row in json.loads(merged)[:2])
+    for row in json.loads(merged)[:2]:
+        assert 'reason' not in row and 'decision' not in row
+        assert row['disposition']=='NO_RELEVANT_FACT'
+        assert row['facts']==[] and row['noRelevantReason']
 
 
 def test_failed_patch_revision_resumes_the_patch_leaf_repeatedly(tmp_path):

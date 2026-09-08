@@ -1295,6 +1295,30 @@ def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **o
                     {'objectId':slot['objectId'],'fields':fields}
                     if read['objectId']==slot['objectId'] else read
                     for read in group['readSet']]
+        for group in groups:
+            for position,slot in enumerate(group['slots']):
+                if slot['operation']!='SET_FIELD' or slot.get('field')!='facts':
+                    continue
+                row=value[int(index[slot['objectId']]['path'].removeprefix('/'))]
+                if row.get('facts')!=[] or not isinstance(row.get('reason'),str) or not row['reason'].strip():
+                    continue
+                fields=['disposition','facts','noRelevantReason']
+                old={field:row.get(field,{'$repairMissing':True}) for field in fields}
+                replacement={
+                    'disposition':'NO_RELEVANT_FACT',
+                    'facts':[],
+                    'noRelevantReason':row['reason']}
+                group['slots'][position]={
+                    'slotId':'slot-'+sha256_bytes(canonical_json_bytes(
+                        [slot['objectId'],fields]))[:24],
+                    'operation':'SET_FIELDS','collection':slot['collection'],
+                    'objectId':slot['objectId'],'fields':fields,
+                    'oldValueSha256':sha256_bytes(canonical_json_bytes(old)),
+                    'valueSchema':{'const':replacement}}
+                group['readSet']=[
+                    {'objectId':slot['objectId'],'fields':fields}
+                    if read['objectId']==slot['objectId'] else read
+                    for read in group['readSet']]
     observation_issue_ids={issue['issueId'] for issue in report['issues']
                            if issue['code']=='SCOPE_BINDING_INVALID' and issue['paths'][0]=='/observations'}
     for group in groups:
@@ -1335,14 +1359,20 @@ def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **o
                 'SET_FIELD','SET_FIELDS','REMOVE_FIELD'} and 'alternativeSet' not in slot
                 for slot in group['slots'])]
         others=[group for group in groups if group not in field_groups]
+        from candidate_repair import _pointer_prefix,_slot_footprints
+        index={row['objectId']:row for row in index_rows}
         batches=[]
         for group in sorted(field_groups,key=lambda item:item['groupId']):
-            objects={slot['objectId'] for slot in group['slots']}
-            batch=next((entry for entry in batches if not objects & entry[0]),None)
+            group_footprints=[
+                footprint for slot in group['slots']
+                for footprint in _slot_footprints(index,slot)]
+            batch=next((entry for entry in batches
+                if not any(_pointer_prefix(current,existing)
+                           for current in group_footprints for existing in entry[0])),None)
             if batch is None:
-                batches.append([set(objects),[group]])
+                batches.append([list(group_footprints),[group]])
             else:
-                batch[0].update(objects);batch[1].append(group)
+                batch[0].extend(group_footprints);batch[1].append(group)
         merged=[]
         for _,batch in batches:
             if len(batch)==1:

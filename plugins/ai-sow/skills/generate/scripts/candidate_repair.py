@@ -189,13 +189,14 @@ def _collection_path(collection):
     return '' if collection == '$' else '/' + collection
 
 
-def _slot_footprint(index, slot):
+def _slot_footprints(index, slot):
     operation = slot['operation']
+    path=index[slot['objectId']]['path'] if slot['objectId'] in index else _collection_path(slot['collection'])
     if operation in {'SET_FIELD', 'REMOVE_FIELD'}:
-        return index[slot['objectId']]['path'] + '/' + _pointer_part(slot['field'])
+        return (path + '/' + _pointer_part(slot['field']),)
     if operation == 'SET_FIELDS':
-        return index[slot['objectId']]['path']
-    return _collection_path(slot['collection'])
+        return tuple(path + '/' + _pointer_part(field) for field in slot['fields'])
+    return (_collection_path(slot['collection']),)
 
 
 def _identity(node):
@@ -319,10 +320,11 @@ def _check_plan(base, plan):
                 raise InvalidActionResult('槽位无法从基线定位。')
             if _digest(old) != slot['oldValueSha256']:
                 raise InvalidActionResult('槽位旧值 hash 漂移。')
-            footprint = _slot_footprint(index, slot)
-            if any(_pointer_prefix(footprint, existing) for existing in footprints):
+            current_footprints = _slot_footprints(index, slot)
+            if any(_pointer_prefix(current, existing)
+                   for current in current_footprints for existing in footprints):
                 raise InvalidActionResult('修复写集合存在祖先、子项或重复重叠。')
-            footprints.append(footprint)
+            footprints.extend(current_footprints)
             if op in {'APPEND_OBJECT', 'REMOVE_OBJECT', 'TRANSFORM_ROOTS'}:
                 collection_path = _collection_path(slot['collection'])
                 if collection_path in collection_mutations:
