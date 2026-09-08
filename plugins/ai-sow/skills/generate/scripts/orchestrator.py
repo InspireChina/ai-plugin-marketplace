@@ -11,6 +11,7 @@ import sys
 import tempfile
 from collections.abc import Mapping, Sequence
 from contextvars import ContextVar
+from functools import lru_cache, wraps
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -61,6 +62,38 @@ NEXT_SCHEMA_REGISTRY = load_registry(SKILL_ROOT / "contracts")
 WORK_ROOT = ".ai-sow/work"
 ACTIVE_RUN_PATH = f"{WORK_ROOT}/active-run.json"
 RUNS_ROOT = f"{WORK_ROOT}/runs"
+_RUN_EVENT_VIEWS: ContextVar[
+    dict[tuple[Path, str], tuple[RunEvent, ...]] | None
+] = ContextVar("_RUN_EVENT_VIEWS", default=None)
+_ACTION_LEDGER_VIEWS: ContextVar[
+    dict[tuple[Path, str], ActionLedger] | None
+] = ContextVar("_ACTION_LEDGER_VIEWS", default=None)
+
+
+
+
+def _with_run_fact_views(function):
+    """Reuse immutable facts only inside one public Controller call."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        if _RUN_EVENT_VIEWS.get() is not None:
+            return function(*args, **kwargs)
+        event_token = _RUN_EVENT_VIEWS.set({})
+        ledger_token = _ACTION_LEDGER_VIEWS.set({})
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _ACTION_LEDGER_VIEWS.reset(ledger_token)
+            _RUN_EVENT_VIEWS.reset(event_token)
+    return wrapped
+
+
+def _invalidate_action_ledger(files: ProjectFiles, run_id: str) -> None:
+    cache = _ACTION_LEDGER_VIEWS.get()
+    if cache is not None:
+        cache.pop((files.root, run_id), None)
+
+
 RENDERER_FINGERPRINT_PATH = SKILL_ROOT / "contracts/renderer-fingerprint-baseline.json"
 def _renderer_sha256() -> str:
     baseline = json.loads(RENDERER_FINGERPRINT_PATH.read_text(encoding="utf-8"))
@@ -2993,20 +3026,30 @@ def _phase_for_action_stage(stage: object) -> str:
     raise ProjectIOError("ACTION_STAGE_INVALID", str(stage), "action stage 不受支持。")
 
 
-def _read_run_events(files: ProjectFiles, run_id: str) -> list[RunEvent]:
-    root = f"{RUNS_ROOT}/{run_id}/events"
-    try:
-        directory = files.resolve(root, expect="dir")
-    except ProjectIOError as error:
-        if error.code == "PROJECT_PATH_MISSING":
-            return []
-        raise
+@lru_cache(maxsize=64)
+def _validated_run_events(
+    run_id: str,
+    root: str,
+    payloads: tuple[tuple[str, bytes], ...],
+) -> tuple[RunEvent, ...]:
     events = []
-    for path in sorted(directory.glob("*.json")):
-        value = _mapping(files, f"{root}/{path.name}")
+    for name, payload in payloads:
+        relative_path = f"{root}/{name}"
+        try:
+            value = json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ProjectIOError(
+                "PROJECT_JSON_INVALID",
+                relative_path,
+                f"project JSON is invalid: {relative_path}",
+            ) from error
+        if not isinstance(value, Mapping):
+            raise ProjectIOError(
+                "PROJECT_CONTRACT_INVALID", relative_path, "JSON 必须是对象。"
+            )
         if value.get("runId") != run_id:
             raise ProjectIOError(
-                "ACTION_ISSUANCE_PROOF_INVALID", f"{root}/{path.name}",
+                "ACTION_ISSUANCE_PROOF_INVALID", relative_path,
                 "运行事件不属于当前 run，不能授权发放或恢复。",
             )
         events.append(
@@ -3019,7 +3062,32 @@ def _read_run_events(files: ProjectFiles, run_id: str) -> list[RunEvent]:
             )
         )
     validate_run_event_log(events)
-    return events
+    return tuple(events)
+
+
+def _read_run_events(files: ProjectFiles, run_id: str) -> list[RunEvent]:
+    cache = _RUN_EVENT_VIEWS.get()
+    key = (files.root, run_id)
+    if cache is not None and key in cache:
+        return list(cache[key])
+    root = f"{RUNS_ROOT}/{run_id}/events"
+    try:
+        directory = files.resolve(root, expect="dir")
+    except ProjectIOError as error:
+        if error.code == "PROJECT_PATH_MISSING":
+            events: tuple[RunEvent, ...] = ()
+            if cache is not None:
+                cache[key] = events
+            return []
+        raise
+    payloads = tuple(
+        (path.name, files.read_bytes(f"{root}/{path.name}"))
+        for path in sorted(directory.glob("*.json"))
+    )
+    events = _validated_run_events(run_id, root, payloads)
+    if cache is not None:
+        cache[key] = events
+    return list(events)
 
 
 def _append_run_event(
@@ -3038,6 +3106,10 @@ def _append_run_event(
         f"{RUNS_ROOT}/{run_id}/events/{event.sequence:06d}.json",
         canonical_json_bytes(run_event_value(event)),
     )
+    cache = _RUN_EVENT_VIEWS.get()
+    if cache is not None:
+        cache[(files.root, run_id)] = (*events, event)
+    _invalidate_action_ledger(files, run_id)
 
 
 def _enter_attempt_input_wait(
@@ -3363,6 +3435,10 @@ def _issued_action_events(files: ProjectFiles, run_id: str) -> dict[str, RunEven
 
 
 def _load_action_ledger(files: ProjectFiles, run_id: str) -> ActionLedger:
+    cache = _ACTION_LEDGER_VIEWS.get()
+    key = (files.root, run_id)
+    if cache is not None and key in cache:
+        return cache[key]
     registry = load_schema_registry(SKILL_ROOT)
     _effective_budget_policy(files, run_id, registry=registry)
     issued = _issued_action_events(files, run_id)
@@ -3371,7 +3447,10 @@ def _load_action_ledger(files: ProjectFiles, run_id: str) -> ActionLedger:
         directory = files.resolve(root, expect="dir")
     except ProjectIOError as error:
         if error.code == "PROJECT_PATH_MISSING" and not issued:
-            return ActionLedger()
+            ledger = ActionLedger()
+            if cache is not None:
+                cache[key] = ledger
+            return ledger
         raise
     envelopes, records, raw_outputs, normalized_results = {}, {}, {}, {}
     loaded_actions: set[str] = set()
@@ -3488,6 +3567,8 @@ def _load_action_ledger(files: ProjectFiles, run_id: str) -> ActionLedger:
             owner_callbacks=lambda e,p,semantic_source=None:candidate_owner_callbacks(
                 e,p,inventories=inventories,revision_bytes=revision,semantic_source=semantic_source),
             events=_read_run_events(files,run_id),bases=bases,semantic_sources=semantic_sources)
+    if cache is not None:
+        cache[key] = ledger
     return ledger
 
 
@@ -3657,6 +3738,10 @@ def _persist_issued_action(
         f"{RUNS_ROOT}/{run_id}/events/{event.sequence:06d}.json",
         canonical_json_bytes(run_event_value(event)),
     )
+    cache = _RUN_EVENT_VIEWS.get()
+    if cache is not None:
+        cache[(files.root, run_id)] = (*events, event)
+    _invalidate_action_ledger(files, run_id)
 
     _load_action_ledger(files, run_id)
 
@@ -4076,6 +4161,7 @@ def submit(
                 ledger.normalized_results[record.normalized_result_sha256],
             )
         files.publish_new(paths["record"], canonical_json_bytes(record_value))
+        _invalidate_action_ledger(files, run_id)
         marker = _read_active_marker(files)
         if marker is not None:
             _recover_active_run(files, marker)
@@ -4141,6 +4227,7 @@ def status(project_root: Path) -> dict[str, object]:
         return _blocked(error.code, str(error), error.relative_path)
 
 
+@_with_run_fact_views
 def run_mode(
     project_root: Path,
     mode: str,
