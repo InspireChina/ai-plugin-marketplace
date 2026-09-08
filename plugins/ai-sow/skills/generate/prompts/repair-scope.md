@@ -10,4 +10,4 @@ POLICY_INSTANCE 的 APPLIES_TO 已表达政策目标，不要求对业务 Epic/F
 
 粒度与关系类型必须分别检查：不同协议或接口对象（例如身份协议与业务 API）各自形成独立 INTEGRATION，不能仅因责任方相同就合并。DESIGN_ITEM/INTEGRATION/NFR 的 APPLIES_TO 目标只允许 FEATURE，绝不指向 EPIC；适用于整个组件的设计应列出其实际覆盖的所有 Feature，而非用 Epic 替代。只有 POLICY_INSTANCE 的 APPLIES_TO 可指向 Epic。修复仍须遵守这些类型约束；Scope 的 authorizedRootKeys 已包含引用问题 root 的同 Owner 影响闭包；拆分或合并后须同步更新这些关系，所有 targetLocalKeys 指向保留对象。
 
-每个 factId 只由一条 decision.factIds 处置；其他 root 可引用同一证据或 facetFacts，但不得重复取得事实归属。Integration 的 DIRECTION 应选描述该接口交互的具体事实，不使用同时列举多项客户提供物的综合责任事实。Integration 的 facetFacts 角色仅为 DIRECTION、TRIGGER、PURPOSE、DATA_CATEGORY，不含 TARGET。
+每个 factId 只由一条 decision.factIds 处置；其他 root 可引用同一证据或 facetFacts，但不得重复取得事实归属。Integration 的 DIRECTION 应选描述参与系统和交互方向的具体事实，METHOD 只选择 API、文件、消息、OIDC 等来源已明确的高层方式，PURPOSE 说明业务目的；不使用同时列举多项客户提供物的综合责任事实。Integration 的 facetFacts 角色仅为 DIRECTION、METHOD、PURPOSE，不含 TARGET。ScopeDecisionIR 不保存 uncertainty；具体触发、endpoint、payload、字段映射、token/claim、重试与错误处理留到迭代开始时确认，不阻断 SOW。

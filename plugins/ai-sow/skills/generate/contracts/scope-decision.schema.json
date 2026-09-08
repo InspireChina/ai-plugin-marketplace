@@ -129,9 +129,8 @@
                         "role": {
                           "enum": [
                             "DIRECTION",
-                            "TRIGGER",
+                            "METHOD",
                             "PURPOSE",
-                            "DATA_CATEGORY",
                             "TARGET"
                           ]
                         },
@@ -203,10 +202,6 @@
                 "uniqueItems": true
               },
               "exclusionReason": {
-                "type": "string",
-                "pattern": "\\S"
-              },
-              "uncertainty": {
                 "type": "string",
                 "pattern": "\\S"
               }

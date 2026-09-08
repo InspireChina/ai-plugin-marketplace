@@ -126,7 +126,7 @@ def synthesis_packet():
         for key, digest, value in [("scan", "a", scan_ir()), ("audit", "b", audit_ir())]]}
 
 
-def test_scope_decision_ir_closes_fact_handles_and_checks_relations_before_waiting():
+def test_scope_decision_ir_closes_fact_handles_and_checks_relations():
     import pytest
     from contracts import InvalidActionResult
     packet, result = synthesis_packet(), complete_scope_ir()
@@ -140,11 +140,10 @@ def test_scope_decision_ir_closes_fact_handles_and_checks_relations_before_waiti
         elif mutation == "unknown_prior": item["priorEntityIds"] = ["other:entity"]
         elif mutation == "unknown_parent": item["relations"][0]["targetLocalKeys"] = ["missing"]
         else: item["boundaryEvidence"]["evidenceIds"] = ["other-source"]
-        item["uncertainty"] = "不能让此等待遮住其他非法引用。"
         with pytest.raises(InvalidActionResult):
             scope_compiler_module.verify_scope_decision(packet, candidate)
     result["decisions"][0]["uncertainty"] = "业务意图冲突。"
-    with pytest.raises(scope_compiler_module.ScopeInputRequired):
+    with pytest.raises(InvalidActionResult):
         scope_compiler_module.verify_scope_decision(packet, result)
 
 
@@ -361,7 +360,7 @@ def seal_scope_work(runtime, logical_id, result_override=None, *, revision_numbe
     ledger, record = finish(issue(ledger, envelope), envelope, successful_completion(canonical_json_bytes(result)), bound_result_validator=callback, packet_payload=payload)
     runtime[3] = ledger
     if not allow_failure:
-        assert record.outcome == "SUCCEEDED", record
+        assert record.outcome == "SUCCEEDED", record.diagnostic
     return packet, record
 
 
@@ -601,7 +600,7 @@ def projected_scope_ir():
         return decision
     add("design", "DESIGN_ITEM", "COMPONENT", [1])
     integration = add("integration", "INTEGRATION", "EXTERNAL", [2, 3, 4, 5],
-        [{"role": role, "factId": f"block-{i:03}:fact"} for i, role in zip([2, 3, 4, 5], ["DIRECTION", "TRIGGER", "PURPOSE", "DATA_CATEGORY"])])
+        [{"role": role, "factId": f"block-{i:03}:fact"} for i, role in zip([2, 3, 4], ["DIRECTION", "METHOD", "PURPOSE"])])
     integration["boundaryEvidence"]["responsibilityBoundaryIds"] = ["boundary-app"]
     add("quality", "NFR", "PERFORMANCE", [6], [{"role": "TARGET", "factId": "block-006:fact"}])
     excluded = add("excluded", "EXCLUDE", "DISPOSITION", [7])
@@ -628,8 +627,12 @@ def test_scope_owner_e2e_projects_all_target_kinds_from_facts_policy_and_approve
     feature = model["features"][0]
     assert feature["designRefs"] == [model["designItems"][0]["designItemId"]]
     assert model["designItems"][0]["status"] == "APPROVED"
-    assert model["integrations"][0]["responsibilityBoundaryIds"] == ["boundary-app"]
-    assert model["integrations"][0]["direction"] == scan_ir()[0]["facts"][0]["statement"]
+    integration=model["integrations"][0]
+    assert integration["responsibilityBoundaryIds"] == ["boundary-app"]
+    assert integration["direction"] == scan_ir()[0]["facts"][0]["statement"]
+    assert set(integration)=={
+        "integrationId","name","featureIds","sourceRefs","direction","method",
+        "purpose","responsibilityBoundaryIds","counterpartyBoundary"}
     assert model["nfrs"][0]["target"] == scan_ir()[0]["facts"][0]["statement"]
     assert {item["policyId"] for item in model["policyInstances"]} == {item["policyId"] for item in policy["policies"]}
     assert sum(item["disposition"] == "OUT_OF_SCOPE" for item in model["scopeClosure"]) == 1

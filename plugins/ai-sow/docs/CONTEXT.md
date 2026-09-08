@@ -68,7 +68,7 @@ Greenfield 不继承既有合同能力。Brownfield 提供往期 SOW 时，用�
 | SourceRef | `(sourceId, blockId, sha256, locator)` 精确来源身份，不依赖聊天轮次或易漂移行号。 |
 | ScopeDecision | Feature 的 `IN_SCOPE / FULLY_COVERED / OUT_OF_SCOPE`。 |
 | DesignItem | 组件、流程、数据、基础设施或质量设计对象。 |
-| Integration | 有方向、触发、目的、数据类别与责任边界的系统交互。 |
+| Integration | SOW 阶段已确认的高层系统交互：参与方与方向、API/文件/消息/OIDC 等集成方式、业务目的及责任边界。具体触发时机、endpoint、payload、字段映射、token/claim、重试和错误处理在迭代开始时确认，不属于 SOW 稳定合同。 |
 | NFR | 性能、容量、可用性、安全、隐私、审计、灾备和可观测性要求。 |
 | PolicyInstance | Delivery Policy 对具体目标节点的结构化实例。 |
 

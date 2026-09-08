@@ -194,9 +194,8 @@ def valid_model() -> dict[str, object]:
                 "featureIds": ["feature-refund"],
                 "sourceRefs": [ref],
                 "direction": "门户到退款服务",
-                "trigger": "提交退款",
+                "method": "API",
                 "purpose": "创建退款申请",
-                "dataCategories": ["退款申请"],
                 "responsibilityBoundaryIds": ["boundary-customer"],
                 "counterpartyBoundary": "EXTERNAL",
             }
@@ -372,6 +371,21 @@ def test_sow_model_top_level_regions_have_one_write_owner() -> None:
     assert TOP_LEVEL_WRITE_OWNER["tasks"] == "STAGE_3"
     assert TOP_LEVEL_WRITE_OWNER["decisions"] == "SCRIPT"
     assert validate(model, "STAGE_3", registry=REGISTRY) == ()
+
+
+def test_integration_contract_keeps_only_sow_level_method_and_purpose() -> None:
+    model = valid_model()
+    integration = model["integrations"][0]
+    assert set(integration) == {
+        "integrationId", "name", "featureIds", "sourceRefs", "direction",
+        "method", "purpose", "responsibilityBoundaryIds", "counterpartyBoundary",
+    }
+    legacy = copy.deepcopy(model)
+    item = legacy["integrations"][0]
+    item["trigger"] = "提交退款"
+    item["dataCategories"] = ["退款申请"]
+    item.pop("method")
+    assert validate(legacy, "STAGE_3", registry=REGISTRY)
 
 
 def test_model_skeleton_binds_script_fields_and_leaves_owner_regions_empty() -> None:

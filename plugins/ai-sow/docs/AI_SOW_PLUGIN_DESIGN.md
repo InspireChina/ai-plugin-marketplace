@@ -125,6 +125,8 @@ manifest 绑定 request、模板、Delivery Policy、Execution Policy、prior SO
 - `tasks / dependencies / effectiveStartMatches`；
 - 各 Owner annotations 与结构化 decisions。
 
+Integration 在 SOW Model 中只保存参与系统与 `direction`、API/文件/消息/OIDC 等高层 `method`、`purpose` 和责任边界。具体 `trigger`、endpoint、payload、字段映射、token/claim、重试及错误处理不进入稳定 SOW，也不阻断 Scope；这些细节在迭代开始时由实施团队确认。ScopeDecisionIR 不保存自由文本 uncertainty，正常 fresh Review 不能被 Author 转换成用户输入门禁。
+
 阶段顺序和写集合固定：
 
 ```text

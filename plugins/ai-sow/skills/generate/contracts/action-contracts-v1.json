@@ -50,7 +50,7 @@
       ],
       "instruction": {
         "path": "prompts/stage1-scope-proposal.md",
-        "sha256": "e122a915e7540dfc02a7170f8624173e0bb2b635d4e7efb2c1d859a67bb9fe45"
+        "sha256": "b17d8b276c319b0654a79df1127e67174438a6e44a776cd9476bba7062be09d0"
       },
       "limits": {
         "maxHydrateTokens": 12000,
@@ -60,7 +60,7 @@
       "resultSchema": {
         "id": "urn:ai-sow:generate:next:scope-decision:1#/$defs/scopeDecision",
         "path": "contracts/scope-decision.schema.json",
-        "sha256": "1c36b0122adfe9d0028dd91f4c8eeb411080c7320e82c9800748d8bca37edac3"
+        "sha256": "665773b25d6b95b94df9d4cff03a010f7f8f982761e378d22d2b410328eca7cc"
       },
       "sealPredicates": [
         "EVERY_FACT_DISPOSED",
@@ -88,7 +88,7 @@
       ],
       "instruction": {
         "path": "prompts/stage1-scope-join.md",
-        "sha256": "14928738ab3fd5ece6911c65b2a1d79b58aa283721d82fa56cc739ee7cd0c0f1"
+        "sha256": "da83fe651ed96ba34b9c604aa81d964584f5f3d27b4763e959f463f4d1ce6b50"
       },
       "limits": {
         "maxHydrateTokens": 12000,
@@ -98,7 +98,7 @@
       "resultSchema": {
         "id": "urn:ai-sow:generate:next:scope-decision:1#/$defs/scopeDecision",
         "path": "contracts/scope-decision.schema.json",
-        "sha256": "1c36b0122adfe9d0028dd91f4c8eeb411080c7320e82c9800748d8bca37edac3"
+        "sha256": "665773b25d6b95b94df9d4cff03a010f7f8f982761e378d22d2b410328eca7cc"
       },
       "sealPredicates": [
         "EVERY_FACT_DISPOSED",
@@ -515,7 +515,7 @@
       ],
       "instruction": {
         "path": "prompts/stage1-scope-synthesis.md",
-        "sha256": "407723f710398f5057b4530ba304422a16e83b5a315c07f7fab32b0b560e2a1f"
+        "sha256": "e6fde8432753afadc6767b9f7ace6d9512a62dcf803abcce196cd04eb20bfafc"
       },
       "limits": {
         "maxHydrateTokens": 12000,
@@ -525,7 +525,7 @@
       "resultSchema": {
         "id": "urn:ai-sow:generate:next:scope-decision:1#/$defs/scopeDecision",
         "path": "contracts/scope-decision.schema.json",
-        "sha256": "1c36b0122adfe9d0028dd91f4c8eeb411080c7320e82c9800748d8bca37edac3"
+        "sha256": "665773b25d6b95b94df9d4cff03a010f7f8f982761e378d22d2b410328eca7cc"
       },
       "sealPredicates": [
         "EVERY_FACT_DISPOSED",
@@ -552,7 +552,7 @@
       ],
       "instruction": {
         "path": "prompts/repair-scope.md",
-        "sha256": "db8b0d0f92618fad56090d716ae1768f81c06cfcf39d59c6089c94b8f2cdf00b"
+        "sha256": "476e88604e859ab97c62af3f69dcaeb770d891384258bfab7dcebbbbe3334164"
       },
       "limits": {
         "maxHydrateTokens": 12000,
@@ -562,7 +562,7 @@
       "resultSchema": {
         "id": "urn:ai-sow:generate:next:scope-decision:1#/$defs/scopeDecision",
         "path": "contracts/scope-decision.schema.json",
-        "sha256": "1c36b0122adfe9d0028dd91f4c8eeb411080c7320e82c9800748d8bca37edac3"
+        "sha256": "665773b25d6b95b94df9d4cff03a010f7f8f982761e378d22d2b410328eca7cc"
       },
       "sealPredicates": [
         "AUTHORIZED_REPAIR_SUBGRAPH",

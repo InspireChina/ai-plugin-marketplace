@@ -132,16 +132,15 @@
     },
     "integration": {
       "type": "object", "additionalProperties": false,
-      "required": ["integrationId", "name", "featureIds", "sourceRefs", "direction", "trigger", "purpose", "dataCategories", "responsibilityBoundaryIds", "counterpartyBoundary"],
+      "required": ["integrationId", "name", "featureIds", "sourceRefs", "direction", "method", "purpose", "responsibilityBoundaryIds", "counterpartyBoundary"],
       "properties": {
         "integrationId": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/id"},
         "name": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
         "featureIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
         "sourceRefs": {"$ref": "#/$defs/sourceRefArray"},
         "direction": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
-        "trigger": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
+        "method": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
         "purpose": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"},
-        "dataCategories": {"type": "array", "items": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/nonEmptyText"}},
         "responsibilityBoundaryIds": {"$ref": "urn:ai-sow:generate:next:common:1#/$defs/idArray"},
         "counterpartyBoundary": {"enum": ["INTERNAL", "EXTERNAL"]}
       }

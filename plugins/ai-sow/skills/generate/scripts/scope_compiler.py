@@ -630,8 +630,8 @@ def _verify_scope_bindings(packet, result, *, diagnostics=None):
         if kind == "POLICY_INSTANCE" and not any(item["kind"] == "APPLIES_TO" for item in decision["relations"]):
             reject("政策实例必须选择实际 Epic/Feature 目标。", current_path+"/relations")
         roles = [facet["role"] for facet in boundary["facetFacts"]]
-        required_roles = {"DIRECTION", "TRIGGER", "PURPOSE", "DATA_CATEGORY"} if kind == "INTEGRATION" else {"TARGET"} if kind == "NFR" else set()
-        if set(roles) != required_roles or any(roles.count(role) != 1 for role in required_roles - {"DATA_CATEGORY"}):
+        required_roles = {"DIRECTION", "METHOD", "PURPOSE"} if kind == "INTEGRATION" else {"TARGET"} if kind == "NFR" else set()
+        if set(roles) != required_roles or any(roles.count(role) != 1 for role in required_roles):
             reject("目标边界字段的来源事实不齐备或角色不合法。", current_path+"/boundaryEvidence/facetFacts")
         if (kind == "INTEGRATION") != bool(boundary.get("responsibilityBoundaryIds")):
             reject("仅 Integration 必须选择责任边界。", current_path+"/boundaryEvidence/responsibilityBoundaryIds")
@@ -657,8 +657,6 @@ def verify_scope_decision(packet, result):
     if validate_contract(result, "scope-decision.schema.json", load_registry(SKILL_ROOT / "contracts")):
         raise InvalidActionResult("ScopeDecisionIR schema 无效。")
     _verify_scope_bindings(packet, result)
-    if any("uncertainty" in decision for decision in result["decisions"]):
-        raise ScopeInputRequired("Scope 仍有必须澄清的业务边界。")
 
 
 def validate_bound_scope_context(action_kind, packet):
@@ -1096,8 +1094,8 @@ def materialize_scope_candidate(input_revision_bytes, request, plan, work_items,
             if not selected or not set(selected) <= boundaries:
                 raise ScopeInputRequired("Integration 必须选择 request 中已声明的责任边界。")
             model["integrations"].append({"integrationId": ids[key], "name": boundary["name"], "featureIds": features,
-                "sourceRefs": source_refs, "direction": facet_values(decision, "DIRECTION"), "trigger": facet_values(decision, "TRIGGER"),
-                "purpose": facet_values(decision, "PURPOSE"), "dataCategories": facet_values(decision, "DATA_CATEGORY", multiple=True),
+                "sourceRefs": source_refs, "direction": facet_values(decision, "DIRECTION"),
+                "method": facet_values(decision, "METHOD"), "purpose": facet_values(decision, "PURPOSE"),
                 "responsibilityBoundaryIds": selected, "counterpartyBoundary": boundary["classification"]})
         elif kind == "NFR":
             model["nfrs"].append({"nfrId": ids[key], "category": boundary["classification"], "featureIds": features,

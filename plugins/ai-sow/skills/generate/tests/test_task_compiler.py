@@ -353,7 +353,7 @@ def technical_model(*, demo=False, integration=False):
     for ac in model['acceptanceCriteria']: ac['designRefs']=['design-query']
     if integration:
         model['integrations']=[{'integrationId':'integration-query','name':'查询订单服务','featureIds':['feature-query'],
-            'sourceRefs':[ref],'direction':'outbound','trigger':'查询','purpose':'取得订单','dataCategories':['order'],
+            'sourceRefs':[ref],'direction':'outbound','method':'API','purpose':'取得订单',
             'responsibilityBoundaryIds':['customer'],'counterpartyBoundary':'EXTERNAL'}]
     return model
 

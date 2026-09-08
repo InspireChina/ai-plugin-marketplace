@@ -8,9 +8,9 @@
 
 `SOURCE_SCAN` 返回 FactDecisionIR 数组，Audit 返回六类 checks。Scope 的 factIds 选择 `coverageRootId:localKey` 句柄；priorEntityIds 选择唯一 Prior root IR 的 entity localKey。它们都是已提供的局部引用，最终实体 ID 由程序生成。
 
-ScopeDecisionIR 的 boundaryEvidence 保存名称、封闭分类、来源证据、facetFacts 和 observationKeys。仅 Integration 提供 responsibilityBoundaryIds，选择 request 已声明的 ID。Integration 的 direction/trigger/purpose/dataCategories、NFR target 来自选中的事实语句。其他字段不接收最终节点、SourceRef、ID 或 hash。
+ScopeDecisionIR 的 boundaryEvidence 保存名称、封闭分类、来源证据、facetFacts 和 observationKeys。仅 Integration 提供 responsibilityBoundaryIds，选择 request 已声明的 ID。Integration 的 direction/method/purpose、NFR target 来自选中的事实语句；method 只表达 API、文件、消息、OIDC 等高层方式。具体触发、endpoint、payload、字段映射、token/claim、重试和错误处理在迭代开始时确认，不进入 Scope 稳定合同。其他字段不接收最终节点、SourceRef、ID 或 hash。
 
-关系的类型、完整性、变更基数、显式集合互斥、退役双证据和显式 DESIGN/POLICY 链一致性在纯 pre-seal callback 校验。callback 只读取已验证 packet 和 normalized bytes，不读文件、不产生业务等待。合法的 MISSING Audit 或 uncertainty 可以作为执行结果保存，由 Owner 完成边界阻止 Scope 完成。
+关系的类型、完整性、变更基数、显式集合互斥、退役双证据和显式 DESIGN/POLICY 链一致性在纯 pre-seal callback 校验。callback 只读取已验证 packet 和 normalized bytes，不读文件、不产生业务等待。合法的 MISSING Audit 可以作为执行结果保存并由 Owner 完成边界阻止 Scope；ScopeDecisionIR 不保存 uncertainty，正常 fresh Review 也不是输入缺口。
 
 ## DAG 和容量
 
