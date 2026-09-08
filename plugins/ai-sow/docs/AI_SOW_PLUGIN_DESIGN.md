@@ -145,7 +145,7 @@ Story 必须是 Feature 下单一、可独立移交、验收和关闭的具体�
 
 每个 Owner 的 StagePlan 取得有效结果后，只物化当前 IR，执行完整机械验证，再发行 fresh Review。
 机械候选失败和新发生的 `REPAIRABLE_SEMANTIC` 使用 `CANDIDATE_PATCH-v1`：Owner 发放单字段设置、同对象条件字段原子联动、未授权附加字段删除、对象追加/删除或
-原子 root 变换槽位，程序继承其余数据并生成 CandidateResolution。`SET_FIELDS` 只授权 Owner 列出的非身份字段及封闭 `oneOf` 分支，解决 discriminator 与依赖字段必须同时变化的条件 Schema；`REMOVE_FIELD` 只处理 Schema 明确拒绝的现存字段，不扩大对象或集合写权限；缺失身份可由窄 `SET_FIELD` 补齐，已有身份仍不可改写或复用。RepairReceipt 绑定规范化 Patch，物理 Attempt 保留并绑定模型原始 raw，使非 canonical JSON 仍可确定性恢复。
+原子 root 变换槽位，程序继承其余数据并生成 CandidateResolution。`SET_FIELDS` 只授权 Owner 列出的非身份字段及封闭 `oneOf` 分支，解决 discriminator 与依赖字段必须同时变化的条件 Schema；同一 SOURCE_SCAN 候选内对象互不相交、无替代选择的字段型 Schema issues 合并成一个原子 Patch，集合或重叠写入仍分开。`REMOVE_FIELD` 只处理 Schema 明确拒绝的现存字段，不扩大对象或集合写权限；缺失身份可由窄 `SET_FIELD` 补齐，已有身份仍不可改写或复用。RepairReceipt 绑定规范化 Patch，物理 Attempt 保留并绑定模型原始 raw，使非 canonical JSON 仍可确定性恢复。
 语义来源另绑定 Review Attempt、Review decision/candidate、程序侧 Owner IR base 与 semantic source descriptor；Patch 不能写 PASS。
 修复后必须重新物化、完整验证和发行 distinct fresh Review。已物理发行的旧 `*_REPAIR-v1/v2` 原字节完成。
 

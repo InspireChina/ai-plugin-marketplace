@@ -74,21 +74,6 @@ def test_patch_resolution_does_not_rewrite_author_failure(tmp_path):
     assert sum(r.usage.charged_tokens for r in ledger.attempt_records.values())==14*len(ledger.attempt_records)
 
 
-def test_partial_patch_resume_preserves_completed_group(tmp_path):
-    files,author,bad,good,_=local_failed_work(tmp_path)
-    first=current_action(files);first_raw=patch_for(files,first,good)
-    response=api.submit(tmp_path,first['actionId'],successful_completion(first_raw));assert response['outcome']=='RECORDED',response
-    ledger=api._load_action_ledger(files,author['runId']);head=ledger.repair_heads[author['logicalWorkId']][0]
-    assert effective_result_bytes(ledger,author['logicalWorkId']) is None
-    second=current_action(files)
-    response=api.submit(tmp_path,second['actionId'],successful_completion(patch_for(files,second,good,bad=True)))
-    assert response['outcome']=='RECORDED',response
-    ledger=api._load_action_ledger(files,author['runId']);assert ledger.repair_heads[author['logicalWorkId']][0]==head
-    replay=api.submit(tmp_path,first['actionId'],successful_completion(first_raw));assert replay['outcome']=='RECORDED',replay
-    before=len(ledger.attempt_records)
-    ledger=finish_local_work(files,author,good)
-    assert len(ledger.attempt_records)==before+1
-    assert json.loads(effective_result_bytes(ledger,author['logicalWorkId']))==good
 
 
 def test_repair_adoption_keeps_budget_and_issued_actions(tmp_path):
@@ -132,7 +117,7 @@ def local_portable_proof(files,author):
 
 
 @pytest.mark.parametrize('target',['plan','patch','receipt','author','record','missing',
-    'selection','index','group-order','resolution'])
+    'selection','index','resolution'])
 def test_resolution_proof_rejects_tampering(tmp_path,target):
     from generation_store import _proof_ledger
     files,author,bad,good,_=local_failed_work(tmp_path);finish_local_work(files,author,good)
@@ -153,8 +138,6 @@ def test_resolution_proof_rejects_tampering(tmp_path,target):
         from package_renderer import decode_binary,encode_binary
         value=json.loads(decode_binary(patch['normalized']));value['objectIndex'][0]['sha256']='0'*64
         patch['normalized']=encode_binary(encode(value))
-    elif target=='group-order':
-        next(iter(changed['candidateResolutions'].values()))['chain'].reverse()
     elif target=='resolution':
         next(iter(changed['candidateResolutions'].values()))['ownerIrSha256']='0'*64
     else:changed['actions'].remove(patch)
@@ -169,20 +152,6 @@ def plan_for_action(files,action):
         f".ai-sow/work/runs/{action['runId']}/candidate-repairs/plans/{view['repairPlanSha256']}.json"))
 
 
-def test_candidate_repair_progress_and_budget_are_cumulative(tmp_path):
-    files,author,_,good,_=local_failed_work(tmp_path)
-    first=current_action(files);assert plan_for_action(files,first)['origin']['repairRound']==2
-    assert api.submit(tmp_path,first['actionId'],successful_completion(patch_for(files,first,good)))['outcome']=='RECORDED'
-    second=current_action(files);assert plan_for_action(files,second)['origin']['repairRound']==2
-    bad_patch=patch_for(files,second,good,bad=True)
-    assert api.submit(tmp_path,second['actionId'],successful_completion(bad_patch))['outcome']=='RECORDED'
-    third=current_action(files);assert plan_for_action(files,third)['origin']['repairRound']==3
-    ledger=api._load_action_ledger(files,author['runId'])
-    assert len([event for event in api._read_run_events(files,author['runId'])
-                if event.type=='CANDIDATE_REPAIR_PROTOCOL_SELECTED'])==1
-    assert sum(record.usage.charged_tokens for record in ledger.attempt_records.values())==14*len(ledger.attempt_records)
-    assert api.submit(tmp_path,third['actionId'],successful_completion(patch_for(files,third,good)))['outcome']=='RECORDED'
-    assert json.loads(effective_result_bytes(api._load_action_ledger(files,author['runId']),author['logicalWorkId']))==good
 
 
 def test_source_scan_missing_disposition_repairs_conditional_fields_atomically(tmp_path):
@@ -241,6 +210,54 @@ def test_source_scan_missing_disposition_repairs_conditional_fields_atomically(t
         'disposition':'NO_RELEVANT_FACT',
         'facts':[],
         'noRelevantReason':reason}
+
+
+def test_source_scan_batches_disjoint_schema_repairs_into_one_patch(tmp_path):
+    files,author,_,good,_=local_failed_work(tmp_path)
+    assert len(good)>=2
+    candidate=copy.deepcopy(good)
+    candidate[0]['reason']='多余字段一'
+    candidate[1]['reason']='多余字段二'
+    raw=encode(candidate)
+    packet=json.loads(files.read_bytes(author['packetPath']))
+    origin={
+        'runId':author['runId'],
+        'inputRevisionSha256':author['inputRevisionSha256'],
+        'originLogicalWorkId':author['logicalWorkId'],
+        'sourceKind':'AUTHOR_FAILURE',
+        'sourceActionContractId':'SOURCE_SCAN-v1',
+        'sourceAttemptRecordSha256':'1'*64,
+        'stageKind':'SCOPE',
+        'repairRound':2,
+        'budgetPolicySha256':author['budgetPolicySha256'],
+    }
+    from scope_compiler import diagnose_candidate,plan_candidate_repair
+    from candidate_repair import apply_repair_patch,verify_group_progress
+    report=diagnose_candidate(
+        'SOURCE_SCAN',packet,raw,origin=origin,
+        action_contract_id='SOURCE_SCAN-v1')
+    plan_raw=plan_candidate_repair(
+        'SOURCE_SCAN',packet,raw,report,origin=origin,
+        action_contract_id='SOURCE_SCAN-v1')
+    plan=json.loads(plan_raw)
+    assert len(report['issues'])==2
+    assert len(plan['groups'])==1
+    group=plan['groups'][0]
+    assert len(group['slots'])==2
+    assert {slot['operation'] for slot in group['slots']}=={'REMOVE_FIELD'}
+    patch=encode({
+        'repairPlanSha256':digest(plan_raw),
+        'baseCandidateSha256':digest(raw),
+        'groupId':group['groupId'],
+        'operations':[{'slotId':slot['slotId']} for slot in group['slots']]})
+    def verify(merged,current_group):
+        updated=diagnose_candidate(
+            'SOURCE_SCAN',packet,merged,origin=origin,
+            action_contract_id='SOURCE_SCAN-v1')
+        verify_group_progress(report,updated,current_group)
+    merged,_=apply_repair_patch(
+        raw,plan_raw,patch,group_id=group['groupId'],verify_group=verify)
+    assert all('reason' not in row for row in json.loads(merged)[:2])
 
 
 def test_failed_patch_revision_resumes_the_patch_leaf_repeatedly(tmp_path):

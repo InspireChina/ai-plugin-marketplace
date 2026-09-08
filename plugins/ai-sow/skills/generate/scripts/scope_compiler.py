@@ -1329,6 +1329,38 @@ def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **o
             schema=schema_at(contract_id,'/checks/0');schema={**schema,'properties':{**schema['properties'],'coverageRootId':{'const':root},'category':{'const':category}}}
             additions.append(append_object_group(raw,'checks',schema,issues,group_id='audit-'+root+'-'+category))
         groups.extend(additions)
+    if action_kind=='SOURCE_SCAN':
+        field_groups=[group for group in groups
+            if group['slots'] and all(slot['operation'] in {
+                'SET_FIELD','SET_FIELDS','REMOVE_FIELD'} and 'alternativeSet' not in slot
+                for slot in group['slots'])]
+        others=[group for group in groups if group not in field_groups]
+        batches=[]
+        for group in sorted(field_groups,key=lambda item:item['groupId']):
+            objects={slot['objectId'] for slot in group['slots']}
+            batch=next((entry for entry in batches if not objects & entry[0]),None)
+            if batch is None:
+                batches.append([set(objects),[group]])
+            else:
+                batch[0].update(objects);batch[1].append(group)
+        merged=[]
+        for _,batch in batches:
+            if len(batch)==1:
+                merged.append(batch[0]);continue
+            issue_ids=sorted({key for group in batch for key in group['issueIds']})
+            slots=list({slot['slotId']:slot for group in batch for slot in group['slots']}.values())
+            reads={}
+            for group in batch:
+                for read in group['readSet']:
+                    reads.setdefault(read['objectId'],set()).update(read['fields'])
+            merged.append({
+                'groupId':'group-'+sha256_bytes(canonical_json_bytes(issue_ids))[:24],
+                'issueIds':issue_ids,
+                'readSet':[{'objectId':key,'fields':sorted(fields)}
+                           for key,fields in sorted(reads.items())],
+                'slots':slots,
+                'verificationObligations':issue_ids})
+        groups=[*merged,*others]
     if not groups:raise InvalidActionResult('Scope 缺口需要精确领域授权或输入，不能整阶段替换。')
     return build_repair_plan(candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate),report,groups,origin=origin)
 
