@@ -29,7 +29,7 @@ SCHEMA_SHA256 = {'skills/generate/contracts/owner-repair-authorization.schema.js
  'skills/generate/contracts/action.schema.json': 'b4db499d90a2e4c03e33687cc163b2d7d5b1ed501b31acbb1a0be31627354861',
  'skills/generate/contracts/artifact-approval.schema.json': 'a80474084401424a4a2b1b1abe7dac7c6e6b3c3e56ddcc3f01553d0ab9fc608f',
  'skills/generate/contracts/change-graph.schema.json': '25d523f2463ce1c5e0c13ce90f97bfb5a2b29b382e7f701964960d9a1f140135',
- 'skills/generate/contracts/candidate-repair.schema.json': '841eba33ce1deb23f512b2baedcf3aebbb0c0caedbd57d280a187f4d1c82e38d',
+ 'skills/generate/contracts/candidate-repair.schema.json': '1c0215207cc465791a4abb51c850f46ff58fcf44296d567b07a90711b5e6f305',
  'skills/generate/contracts/common.schema.json': 'b62ae2a501ee4994e04f7bcd7478070e5dd66b622892a4bc09611158a9555eec',
  'skills/generate/contracts/current.schema.json': 'da99fc8149bbcf1a979e268ec96e6318911e012d05d104cb03f893a5b40b51c6',
  'skills/generate/contracts/fact-decision.schema.json': '5f73b8a23f94e828c2fd1296b3d7ec67664d38dbb7296e4907c1f1f37302aef6',

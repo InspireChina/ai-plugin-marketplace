@@ -1263,6 +1263,40 @@ def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **o
         selected[issue['issueId']]=paths
     contract_id=owner_context.get('action_contract_id',action_kind+'-v1')
     groups=group_fields(candidate,report,contract_id,selected)
+    if action_kind=='SOURCE_SCAN':
+        from candidate_repair import index_candidate
+        raw=candidate if isinstance(candidate,bytes) else canonical_json_bytes(candidate)
+        index={row['objectId']:row for row in index_candidate(
+            raw,inherited=report.get('objectIndex',()))}
+        for group in groups:
+            for position,slot in enumerate(group['slots']):
+                if slot['operation']!='SET_FIELD' or slot.get('field')!='disposition':
+                    continue
+                row=value[int(index[slot['objectId']]['path'].removeprefix('/'))]
+                fields=['disposition','facts','noRelevantReason']
+                old={field:row.get(field,{'$repairMissing':True}) for field in fields}
+                group['slots'][position]={
+                    'slotId':'slot-'+sha256_bytes(canonical_json_bytes(
+                        [slot['objectId'],fields]))[:24],
+                    'operation':'SET_FIELDS','collection':slot['collection'],
+                    'objectId':slot['objectId'],'fields':fields,
+                    'oldValueSha256':sha256_bytes(canonical_json_bytes(old)),
+                    'valueSchema':{
+                        'oneOf':[
+                            {'type':'object','additionalProperties':False,
+                             'required':['disposition'],
+                             'properties':{'disposition':{'const':'FACT'}}},
+                            {'type':'object','additionalProperties':False,
+                             'required':['disposition','facts','noRelevantReason'],
+                             'properties':{
+                                 'disposition':{'const':'NO_RELEVANT_FACT'},
+                                 'facts':{'const':[]},
+                                 'noRelevantReason':{'type':'string','pattern':'\\S'}}},
+                        ]}}
+                group['readSet']=[
+                    {'objectId':slot['objectId'],'fields':fields}
+                    if read['objectId']==slot['objectId'] else read
+                    for read in group['readSet']]
     observation_issue_ids={issue['issueId'] for issue in report['issues']
                            if issue['code']=='SCOPE_BINDING_INVALID' and issue['paths'][0]=='/observations'}
     for group in groups:

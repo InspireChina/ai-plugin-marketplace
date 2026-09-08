@@ -185,6 +185,64 @@ def test_candidate_repair_progress_and_budget_are_cumulative(tmp_path):
     assert json.loads(effective_result_bytes(api._load_action_ledger(files,author['runId']),author['logicalWorkId']))==good
 
 
+def test_source_scan_missing_disposition_repairs_conditional_fields_atomically(tmp_path):
+    files,author,_,good,_=local_failed_work(tmp_path)
+    candidate=copy.deepcopy(good)
+    index=next(i for i,row in enumerate(candidate) if row['facts'])
+    candidate[index].pop('disposition')
+    candidate[index].pop('noRelevantReason',None)
+    raw=encode(candidate)
+    packet=json.loads(files.read_bytes(author['packetPath']))
+    origin={
+        'runId':author['runId'],
+        'inputRevisionSha256':author['inputRevisionSha256'],
+        'originLogicalWorkId':author['logicalWorkId'],
+        'sourceKind':'AUTHOR_FAILURE',
+        'sourceActionContractId':'SOURCE_SCAN-v1',
+        'sourceAttemptRecordSha256':'1'*64,
+        'stageKind':'SCOPE',
+        'repairRound':2,
+        'budgetPolicySha256':author['budgetPolicySha256'],
+    }
+    from scope_compiler import diagnose_candidate,plan_candidate_repair
+    from candidate_repair import apply_repair_patch,verify_group_progress
+    report=diagnose_candidate(
+        'SOURCE_SCAN',packet,raw,origin=origin,
+        action_contract_id='SOURCE_SCAN-v1')
+    plan_raw=plan_candidate_repair(
+        'SOURCE_SCAN',packet,raw,report,origin=origin,
+        action_contract_id='SOURCE_SCAN-v1')
+    plan=json.loads(plan_raw)
+    group=next(group for group in plan['groups']
+        if any(issue['paths']==[f'/{index}/disposition']
+               for issue in report['issues'] if issue['issueId'] in group['issueIds']))
+    assert len(group['slots'])==1
+    slot=group['slots'][0]
+    assert slot['operation']=='SET_FIELDS'
+    assert slot['fields']==['disposition','facts','noRelevantReason']
+    reason='标题不包含可执行需求、约束或假设。'
+    patch=encode({
+        'repairPlanSha256':digest(plan_raw),
+        'baseCandidateSha256':digest(raw),
+        'groupId':group['groupId'],
+        'operations':[{'slotId':slot['slotId'],'value':{
+            'disposition':'NO_RELEVANT_FACT',
+            'facts':[],
+            'noRelevantReason':reason}}]})
+    def verify(merged,current_group):
+        updated=diagnose_candidate(
+            'SOURCE_SCAN',packet,merged,origin=origin,
+            action_contract_id='SOURCE_SCAN-v1')
+        verify_group_progress(report,updated,current_group)
+    merged,_=apply_repair_patch(
+        raw,plan_raw,patch,group_id=group['groupId'],verify_group=verify)
+    assert json.loads(merged)[index]=={
+        'coverageRootId':candidate[index]['coverageRootId'],
+        'disposition':'NO_RELEVANT_FACT',
+        'facts':[],
+        'noRelevantReason':reason}
+
+
 def test_failed_patch_revision_resumes_the_patch_leaf_repeatedly(tmp_path):
     files,author,_,good,_=local_failed_work(tmp_path,max_action_revisions=2)
     patch=current_action(files)

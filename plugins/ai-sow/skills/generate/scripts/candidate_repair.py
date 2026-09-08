@@ -177,6 +177,8 @@ def _slot_value(candidate, index, slot):
     if operation in {'SET_FIELD', 'REMOVE_FIELD'}:
         field = slot['field']
         return target[field] if field in target else {'$repairMissing': True}
+    if operation == 'SET_FIELDS':
+        return {field:target.get(field,{'$repairMissing':True}) for field in slot['fields']}
     return target
 
 def _pointer_prefix(left, right):
@@ -191,6 +193,8 @@ def _slot_footprint(index, slot):
     operation = slot['operation']
     if operation in {'SET_FIELD', 'REMOVE_FIELD'}:
         return index[slot['objectId']]['path'] + '/' + _pointer_part(slot['field'])
+    if operation == 'SET_FIELDS':
+        return index[slot['objectId']]['path']
     return _collection_path(slot['collection'])
 
 
@@ -270,9 +274,15 @@ def _check_plan(base, plan):
                 if (op == 'SET_FIELD' and slot['field'] in {'localKey', 'scenarioId', 'coverageRootId', 'id'}
                         and slot['field'] in _at(candidate, index[slot['objectId']]['path'])):
                     raise InvalidActionResult('字段槽位不能改写已有身份。')
-            elif 'field' in slot:
-                raise InvalidActionResult('非字段操作不能携带 field。')
-            if op in {'SET_FIELD', 'REMOVE_FIELD', 'REMOVE_OBJECT'}:
+            elif op == 'SET_FIELDS':
+                fields=slot.get('fields')
+                if (not isinstance(fields,list) or len(fields)<2 or len(set(fields))!=len(fields)
+                        or any(not isinstance(field,str) or not field or '/' in field
+                               or field in {'localKey','scenarioId','coverageRootId','id'} for field in fields)):
+                    raise InvalidActionResult('联合字段槽位必须声明有限且不含身份的属性。')
+            elif 'field' in slot or 'fields' in slot:
+                raise InvalidActionResult('非字段操作不能携带字段授权。')
+            if op in {'SET_FIELD', 'SET_FIELDS', 'REMOVE_FIELD', 'REMOVE_OBJECT'}:
                 if slot['objectId'] not in index or index[slot['objectId']]['collection'] != slot['collection']:
                     raise InvalidActionResult('槽位目标不存在或越出集合。')
                 if op == 'REMOVE_FIELD' and slot['field'] not in _at(candidate, index[slot['objectId']]['path']):
@@ -299,7 +309,7 @@ def _check_plan(base, plan):
                     Draft202012Validator.check_schema(slot['valueSchema'])
                 except Exception as error:
                     raise InvalidActionResult('槽位 Schema 无效。') from error
-            target = (slot['objectId'], slot.get('field', '$'))
+            target = (slot['objectId'], tuple(slot.get('fields', (slot.get('field', '$'),))))
             if target in targets:
                 raise InvalidActionResult('原子组写集合重叠。')
             targets.add(target)
@@ -370,6 +380,8 @@ def apply_repair_patch(base_candidate: bytes, plan_payload: bytes, patch_payload
                     raise InvalidActionResult('引用超出授权或丢失旧引用。')
         if op == 'SET_FIELD':
             objects[slot['objectId']][slot['field']] = value
+        elif op == 'SET_FIELDS':
+            objects[slot['objectId']].update(value)
         elif op == 'REMOVE_FIELD':
             del objects[slot['objectId']][slot['field']]
         elif op == 'REMOVE_OBJECT':

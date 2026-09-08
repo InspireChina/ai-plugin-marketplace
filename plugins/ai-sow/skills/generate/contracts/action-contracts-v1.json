@@ -878,7 +878,7 @@
       ],
       "instruction": {
         "path": "prompts/candidate-patch.md",
-        "sha256": "24012454d4102762f3fda5ff01448d72092dc53122f8b03ea009639d66551f90"
+        "sha256": "356d95f9cdc6c607a9336987c9fa4f4571654eae4420f8f2c50f0a6827ff8206"
       },
       "limits": {
         "maxHydrateTokens": 65536,
@@ -888,7 +888,7 @@
       "resultSchema": {
         "id": "urn:ai-sow:generate:next:candidate-repair:1#/$defs/PatchResult",
         "path": "contracts/candidate-repair.schema.json",
-        "sha256": "841eba33ce1deb23f512b2baedcf3aebbb0c0caedbd57d280a187f4d1c82e38d"
+        "sha256": "1c0215207cc465791a4abb51c850f46ff58fcf44296d567b07a90711b5e6f305"
       },
       "sealPredicates": [
         "EXACT_SLOTS",
