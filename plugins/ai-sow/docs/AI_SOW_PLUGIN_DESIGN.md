@@ -184,9 +184,32 @@ artifact 先在 work 中渲染并由 Office 回算复读；用户批准后，`ge
 渲染和复读始终使用同一份不可变模板。正式工作簿固定为 `01-需求故事`、`02-任务清单`、
 `03-工作量汇总`、`90-估算标准` 四个 Sheet 和五个命名 Table。
 
+默认资产正式采用名称输入、隐藏 ID 公式的 13 列 TaskTable。TaskTable 支持两种互斥输入原型：
+工作类型 ID 输入、名称公式，或名称输入、ID 公式。其余必需
+计算列必须完整保留；投影和复读以本轮模板原型判断输入/公式角色，并核验缓存中的类型匹配结果。
+支持原 14 列任务表及精简 13 列任务表：后者删除 SIT 计费点 ID，将 SIT 支持分类改为“集成类型”，
+投影为内部集成/外部集成，非集成任务为空。公式同步采用中文条件；其余列顺序和计算角色严格
+核验。名称目录值逐字保留，以 OOXML 文本类型防止前缀被解释为公式。
+
+精简模板用全表唯一的任务名称标识计费行，以动态下拉和行校验限制集成类型只用于目录中
+PER_INTEGRATION 工作类型。复杂度系数不使用校验异常底色。SOW Model 的 integrationIds、
+counterpartyBoundary 与 derive_sit_assignments 保持不变，生成前继续拒绝同方向多归属、无归属
+或单任务多方向。离线表中两个异名任务是否属于同一方向仍需范围评审，不能靠名称识别。
+
+默认空白模板预备 60 条故事、200 条任务输入行；公式保护与名称下拉支持直接人工填写。
+`03-工作量汇总` 展示工作量与 8 项参数的受保护公式视图，不追加实体 ID、类型或来源台账。
+原 ProjectParameterTable 和 TaskStandardTable 继续保留在估算标准页的隐藏区域；该页默认
+展示 10 列，右侧 6 列细则按组展开，只冻结前四行，展示标题不替代原机器字段。
+已有项目模板优先于默认资产，插件更新不覆盖项目副本；新模板通过新 run 形成新的不可变输入绑定。
+
+[reference 示例](reference/SOW估算与生成示例_v1.3.xlsx)正式采用 mall 订单履约与售后升级案例：
+22 条 Story、59 条 Task，直接开发 97.3、SIT 3.5、UAT 3.0，共 103.8 人天。
+[配套说明和复现输入](reference/mall订单履约与售后升级_示例说明.md)只复现工作簿投影与计算；公开
+代码现状与假设的企业资产、升级范围明确区分。示例不是真实历史报价，不声明业务审批或生产发布。
+
 Python 只投影业务文本与关系并保留公式、Table 计算列、样式、行高、筛选、验证、保护和打印设置。
 LibreOffice 在项目内隔离临时目录真实回算；随后分别复读公式与缓存值，并核对全部输入行、目录、参数、
-公式错误和汇总恒等关系。`generation-renderer-v12` 在现有汇总 Sheet 追加可见实体 ID 与公开 SourceRef 追溯区，并经真实只读 Prior adapter 验证往返。
+公式错误和汇总恒等关系。`generation-renderer-v13` 的精简 13 列模板不向汇总 Sheet 追加技术追溯表，保持原模板的工作量与参数布局；实体身份和 SourceRef 保留在配套 SOW Model/生成证明中。原 14 列模板继续兼容可见追溯及只读 Prior adapter 往返。仅转交精简 XLSX 时，Prior 仍可读取业务内容，但不得凭缺失的机器 ID 宣称旧身份已被恢复。
 
 Office identity 只保存 executable basename、可执行文件 SHA-256、完整 version、platform、无路径的 normalizedArguments 和零 exit code。所有可见 Sheet 按工作簿顺序由真实 LibreOffice 导出 PDF；隐藏 Sheet 不要求 render。单个 `ARTIFACT_VISUAL_REVIEW` 使用模型 REVIEW Attempt，窄 IR 仅包含逐 Sheet checks/decision/findings 与 overallDecision；Sheet 和 render 顺序保留，不作为集合排序。
 

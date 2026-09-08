@@ -6,11 +6,14 @@ import hashlib
 import json
 import re
 import unicodedata
+from copy import copy
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import pytest
 from openpyxl import load_workbook
+from openpyxl.formula.translate import Translator
 from openpyxl.utils.cell import range_boundaries
 from openpyxl.worksheet.formula import ArrayFormula
 
@@ -22,8 +25,10 @@ HLD_TEMPLATE = ASSETS / "hld-template.md"
 QUESTIONNAIRE = ASSETS / "greenfield-questionnaire.md"
 SOW_TEMPLATE = ASSETS / "sow-template.xlsx"
 NEXT_SOW_TEMPLATE = SOW_TEMPLATE
+LEGACY_SOW_TEMPLATE = SKILL_ROOT / "tests/fixtures/sow-template-legacy.xlsx"
 PLUGIN_ROOT = SKILL_ROOT.parents[1]
 V6_REFERENCE_ROOT = PLUGIN_ROOT / "docs" / "reference"
+SOW_EXAMPLE = V6_REFERENCE_ROOT / "SOW估算与生成示例_v1.3.xlsx"
 V6_DISCUSSION = V6_REFERENCE_ROOT / "研发全生命周期标准人天基准表_v6.0_讨论稿.md"
 MIGRATION_LEDGER = (
     SKILL_ROOT
@@ -38,6 +43,10 @@ MIGRATION_APPROVAL = (
     / "task-standard-migration-approval-v1.json"
 )
 RENDERER_BASELINE = SKILL_ROOT / "contracts/renderer-fingerprint-baseline.json"
+TASK_HEADERS = [
+    "所属故事", "任务名称", "工作类型ID", "工作类型名称", "工作方式", "复杂度",
+    "集成类型", "备注", "M档标准人天", "复杂度系数", "任务人天", "SIT支持人天", "校验结果",
+]
 TASK_STANDARD_HEADERS = [
     "序号",
     "分类",
@@ -337,7 +346,7 @@ def _explicit_boundary_sentences(value: str) -> tuple[str, ...]:
 
 def test_bundled_sow_template_is_pinned_four_sheet_calculation_authority() -> None:
     assert hashlib.sha256(SOW_TEMPLATE.read_bytes()).hexdigest() == (
-        "43058a761a3d5ea2e71e779b1600aa159258f732b1cb5c60d491051540454041"
+        "470f0ef92dfc71c3a3516484721b58e284037f5ea32aae900d16abd3418b97a8"
     )
     workbook = load_workbook(SOW_TEMPLATE, data_only=False, read_only=False)
     try:
@@ -365,29 +374,14 @@ def test_bundled_sow_template_is_pinned_four_sheet_calculation_authority() -> No
             "故事人天",
             "校验结果",
         ]
-        assert table_headers(workbook, "TaskTable") == [
-            "所属故事",
-            "任务名称",
-            "工作类型ID",
-            "工作类型名称",
-            "工作方式",
-            "复杂度",
-            "SIT支持分类",
-            "SIT计费点ID",
-            "备注",
-            "M档标准人天",
-            "复杂度系数",
-            "任务人天",
-            "SIT支持人天",
-            "校验结果",
-        ]
+        assert table_headers(workbook, "TaskTable") == TASK_HEADERS
         assert formula_headers(workbook, "SOWStoryTable") == {
             "任务列表",
             "故事人天",
             "校验结果",
         }
         assert formula_headers(workbook, "TaskTable") == {
-            "工作类型名称",
+            "工作类型ID",
             "M档标准人天",
             "复杂度系数",
             "任务人天",
@@ -589,15 +583,25 @@ def test_no_quantity_column_or_legacy_catalog_table_remains() -> None:
         workbook.close()
 
 
-def test_task_standard_sheet_is_filterable_wrapped_frozen_and_human_readable() -> None:
-    workbook = load_workbook(NEXT_SOW_TEMPLATE, data_only=False, read_only=False)
+@pytest.mark.parametrize("asset", [SOW_TEMPLATE, SOW_EXAMPLE], ids=["template", "example"])
+def test_task_standard_sheet_is_filterable_wrapped_frozen_and_human_readable(asset) -> None:
+    workbook = load_workbook(asset, data_only=False, read_only=False)
     try:
         sheet = workbook["90-估算标准"]
         table = sheet.tables["TaskStandardTable"]
         assert table.autoFilter is not None
         assert table.autoFilter.ref == table.ref
-        assert sheet.freeze_panes == "D5"
+        assert sheet.freeze_panes == "AM5"
+        assert sheet.sheet_view.pane.ySplit == 4
+        assert sheet.sheet_view.pane.xSplit in (None, 0)
         assert sheet.sheet_view.showGridLines is False
+        assert sheet.sheet_view.showOutlineSymbols is True
+        if asset == SOW_TEMPLATE:
+            assert sheet.sheet_properties.outlinePr.summaryRight is False
+            assert sheet.column_dimensions["AV"].collapsed
+        assert sheet.auto_filter.ref == "AM4:BB92"
+        assert str(sheet.print_area) == "'90-估算标准'!$AM$1:$AV$92"
+        assert sheet.print_title_rows == "$1:$4"
         assert sheet.page_setup.orientation == "landscape"
         assert sheet.sheet_properties.pageSetUpPr.fitToPage is True
         assert sheet.page_setup.fitToWidth == 1
@@ -605,33 +609,39 @@ def test_task_standard_sheet_is_filterable_wrapped_frozen_and_human_readable() -
         assert all(sheet.cell(4, column).alignment.wrap_text for column in range(1, 32))
         assert all(sheet.cell(row, 7).alignment.wrap_text for row in range(5, 93))
         assert all((sheet.row_dimensions[row].height or 0) >= 48 for row in range(5, 93))
-        assert all((sheet.column_dimensions[column].width or 0) >= 10 for column in ("A", "B", "C", "D", "E"))
-        assert all((sheet.column_dimensions[column].width or 0) >= 28 for column in ("G", "H", "I", "L", "O", "R", "T", "U", "V", "W", "X", "Z", "AA"))
+        assert [sheet.cell(4, column).value for column in range(39, 55)] == [
+            "工作类型 ID", "分类", "工作类型", "计量单位", "新建 PD", "调整 PD", "复用 PD",
+            "标准交付对象", "模式化完成标准", "说明", "主要计量维度", "S（简单）",
+            "M（标准）", "L（复杂）", "X / 拆分条件", "模式适用说明",
+        ]
+        # Office may serialize adjacent columns as one <col min="..." max="...">.
+        dimensions = {
+            column: dimension for dimension in sheet.column_dimensions.values()
+            for column in range(dimension.min, dimension.max + 1)
+        }
+        assert all(dimensions[c].hidden for c in range(1, 39))
+        assert all(not dimensions[c].hidden for c in range(39, 49))
+        for column in range(49, 55):
+            dimension = dimensions[column]
+            assert dimension.hidden and dimension.outlineLevel == 1
+        assert sheet.protection.sheet
+        for row in range(5, 93):
+            assert sheet.cell(row, 39).value == sheet.cell(row, 3).value
+            for column in range(40, 55):
+                cell = sheet.cell(row, column)
+                assert cell.data_type == "f" and cell.protection.locked
+                assert f"MATCH($AM{row},TaskStandardTable[工作类型ID],0)" in cell.value
+                assert cell.alignment.wrap_text
     finally:
         workbook.close()
 
 
-def test_task_table_has_exact_14_columns_and_structured_formulas() -> None:
+def test_task_table_has_exact_13_columns_and_structured_formulas() -> None:
     workbook = load_workbook(NEXT_SOW_TEMPLATE, data_only=False, read_only=False)
     try:
-        assert table_headers(workbook, "TaskTable") == [
-            "所属故事",
-            "任务名称",
-            "工作类型ID",
-            "工作类型名称",
-            "工作方式",
-            "复杂度",
-            "SIT支持分类",
-            "SIT计费点ID",
-            "备注",
-            "M档标准人天",
-            "复杂度系数",
-            "任务人天",
-            "SIT支持人天",
-            "校验结果",
-        ]
+        assert table_headers(workbook, "TaskTable") == TASK_HEADERS
         assert formula_headers(workbook, "TaskTable") == {
-            "工作类型名称",
+            "工作类型ID",
             "M档标准人天",
             "复杂度系数",
             "任务人天",
@@ -639,26 +649,31 @@ def test_task_table_has_exact_14_columns_and_structured_formulas() -> None:
             "校验结果",
         }
         sheet = workbook["02-任务清单"]
-        for coordinate in ("D5", "J5", "K5", "L5", "M5", "N5"):
+        for coordinate in ("C5", "I5", "J5", "K5", "L5", "M5"):
             assert formula_text(sheet[coordinate].value).startswith("=")
         structured_formula_text = "\n".join(
             formula_text(sheet[coordinate].value)
-            for coordinate in ("D5", "J5", "K5", "M5", "N5")
+            for coordinate in ("C5", "I5", "J5", "L5", "M5")
         )
         assert "TaskStandardTable[" in structured_formula_text
         assert "ProjectParameterTable[" in structured_formula_text
+        assert sheet["K5"].value == '=IF(OR(NOT(ISNUMBER($I5)),NOT(ISNUMBER($J5))),"",ROUND($I5*$J5,1))'
+        assert 'COUNTA($A5:$B5,$D5:$H5)=0' in sheet["L5"].value
+        assert 'COUNTA($A5:$B5,$D5:$H5)=0' in sheet["M5"].value
+        assert 'SUMPRODUCT(--(TaskTable[任务名称]=$B5))>1' in sheet["M5"].value
+        assert 'SIT计费点ID' not in structured_formula_text
     finally:
         workbook.close()
 
 
-def test_work_type_name_and_effort_resolve_by_id_and_mode_from_same_row() -> None:
+def test_work_type_name_input_resolves_id_and_mode_effort_from_same_row() -> None:
     workbook = load_workbook(NEXT_SOW_TEMPLATE, data_only=False, read_only=False)
     try:
         task_sheet = workbook["02-任务清单"]
-        name_formula = formula_text(task_sheet["D5"].value)
-        effort_formula = formula_text(task_sheet["J5"].value)
-        assert "TaskStandardTable[工作类型名称]" in name_formula
-        assert "TaskStandardTable[工作类型ID]" in name_formula
+        id_formula = formula_text(task_sheet["C5"].value)
+        effort_formula = formula_text(task_sheet["I5"].value)
+        assert id_formula == '=IFERROR(INDEX(TaskStandardTable[工作类型ID],MATCH($D5,TaskStandardTable[工作类型名称],0)),"")'
+        assert task_sheet["D5"].value is None
         for field in (
             "新建适用",
             "新建M档人天",
@@ -669,6 +684,7 @@ def test_work_type_name_and_effort_resolve_by_id_and_mode_from_same_row() -> Non
         ):
             assert f"TaskStandardTable[{field}]" in effort_formula
         assert effort_formula.count("TaskStandardTable[工作类型ID]") >= 6
+        assert effort_formula.count("MATCH($C5,") >= 6
         story_list_formula = formula_text(workbook["01-需求故事"]["G5"].value)
         assert "TaskTable[工作类型名称]" in story_list_formula
         assert "TaskTable[工作类型ID]" not in story_list_formula
@@ -699,16 +715,147 @@ def test_internal_external_support_round_separately_before_sum() -> None:
         formula = formula_text(workbook["03-工作量汇总"]["B6"].value)
         assert formula.count("CEILING(") == 2
         assert formula.count("TaskTable[SIT支持人天]") == 2
-        assert formula.count("TaskTable[SIT支持分类]") == 2
-        assert '"INTERNAL"' in formula
-        assert '"EXTERNAL"' in formula
+        assert formula.count("TaskTable[集成类型]") == 2
+        assert '"内部集成"' in formula
+        assert '"外部集成"' in formula
         assert "ProjectParameterTable[值]" in formula
         assert "ProjectParameterTable[参数代码]" in formula
     finally:
         workbook.close()
 
 
-def test_migration_approval_binds_final_template_all_88_rows_source_hashes_and_rendered_audit() -> None:
+def test_default_template_prepares_60_stories_and_200_tasks_with_translated_formulas() -> None:
+    workbook = load_workbook(SOW_TEMPLATE)
+    try:
+        for sheet_name, table_name, last_row, last_column, input_columns in (
+            ("01-需求故事", "SOWStoryTable", 64, "I", "ABCDEF"),
+            ("02-任务清单", "TaskTable", 204, "M", "ABDEFGH"),
+        ):
+            sheet = workbook[sheet_name]
+            assert sheet.tables[table_name].ref == f"A4:{last_column}{last_row}"
+            assert sheet.tables[table_name].autoFilter.ref == sheet.tables[table_name].ref
+            assert sheet.max_row == last_row
+            for row in sheet.iter_rows(min_row=5, max_row=last_row):
+                for cell in row:
+                    if cell.column_letter in input_columns:
+                        assert cell.value is None and not cell.protection.locked
+                    else:
+                        prototype = sheet[f"{cell.column_letter}5"]
+                        assert cell.data_type == "f" and cell.protection.locked
+                        assert formula_text(cell.value) == Translator(
+                            formula_text(prototype.value), origin=prototype.coordinate
+                        ).translate_formula(cell.coordinate)
+    finally:
+        workbook.close()
+
+
+@pytest.mark.parametrize("asset", [SOW_TEMPLATE, SOW_EXAMPLE], ids=["template", "example"])
+def test_business_assets_use_name_input_dynamic_integration_lists_and_protected_results(asset) -> None:
+    workbook = load_workbook(asset)
+    try:
+        sheet = workbook["02-任务清单"]
+        assert table_headers(workbook, "TaskTable") == TASK_HEADERS
+        assert sheet.max_column == 13
+        assert sheet.column_dimensions["C"].hidden
+        assert all(not sheet.column_dimensions[c].hidden for c in "ABDEFGHIJKLM")
+        assert sheet.protection.sheet
+        for row in sheet.iter_rows(min_row=5):
+            for cell in row:
+                is_formula = cell.column_letter in "CIJKLM"
+                assert cell.protection.locked is is_formula
+                assert (cell.data_type == "f") is is_formula
+            assert copy(row[9].fill) == copy(row[8].fill)
+        column_formulas = {
+            column.name for column in sheet.tables["TaskTable"].tableColumns
+            if column.calculatedColumnFormula is not None
+        }
+        assert column_formulas == {TASK_HEADERS[c - 1] for c in (3, 9, 10, 11, 12, 13)}
+        rules = {str(rule.sqref): rule for rule in sheet.data_validations.dataValidation}
+        assert set(rules) == {f"{column}5:{column}1048576" for column in "ABDEFG"}
+        for column, formula in {
+            "A": '=INDIRECT("SOWStoryTable[故事]")',
+            "D": '=INDIRECT("TaskStandardTable[工作类型名称]")',
+            "E": '"新建,调整,接入复用"',
+            "F": '"S,M,L"',
+            "G": 'IF(IFERROR(INDEX(INDIRECT("TaskStandardTable[SIT支持资格]"),MATCH($C5,INDIRECT("TaskStandardTable[工作类型ID]"),0)),"")="PER_INTEGRATION",AiSowIntegrationTypes,AiSowNoIntegrationType)',
+        }.items():
+            rule = rules[f"{column}5:{column}1048576"]
+            assert rule.type == "list" and rule.formula1 == formula
+        unique = rules["B5:B1048576"]
+        assert unique.type == "custom"
+        assert unique.formula1 == 'COUNTIF($B:$B,"="&SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(B5,"~","~~"),"*","~*"),"?","~?"))=1'
+        assert all(rule.errorStyle == "stop" and rule.showErrorMessage for rule in rules.values())
+        assert workbook.defined_names["AiSowIntegrationTypes"].attr_text == "'90-估算标准'!$BD$5:$BD$6"
+        empty_destinations = list(workbook.defined_names["AiSowNoIntegrationType"].destinations)
+        assert len(empty_destinations) == 1
+        assert empty_destinations[0][0] == "90-估算标准"
+        assert range_boundaries(empty_destinations[0][1]) == (56, 7, 56, 7)
+        assert [workbook["90-估算标准"][f"BD{r}"].value for r in range(5, 8)] == ["内部集成", "外部集成", None]
+        for name, column in (("01-需求故事", "I"), ("02-任务清单", "M")):
+            sheet = workbook[name]
+            assert sheet.protection.sheet and sheet.freeze_panes == "A5"
+            regions = list(sheet.conditional_formatting)
+            assert [str(region.sqref) for region in regions] == [f"{column}5:{column}1048576"]
+            assert [rule.formula for rule in sheet.conditional_formatting[regions[0]]] == [
+                [f'AND(${column}5<>"",${column}5<>"通过")']
+            ]
+    finally:
+        workbook.close()
+
+
+@pytest.mark.parametrize("asset", [SOW_TEMPLATE, SOW_EXAMPLE], ids=["template", "example"])
+def test_summary_parameter_view_has_authoritative_caches_and_no_identity_appendix(asset) -> None:
+    workbook = load_workbook(asset)
+    cached = load_workbook(asset, data_only=True)
+    try:
+        summary = workbook["03-工作量汇总"]
+        assert summary.max_row == 22 and summary.max_column == 3
+        assert str(summary.print_area) == "'03-工作量汇总'!$A$1:$C$22"
+        assert summary.protection.sheet
+        assert all(not summary.column_dimensions[c].hidden for c in "ABC")
+        assert [summary.cell(12, c).value for c in (1, 2, 3)] == [
+            "参数名称", "当前值", "单位 / 适用范围 / 状态",
+        ]
+        for row, parameter_row in zip(range(13, 21), range(5, 13), strict=True):
+            code, name, value, unit, scope, status = [
+                cached["90-估算标准"].cell(parameter_row, c).value for c in range(33, 39)
+            ]
+            for column, field in (("A", "名称"), ("B", "值")):
+                cell = summary[f"{column}{row}"]
+                assert cell.value == f'=INDEX(ProjectParameterTable[{field}],MATCH("{code}",ProjectParameterTable[参数代码],0))'
+            for column in "ABC":
+                cell = summary[f"{column}{row}"]
+                assert cell.data_type == "f" and cell.protection.locked
+            assert [cached[summary.title].cell(row, c).value for c in (1, 2, 3)] == [
+                name, value, f"{unit}；{scope}；{status}",
+            ]
+        assert all(cell.value not in {"实体ID", "类型/来源", "名称/公开来源引用"}
+                   for row in summary for cell in row)
+        if asset == SOW_TEMPLATE:
+            assert [cached[summary.title][f"B{r}"].value for r in range(5, 9)] == [0, 0, 0, 0]
+    finally:
+        workbook.close()
+        cached.close()
+
+
+def test_bundled_example_pins_reviewed_59_tasks_and_financial_totals() -> None:
+    assert hashlib.sha256(SOW_EXAMPLE.read_bytes()).hexdigest() == (
+        "b4b12f5250a5503b8fe938f1f19330e04d5a20955f16b2d1051d587f0711c3ed"
+    )
+    workbook = load_workbook(SOW_EXAMPLE, data_only=True)
+    try:
+        assert len(table_values(workbook, "SOWStoryTable")) == 22
+        tasks = table_values(workbook, "TaskTable")
+        assert len(tasks) == 59
+        assert len({row[1] for row in tasks}) == 59
+        assert all(row[12] == "通过" for row in tasks)
+        assert [workbook["03-工作量汇总"][f"B{r}"].value for r in range(5, 9)] == [97.3, 3.5, 3, 103.8]
+        assert not any(cell.data_type == "e" for sheet in workbook for row in sheet for cell in row)
+    finally:
+        workbook.close()
+
+
+def test_historical_migration_approval_binds_legacy_template_all_88_rows_and_rendered_audit() -> None:
     approval = json.loads(MIGRATION_APPROVAL.read_text(encoding="utf-8"))
     ledger = json.loads(MIGRATION_LEDGER.read_text(encoding="utf-8"))
     assert approval["schemaVersion"] == "task-standard-migration-approval-v1"
@@ -738,7 +885,7 @@ def test_migration_approval_binds_final_template_all_88_rows_source_hashes_and_r
         MIGRATION_LEDGER.read_bytes()
     ).hexdigest()
     assert bindings["templateSha256"] == hashlib.sha256(
-        NEXT_SOW_TEMPLATE.read_bytes()
+        LEGACY_SOW_TEMPLATE.read_bytes()
     ).hexdigest()
     office = bindings["officeRoundtrip"]
     assert office["engineName"] == "LibreOffice"
@@ -794,7 +941,7 @@ def test_migration_approval_binds_final_template_all_88_rows_source_hashes_and_r
 
 def test_renderer_fingerprint_binds_projection_and_office_implementation() -> None:
     baseline = json.loads(RENDERER_BASELINE.read_text(encoding="utf-8"))
-    assert baseline["rendererContract"] == "generation-renderer-v12"
+    assert baseline["rendererContract"] == "generation-renderer-v13"
     assert baseline["files"] == {
         name: hashlib.sha256((SKILL_ROOT / name).read_bytes()).hexdigest()
         for name in (

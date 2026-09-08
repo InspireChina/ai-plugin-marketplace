@@ -49,7 +49,7 @@ UI 可使用 Demo 交互证据，包括 hash 绑定的整文件锚点。非 UI �
 
 共享 Task 保留一个主 Story，其外来 AC 必须来自被授权 roots，并处于同一批准目标或明确 Feature 覆盖范围。政策与设计引用由原受影响目标确定性合并；不改原 Story/AC。无授权、遗漏义务、无关范围和额外计量均拒绝。checkpoint proof 重新绑定原结果、修复结果、完整上下文以及全部实际候选，验证上游原值。Task 输入中重复 Story 正文可无损字典化，展开后验证原 packet SHA 与每个 workItem/context hash。
 
-`generation-renderer-v12` 对共享 Story 投影任务列表与覆盖校验公式，并显示人天计入哪个主 Story；同一 TaskTable 只保留一行。全部计价、SIT/UAT、汇总、取整公式和目录保持原模板。政策 ID 的显示名使用具体 Story 与模板工作类型名称，模型原 ID 和来源保存在审计数据中。
+`generation-renderer-v13` 对共享 Story 投影任务列表与覆盖校验公式，并显示人天计入哪个主 Story；同一 TaskTable 只保留一行。全部计价、SIT/UAT、汇总、取整公式和目录保持原模板。政策 ID 的显示名使用具体 Story 与模板工作类型名称，模型原 ID 和来源保存在审计数据中。
 
 仅实施澄清时使用[阶段澄清恢复](stage-seal.md)：用户明确选择当前问题 Task 的既有批准目标，答案同时进入 Repair 与 fresh Review；累计授权保留之前已通过的共享覆盖，不复活已合并 Task。新增组件或业务范围不属于该入口。
 

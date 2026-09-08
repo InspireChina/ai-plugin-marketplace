@@ -14,7 +14,7 @@ sys.path[:0] = [str(SKILL_ROOT / 'scripts'), str(SKILL_ROOT / 'tests')]
 
 from contracts import action_contract_binding, action_provider_request, canonical_json_bytes, sha256_bytes
 from test_stage_planner import policy
-from test_task_compiler import exact_task_inputs, task_packet
+from test_task_compiler import LEGACY_TEMPLATE, exact_task_inputs, task_packet
 
 SELECTED_RULE_IDS = ('ENG-RUNTIME', 'FE-BATCH', 'FE-COMMAND-API', 'FE-EDIT', 'FE-FILE-TRANSFER',
     'FE-QUERY-API', 'FE-VIEW', 'IN-INTEGRATION', 'REL-EXECUTION', 'TEST-API', 'TEST-UI-E2E')
@@ -26,7 +26,9 @@ SELECTED_RULE_IDS = ('ENG-RUNTIME', 'FE-BATCH', 'FE-COMMAND-API', 'FE-EDIT', 'FE
     ('TASK_REPAIR-v1', '9c10aeb95810ed873014254c3ba7ec0faf9927859a6b01f28a80778a240d5d4c')])
 def test_task_v1_request_and_professional_bindings_remain_exact(kind, digest):
     from stage_planner import run_budget_policy_value
-    request = action_provider_request(SKILL_ROOT, kind, canonical_json_bytes(task_packet(exact_task_inputs())),
+    # Preserve the original request bytes with their original template input.
+    inputs = exact_task_inputs(template_path=LEGACY_TEMPLATE)
+    request = action_provider_request(SKILL_ROOT, kind, canonical_json_bytes(task_packet(inputs)),
         budget_policy=run_budget_policy_value(policy()), max_output_tokens=8192)
     assert sha256_bytes(request) == digest
     old, _ = action_contract_binding(SKILL_ROOT, kind)

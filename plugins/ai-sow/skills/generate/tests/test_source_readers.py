@@ -3,6 +3,7 @@ from __future__ import annotations
 TEST_LAYER = "unit"
 
 import sys
+import zipfile
 from pathlib import Path
 
 import openpyxl
@@ -284,6 +285,86 @@ def test_xlsx_declared_dimension_and_cell_text_limits_are_bounded(
     with pytest.raises(SourceReadError) as captured:
         extract_source_blocks(long_cell, source_role="PRIOR_SOW", parser_version="1")
     assert captured.value.code == "SOURCE_LIMIT_EXCEEDED"
+
+
+EMPTY_OFFICE_DRAWING = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" '
+    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"></xdr:wsDr>'
+)
+
+
+def source_with_drawing(tmp_path, drawing):
+    base = synthetic_source(tmp_path, ".xlsx")
+    source = tmp_path / "with-drawing.xlsx"
+    with zipfile.ZipFile(base) as original, zipfile.ZipFile(source, "w") as target:
+        for item in original.infolist():
+            target.writestr(item, original.read(item.filename))
+        target.writestr("xl/drawings/drawing1.xml", drawing.encode("utf-8"))
+    return base, source
+
+
+def require_prior_surfaces_readable(inventory):
+    from prior_state import _require_ready
+    _require_ready({"unsupportedRegions": [], "sourceRelations": [],
+                    "entities": [], "entitySupersessions": []}, [inventory])
+
+
+@pytest.mark.parametrize("drawing", [
+    EMPTY_OFFICE_DRAWING,
+    EMPTY_OFFICE_DRAWING.replace("></xdr:wsDr>", ">\n  \t</xdr:wsDr>"),
+    '<wsDr xmlns="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>',
+], ids=["office-299-bytes", "whitespace", "default-namespace"])
+def test_empty_office_drawing_does_not_block_prior_or_change_cell_evidence(tmp_path, drawing):
+    base, source = source_with_drawing(tmp_path, drawing)
+    before = source.read_bytes()
+    inventory = source_readers_module.inventory_xlsx(source)
+    assert len(EMPTY_OFFICE_DRAWING.encode("utf-8")) == 299
+    assert inventory["unsupportedSurfaces"] == []
+    assert inventory["sheets"] == source_readers_module.inventory_xlsx(base)["sheets"]
+    require_prior_surfaces_readable(inventory)
+    documents = [extract_source_blocks(path, source_role="PRIOR_SOW", parser_version="2")
+                 for path in (base, source)]
+    assert [(block["locator"], block["content"]) for block in documents[0].blocks] == [
+        (block["locator"], block["content"]) for block in documents[1].blocks]
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize("drawing", [
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>',
+        '<xdr:absoluteAnchor><xdr:pos x="0" y="0"/><xdr:ext cx="100000" cy="100000"/>'
+        '<xdr:sp><xdr:nvSpPr><xdr:cNvPr id="1" name="Scope note"/><xdr:cNvSpPr/>'
+        '</xdr:nvSpPr><xdr:spPr/><xdr:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r>'
+        '<a:t>合同范围</a:t></a:r></a:p></xdr:txBody></xdr:sp><xdr:clientData/>'
+        '</xdr:absoluteAnchor></xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', '<xdr:oneCellAnchor/></xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', '<xdr:twoCellAnchor/></xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', '<xdr:unknown/></xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', '合同范围</xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', '\u00a0</xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('<xdr:wsDr ', '<xdr:wsDr unknown="value" '),
+    EMPTY_OFFICE_DRAWING.replace('2006/spreadsheetDrawing', '2006/unknown'),
+    '<wsDr/>',
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', ''),
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', '<!--未知内容--></xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('</xdr:wsDr>', '<?unknown content?></xdr:wsDr>'),
+    EMPTY_OFFICE_DRAWING.replace('<xdr:wsDr ', '<!DOCTYPE xdr:wsDr><xdr:wsDr '),
+    EMPTY_OFFICE_DRAWING.replace('encoding="UTF-8"', 'encoding="unknown-drawing-encoding"'),
+], ids=["shape", "one-cell-anchor", "two-cell-anchor", "unknown-child", "text",
+        "non-xml-whitespace", "attribute", "wrong-namespace", "missing-namespace", "malformed", "comment",
+        "processing-instruction", "doctype", "unknown-encoding"])
+def test_nonempty_unknown_or_malformed_drawing_still_blocks_prior(tmp_path, drawing):
+    from prior_state import PriorInputRequired
+    _base, source = source_with_drawing(tmp_path, drawing)
+    before = source.read_bytes()
+    inventory = source_readers_module.inventory_xlsx(source)
+    assert inventory["unsupportedSurfaces"] == [{
+        "part": "xl/drawings/drawing1.xml", "kind": "DRAWING", "coverage": "UNSUPPORTED",
+    }]
+    with pytest.raises(PriorInputRequired):
+        require_prior_surfaces_readable(inventory)
+    assert source.read_bytes() == before
 
 
 def test_array_formula_source_blocks_preserve_formula_and_repeat_exactly(tmp_path):

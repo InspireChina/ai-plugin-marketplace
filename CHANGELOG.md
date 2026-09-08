@@ -4,6 +4,11 @@
 
 ## 0.1.0-beta.2 - 未发布
 
+- 默认模板正式采用 `generation-renderer-v13` 支持的 13 列 TaskTable：工作类型名称下拉输入、隐藏 ID 公式、删除 SIT 计费点 ID、任务名称全表唯一；中文“集成类型”仅允许目录中具备 `PER_INTEGRATION` 资格的任务选择内部集成/外部集成，其余留空。修正复杂度系数误套的校验底色；`03-工作量汇总` 展示工作量与 8 项参数的受保护公式视图，不追加实体 ID、类型或来源台账，内部追溯留在配套数据中。空白模板预备 60 条故事、200 条任务输入行；估算标准默认 10 列、6 列分组细则，原始机器字段隐藏保留，只冻结前四行。保留原 14 列 ID 输入模板兼容、底层 Integration 唯一归属及内外部计算口径；支持带公式前缀的目录名称安全匹配。输入/公式角色与 Office 复读跟随模板原型，同步生成/批准合同和指纹基线。
+- [reference 示例](plugins/ai-sow/docs/reference/SOW估算与生成示例_v1.3.xlsx)正式采用 mall 订单履约与售后升级案例，附[说明与复现输入](plugins/ai-sow/docs/reference/mall订单履约与售后升级_示例说明.md)：22 条 Story、59 条 Task，直接开发 97.3、SIT 支持 3.5、UAT 支持 3.0，合计 103.8 人天。公开开源事实与假设的企业资产、升级范围分开记录；该样例不是真实历史报价或已批准 SOW。
+- 可见字形检查遵循隐藏列和分组行列的可见状态；macOS 重算与 PDF 导出共用隔离中文字体配置。修复 LibreOffice `SinglePageSheets` 从横向滚动的 `90-估算标准` 激活时裁切前三页的问题：仅在临时 PDF 副本中选择首个可见 Sheet，不改变交付文件的打开位置、公式或缓存。
+- 读取往期 XLSX 时识别 Office 保存的空 drawing 节点，避免将没有内容的节点误判为未读取业务表面；真实绘图、未知节点与其他不支持的内容仍保留原有门禁。
+
 - 新增 Owner 授权的 `CANDIDATE_PATCH-v1`：机械失败与新发生的 `REPAIRABLE_SEMANTIC` 只修改精确槽位，绑定 RepairReceipt、CandidateResolution、Review/base/semantic source 与协议选择事件；原失败和已发行旧 Repair 保持冻结。补丁组、hydrate、内容/执行次数和用量累计恢复，无进展、输入、合同、Owner、执行与预算分别停止。
 - 派生结果不再冒充 Attempt；dependency、Prototype、checkpoint 与 portable proof 区分物理 record 和 CandidateResolution，并重放 base、对象索引、语义来源、事件和完整 Patch 链。确定性缓存绑定实际输入、参数、相关实现和无绝对路径 Office 身份；旧无指纹成功不在新路径复用。
 - 修复 `CANDIDATE_PATCH-v1` 在真实阶段接续中的集成缺口：Task 共享资产、实施澄清、人工裁定、Reviewer 格式修复、未发行容量恢复和 portable proof 统一保留 CandidateResolution、旧 Attempt、上游 checkpoint 与精确 Review 绑定；最终工件复核同时恢复实际 workbook bytes 解码。

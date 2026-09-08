@@ -210,6 +210,30 @@ def _normalize(text: object) -> str:
     return " ".join(unicodedata.normalize("NFC", str(text)).split())
 
 
+def _empty_xlsx_drawing(payload: bytes) -> bool:
+    """Recognize only an empty spreadsheet drawing container, never its contents."""
+    class EmptyDrawingTree(ET.TreeBuilder):
+        def comment(self, text):
+            raise ValueError("Drawing contains a comment.")
+
+        def pi(self, target, text):
+            raise ValueError("Drawing contains a processing instruction.")
+
+        def doctype(self, name, public_id, system_id):
+            raise ValueError("Drawing contains a document type declaration.")
+
+    try:
+        root = ET.fromstring(payload, parser=ET.XMLParser(target=EmptyDrawingTree()))
+    except (ET.ParseError, ValueError, LookupError):
+        return False
+    return (
+        root.tag == "{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}wsDr"
+        and not root.attrib
+        and len(root) == 0
+        and not (root.text or "").strip(" \t\r\n")
+    )
+
+
 def inventory_xlsx(path: Path) -> dict[str, object]:
     """Read bounded OOXML metadata and typed cells without an Office save operation."""
     inspect_source_header(path, source_role="PRIOR_SOW")
@@ -238,6 +262,11 @@ def inventory_xlsx(path: Path) -> dict[str, object]:
 
     with zipfile.ZipFile(BytesIO(payload)) as archive:
         names = set(archive.namelist())
+        empty_drawings = {
+            name for name in names
+            if name.startswith("xl/drawings/") and name.endswith(".xml") and "/_rels/" not in name
+            and _empty_xlsx_drawing(archive.read(name))
+        }
         shared = []
         if "xl/sharedStrings.xml" in names:
             shared = ["".join(node.itertext()) for node in ET.fromstring(archive.read("xl/sharedStrings.xml")).findall("s:si", ns)]
@@ -306,7 +335,8 @@ def inventory_xlsx(path: Path) -> dict[str, object]:
         elif name.endswith(".vml"):
             kind = "VML"
         elif name.startswith("xl/drawings/") and not "/_rels/" in name:
-            kind = "DRAWING"
+            if name not in empty_drawings:
+                kind = "DRAWING"
         elif name.startswith("xl/media/"):
             kind = "IMAGE"
         elif name.startswith("xl/embeddings/"):

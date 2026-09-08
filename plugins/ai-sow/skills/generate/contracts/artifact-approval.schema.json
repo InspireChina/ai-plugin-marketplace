@@ -73,7 +73,7 @@
           "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"
         },
         "rendererContract": {
-          "const": "generation-renderer-v12"
+          "const": "generation-renderer-v13"
         },
         "rendererSha256": {
           "$ref": "urn:ai-sow:generate:next:common:1#/$defs/sha256"

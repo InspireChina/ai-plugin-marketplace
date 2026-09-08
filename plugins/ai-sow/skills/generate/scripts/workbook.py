@@ -47,6 +47,19 @@ FORMULA_HEADERS = {
     "SOWStoryTable": {"任务列表", "故事人天", "校验结果"},
     "TaskTable": {"工作类型名称", "M档标准人天", "复杂度系数", "任务人天", "SIT支持人天", "校验结果"},
 }
+
+
+def validate_formula_headers(table_name: str, headers: set[str]) -> None:
+    """Allow either catalog selector while retaining every financial formula."""
+    supported = [FORMULA_HEADERS[table_name]]
+    if table_name == "TaskTable":
+        supported.append(
+            (FORMULA_HEADERS[table_name] - {"工作类型名称"}) | {"工作类型ID"}
+        )
+    if headers not in supported:
+        raise ValueError(f"formula prototype mismatch in {table_name}")
+
+
 TABLE_HEADERS = {
     "SOWStoryTable": [
         "需求",
@@ -76,6 +89,30 @@ TABLE_HEADERS = {
         "校验结果",
     ],
 }
+COMPACT_TASK_HEADERS = [
+    "集成类型" if header == "SIT支持分类" else header
+    for header in TABLE_HEADERS["TaskTable"]
+    if header != "SIT计费点ID"
+]
+
+
+def validate_table_headers(table_name: str, headers: list[str]) -> None:
+    supported = [TABLE_HEADERS[table_name]]
+    if table_name == "TaskTable":
+        supported.append(COMPACT_TASK_HEADERS)
+    if headers not in supported:
+        raise ValueError(f"table header mismatch in {table_name}: {headers}")
+
+
+def projected_input_value(table_name: str, header: str, payload: dict) -> object:
+    value = payload.get(header, "")
+    # Catalog selectors must match the authority verbatim. fill_table writes
+    # strings with OOXML type 's', including names that begin with '='.
+    if table_name == "TaskTable" and header == "工作类型名称":
+        return value
+    return safe_text(value)
+
+
 SUMMARY_HEADERS = ["工作量项", "人天"]
 CATALOG_HEADERS = [
     "序号",
@@ -304,9 +341,11 @@ def build_rows(
                 "所属故事": story_name,
                 "任务名称": display_names[task["taskId"]],
                 "工作类型ID": work_type_id,
+                "工作类型名称": catalog_row["工作类型名称"],
                 "工作方式": task["workMode"],
                 "复杂度": task["complexity"],
                 "SIT支持分类": sit["sitSupportClass"],
+                "集成类型": {"NONE": "", "INTERNAL": "内部集成", "EXTERNAL": "外部集成"}[sit["sitSupportClass"]],
                 "SIT计费点ID": sit["sitSupportPointId"] or "",
                 "备注": "\n".join(notes),
             }
@@ -603,12 +642,8 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
     ]
     if not all(isinstance(header, str) for header in headers):
         raise ValueError(f"invalid table header: {table_name}")
-    expected_headers = TABLE_HEADERS[table_name]
-    if headers != expected_headers:
-        raise ValueError(
-            f"template header mismatch in {table_name}: "
-            f"expected {expected_headers}, got {headers}"
-        )
+    validate_table_headers(table_name, headers)
+    expected_headers = headers
     metadata_headers = [column.name for column in table.tableColumns]
     if metadata_headers != expected_headers:
         raise ValueError(
@@ -625,10 +660,8 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
         for offset, cell in enumerate(prototypes)
         if cell.data_type == "f" and isinstance(cell.value, (str, ArrayFormula))
     }
-    expected_formula_headers = FORMULA_HEADERS.get(table_name, set())
     actual_formula_headers = {headers[offset] for offset in formulas}
-    if actual_formula_headers != expected_formula_headers:
-        raise ValueError(f"formula prototype mismatch in {table_name}")
+    validate_formula_headers(table_name, actual_formula_headers)
     for column_offset, column in enumerate(table.tableColumns):
         specification = formulas.get(column_offset)
         if specification is None:
@@ -667,7 +700,7 @@ def fill_table(workbook: Any, table_name: str, rows: list[dict[str, object]]) ->
                     else translated
                 )
             else:
-                value = None if not rows else safe_text(payload.get(header, ""))
+                value = None if not rows else projected_input_value(table_name, header, payload)
                 cell.value = value
                 if isinstance(value, str):
                     cell.data_type = "s"
@@ -726,6 +759,7 @@ def projection_contract(workbook: Any) -> dict[str, dict[str, object]]:
         ]
         if not all(isinstance(header, str) for header in headers):
             raise ValueError(f"invalid table header: {table_name}")
+        validate_table_headers(table_name, headers)
         formulas: dict[str, tuple[str, str, bool]] = {}
         styles: dict[str, tuple[object, ...]] = {}
         for offset, header in enumerate(headers):
@@ -742,6 +776,7 @@ def projection_contract(workbook: Any) -> dict[str, dict[str, object]]:
                     formula,
                     isinstance(cell.value, ArrayFormula),
                 )
+        validate_formula_headers(table_name, set(formulas))
         contract[table_name] = {
             "headers": headers,
             "formulas": formulas,
@@ -855,6 +890,14 @@ def verify_print_layout(workbook: Any) -> None:
             raise ValueError(f"print layout mismatch: {sheet_name}")
 
 
+def verify_compact_summary(workbook: Any, template_workbook: Any) -> None:
+    def content(book):
+        return {cell.coordinate: (cell.data_type, comparable_formula(cell.value) if cell.data_type == 'f' else cell.value)
+                for row in book['03-工作量汇总'] for cell in row if cell.value is not None}
+    if content(workbook) != content(template_workbook):
+        raise ValueError('compact summary content differs from template')
+
+
 def verify_workbook(
     path: Path,
     expected: dict[str, list[dict[str, object]]],
@@ -879,8 +922,7 @@ def verify_workbook(
                 worksheet.cell(min_row, column).value
                 for column in range(min_col, max_col + 1)
             ]
-            if headers != TABLE_HEADERS[table_name]:
-                raise ValueError(f"table header mismatch: {table_name}")
+            validate_table_headers(table_name, headers)
             specification = contract[table_name]
             if headers != specification["headers"]:
                 raise ValueError(f"table headers changed: {table_name}")
@@ -926,7 +968,7 @@ def verify_workbook(
                             )
                     else:
                         expected_value = (
-                            None if not rows else safe_text(payload.get(header, ""))
+                            None if not rows else projected_input_value(table_name, header, payload)
                         )
                         if expected_value == "":
                             expected_value = None
@@ -944,7 +986,7 @@ def verify_workbook(
                 if column.calculatedColumnFormula is not None
                 and column.calculatedColumnFormula.text
             }
-            if calculated_headers != FORMULA_HEADERS[table_name]:
+            if calculated_headers != set(formulas):
                 raise ValueError(f"calculated column mismatch in {table_name}")
             formula_columns = {
                 column.name: column.calculatedColumnFormula
@@ -1091,10 +1133,13 @@ def audit_calculated_workbook(
                 raise ValueError("formal workbook table contract changed")
 
         expected = build_rows(model, load_task_standard_catalog(template_path))
+        template_contract = projection_contract(template_workbook)
+        if template_contract['TaskTable']['headers'] == COMPACT_TASK_HEADERS:
+            verify_compact_summary(formula_workbook, template_workbook)
         verify_workbook(
             path,
             expected,
-            projection_contract(template_workbook),
+            template_contract,
             require_recalculation=False,
             verify_styles=False,
         )
@@ -1135,8 +1180,7 @@ def audit_calculated_workbook(
                 formula_sheet.cell(min_row, column).value
                 for column in range(min_col, max_col + 1)
             ]
-            if headers != TABLE_HEADERS[table_name]:
-                raise ValueError(f"calculated table header mismatch: {table_name}")
+            validate_table_headers(table_name, headers)
             if max_row - min_row != len(expected[table_name]):
                 raise ValueError(f"calculated table row count mismatch: {table_name}")
             for row_offset, payload in enumerate(expected[table_name], start=1):
@@ -1147,15 +1191,18 @@ def audit_calculated_workbook(
                     cached_cell = cached_sheet.cell(
                         min_row + row_offset, min_col + column_offset
                     )
-                    if header in FORMULA_HEADERS[table_name]:
+                    if header in template_contract[table_name]["formulas"]:
                         if formula_cell.data_type != "f" or not isinstance(
                             formula_cell.value, (str, ArrayFormula)
                         ):
                             raise ValueError(
                                 f"calculated formula is missing: {table_name}.{header}"
                             )
+                        if table_name == "TaskTable" and header in {"工作类型ID", "工作类型名称"}:
+                            if cached_cell.value != payload[header]:
+                                raise ValueError(f"calculated catalog selection changed: {header}")
                     else:
-                        expected_value = safe_text(payload.get(str(header), ""))
+                        expected_value = projected_input_value(table_name, str(header), payload)
                         if expected_value == "":
                             expected_value = None
                         if formula_cell.value != expected_value:
@@ -1308,7 +1355,10 @@ def write_workbook(
         clear_orphan_table_formulas(workbook)
         for table_name in TABLES:
             fill_table(workbook, table_name, rows[table_name])
-        write_visible_identity(workbook, model)
+        # The compact SOW is a business document. Its model/source evidence is
+        # retained in the package, without appending a technical ledger to Excel.
+        if contract['TaskTable']['headers'] != COMPACT_TASK_HEADERS:
+            write_visible_identity(workbook, model)
         # A blank fitToHeight is interpreted as one page by LibreOffice when
         # fit-to-page is enabled, which compresses long Task sheets until the
         # text is unreadable. Zero means unlimited vertical pages while the

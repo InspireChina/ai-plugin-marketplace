@@ -516,6 +516,10 @@ def _benchmark_brownfield_evidence(files, scope_root, checkpoint, graph, target_
             row = matches[0]; cells = row['canonicalCellValues']
             if sha256_bytes(canonical_json_bytes(cells)) != row['canonicalCellValuesSha256']:
                 raise ValueError('prior visible cell evidence hash mismatch')
+            # Current compact SOWs expose business rows, not the source ledger.
+            # The source ID and XLSX locator come from the bound Prior snapshot.
+            if row.get('sheet') and row.get('absoluteA1Range'):
+                anchors.add(entity['sourceId'] + '#' + row['sheet'] + '!' + row['absoluteA1Range'])
             values = [cell['value'] for cell in cells]
             for index, value in enumerate(values[:-1]):
                 if value != 'SourceRef' or not isinstance(values[index + 1], str): continue
@@ -527,7 +531,7 @@ def _benchmark_brownfield_evidence(files, scope_root, checkpoint, graph, target_
                     raise ValueError('visible prior SourceRef does not resolve to frozen v1 bytes')
                 anchor = (ref['sourceId'], ref['locator'])
                 anchors.update(source + '#' + locator for source, locator in (aliases or {}).get(anchor, {anchor}))
-        if not anchors: raise ValueError('active prior entity lacks recovered frozen source locators')
+        if not anchors: raise ValueError('active prior entity lacks frozen visible evidence locators')
         prior_anchors[identity] = anchors
     targets = {identity: {source + '#' + locator for source, locator in anchors}
         for identity, anchors in target_evidence.items()}

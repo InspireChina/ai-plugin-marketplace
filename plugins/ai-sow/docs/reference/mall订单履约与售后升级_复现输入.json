@@ -1,0 +1,1558 @@
+{
+  "status": "ILLUSTRATIVE_NOT_APPROVED",
+  "purpose": "工作簿投影与计算复现示例；不是稳定 sow-model、业务审批、真实历史报价或生产发布证明。",
+  "case": "基于 mall 的订单履约与售后升级",
+  "template": {
+    "path": "skills/generate/assets/sow-template.xlsx",
+    "sha256": "470f0ef92dfc71c3a3516484721b58e284037f5ea32aae900d16abd3418b97a8"
+  },
+  "referenceWorkbook": {
+    "path": "docs/reference/SOW估算与生成示例_v1.3.xlsx",
+    "sha256": "b4b12f5250a5503b8fe938f1f19330e04d5a20955f16b2d1051d587f0711c3ed"
+  },
+  "rendererContract": "generation-renderer-v13",
+  "expectedResults": {
+    "story_count": 22,
+    "task_count": 59,
+    "direct_days": 97.3,
+    "sit_days": 3.5,
+    "uat_days": 3.0,
+    "total_days": 103.8
+  },
+  "publicSources": [
+    {
+      "sourceId": "F01",
+      "repository": "macrozheng/mall",
+      "commit": "0504e86b1f1b6f1b8aa6a734d37a90fb67346be7",
+      "path": "README.md",
+      "url": "https://github.com/macrozheng/mall/blob/0504e86b1f1b6f1b8aa6a734d37a90fb67346be7/README.md",
+      "sha256": "e387ff537c8d51b4a6a165a73198a560f92725f0d3d598d3488bdbd41d99f7d7",
+      "verifiedFact": "真实项目及模块架构",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F02",
+      "repository": "macrozheng/mall",
+      "commit": "0504e86b1f1b6f1b8aa6a734d37a90fb67346be7",
+      "path": "mall-admin/src/main/java/com/macro/mall/controller/OmsOrderController.java",
+      "url": "https://github.com/macrozheng/mall/blob/0504e86b1f1b6f1b8aa6a734d37a90fb67346be7/mall-admin/src/main/java/com/macro/mall/controller/OmsOrderController.java",
+      "sha256": "aac4eb1ff1837b09333d4c6b1df9f76570243d1c0236a0f496f65c6c7c384f87",
+      "verifiedFact": "已有订单列表、详情、发货和收货信息变更接口",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F03",
+      "repository": "macrozheng/mall",
+      "commit": "0504e86b1f1b6f1b8aa6a734d37a90fb67346be7",
+      "path": "mall-admin/src/main/java/com/macro/mall/controller/OmsOrderReturnApplyController.java",
+      "url": "https://github.com/macrozheng/mall/blob/0504e86b1f1b6f1b8aa6a734d37a90fb67346be7/mall-admin/src/main/java/com/macro/mall/controller/OmsOrderReturnApplyController.java",
+      "sha256": "f3a3d0fc0a3003a53f8ff0081c3fdd1e9e99281a3ff895326d943bceaf7bf44a",
+      "verifiedFact": "已有退货列表、详情和状态更新接口",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F04",
+      "repository": "macrozheng/mall",
+      "commit": "0504e86b1f1b6f1b8aa6a734d37a90fb67346be7",
+      "path": "mall-portal/src/main/java/com/macro/mall/portal/controller/OmsPortalOrderReturnApplyController.java",
+      "url": "https://github.com/macrozheng/mall/blob/0504e86b1f1b6f1b8aa6a734d37a90fb67346be7/mall-portal/src/main/java/com/macro/mall/portal/controller/OmsPortalOrderReturnApplyController.java",
+      "sha256": "2b25431d55ccd6a6bca5d5b512ad5df6654172e454803d9cdc4240c4e79b57b5",
+      "verifiedFact": "已有消费者退货申请接口",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F05",
+      "repository": "macrozheng/mall",
+      "commit": "0504e86b1f1b6f1b8aa6a734d37a90fb67346be7",
+      "path": "mall-admin/src/main/java/com/macro/mall/controller/UmsAdminController.java",
+      "url": "https://github.com/macrozheng/mall/blob/0504e86b1f1b6f1b8aa6a734d37a90fb67346be7/mall-admin/src/main/java/com/macro/mall/controller/UmsAdminController.java",
+      "sha256": "b3fd302d9153aa75affa736102d7c87cc6e619149bdaa550561f98e8d9efe72c",
+      "verifiedFact": "已有管理员登录、令牌续期、角色查询",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F06",
+      "repository": "macrozheng/mall",
+      "commit": "0504e86b1f1b6f1b8aa6a734d37a90fb67346be7",
+      "path": "mall-admin/src/main/java/com/macro/mall/controller/UmsRoleController.java",
+      "url": "https://github.com/macrozheng/mall/blob/0504e86b1f1b6f1b8aa6a734d37a90fb67346be7/mall-admin/src/main/java/com/macro/mall/controller/UmsRoleController.java",
+      "sha256": "76f0134abb15ff0d67bd461531b5fd939a0d36ec9735ed3ba681883795019ead",
+      "verifiedFact": "已有角色资源分配接口",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F07",
+      "repository": "macrozheng/mall-admin-web",
+      "commit": "81fc17e5a19f452bd854b106a9d59fa1ed5c7eac",
+      "path": "src/views/oms/order/index.vue",
+      "url": "https://github.com/macrozheng/mall-admin-web/blob/81fc17e5a19f452bd854b106a9d59fa1ed5c7eac/src/views/oms/order/index.vue",
+      "sha256": "bce05185f9f0877018d2ff9feb48e77e18de139064fc0523c28e2badb4a64054",
+      "verifiedFact": "已有后台订单列表页面",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F08",
+      "repository": "macrozheng/mall-admin-web",
+      "commit": "81fc17e5a19f452bd854b106a9d59fa1ed5c7eac",
+      "path": "src/views/oms/apply/applyDetail.vue",
+      "url": "https://github.com/macrozheng/mall-admin-web/blob/81fc17e5a19f452bd854b106a9d59fa1ed5c7eac/src/views/oms/apply/applyDetail.vue",
+      "sha256": "7da02a03cc19876517afd755dfaac97791c2924fb80cea233944fbd7eda5cf2e",
+      "verifiedFact": "已有后台退货详情处理页面",
+      "verifiedOn": "2026-09-08"
+    },
+    {
+      "sourceId": "F09",
+      "repository": "macrozheng/mall",
+      "commit": "0504e86b1f1b6f1b8aa6a734d37a90fb67346be7",
+      "path": "mall-portal/src/main/java/com/macro/mall/portal/controller/OmsPortalOrderController.java",
+      "url": "https://github.com/macrozheng/mall/blob/0504e86b1f1b6f1b8aa6a734d37a90fb67346be7/mall-portal/src/main/java/com/macro/mall/portal/controller/OmsPortalOrderController.java",
+      "sha256": "205a8abb455e7105b6eeb0832628dae7d84ebd5c48e0d2637439017de9922e18",
+      "verifiedFact": "已有消费者订单生成、查询、收货确认接口",
+      "verifiedOn": "2026-09-08"
+    }
+  ],
+  "assumedExistingAssets": {
+    "H01": "示例企业已有经过验收的 OIDC 客户端及企业 IdP；本次只做项目映射、会话配置和验证，不改公共客户端。",
+    "H02": "示例企业已有财务退款提交/结果查询适配器；本次只配置项目凭据、8 个映射字段和幂等键，不改适配器；退款结果回传方向尚未建设。",
+    "H03": "示例企业已有流水线模板及容器平台；本次交付应用流水线实例、环境配置和运行验证，不建设平台。",
+    "H04": "示例企业已有遥测、告警和业务审计平台；本次只交付项目接入包，不修改平台。",
+    "H05": "示例企业已有测试数据工厂；本次交付可版本化的订单/退货项目适配包，不只是单次测试配置。",
+    "H06": "示例部署已沿用公开订单/退货页面、API 与 RBAC；未额外实现本例新增的拆包、WMS、物流查询、财务回调。",
+    "H07": "示例历史数据快照含订单、明细、退货三个对象共 90 万行、46 个迁移字段；质量基线为缺失必填字段 0.2%、重复业务键 0.05%，隔离后人工确认；允许维护窗口整体回滚。",
+    "H08": "示例订单查询压测基线为 200 RPS 下 p95=1.8 秒；目标 p95≤600 毫秒、错误率<0.1%，固定同一数据快照和硬件、测量60分钟；这些数值不是 mall 实测结果。",
+    "H09": "交付范围为 mall-admin、mall-portal、后台 Web 三个应用；已有 DEV/UAT/PROD 平台，纳入六个 UAT/PROD 应用环境接入；只交付一个发布批次。",
+    "H10": "WMS、财务、IdP 由示例企业内部其他团队维护，物流服务由外部供应商维护；本团队只实现 mall 一侧，接口稳定且联调环境正常可用。",
+    "H11": "财务每天提供截至次日02:00的退款单/退款明细CSV快照，由财务人工上传至约定目录；本次对账直接消费快照，不建设新的自动文件传输方向。"
+  },
+  "exclusions": [
+    "商品/促销/会员主体改造",
+    "真实支付通道与资金清算",
+    "WMS、财务、IdP、物流对端建设",
+    "容器/CI/审计等公共平台建设",
+    "多租户、跨境税务、零停机和跨地域灾备",
+    "AI功能及第三方安全认证",
+    "正式项目管理、商业报价、授权许可和生产待命费用"
+  ],
+  "projection": {
+    "project": {
+      "projectId": "mall-order-aftercare-demo",
+      "mode": "BROWNFIELD",
+      "templateSha256": "470f0ef92dfc71c3a3516484721b58e284037f5ea32aae900d16abd3418b97a8",
+      "responsibilityBoundaries": [
+        "仅 mall 项目侧；对端由示例企业或供应商负责"
+      ]
+    },
+    "epics": [
+      {
+        "epicId": "EP-01",
+        "name": "订单履约"
+      },
+      {
+        "epicId": "EP-02",
+        "name": "退货与退款"
+      },
+      {
+        "epicId": "EP-03",
+        "name": "治理与交付"
+      }
+    ],
+    "features": [
+      {
+        "featureId": "FT-01",
+        "epicId": "EP-01",
+        "name": "订单工作台"
+      },
+      {
+        "featureId": "FT-02",
+        "epicId": "EP-01",
+        "name": "拆包与发货"
+      },
+      {
+        "featureId": "FT-03",
+        "epicId": "EP-01",
+        "name": "物流查询"
+      },
+      {
+        "featureId": "FT-04",
+        "epicId": "EP-02",
+        "name": "退货申请"
+      },
+      {
+        "featureId": "FT-05",
+        "epicId": "EP-02",
+        "name": "退货审核"
+      },
+      {
+        "featureId": "FT-06",
+        "epicId": "EP-02",
+        "name": "退款闭环"
+      },
+      {
+        "featureId": "FT-07",
+        "epicId": "EP-02",
+        "name": "退款对账"
+      },
+      {
+        "featureId": "FT-08",
+        "epicId": "EP-03",
+        "name": "账号与审计"
+      },
+      {
+        "featureId": "FT-09",
+        "epicId": "EP-03",
+        "name": "数据与质量"
+      },
+      {
+        "featureId": "FT-10",
+        "epicId": "EP-03",
+        "name": "工程与上线"
+      },
+      {
+        "featureId": "FT-11",
+        "epicId": "EP-03",
+        "name": "方案与边界"
+      }
+    ],
+    "integrations": [
+      {
+        "integrationId": "I01",
+        "name": "mall → WMS 发货指令",
+        "counterpartyBoundary": "INTERNAL",
+        "sourceSystem": "mall-admin",
+        "targetSystem": "企业 WMS",
+        "interactionScope": "创建/取消，24字段"
+      },
+      {
+        "integrationId": "I02",
+        "name": "WMS → mall 发货结果",
+        "counterpartyBoundary": "INTERNAL",
+        "sourceSystem": "企业 WMS",
+        "targetSystem": "mall-admin",
+        "interactionScope": "3种回执，18字段"
+      },
+      {
+        "integrationId": "I03",
+        "name": "mall → 外部物流轨迹查询",
+        "counterpartyBoundary": "EXTERNAL",
+        "sourceSystem": "mall-admin",
+        "targetSystem": "外部物流供应商",
+        "interactionScope": "查询操作及其响应属于同一方向，16字段"
+      },
+      {
+        "integrationId": "I04",
+        "name": "mall → 财务退款提交/查询",
+        "counterpartyBoundary": "INTERNAL",
+        "sourceSystem": "mall-admin",
+        "targetSystem": "企业财务系统",
+        "interactionScope": "已有适配器，2操作8映射字段"
+      },
+      {
+        "integrationId": "I05",
+        "name": "财务 → mall 退款结果",
+        "counterpartyBoundary": "INTERNAL",
+        "sourceSystem": "企业财务系统",
+        "targetSystem": "mall-admin",
+        "interactionScope": "独立回传，2操作22字段"
+      },
+      {
+        "integrationId": "I06",
+        "name": "mall → 企业 IdP 身份认证",
+        "counterpartyBoundary": "INTERNAL",
+        "sourceSystem": "mall-admin",
+        "targetSystem": "企业 IdP",
+        "interactionScope": "OIDC登录/续期，8属性；协议响应不另建反向集成"
+      }
+    ],
+    "stories": [
+      {
+        "storyId": "ST-01",
+        "featureId": "FT-01",
+        "name": "运营按履约状态查询订单",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-02",
+        "featureId": "FT-01",
+        "name": "客服查看订单履约全貌",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-03",
+        "featureId": "FT-02",
+        "name": "仓管生成可追踪的发货包裹",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-04",
+        "featureId": "FT-02",
+        "name": "仓管将包裹交给 WMS 发货",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-05",
+        "featureId": "FT-02",
+        "name": "订单接收 WMS 发货结果",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-06",
+        "featureId": "FT-03",
+        "name": "客服查询包裹物流轨迹",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-07",
+        "featureId": "FT-04",
+        "name": "会员分步骤提交退货申请",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-08",
+        "featureId": "FT-05",
+        "name": "客服审核并登记退货收货",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-09",
+        "featureId": "FT-06",
+        "name": "财务退款并处置结果不明",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-10",
+        "featureId": "FT-07",
+        "name": "财务识别并导出退款差异",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-11",
+        "featureId": "FT-08",
+        "name": "企业员工通过 SSO 进入后台",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-12",
+        "featureId": "FT-08",
+        "name": "审计员追溯售后关键操作",
+        "uatApplicable": true
+      },
+      {
+        "storyId": "ST-13",
+        "featureId": "FT-09",
+        "name": "迁移历史订单并核验",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-14",
+        "featureId": "FT-09",
+        "name": "交付订单售后自动化回归资产",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-15",
+        "featureId": "FT-09",
+        "name": "验证并改善订单查询性能",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-16",
+        "featureId": "FT-09",
+        "name": "验证后台账号与售后访问控制",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-17",
+        "featureId": "FT-10",
+        "name": "通过已有平台构建三个应用",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-18",
+        "featureId": "FT-10",
+        "name": "三个应用在 UAT 与生产环境可运行",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-19",
+        "featureId": "FT-10",
+        "name": "运维定位并处置售后故障",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-20",
+        "featureId": "FT-10",
+        "name": "按一个批次发布订单售后升级",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-21",
+        "featureId": "FT-10",
+        "name": "技术团队接手售后运行维护",
+        "uatApplicable": false
+      },
+      {
+        "storyId": "ST-22",
+        "featureId": "FT-11",
+        "name": "确认跨系统订单售后技术边界",
+        "uatApplicable": false
+      }
+    ],
+    "acceptanceCriteria": [
+      {
+        "acceptanceCriterionId": "AC-01-1",
+        "storyId": "ST-01",
+        "text": "8 个筛选条件可组合查询，分页和排序结果一致；无匹配时显示空结果。"
+      },
+      {
+        "acceptanceCriterionId": "AC-01-2",
+        "storyId": "ST-01",
+        "text": "客服仅见允许范围的订单；原有列表查询用例保持通过。"
+      },
+      {
+        "acceptanceCriterionId": "AC-02-1",
+        "storyId": "ST-02",
+        "text": "订单详情展示包裹、售后状态和发货时间；无包裹订单显示明确空态。"
+      },
+      {
+        "acceptanceCriterionId": "AC-02-2",
+        "storyId": "ST-02",
+        "text": "已发货/售后中等 6 种状态显示一致；返回列表后筛选条件恢复。"
+      },
+      {
+        "acceptanceCriterionId": "AC-03-1",
+        "storyId": "ST-03",
+        "text": "一个订单可形成多个包裹；每个明细累计发货数不得超过订购数。"
+      },
+      {
+        "acceptanceCriterionId": "AC-03-2",
+        "storyId": "ST-03",
+        "text": "重复提交同一拆包请求不重复创建包裹；无效数量整单拒绝。"
+      },
+      {
+        "acceptanceCriterionId": "AC-04-1",
+        "storyId": "ST-04",
+        "text": "校验待发货状态后才能提交；提交失败保留可重试状态。"
+      },
+      {
+        "acceptanceCriterionId": "AC-04-2",
+        "storyId": "ST-04",
+        "text": "WMS 收到创建/取消指令及正确的 24 个映射字段；不交付 WMS 对端改造。"
+      },
+      {
+        "acceptanceCriterionId": "AC-05-1",
+        "storyId": "ST-05",
+        "text": "重复或乱序回执不造成重复发货与状态倒退。"
+      },
+      {
+        "acceptanceCriterionId": "AC-05-2",
+        "storyId": "ST-05",
+        "text": "成功/失败/取消回执更新对应包裹，并保留可查询的接收记录。"
+      },
+      {
+        "acceptanceCriterionId": "AC-06-1",
+        "storyId": "ST-06",
+        "text": "有效运单可查询签收轨迹；供应商超时与查无运单显示不同状态。"
+      },
+      {
+        "acceptanceCriterionId": "AC-06-2",
+        "storyId": "ST-06",
+        "text": "轨迹按时间排序，不向客服暴露供应商凭据。"
+      },
+      {
+        "acceptanceCriterionId": "AC-07-1",
+        "storyId": "ST-07",
+        "text": "选择商品、填写原因、确认信息、提交结果四步可回退；数量和可退状态跨步校验。"
+      },
+      {
+        "acceptanceCriterionId": "AC-07-2",
+        "storyId": "ST-07",
+        "text": "重复提交不新增重复申请；客服代申请仅在授权范围内可用。"
+      },
+      {
+        "acceptanceCriterionId": "AC-08-1",
+        "storyId": "ST-08",
+        "text": "审核通过、拒绝、待补充三种处理保存原因；数量超过可退上限时拒绝。"
+      },
+      {
+        "acceptanceCriterionId": "AC-08-2",
+        "storyId": "ST-08",
+        "text": "客服、售后主管、只读财务按资源规则操作；未授权角色默认拒绝。"
+      },
+      {
+        "acceptanceCriterionId": "AC-09-1",
+        "storyId": "ST-09",
+        "text": "同一退款业务键重复提交只有一个退款结果；并发审核不得重复发起退款。"
+      },
+      {
+        "acceptanceCriterionId": "AC-09-2",
+        "storyId": "ST-09",
+        "text": "回调缺失可查询并经一次人工确认恢复；所有恢复步骤有操作记录。"
+      },
+      {
+        "acceptanceCriterionId": "AC-10-1",
+        "storyId": "ST-10",
+        "text": "日终快照按退款申请/财务结果两对对象比对，差异可分类和重跑。"
+      },
+      {
+        "acceptanceCriterionId": "AC-10-2",
+        "storyId": "ST-10",
+        "text": "分析系统获得机器可消费 CSV 数据集；客服页面可查看当日差异，不能直接改账。"
+      },
+      {
+        "acceptanceCriterionId": "AC-11-1",
+        "storyId": "ST-11",
+        "text": "企业员工可登录和续期；禁用账号不能进入后台。"
+      },
+      {
+        "acceptanceCriterionId": "AC-11-2",
+        "storyId": "ST-11",
+        "text": "既有本地账号按唯一员工号关联，退出后会话失效，不扩展账号同步方向。"
+      },
+      {
+        "acceptanceCriterionId": "AC-12-1",
+        "storyId": "ST-12",
+        "text": "审核、拒绝、退款和恢复等8类事件含操作者、业务键和前后状态。"
+      },
+      {
+        "acceptanceCriterionId": "AC-12-2",
+        "storyId": "ST-12",
+        "text": "授权审计员可检索记录；留存180天并屏蔽非必要个人信息，普通技术日志不替代审计记录。"
+      },
+      {
+        "acceptanceCriterionId": "AC-13-1",
+        "storyId": "ST-13",
+        "text": "三个对象共90万行按46字段映射；缺失和重复数据隔离并由业务确认后装载。"
+      },
+      {
+        "acceptanceCriterionId": "AC-13-2",
+        "storyId": "ST-13",
+        "text": "迁移前后业务键、数量和金额核对一致；失败可恢复快照，演练和生产执行分别留证。"
+      },
+      {
+        "acceptanceCriterionId": "AC-14-1",
+        "storyId": "ST-14",
+        "text": "订单查询与拆包、退货申请与审核分别具备可重复执行的 API/UI 断言。"
+      },
+      {
+        "acceptanceCriterionId": "AC-14-2",
+        "storyId": "ST-14",
+        "text": "共享数据适配包被两个业务场景共同使用；构建产物及测试报告可追溯且只计一次。"
+      },
+      {
+        "acceptanceCriterionId": "AC-15-1",
+        "storyId": "ST-15",
+        "text": "以同一硬件和快照重测查询链路，目标200 RPS下 p95≤600ms、错误率<0.1%。"
+      },
+      {
+        "acceptanceCriterionId": "AC-15-2",
+        "storyId": "ST-15",
+        "text": "交付调优差异及固定负载模型；60分钟报告包含资源、延迟和错误指标。"
+      },
+      {
+        "acceptanceCriterionId": "AC-16-1",
+        "storyId": "ST-16",
+        "text": "登录、令牌和售后 API 三个相关攻击面完成约定控制检查。"
+      },
+      {
+        "acceptanceCriterionId": "AC-16-2",
+        "storyId": "ST-16",
+        "text": "三类角色的允许/拒绝结果与权限矩阵一致，证据可定位具体请求；不包含第三方正式渗透认证。"
+      },
+      {
+        "acceptanceCriterionId": "AC-17-1",
+        "storyId": "ST-17",
+        "text": "后台服务、门户服务和后台 Web 均有可独立执行的流水线。"
+      },
+      {
+        "acceptanceCriterionId": "AC-17-2",
+        "storyId": "ST-17",
+        "text": "制品版本、审批和测试门禁可追溯；失败停止，平台本体无需建设。"
+      },
+      {
+        "acceptanceCriterionId": "AC-18-1",
+        "storyId": "ST-18",
+        "text": "六个应用环境实例的配置、密钥引用、网络和证书核验通过。"
+      },
+      {
+        "acceptanceCriterionId": "AC-18-2",
+        "storyId": "ST-18",
+        "text": "各实例具备可执行健康检查与版本回退定义；不包含容器平台建设。"
+      },
+      {
+        "acceptanceCriterionId": "AC-19-1",
+        "storyId": "ST-19",
+        "text": "售后关键链路日志和指标可关联；告警可按阈值触发、恢复并通知到责任人。"
+      },
+      {
+        "acceptanceCriterionId": "AC-19-2",
+        "storyId": "ST-19",
+        "text": "运行手册六个处置场景可执行，功能开关可审计并回退。"
+      },
+      {
+        "acceptanceCriterionId": "AC-20-1",
+        "storyId": "ST-20",
+        "text": "发布范围、Go/No-Go、执行分工、维护窗口和标准回滚条件明确，演练通过。"
+      },
+      {
+        "acceptanceCriterionId": "AC-20-2",
+        "storyId": "ST-20",
+        "text": "三个应用各有执行与冒烟记录；生产数据装载只在迁移 Task 计量。"
+      },
+      {
+        "acceptanceCriterionId": "AC-21-1",
+        "storyId": "ST-21",
+        "text": "开发与运维两类受众完成两次专题交接并执行一次退款异常演示。"
+      },
+      {
+        "acceptanceCriterionId": "AC-21-2",
+        "storyId": "ST-21",
+        "text": "参与者可按已交付 Runbook 找到恢复与升级路径，留下确认记录。"
+      },
+      {
+        "acceptanceCriterionId": "AC-22-1",
+        "storyId": "ST-22",
+        "text": "三个应用的八个影响点、数据和责任约束可追溯到改造范围。"
+      },
+      {
+        "acceptanceCriterionId": "AC-22-2",
+        "storyId": "ST-22",
+        "text": "对履约一致性专题形成三个方案比较与五个设计视图，评审结果单独交付。"
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "TK-001",
+        "storyId": "ST-01",
+        "name": "订单列表增加履约筛选",
+        "workTypeId": "FE-VIEW",
+        "rowSemanticSha256": "e3c2ecefc88fec454dc52d47349bb799bedb5a2302971a0cf030952d983deb07",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个既有页面；变化涉及订单/包裹 2 个数据源、4 个状态、8 个条件和 2 个角色；含必要页面回归。\n模式与判档依据：F07、H06：修改既有订单列表。",
+        "acceptanceCriterionIds": [
+          "AC-01-1",
+          "AC-01-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-002",
+        "storyId": "ST-01",
+        "name": "订单列表查询契约扩展",
+        "workTypeId": "FE-QUERY-API",
+        "rowSemanticSha256": "7c4790ae7f16c724ed7ad0852620ff8ce25d306a723d8c8489a8b1d14a187b50",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个既有查询事务；变化涉及订单/包裹 2 个对象、6 条规则、4 个返回状态，新增角色过滤。\n模式与判档依据：F02、H06：修改 /order/list。",
+        "acceptanceCriterionIds": [
+          "AC-01-1",
+          "AC-01-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-003",
+        "storyId": "ST-02",
+        "name": "订单详情联动履约信息",
+        "workTypeId": "FE-VIEW",
+        "rowSemanticSha256": "e3c2ecefc88fec454dc52d47349bb799bedb5a2302971a0cf030952d983deb07",
+        "workMode": "调整",
+        "complexity": "L",
+        "actualMeasurementScope": "1 个详情页面；本次增加订单、明细、包裹、售后 4 个紧密数据源及 6 种状态，并恢复跨页面筛选状态。\n模式与判档依据：F02、H06：在既有详情能力上调整；4 个源、6 种变化状态命中 L。",
+        "acceptanceCriterionIds": [
+          "AC-02-1",
+          "AC-02-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-004",
+        "storyId": "ST-02",
+        "name": "订单详情聚合包裹信息",
+        "workTypeId": "FE-QUERY-API",
+        "rowSemanticSha256": "7c4790ae7f16c724ed7ad0852620ff8ce25d306a723d8c8489a8b1d14a187b50",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个详情查询事务；本次变化 3 个对象、7 条规则、5 个返回状态；不按所有存量字段判档。\n模式与判档依据：F02：调整既有 /order/{id} 返回契约。",
+        "acceptanceCriterionIds": [
+          "AC-02-1",
+          "AC-02-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-005",
+        "storyId": "ST-03",
+        "name": "包裹共享存储模型",
+        "workTypeId": "DATA-MODEL-STORAGE",
+        "rowSemanticSha256": "6b206d355f26838f522b4be5cf09e56fa6bdfd4e4affa815366904887e280e2c",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "独立版本化包裹对象组；包裹、包裹明细、发货记录 3 个对象，4 条关系、9 个约束/索引；供拆包、发货和回调共同使用；不再在 API 中重复计算建模。\n模式与判档依据：H06：没有此共享对象组。",
+        "acceptanceCriterionIds": [
+          "AC-03-1",
+          "AC-03-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-006",
+        "storyId": "ST-03",
+        "name": "拆包编辑页面",
+        "workTypeId": "FE-EDIT",
+        "rowSemanticSha256": "177b3bf5610b47fdc663256c16c24befb335652a9656379f13e946be63420298",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个独立提交页面；14 个字段、7 条校验、4 个状态、仓管/主管 2 类行为角色；内部控件包含在本 Task。\n模式与判档依据：H06：新增拆包页面。",
+        "acceptanceCriterionIds": [
+          "AC-03-1",
+          "AC-03-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-007",
+        "storyId": "ST-03",
+        "name": "拆包业务事务",
+        "workTypeId": "FE-COMMAND-API",
+        "rowSemanticSha256": "b995bbc0c5c71408602697d1f352a4fb8fcfd845614998adcaef2ee2a19e0316",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个拆包事务；订单、明细、包裹 3 个对象，7 条规则、3 个状态迁移；使用已单列的包裹存储模型。\n模式与判档依据：H06：新增拆包业务结果。",
+        "acceptanceCriterionIds": [
+          "AC-03-1",
+          "AC-03-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-008",
+        "storyId": "ST-04",
+        "name": "发货业务操作适配包裹",
+        "workTypeId": "FE-COMMAND-API",
+        "rowSemanticSha256": "b995bbc0c5c71408602697d1f352a4fb8fcfd845614998adcaef2ee2a19e0316",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个既有发货事务；变化涉及订单/包裹 2 个对象、6 条规则、4 个状态迁移；负责业务前置校验，不包含跨系统协议映射。\n模式与判档依据：F02：修改 /order/update/delivery。",
+        "acceptanceCriterionIds": [
+          "AC-04-1",
+          "AC-04-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-009",
+        "storyId": "ST-04",
+        "name": "mall 向 WMS 下发发货指令",
+        "workTypeId": "IN-INTEGRATION",
+        "rowSemanticSha256": "6c8adcc6eb92a63cbf93a0f3b29b9b2f384f77168271cf9555cde1f2a31cc9c5",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "I01 单方向；内部稳定 WMS，创建/取消 2 个操作、24 个字段；交付认证、映射、幂等、错误处理及方向验证。\n模式与判档依据：H06、H10：新增项目侧适配器，24 字段命中内部 M。",
+        "acceptanceCriterionIds": [
+          "AC-04-1",
+          "AC-04-2"
+        ],
+        "integrationIds": [
+          "I01"
+        ]
+      },
+      {
+        "taskId": "TK-010",
+        "storyId": "ST-05",
+        "name": "WMS 向 mall 回传发货结果",
+        "workTypeId": "IN-INTEGRATION",
+        "rowSemanticSha256": "6c8adcc6eb92a63cbf93a0f3b29b9b2f384f77168271cf9555cde1f2a31cc9c5",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "I02 单方向；内部对端，3 种回执操作、18 个映射字段；包含验签、幂等、顺序校验、接收落库及普通重试。\n模式与判档依据：H06、H10：回传是与 I01 独立的交互方向，分别计量。",
+        "acceptanceCriterionIds": [
+          "AC-05-1",
+          "AC-05-2"
+        ],
+        "integrationIds": [
+          "I02"
+        ]
+      },
+      {
+        "taskId": "TK-011",
+        "storyId": "ST-06",
+        "name": "mall 查询外部物流轨迹",
+        "workTypeId": "IN-INTEGRATION",
+        "rowSemanticSha256": "6c8adcc6eb92a63cbf93a0f3b29b9b2f384f77168271cf9555cde1f2a31cc9c5",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "I03 单方向；外部稳定物流 API，1 个操作、16 个字段，标准认证和常规联调；含项目侧查询适配。\n模式与判档依据：H06、H10：外部稳定方向即使只有1个操作也按 M。",
+        "acceptanceCriterionIds": [
+          "AC-06-1",
+          "AC-06-2"
+        ],
+        "integrationIds": [
+          "I03"
+        ]
+      },
+      {
+        "taskId": "TK-012",
+        "storyId": "ST-06",
+        "name": "包裹物流轨迹页面",
+        "workTypeId": "FE-VIEW",
+        "rowSemanticSha256": "e3c2ecefc88fec454dc52d47349bb799bedb5a2302971a0cf030952d983deb07",
+        "workMode": "新建",
+        "complexity": "S",
+        "actualMeasurementScope": "1 个独立页面；1 个轨迹数据源、2 个主要状态、5 个展示条件、客服单角色；异常提示包含在页面内。\n模式与判档依据：H06：新增轨迹查看结果。",
+        "acceptanceCriterionIds": [
+          "AC-06-1",
+          "AC-06-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-013",
+        "storyId": "ST-07",
+        "name": "退货申请四步交互流程",
+        "workTypeId": "FE-FLOW",
+        "rowSemanticSha256": "786837c6b0ff62f16d2a8100aea3355e643717e714badb875befcb2350ce0808",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个独立流程；4 个步骤、2 条分支、会员/代办客服 2 个角色、跨步校验；步骤内编辑控件不另计 FE-EDIT。\n模式与判档依据：只有 F04 的后端创建接口作为起点；本例新交付 Web 四步流程。",
+        "acceptanceCriterionIds": [
+          "AC-07-1",
+          "AC-07-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-014",
+        "storyId": "ST-07",
+        "name": "退货申请操作扩展包裹关联",
+        "workTypeId": "FE-COMMAND-API",
+        "rowSemanticSha256": "b995bbc0c5c71408602697d1f352a4fb8fcfd845614998adcaef2ee2a19e0316",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个既有申请事务；变化涉及退货、明细、包裹 3 个对象、6 条规则、3 个状态迁移；增加代办校验。\n模式与判档依据：F04：修改 /returnApply/create；不把整个退货系统视为新建。",
+        "acceptanceCriterionIds": [
+          "AC-07-1",
+          "AC-07-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-015",
+        "storyId": "ST-08",
+        "name": "退货处理页补充审核字段",
+        "workTypeId": "FE-EDIT",
+        "rowSemanticSha256": "177b3bf5610b47fdc663256c16c24befb335652a9656379f13e946be63420298",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个既有页面；本次12字段、6条规则、4种状态、2个行为角色；不按存量全部字段判档。\n模式与判档依据：F08：改造已有退货详情处理页。",
+        "acceptanceCriterionIds": [
+          "AC-08-1",
+          "AC-08-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-016",
+        "storyId": "ST-08",
+        "name": "退货审核状态事务调整",
+        "workTypeId": "FE-COMMAND-API",
+        "rowSemanticSha256": "b995bbc0c5c71408602697d1f352a4fb8fcfd845614998adcaef2ee2a19e0316",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个既有业务事务；本次2对象、5规则、4个状态迁移；含多角色权限调用及必要回归。\n模式与判档依据：F03：修改已有 /returnApply/update/status/{id}。",
+        "acceptanceCriterionIds": [
+          "AC-08-1",
+          "AC-08-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-017",
+        "storyId": "ST-08",
+        "name": "售后功能授权策略集",
+        "workTypeId": "GOV-FUNCTION-ACCESS",
+        "rowSemanticSha256": "3036a0a340448211b04569a162b8254d1c57098bb7fa06eeafcc1f0943c437f4",
+        "workMode": "调整",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个独立售后权限域；3 个角色、6 个资源、12 条规则；交付角色资源矩阵、默认拒绝策略与验证结果；API 只引用策略。\n模式与判档依据：F06、H06：变更已有 RBAC 资源策略。",
+        "acceptanceCriterionIds": [
+          "AC-08-1",
+          "AC-08-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-018",
+        "storyId": "ST-09",
+        "name": "退款申请原子业务事务",
+        "workTypeId": "FE-COMMAND-API",
+        "rowSemanticSha256": "b995bbc0c5c71408602697d1f352a4fb8fcfd845614998adcaef2ee2a19e0316",
+        "workMode": "新建",
+        "complexity": "L",
+        "actualMeasurementScope": "1 个独立退款事务；退货、退款、退款明细、状态记录4对象、10规则、6迁移；处理并发写冲突与重复业务键；协议映射由 I04 承担。\n模式与判档依据：H06：新增退款结果；并发写冲突及4对象命中 L。",
+        "acceptanceCriterionIds": [
+          "AC-09-1",
+          "AC-09-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-019",
+        "storyId": "ST-09",
+        "name": "mall 接入财务退款提交查询适配器",
+        "workTypeId": "IN-INTEGRATION",
+        "rowSemanticSha256": "6c8adcc6eb92a63cbf93a0f3b29b9b2f384f77168271cf9555cde1f2a31cc9c5",
+        "workMode": "接入复用",
+        "complexity": "S",
+        "actualMeasurementScope": "I04 单方向；内部稳定财务，提交/查询2操作、8映射字段、标准认证；只交付项目凭据/字段/幂等键配置和验证；查询供恢复流程调用。\n模式与判档依据：H02：公共适配器已验收且不改源码；不是看到已有系统就判复用。",
+        "acceptanceCriterionIds": [
+          "AC-09-1",
+          "AC-09-2"
+        ],
+        "integrationIds": [
+          "I04"
+        ]
+      },
+      {
+        "taskId": "TK-020",
+        "storyId": "ST-09",
+        "name": "财务向 mall 回传退款结果",
+        "workTypeId": "IN-INTEGRATION",
+        "rowSemanticSha256": "6c8adcc6eb92a63cbf93a0f3b29b9b2f384f77168271cf9555cde1f2a31cc9c5",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "I05 单方向；内部财务，2操作、22字段；新建项目侧结果接收、签名、幂等与状态映射。\n模式与判档依据：H02：现有适配器仅覆盖提交，不覆盖独立回传方向。",
+        "acceptanceCriterionIds": [
+          "AC-09-1",
+          "AC-09-2"
+        ],
+        "integrationIds": [
+          "I05"
+        ]
+      },
+      {
+        "taskId": "TK-021",
+        "storyId": "ST-09",
+        "name": "退款结果不明恢复流程",
+        "workTypeId": "FE-COMPENSATION",
+        "rowSemanticSha256": "f060ff3011c56132d472c70f88129e6a1d458c180aad98d15b295f9179f0d606",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个独立人工可发起的恢复结果；受理超时/结果丢失2失败点、查询/比对/人工确认/恢复4步骤；不重复计 I04/I05 普通重试。\n模式与判档依据：H06：新增可独立验收的异常恢复资产。",
+        "acceptanceCriterionIds": [
+          "AC-09-1",
+          "AC-09-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-022",
+        "storyId": "ST-10",
+        "name": "退款日终差异对账资产",
+        "workTypeId": "DATA-RECON",
+        "rowSemanticSha256": "f6161d33ddf1ebb1ad29812d695e7664ef09de07649ea6d7bbbf98f5535e8ee1",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个独立对账场景；退款单/退款明细2对对象、8规则、30万行日终快照；自动分类与重跑；H11财务人工提供截至次日02:00快照，差异由财务确认；不自动修复。\n模式与判档依据：H06、H11：新增独立对账结果；不额外建设自动快照传输。",
+        "acceptanceCriterionIds": [
+          "AC-10-1",
+          "AC-10-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-023",
+        "storyId": "ST-10",
+        "name": "退款差异查询页面",
+        "workTypeId": "FE-VIEW",
+        "rowSemanticSha256": "e3c2ecefc88fec454dc52d47349bb799bedb5a2302971a0cf030952d983deb07",
+        "workMode": "新建",
+        "complexity": "S",
+        "actualMeasurementScope": "1 页面、1 个差异结果源、2状态、5条件、财务单角色；不另拆内部简单查询实现。\n模式与判档依据：新增可独立验收的差异页面。",
+        "acceptanceCriterionIds": [
+          "AC-10-1",
+          "AC-10-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-024",
+        "storyId": "ST-10",
+        "name": "退款差异机器数据集导出",
+        "workTypeId": "DATA-EXPORT",
+        "rowSemanticSha256": "7fad43738671ee2b1da30548de77a41538cd1e1d96f93f6c8f73fd56e94fd2c4",
+        "workMode": "新建",
+        "complexity": "S",
+        "actualMeasurementScope": "1 种 CSV、18字段、3派生规则、最多1万条/次；按对账结果分页输出给离线分析程序；不负责跨系统自动传输。\n模式与判档依据：机器消费数据集；不是人工报表，选 DATA-EXPORT。",
+        "acceptanceCriterionIds": [
+          "AC-10-1",
+          "AC-10-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-025",
+        "storyId": "ST-11",
+        "name": "后台接入企业 OIDC 客户端",
+        "workTypeId": "IN-IDENTITY",
+        "rowSemanticSha256": "6689cd08e99174bce8056625c7bca5000576e0f1b5b9116dfc07fc4c787905e2",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "I06 单一身份方向；登录/续期2路径、8属性映射，包含账号关联和会话验证；不交付 SCIM。\n模式与判档依据：H01、F05：复用企业已有客户端，仅项目配置；2路径与8属性为 M。",
+        "acceptanceCriterionIds": [
+          "AC-11-1",
+          "AC-11-2"
+        ],
+        "integrationIds": [
+          "I06"
+        ]
+      },
+      {
+        "taskId": "TK-026",
+        "storyId": "ST-12",
+        "name": "售后业务审计接入包",
+        "workTypeId": "GOV-AUDIT",
+        "rowSemanticSha256": "a9634b2a2d4731e2f6937edd37e89a1a79c918929b05b2152b5b3841577fc6a1",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个售后审计域；8事件、18字段、退货/退款2对象；项目映射、访问控制、180天留存和查询验证；使用现成平台检索界面。\n模式与判档依据：H04：只配置项目业务审计契约，不修改公共平台。",
+        "acceptanceCriterionIds": [
+          "AC-12-1",
+          "AC-12-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-027",
+        "storyId": "ST-13",
+        "name": "历史订单到包裹结构迁移脚本",
+        "workTypeId": "DATA-MIGRATION",
+        "rowSemanticSha256": "6d53d82c16a7589a06631dfa03ab0c6e5560baac0335055db590347276020d6f",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1订单数据域、1源目标组合；3对象、46字段、90万行；清洗、可重跑、源目标核验及标准回滚；交付迁移资产。\n模式与判档依据：H07：引用示例数据快照；已有业务数据不等于已有迁移脚本。",
+        "acceptanceCriterionIds": [
+          "AC-13-1",
+          "AC-13-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-028",
+        "storyId": "ST-13",
+        "name": "历史订单迁移批次演练",
+        "workTypeId": "REL-MIGRATION-DRYRUN",
+        "rowSemanticSha256": "8c060670196277bfc647fc96c373d798794c0360e96c8015a263ef42e2af2090",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1迁移批次、3对象、90万行、9验证项；演练耗时、数量/金额核对与整体回滚；不重复计算脚本开发。\n模式与判档依据：H07：新建本次演练方案、记录和结论。",
+        "acceptanceCriterionIds": [
+          "AC-13-1",
+          "AC-13-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-029",
+        "storyId": "ST-13",
+        "name": "历史订单生产迁移执行",
+        "workTypeId": "REL-MIGRATION-EXECUTION",
+        "rowSemanticSha256": "be6ec6cbe4ec991d0985f686a68a27086358bea2f3747613a4f806878ed2563d",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "同1迁移批次、3对象、90万行、8执行步骤；批准快照后分批装载并核对/回滚；仅计划执行范围，尚未实际实施。\n模式与判档依据：H07：生产执行形成新的执行结果；复用脚本不改变新建模式。",
+        "acceptanceCriterionIds": [
+          "AC-13-1",
+          "AC-13-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-030",
+        "storyId": "ST-14",
+        "name": "订单查询与拆包 API 自动化",
+        "workTypeId": "TEST-API",
+        "rowSemanticSha256": "133ee1b22466a50a5453965abeb9e05b684a676d1707edebdd4442517371eb3a",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个订单接口组；3路径、10用例、24断言、2角色、1模拟依赖；独立回归资产；普通 Unit Test 包含在开发 Task。\n模式与判档依据：本例未提供可沿用的正式 API 回归资产，按首次建设。",
+        "acceptanceCriterionIds": [
+          "AC-14-1",
+          "AC-14-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-031",
+        "storyId": "ST-14",
+        "name": "退款闭环 API 自动化",
+        "workTypeId": "TEST-API",
+        "rowSemanticSha256": "133ee1b22466a50a5453965abeb9e05b684a676d1707edebdd4442517371eb3a",
+        "workMode": "新建",
+        "complexity": "L",
+        "actualMeasurementScope": "1 个退款接口组；5路径、18用例、40断言、2角色、2模拟依赖；包含异步回调轮询；与合同结构测试断言不重叠。\n模式与判档依据：新增正式回归资产；5路径及异步回调命中 L。",
+        "acceptanceCriterionIds": [
+          "AC-14-1",
+          "AC-14-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-032",
+        "storyId": "ST-14",
+        "name": "订单履约浏览器回归",
+        "workTypeId": "TEST-UI-E2E",
+        "rowSemanticSha256": "cff5ec9bb50382b988b7fbf3c339b759cbc409b788252366ab32e1ff56ae77a8",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个订单查询到拆包流程；12步骤、3分支、2角色、2浏览器；在模拟接口下验证页面状态，不重复联调外部系统。\n模式与判档依据：新增可运行 E2E 资产。",
+        "acceptanceCriterionIds": [
+          "AC-14-1",
+          "AC-14-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-033",
+        "storyId": "ST-14",
+        "name": "退货申请到审核浏览器回归",
+        "workTypeId": "TEST-UI-E2E",
+        "rowSemanticSha256": "cff5ec9bb50382b988b7fbf3c339b759cbc409b788252366ab32e1ff56ae77a8",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个可独立启动的退货流程；14步骤、3分支、2角色、2浏览器；覆盖跨步校验；不按浏览器重复拆 Task。\n模式与判档依据：与订单流程有独立启动条件和业务验收结果，应单独计量。",
+        "acceptanceCriterionIds": [
+          "AC-14-1",
+          "AC-14-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-034",
+        "storyId": "ST-14",
+        "name": "WMS 接口组契约兼容测试",
+        "workTypeId": "TEST-CONTRACT",
+        "rowSemanticSha256": "bf77bc78b14cf019f8a33eeb16de3cedf5f95c52cebb543d8fabd20c42a36109",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个 WMS 契约域；创建/取消/回执3接口、2版本、2消费者角色、18条结构兼容断言；交付持续契约测试，不重复普通 SIT 支持。\n模式与判档依据：新增独立版本兼容验证资产；消费者为 WMS 与 mall 端。",
+        "acceptanceCriterionIds": [
+          "AC-14-1",
+          "AC-14-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-035",
+        "storyId": "ST-14",
+        "name": "订单售后共享测试数据适配包",
+        "workTypeId": "TEST-SUPPORT-ASSET",
+        "rowSemanticSha256": "67f85bf5a7579640a605c61c63b1a899ca0cca283b316be9db30c78d723a46d3",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个项目适配包；数据准备/清理2能力、订单正常/异常与售后三种数据变体、DEV/UAT2环境；提供版本化接口，供订单和退货共用。\n模式与判档依据：H05：公共数据工厂不改，项目适配包可独立验收；只计一次。",
+        "acceptanceCriterionIds": [
+          "AC-14-1",
+          "AC-14-2",
+          "AC-01-2",
+          "AC-07-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-036",
+        "storyId": "ST-15",
+        "name": "订单查询链路专项调优",
+        "workTypeId": "CO-PERF-RELIABILITY",
+        "rowSemanticSha256": "977e322c085c585b044f41fefccf9ec5e733ac900907e476d28fc874cc25c153",
+        "workMode": "调整",
+        "complexity": "L",
+        "actualMeasurementScope": "1 个独立订单查询瓶颈域；admin/数据库/缓存3组件；按 H08 的基线、200RPS目标、60分钟窗口和验收法完成调优及复测，不另计普通SQL优化。\n模式与判档依据：F02、H08：调整已有查询链路；有明确量化服务目标，按 L。",
+        "acceptanceCriterionIds": [
+          "AC-15-1",
+          "AC-15-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-037",
+        "storyId": "ST-15",
+        "name": "订单查询独立负载模型",
+        "workTypeId": "TEST-PERF",
+        "rowSemanticSha256": "f639ab94401c1118399087b1449dcda67e4afc89987b0328d64b521d1defd68a",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1 个负载模型含稳定/峰值2场景、6指标、60分钟、3组件、1轮调优复测；交付可复跑脚本及报告；不重复计算调优实现。\n模式与判档依据：H08：性能参数是示例假设，首次建设对应验证资产。",
+        "acceptanceCriterionIds": [
+          "AC-15-1",
+          "AC-15-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-038",
+        "storyId": "ST-16",
+        "name": "后台售后信息安全验证专题",
+        "workTypeId": "TEST-SECURITY",
+        "rowSemanticSha256": "a1f73c6e31214824d14fb650c7db62c02b2403a1c4a95a9b27154f3e2eb98a13",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1个后台访问安全专题；登录/令牌/售后API 3攻击面、认证/授权/会话/输入4控制族、3角色；人工API与配置验证，无正式渗透认证。\n模式与判档依据：新建项目团队的信息安全验证方案与证据。",
+        "acceptanceCriterionIds": [
+          "AC-16-1",
+          "AC-16-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-039",
+        "storyId": "ST-17",
+        "name": "后台服务流水线接入",
+        "workTypeId": "ENG-PIPELINE",
+        "rowSemanticSha256": "02e68b89e17093f19e10b0af542fa5c51d05f423fa4d6e318be1f571273f163d",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "mall-admin 1条应用流水线；6阶段、DEV/UAT/PROD3环境、2类制品、2矩阵项；项目参数、审批和质量门禁验证。\n模式与判档依据：H03：复用现有共享模板，不改平台。",
+        "acceptanceCriterionIds": [
+          "AC-17-1",
+          "AC-17-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-040",
+        "storyId": "ST-17",
+        "name": "门户服务流水线接入",
+        "workTypeId": "ENG-PIPELINE",
+        "rowSemanticSha256": "02e68b89e17093f19e10b0af542fa5c51d05f423fa4d6e318be1f571273f163d",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "mall-portal 1条独立流水线；5阶段、3环境、2类制品、2矩阵项；项目配置及执行验证。\n模式与判档依据：H03：独立应用对应独立流水线。",
+        "acceptanceCriterionIds": [
+          "AC-17-1",
+          "AC-17-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-041",
+        "storyId": "ST-17",
+        "name": "后台 Web 流水线接入",
+        "workTypeId": "ENG-PIPELINE",
+        "rowSemanticSha256": "02e68b89e17093f19e10b0af542fa5c51d05f423fa4d6e318be1f571273f163d",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "后台 Web 1条独立流水线；5阶段、3环境、2类制品、2矩阵项；项目构建参数及审批验证。\n模式与判档依据：H03：实例接入，非共享流水线平台建设。",
+        "acceptanceCriterionIds": [
+          "AC-17-1",
+          "AC-17-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-042",
+        "storyId": "ST-18",
+        "name": "后台服务接入UAT环境",
+        "workTypeId": "ENG-RUNTIME",
+        "rowSemanticSha256": "6dba28a0b3dbf16b0a4d596103dffad34fc134bf6ae322f571e5589cf5966024",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "后台服务×UAT 1 个应用环境；1服务、8配置/密钥、3网络依赖，含证书和探针；仅项目部署定义和验证。\n模式与判档依据：H03、H09：已有平台；按应用×单环境计量，不能把6个环境实例并为1个Task。",
+        "acceptanceCriterionIds": [
+          "AC-18-1",
+          "AC-18-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-043",
+        "storyId": "ST-18",
+        "name": "后台服务接入PROD环境",
+        "workTypeId": "ENG-RUNTIME",
+        "rowSemanticSha256": "6dba28a0b3dbf16b0a4d596103dffad34fc134bf6ae322f571e5589cf5966024",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "后台服务×PROD 1 个应用环境；1服务、8配置/密钥、3网络依赖，含证书和探针；仅项目部署定义和验证。\n模式与判档依据：H03、H09：已有平台；按应用×单环境计量，不能把6个环境实例并为1个Task。",
+        "acceptanceCriterionIds": [
+          "AC-18-1",
+          "AC-18-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-044",
+        "storyId": "ST-18",
+        "name": "门户服务接入UAT环境",
+        "workTypeId": "ENG-RUNTIME",
+        "rowSemanticSha256": "6dba28a0b3dbf16b0a4d596103dffad34fc134bf6ae322f571e5589cf5966024",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "门户服务×UAT 1 个应用环境；1服务、8配置/密钥、3网络依赖，含证书和探针；仅项目部署定义和验证。\n模式与判档依据：H03、H09：已有平台；按应用×单环境计量，不能把6个环境实例并为1个Task。",
+        "acceptanceCriterionIds": [
+          "AC-18-1",
+          "AC-18-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-045",
+        "storyId": "ST-18",
+        "name": "门户服务接入PROD环境",
+        "workTypeId": "ENG-RUNTIME",
+        "rowSemanticSha256": "6dba28a0b3dbf16b0a4d596103dffad34fc134bf6ae322f571e5589cf5966024",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "门户服务×PROD 1 个应用环境；1服务、8配置/密钥、3网络依赖，含证书和探针；仅项目部署定义和验证。\n模式与判档依据：H03、H09：已有平台；按应用×单环境计量，不能把6个环境实例并为1个Task。",
+        "acceptanceCriterionIds": [
+          "AC-18-1",
+          "AC-18-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-046",
+        "storyId": "ST-18",
+        "name": "后台 Web接入UAT环境",
+        "workTypeId": "ENG-RUNTIME",
+        "rowSemanticSha256": "6dba28a0b3dbf16b0a4d596103dffad34fc134bf6ae322f571e5589cf5966024",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "后台 Web×UAT 1 个应用环境；1服务、8配置/密钥、3网络依赖，含证书和探针；仅项目部署定义和验证。\n模式与判档依据：H03、H09：已有平台；按应用×单环境计量，不能把6个环境实例并为1个Task。",
+        "acceptanceCriterionIds": [
+          "AC-18-1",
+          "AC-18-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-047",
+        "storyId": "ST-18",
+        "name": "后台 Web接入PROD环境",
+        "workTypeId": "ENG-RUNTIME",
+        "rowSemanticSha256": "6dba28a0b3dbf16b0a4d596103dffad34fc134bf6ae322f571e5589cf5966024",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "后台 Web×PROD 1 个应用环境；1服务、8配置/密钥、3网络依赖，含证书和探针；仅项目部署定义和验证。\n模式与判档依据：H03、H09：已有平台；按应用×单环境计量，不能把6个环境实例并为1个Task。",
+        "acceptanceCriterionIds": [
+          "AC-18-1",
+          "AC-18-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-048",
+        "storyId": "ST-19",
+        "name": "后台售后遥测接入",
+        "workTypeId": "ENG-OBSERVABILITY",
+        "rowSemanticSha256": "2464ac1a5afa6032d6e2068365fdf64ff2efbb3154d360b143219b464300cc64",
+        "workMode": "接入复用",
+        "complexity": "S",
+        "actualMeasurementScope": "mall-admin 1应用、1服务、2关键路径、日志/指标2类遥测、8关键字段/指标；普通健康检查和项目标签验证。\n模式与判档依据：H04：复用平台，未建设跨系统追踪。",
+        "acceptanceCriterionIds": [
+          "AC-19-1",
+          "AC-19-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-049",
+        "storyId": "ST-19",
+        "name": "售后异常告警组接入",
+        "workTypeId": "ENG-ALERT",
+        "rowSemanticSha256": "a19ef1e2468557499787fa62ecfdc7c7df602e74073aaaa616c65148b0fea21e",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "1共同管理告警组；6信号、6规则、2路由，含分级/抑制/恢复通知；固定阈值与责任人随包交付。\n模式与判档依据：H04：项目指标、阈值、路由绑定和触发验证。",
+        "acceptanceCriterionIds": [
+          "AC-19-1",
+          "AC-19-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-050",
+        "storyId": "ST-19",
+        "name": "售后功能开关控制域接入",
+        "workTypeId": "CO-CONFIG",
+        "rowSemanticSha256": "32c01f3f8f1cfbeae9fa15b04a16a9a742030429eb6abf7ef596df346af6c219",
+        "workMode": "接入复用",
+        "complexity": "M",
+        "actualMeasurementScope": "1售后配置域；8相关开关、DEV/UAT/PROD3环境；按角色作用，含审计、默认值和回退验证；不是普通环境常量。\n模式与判档依据：H03：复用企业配置平台，仅项目配置。",
+        "acceptanceCriterionIds": [
+          "AC-19-1",
+          "AC-19-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-051",
+        "storyId": "ST-19",
+        "name": "售后运行维护手册",
+        "workTypeId": "HAND-RUNBOOK",
+        "rowSemanticSha256": "a266c139987c50b7faf05fc32defcffaddcaf428a9ae922a500c1174d8bba52c",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1售后运维对象；6场景、3组件、运维/开发2角色；含排障、退款恢复、回滚和升级联系；运行验证包含在手册交付。\n模式与判档依据：本例没有可沿用的专项运维手册；引用已有操作资产不重复开发。",
+        "acceptanceCriterionIds": [
+          "AC-19-1",
+          "AC-19-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-052",
+        "storyId": "ST-20",
+        "name": "订单售后发布批次切换方案",
+        "workTypeId": "REL-PLAN",
+        "rowSemanticSha256": "a8e8ac43d5d89d312dc0da7bd76f0cfec1c48d950e3c513c38ee12d7ac9a677f",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "R01单批次；3应用组件、2团队、12步骤，明确Go/No-Go、维护窗口和标准回滚；不承诺零停机。\n模式与判档依据：本批次首次形成发布方案；不重复拆技术准备与实施方案。",
+        "acceptanceCriterionIds": [
+          "AC-20-1",
+          "AC-20-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-053",
+        "storyId": "ST-20",
+        "name": "订单售后发布批次演练",
+        "workTypeId": "REL-REHEARSAL",
+        "rowSemanticSha256": "55cc64dcc104543fec42cca72514e04db344eda17bbf82398d63e6eabf325039",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "R01单批次；切换/回滚2场景、3组件、2团队；记录与问题整改复演；迁移数据核验由独立迁移演练承担。\n模式与判档依据：首次形成该批次演练资产；例行重复演练不另计。",
+        "acceptanceCriterionIds": [
+          "AC-20-1",
+          "AC-20-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-054",
+        "storyId": "ST-20",
+        "name": "后台服务 R01 发布执行",
+        "workTypeId": "REL-EXECUTION",
+        "rowSemanticSha256": "2a192f331d9f1d3c6a3f11107f7a83d6a3432c353fc9bfbe4def29ba12b1e298",
+        "workMode": "新建",
+        "complexity": "S",
+        "actualMeasurementScope": "mall-admin×R01；1组件、5步骤、1执行团队、标准停机回滚；产出执行/冒烟记录，未实际执行。\n模式与判档依据：使用 H03 已有流水线仍产生新的本次执行结果。",
+        "acceptanceCriterionIds": [
+          "AC-20-1",
+          "AC-20-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-055",
+        "storyId": "ST-20",
+        "name": "门户服务 R01 发布执行",
+        "workTypeId": "REL-EXECUTION",
+        "rowSemanticSha256": "2a192f331d9f1d3c6a3f11107f7a83d6a3432c353fc9bfbe4def29ba12b1e298",
+        "workMode": "新建",
+        "complexity": "S",
+        "actualMeasurementScope": "mall-portal×R01；1组件、5步骤、1执行团队、标准停机回滚；不含迁移操作，未实际执行。\n模式与判档依据：按应用×批次独立计量；不是接入复用。",
+        "acceptanceCriterionIds": [
+          "AC-20-1",
+          "AC-20-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-056",
+        "storyId": "ST-20",
+        "name": "后台 Web R01 发布执行",
+        "workTypeId": "REL-EXECUTION",
+        "rowSemanticSha256": "2a192f331d9f1d3c6a3f11107f7a83d6a3432c353fc9bfbe4def29ba12b1e298",
+        "workMode": "新建",
+        "complexity": "S",
+        "actualMeasurementScope": "后台Web×R01；1组件、4步骤、1执行团队、标准停机回滚；发布和冒烟结果，未实际执行。\n模式与判档依据：一次新的发布执行结果。",
+        "acceptanceCriterionIds": [
+          "AC-20-1",
+          "AC-20-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-057",
+        "storyId": "ST-21",
+        "name": "售后运行维护专题交接",
+        "workTypeId": "HAND-KT",
+        "rowSemanticSha256": "da1dc986f91e84830112d442872f189f58626aa655230a2134e16199cbb1b34d",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1独立技术专题、开发/运维2类稳定受众、2会次、1次实操；引用已有Runbook，只计受众适配、演示、问答与确认。\n模式与判档依据：新建本组受众的知识交接结果；共享材料不重复计量。",
+        "acceptanceCriterionIds": [
+          "AC-21-1",
+          "AC-21-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-058",
+        "storyId": "ST-22",
+        "name": "订单售后变更影响分析专题",
+        "workTypeId": "AN-IMPACT",
+        "rowSemanticSha256": "0ce84b16a94bc960d6436bd699449e715b5557f29d4d96c6726a81f66b525480",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1专题；admin/portal/Web 3个独立技术单元、8影响点、数据/权限/接口3约束、实施/企业2责任方；交付独立分析报告。\n模式与判档依据：首次形成该变更专题；不按系统已存在判为调整。",
+        "acceptanceCriterionIds": [
+          "AC-22-1",
+          "AC-22-2"
+        ],
+        "integrationIds": []
+      },
+      {
+        "taskId": "TK-059",
+        "storyId": "ST-22",
+        "name": "履约状态一致性专项技术方案",
+        "workTypeId": "AN-DESIGN",
+        "rowSemanticSha256": "21d13039e76b1827165ca6c734c72ac4c1a96c6a3d429a01405723de10192fe9",
+        "workMode": "新建",
+        "complexity": "M",
+        "actualMeasurementScope": "1独立专题；3紧密组件、3备选方案、5设计视图，含常规安全和运维约束；普通页面/API内部设计包含在开发Task。\n模式与判档依据：有独立可验收的跨系统方案成果；与影响分析交付物不同。",
+        "acceptanceCriterionIds": [
+          "AC-22-1",
+          "AC-22-2"
+        ],
+        "integrationIds": []
+      }
+    ],
+    "estimationAnnotations": [
+      {
+        "annotationId": "NOTE-05",
+        "category": "BOUNDARY",
+        "subjectIds": [
+          "ST-05"
+        ],
+        "text": "回执内部落库、普通 Retry/DLQ 包含在集成交付物内，不额外拆命令 API 或消息 Task。"
+      },
+      {
+        "annotationId": "NOTE-13",
+        "category": "BOUNDARY",
+        "subjectIds": [
+          "ST-13"
+        ],
+        "text": "技术核验不套业务 UAT；维护窗口允许整体停机回滚。这里是计划工作，不是已完成的生产记录。"
+      },
+      {
+        "annotationId": "NOTE-14",
+        "category": "BOUNDARY",
+        "subjectIds": [
+          "ST-14"
+        ],
+        "text": "业务故事引用共享覆盖，但上述自动化资产全部在本故事计量；例行回归、缺陷复测、普通单元测试不另建 Task。"
+      },
+      {
+        "annotationId": "NOTE-DEMO",
+        "category": "ASSUMPTION",
+        "subjectIds": [
+          "ST-01"
+        ],
+        "text": "真实开源项目背景＋示范改造需求；非 mall 实际项目报价或历史人天。详见配套案例说明。"
+      }
+    ]
+  }
+}

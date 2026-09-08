@@ -215,6 +215,23 @@ def require_office_engine() -> OfficeEngine:
     return engine
 
 
+def office_environment(root: Path) -> dict[str, str]:
+    """Use the same isolated macOS font configuration for calculation and PDF."""
+    environment = dict(os.environ)
+    if platform.system() == 'Darwin' and 'FONTCONFIG_FILE' not in environment:
+        from xml.sax.saxutils import escape
+        config = root / 'fonts.conf'
+        cache = root / 'font-cache'
+        cache.mkdir()
+        config.write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">'
+            '<fontconfig><dir>/System/Library/Fonts</dir><dir>/System/Library/Fonts/Supplemental</dir>'
+            '<dir>/Library/Fonts</dir><cachedir>'+escape(str(cache))+'</cachedir>'
+            '<alias><family>Microsoft YaHei</family><prefer><family>Heiti SC</family></prefer></alias></fontconfig>',
+            encoding='utf-8')
+        environment['FONTCONFIG_FILE'] = str(config)
+    return environment
+
+
 def recalculate_workbook(
     candidate_path: Path,
     output_path: Path,
@@ -261,6 +278,7 @@ def recalculate_workbook(
                 capture_output=True,
                 text=True,
                 timeout=120,
+                env=office_environment(temporary),
             )
         except subprocess.TimeoutExpired as error:
             raise OfficeEngineError(

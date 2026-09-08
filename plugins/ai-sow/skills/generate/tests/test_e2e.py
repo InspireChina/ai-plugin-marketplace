@@ -454,11 +454,19 @@ def test_deferred_greenfield_scope_task_convergence_preserves_upstream_hashes(tm
 
 
 def test_deferred_brownfield_prior_task_convergence_preserves_prior_rows(tmp_path: Path) -> None:
+    from test_workbook import render_model
+    from workbook import write_workbook
+
     request_path=_prepare_project(tmp_path,'brownfield');request=_load(tmp_path/request_path)
     budget=_load(tmp_path/'budget.json')
-    _write_json(tmp_path/'budget.json',{**budget,'modelContextLimitTokens':256000})
-    prior_source=PLUGIN_ROOT/'docs/reference/SOW估算与生成示例_v1.3.xlsx'
-    target=tmp_path/'prior.xlsx';shutil.copyfile(prior_source,target)
+    # The default workbook retains the full estimation catalogue even for one
+    # task. These transport limits do not test real provider capacity.
+    _write_json(tmp_path/'budget.json',{**budget,'modelContextLimitTokens':2000000,
+        'maxPlannedTokens':100000000})
+    # Keep repair coverage independent of the changing public reference case.
+    target=tmp_path/'prior.xlsx'
+    audit=write_workbook(SKILL_ROOT/'assets/sow-template.xlsx',render_model(),target)
+    assert audit.story_count == audit.task_count == 1
     request['sources'].append({'sourceId':'prior-main','role':'PRIOR_SOW','path':'prior.xlsx',
         'expectedSha256':sha256_bytes(target.read_bytes())})
     request['declaredChangeContext']['summary']='基于适用历史 SOW 核对退款能力增量。'
@@ -468,15 +476,14 @@ def test_deferred_brownfield_prior_task_convergence_preserves_prior_rows(tmp_pat
     result,trace=drive_result_host(tmp_path,started,factory)
     assert result['outcome']=='REQUEST_APPROVAL'
     assert {'PRIOR','TASK'}<=factory.state['injected']
+    assert sum(action['actionContractId']=='CANDIDATE_PATCH-v1' for action in trace)>=2
     ledger=orchestrator_module._load_action_ledger(ProjectFiles.open(tmp_path),result['state']['runId'])
-    prior_results=[json.loads(orchestrator_module.effective_result_bytes(ledger,key))
+    prior_results=[(key,value)
                    for key,value in factory.state['correct'].items() if any(
                        envelope.value['logicalWorkId']==key and envelope.value['actionContractId'].startswith('PRIOR_ANALYZE')
                        for envelope in ledger.envelopes_by_sha256.values())]
     assert prior_results
-    expected=prior_results[0]
-    effective=next(json.loads(orchestrator_module.effective_result_bytes(ledger,envelope.value['logicalWorkId']))
-                   for envelope in ledger.envelopes_by_sha256.values()
-                   if envelope.value['actionContractId'].startswith('PRIOR_ANALYZE'))
-    assert effective['entities']==expected['entities']
-    assert effective['unextractedEvidence']==expected['unextractedEvidence']
+    for key,expected in prior_results:
+        effective=json.loads(orchestrator_module.effective_result_bytes(ledger,key))
+        assert effective['entities']==expected['entities']
+        assert effective['unextractedEvidence']==expected['unextractedEvidence']

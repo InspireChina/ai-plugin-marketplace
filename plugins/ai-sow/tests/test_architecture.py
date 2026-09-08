@@ -238,7 +238,7 @@ def test_renderer_fingerprint_binds_all_current_renderer_sources() -> None:
             encoding="utf-8"
         )
     )
-    assert baseline["rendererContract"] == "generation-renderer-v12"
+    assert baseline["rendererContract"] == "generation-renderer-v13"
     assert set(baseline["files"]) == {
         "scripts/package_renderer.py",
         "scripts/workbook.py",

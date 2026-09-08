@@ -205,7 +205,7 @@ def render_model_notes(
             "生成与评审",
             [
                 f"项目：{project_id}",
-                "renderer：generation-renderer-v12",
+                "renderer：generation-renderer-v13",
                 f"终审：{review_decision.get('decision')}",
                 f"Task Standard：{task_catalog.semantic_sha256}",
             ],

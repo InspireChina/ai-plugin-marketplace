@@ -27,13 +27,13 @@ SCHEMA_SHA256 = {'skills/generate/contracts/owner-repair-authorization.schema.js
  'skills/generate/contracts/owner-clarification.schema.json': '51247b08e83cf91f21be247931294c449ff29282aa3268a5e066cb6908eb5a7d',
  'skills/generate/contracts/artifact-repair-authorization.schema.json': 'f6aca2a4aff6a1d990a31e71600bbf6ec16f5bfecb8504dc41fcb277828de097',
  'skills/generate/contracts/action.schema.json': 'b4db499d90a2e4c03e33687cc163b2d7d5b1ed501b31acbb1a0be31627354861',
- 'skills/generate/contracts/artifact-approval.schema.json': 'a80474084401424a4a2b1b1abe7dac7c6e6b3c3e56ddcc3f01553d0ab9fc608f',
+ 'skills/generate/contracts/artifact-approval.schema.json': '18b22a0079c3289454c16480c66ffadb739738596e0f49c1d8691d7ba5e9dd7a',
  'skills/generate/contracts/change-graph.schema.json': '25d523f2463ce1c5e0c13ce90f97bfb5a2b29b382e7f701964960d9a1f140135',
  'skills/generate/contracts/candidate-repair.schema.json': '1c0215207cc465791a4abb51c850f46ff58fcf44296d567b07a90711b5e6f305',
  'skills/generate/contracts/common.schema.json': 'b62ae2a501ee4994e04f7bcd7478070e5dd66b622892a4bc09611158a9555eec',
  'skills/generate/contracts/current.schema.json': 'da99fc8149bbcf1a979e268ec96e6318911e012d05d104cb03f893a5b40b51c6',
  'skills/generate/contracts/fact-decision.schema.json': '5f73b8a23f94e828c2fd1296b3d7ec67664d38dbb7296e4907c1f1f37302aef6',
- 'skills/generate/contracts/generation-manifest.schema.json': '40ac3785d49b2034ed680750ccc36303a76d9dcdbdbd959c9df524d3b03bcc1b',
+ 'skills/generate/contracts/generation-manifest.schema.json': '3779014f04b21ea1872200bf58ebec9411116230a5cc8de47f683be0f65c4a17',
  'skills/generate/contracts/input-revision.schema.json': '3cfc0e81657c504d2b85d5d2256048f0a56d33c8604774111f1cfe46e6a9ec5f',
  'skills/generate/contracts/prior-state-decision.schema.json': 'f0cbda366dc259ddc88837f0c813308f811735383f7f0fd8832561d846816eb0',
  'skills/generate/contracts/prior-state-decision-v2.schema.json': 'c77b67815446b25b1a9af9e86962c0656390198103d1bece6a8b512e6596fe46',
@@ -54,7 +54,7 @@ SCHEMA_SHA256 = {'skills/generate/contracts/owner-repair-authorization.schema.js
  'skills/generate/contracts/task-decision.schema.json': 'c0ba6de7e14648c58ac648b9b33728946e11f4e3c38bc97f97d0d10944fe4046',
  'skills/generate/contracts/visual-review.schema.json': '37d0c43f37252793cdbf65439cfbe1e773b252c24320b470bb07acec8ebd6983'}
 
-TEMPLATE_SHA256 = "43058a761a3d5ea2e71e779b1600aa159258f732b1cb5c60d491051540454041"
+TEMPLATE_SHA256 = "470f0ef92dfc71c3a3516484721b58e284037f5ea32aae900d16abd3418b97a8"
 
 CURRENT_USER_DOCS = (
     "README.md",

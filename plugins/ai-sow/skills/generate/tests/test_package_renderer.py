@@ -68,9 +68,11 @@ def test_renderer_consumes_only_reviewed_sow_model_and_derived_projections() -> 
         "所属故事",
         "任务名称",
         "工作类型ID",
+        "工作类型名称",
         "工作方式",
         "复杂度",
         "SIT支持分类",
+        "集成类型",
         "SIT计费点ID",
         "备注",
     }
@@ -127,7 +129,7 @@ def test_staged_renderer_bytes_move_to_canonical_paths_and_match_v10_fingerprint
             encoding="utf-8"
         )
     )
-    assert baseline["rendererContract"] == "generation-renderer-v12"
+    assert baseline["rendererContract"] == "generation-renderer-v13"
     assert set(baseline["files"]) == {
         "scripts/package_renderer.py",
         "scripts/workbook.py",
@@ -142,6 +144,69 @@ def test_no_staging_renderer_path_remains_after_cutover() -> None:
     assert not (SCRIPTS / "next").exists()
     assert not (SKILL_ROOT / "contracts/next").exists()
     assert not (ASSETS / "sow-template-v6.next.xlsx").exists()
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize('layout', ['legacy', 'compact'])
+def test_artifact_verification_respects_template_identity_visibility(tmp_path, layout):
+    import io
+    import zipfile
+    import xml.etree.ElementTree as ET
+    from package_renderer import project_artifact, calculate_artifact, verify_artifact, encode_binary, decode_binary
+    from prior_state import inventory_prior_workbook
+    from test_workbook import LEGACY_TEMPLATE
+    template = ASSETS / 'sow-template.xlsx' if layout == 'compact' else LEGACY_TEMPLATE
+    model = reviewed_sow_model()
+    projection = json.loads(project_artifact(model, template, tmp_path, {'decision': 'PASS'}))
+    calculated = json.loads(calculate_artifact(projection, tmp_path))
+    reference = json.loads(calculate_artifact(projection, tmp_path))
+    report = json.loads(verify_artifact(model, template, projection, calculated, reference, tmp_path))
+    expected = ([] if layout == 'compact' else
+                [tuple(workbook.safe_text(value) for value in row) for row in workbook.visible_identity_rows(model)])
+    assert report['visibleIdentitySha256'] == sha256_bytes(canonical_json_bytes(expected))
+    assert report['trustState'] == 'VERIFIED'
+    path = tmp_path / 'projection.xlsx'
+    path.write_bytes(decode_binary(projection['workbook']))
+    if layout == 'compact':
+        inventory = inventory_prior_workbook(path)
+        visible = [cell['value'] for evidence in inventory['evidence'] for cell in evidence['canonicalCellValues']]
+        assert model['tasks'][0]['name'] in visible
+        assert model['tasks'][0]['taskId'] not in visible
+    # Include the alteration in the projection as well: verification must enforce
+    # the selected template, not merely agree with a tampered projection.
+    book = openpyxl.load_workbook(path)
+    sheet = book['03-工作量汇总']
+    header_row = (sheet.max_row + 3 if layout == 'compact' else
+                  next(cell.row for row in sheet for cell in row if cell.value == '实体 ID'))
+    book.close()
+    expected_error = 'compact summary content' if layout == 'compact' else 'visible Prior identity'
+    def alter_summary(encoded):
+        # Only non-formula rows change; retain native Office caches and every
+        # unrelated worksheet byte so the test isolates the identity contract.
+        output = io.BytesIO()
+        namespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+        with zipfile.ZipFile(io.BytesIO(decode_binary(encoded))) as source, zipfile.ZipFile(output, 'w') as target:
+            for item in source.infolist():
+                payload = source.read(item.filename)
+                if item.filename == 'xl/worksheets/sheet3.xml':
+                    document = ET.fromstring(payload)
+                    data = document.find(f'{{{namespace}}}sheetData')
+                    if layout == 'legacy':
+                        for row in list(data):
+                            if int(row.attrib['r']) >= header_row:
+                                data.remove(row)
+                    else:
+                        row = ET.SubElement(data, f'{{{namespace}}}row', {'r': str(header_row)})
+                        cell = ET.SubElement(row, f'{{{namespace}}}c', {'r': f'A{header_row}', 't': 'inlineStr'})
+                        text = ET.SubElement(ET.SubElement(cell, f'{{{namespace}}}is'), f'{{{namespace}}}t')
+                        text.text = '实体 ID'
+                    payload = ET.tostring(document)
+                target.writestr(item, payload)
+        return encode_binary(output.getvalue())
+    changed = {**projection, 'workbook': alter_summary(projection['workbook'])}
+    changed_calculated = {**calculated, 'workbook': alter_summary(calculated['workbook'])}
+    with pytest.raises(ValueError, match=expected_error):
+        verify_artifact(model, template, changed, changed_calculated, reference, tmp_path)
 
 
 @pytest.mark.unit
@@ -168,7 +233,9 @@ def test_visible_sheet_review_renders_actual_office_pages(tmp_path):
     path = tmp_path/'candidate.xlsx'; final = tmp_path/'final.xlsx'
     workbook.write_workbook(ASSETS/'sow-template.xlsx',reviewed_sow_model(),path)
     recalculate_workbook(path,final,require_office_engine())
+    before = final.read_bytes()
     renders = package_renderer.render_visible_sheets(final, tmp_path/'renders')
+    assert final.read_bytes() == before
     book = openpyxl.load_workbook(final)
     try: assert [r['sheetKey'] for r in renders] == [s.title for s in book if s.sheet_state == 'visible']
     finally: book.close()
@@ -179,3 +246,25 @@ def test_visible_sheet_review_renders_actual_office_pages(tmp_path):
         page=PdfReader(tmp_path/'renders'/item['path']).pages[0]
         if item['sheetKey']=='01-需求故事':assert '需求故事' in page.extract_text()
         if item['sheetKey']=='03-工作量汇总':assert page.mediabox.width >= 350
+
+
+@pytest.mark.unit
+def test_render_glyph_inventory_tracks_hidden_columns_groups_and_rows(tmp_path):
+    from package_renderer import visible_cjk_glyphs
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.append(['可见', '隐藏', '细则', '参数', '表尾'])
+    sheet.append(['折叠'])
+    sheet.column_dimensions['B'].hidden = True
+    sheet.column_dimensions.group('C', 'D', hidden=True)
+    sheet.row_dimensions[2].hidden = True
+    path = tmp_path / 'visibility.xlsx'
+    book.save(path); book.close()
+    book = openpyxl.load_workbook(path)
+    try:
+        assert visible_cjk_glyphs(book.active) == set('可见表尾')
+        book.active.column_dimensions['C'].hidden = False
+        book.active.row_dimensions[2].hidden = False
+        assert visible_cjk_glyphs(book.active) == set('可见细则参数表尾折叠')
+    finally:
+        book.close()

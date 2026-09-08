@@ -57,12 +57,18 @@ def named_table_records(workbook, sheet_name: str, table_name: str):
     ]
 
 
-def calculated_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def calculated_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    model=None,
+    template: Path | None = None,
+):
     executable = installed_soffice()
     monkeypatch.setenv("AI_SOW_OFFICE_BIN", str(executable))
     engine = require_office_engine()
-    model = reviewed_sow_model()
-    template = SKILL_ROOT / "assets/sow-template.xlsx"
+    model = reviewed_sow_model() if model is None else model
+    template = template or SKILL_ROOT / "assets/sow-template.xlsx"
     candidate = tmp_path / "candidate.xlsx"
     calculated = tmp_path / "calculated.xlsx"
     workbook_module.write_workbook(template, model, candidate)
@@ -70,12 +76,39 @@ def calculated_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return model, template, candidate, calculated, engine
 
 
+@pytest.mark.parametrize("layout", ["default", "legacy"])
 def test_office_reaudit_checks_v6_catalog_task_sit_and_summary_invariants(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    layout: str,
 ) -> None:
+    from task_standard_catalog import catalog
+
+    template = SKILL_ROOT / (
+        "assets/sow-template.xlsx" if layout == "default"
+        else "tests/fixtures/sow-template-legacy.xlsx"
+    )
+    standard = catalog(template)
+    model = reviewed_sow_model()
+    model["project"]["templateSha256"] = standard.template_sha256
+    model["stories"][0]["uatApplicable"] = False
+    prototype = model["tasks"][0]
+    model["tasks"] = []
+    for index, boundary in enumerate(("INTERNAL", "EXTERNAL")):
+        model["tasks"].append({
+            **prototype,
+            "taskId": f"task-integration-{index}",
+            "name": f"集成交付方向{index}",
+            "workTypeId": "IN-INTEGRATION",
+            "rowSemanticSha256": standard.by_work_type_id["IN-INTEGRATION"]["rowSemanticSha256"],
+            "complexity": "S",
+            "integrationIds": [f"integration-{index}"],
+        })
+        model["integrations"].append({
+            "integrationId": f"integration-{index}", "counterpartyBoundary": boundary,
+        })
     model, template, _candidate, calculated, engine = calculated_fixture(
-        tmp_path, monkeypatch
+        tmp_path, monkeypatch, model=model, template=template
     )
 
     audit = workbook_module.audit_calculated_workbook(
@@ -91,14 +124,34 @@ def test_office_reaudit_checks_v6_catalog_task_sit_and_summary_invariants(
     assert audit.total_days == pytest.approx(
         audit.direct_days + audit.sit_days + audit.uat_days
     )
+    # Retain the reviewed v6 financial baseline through both input layouts.
+    assert (audit.direct_days, audit.sit_days, audit.uat_days, audit.total_days) == pytest.approx(
+        (3.6, 1.5, 0, 5.1)
+    )
     opened = load_workbook(calculated, data_only=True, read_only=False)
     try:
         standards = named_table_records(opened, "90-估算标准", "TaskStandardTable")
         tasks = named_table_records(opened, "02-任务清单", "TaskTable")
         assert len(standards) == 88
-        assert {row["工作类型ID"] for row in tasks}
-        billed = [row["SIT计费点ID"] for row in tasks if row["SIT计费点ID"]]
-        assert len(billed) == len(set(billed))
+        assert sum(row[field] is True for row in standards for field in ("新建适用", "调整适用", "接入复用适用")) == 191
+        assert sum(row["接入复用适用"] is True for row in standards) == 26
+        assert {row["工作类型ID"] for row in tasks} == {"IN-INTEGRATION"}
+        assert all(row["工作类型名称"] == standard.by_work_type_id["IN-INTEGRATION"]["工作类型名称"] for row in tasks)
+        assert all(row["校验结果"] == "通过" for row in tasks)
+        assert [row["任务人天"] for row in tasks] == pytest.approx([1.8, 1.8])
+        assert [row["SIT支持人天"] for row in tasks] == pytest.approx([0.3, 0.6])
+        if layout == "default":
+            assert [row["集成类型"] for row in tasks] == ["内部集成", "外部集成"]
+            assert all("SIT计费点ID" not in row and "SIT支持分类" not in row for row in tasks)
+            assert len({row["任务名称"] for row in tasks}) == 2
+            summary = opened["03-工作量汇总"]
+            assert summary.max_row == 22
+            assert [summary[f"B{r}"].value for r in range(13, 21)] == [
+                opened["90-估算标准"][f"AI{r}"].value for r in range(5, 13)
+            ]
+        else:
+            assert [row["SIT支持分类"] for row in tasks] == ["INTERNAL", "EXTERNAL"]
+            assert {row["SIT计费点ID"] for row in tasks} == {"integration-0", "integration-1"}
     finally:
         opened.close()
 
@@ -142,6 +195,56 @@ def test_missing_office_engine_is_not_a_verified_result(monkeypatch) -> None:
     assert caught.value.code == "OFFICE_ENGINE_UNAVAILABLE"
 
 
+@pytest.mark.unit
+def test_macos_office_environment_isolates_fontconfig_without_mutating_process(tmp_path, monkeypatch):
+    from xml.etree import ElementTree
+
+    monkeypatch.setattr(office_engine.platform, "system", lambda: "Darwin")
+    monkeypatch.delenv("FONTCONFIG_FILE", raising=False)
+    before = dict(os.environ)
+    configurations = []
+    for name in ("calculation & fonts", "render <fonts>"):
+        root = tmp_path / name
+        root.mkdir()
+        environment = office_engine.office_environment(root)
+        config = Path(environment["FONTCONFIG_FILE"])
+        assert config.parent == root and config.is_file()
+        tree = ElementTree.parse(config)
+        assert set(node.text for node in tree.findall("dir")) >= {
+            "/System/Library/Fonts", "/System/Library/Fonts/Supplemental", "/Library/Fonts",
+        }
+        cache = Path(tree.findtext("cachedir"))
+        assert cache.parent == root and cache.is_dir()
+        assert tree.findtext("alias/family") == "Microsoft YaHei"
+        assert tree.findtext("alias/prefer/family") == "Heiti SC"
+        assert environment == {**before, "FONTCONFIG_FILE": str(config)}
+        configurations.append(config)
+    assert configurations[0] != configurations[1]
+    assert dict(os.environ) == before
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("explicit", ["/user/fonts.conf", ""])
+def test_macos_office_environment_respects_explicit_fontconfig(tmp_path, monkeypatch, explicit):
+    monkeypatch.setattr(office_engine.platform, "system", lambda: "Darwin")
+    monkeypatch.setenv("FONTCONFIG_FILE", explicit)
+    before = dict(os.environ)
+    assert office_engine.office_environment(tmp_path) == before
+    assert dict(os.environ) == before
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("system", ["Linux", "Windows"])
+def test_other_platforms_keep_office_environment_unchanged(tmp_path, monkeypatch, system):
+    monkeypatch.setattr(office_engine.platform, "system", lambda: system)
+    monkeypatch.delenv("FONTCONFIG_FILE", raising=False)
+    before = dict(os.environ)
+    assert office_engine.office_environment(tmp_path) == before
+    assert dict(os.environ) == before
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_real_office_roundtrip_is_isolated_and_byte_deterministic(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -169,7 +272,7 @@ def test_calculated_workbook_audit_rejects_formula_changed_after_roundtrip(
     )
     opened = load_workbook(calculated, data_only=False, read_only=False)
     try:
-        opened["02-任务清单"]["L5"] = "=999"
+        opened["02-任务清单"]["K5"] = "=999"
         opened.save(calculated)
     finally:
         opened.close()

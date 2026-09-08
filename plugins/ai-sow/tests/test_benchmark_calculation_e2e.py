@@ -46,8 +46,20 @@ def test_calculate_benchmark_result_from_sequential_sealed_raw_records(tmp_path,
     for index, anchor in enumerate(new_anchors):
         oracle['expectedBrownfieldChanges'].append({'expectationId': f'new-{index}', 'allowedKinds': ['NEW'],
             'priorLocatorIds': [], 'targetLocatorIds': [anchor]})
+    # These visible story rows are fixed by stage_driver and the default renderer,
+    # before either run. Compact XLSX does not carry the original PRD/HLD refs.
+    prior_stories = {
+        '$A$5:$I$5': '用户可验收自动集成验证',
+        '$A$6:$I$6': '用户可验收部署与回退',
+        '$A$7:$I$7': '用户可验收自动验收验证',
+        '$A$8:$I$8': '用户可验收订单查询',
+    }
+    prior_query = '$A$8:$I$8'
     oracle['expectedBrownfieldChanges'].append({'expectationId': 'adjust-feature', 'allowedKinds': ['ADJUST'],
-        'priorLocatorIds': anchors['v1'], 'targetLocatorIds': anchors['v2']})
+        'priorLocatorIds': ['v2-prior#01-需求故事!' + prior_query], 'targetLocatorIds': anchors['v2']})
+    oracle['expectedUnchangedCapabilities'] = [
+        {'expectationId': 'keep-' + str(index), 'priorLocatorIds': ['v2-prior#01-需求故事!' + locator]}
+        for index, locator in enumerate(prior_stories) if locator != prior_query]
     draft.write_bytes(canonical_json_bytes(oracle))
     # Match the existing paired raw-record fixture's sizing for visible XLSX rows.
     # These are transport-test limits, never an assertion of real provider capacity.
@@ -92,12 +104,17 @@ def test_calculate_benchmark_result_from_sequential_sealed_raw_records(tmp_path,
                 elif kind == 'PRIOR_ANALYZE':
                     response = {'entities': [], 'sourceRelations': [], 'entitySupersessions': [], 'unsupportedRegions': [], 'unextractedEvidence': []}
                     for item in packet['workItems']:
-                        selected = [row['priorEvidenceId'] for row in item['payload']['evidence']
-                            if any(cell['value'] == 'SourceRef' for cell in row['canonicalCellValues'])]
-                        if selected:
-                            response['entities'].append({'localKey': item['workItemId'] + ':entity', 'sourceId': item['payload']['sourceId'],
-                                'entityKind': 'CONTRACT_ENTITY', 'semanticSummary': '已交付的订单查询能力',
-                                'deliveryStatus': 'CURRENT_BY_CONTRACT', 'evidenceIds': selected})
+                        selected = []
+                        for row in item['payload']['evidence']:
+                            if row['sheet'] != '01-需求故事' or row['absoluteA1Range'] not in prior_stories:
+                                continue
+                            summary = prior_stories[row['absoluteA1Range']]
+                            assert any(cell['value'] == summary for cell in row['canonicalCellValues'])
+                            selected.append(row['priorEvidenceId'])
+                            response['entities'].append({'localKey': item['workItemId'] + ':' + str(len(selected)),
+                                'sourceId': item['payload']['sourceId'], 'entityKind': 'CONTRACT_ENTITY',
+                                'semanticSummary': summary, 'deliveryStatus': 'CURRENT_BY_CONTRACT',
+                                'evidenceIds': [row['priorEvidenceId']]})
                         unused = sorted(set(item['payload']['evidenceIds']) - set(selected))
                         if unused:
                             response['unextractedEvidence'].append({'sourceId': item['payload']['sourceId'], 'evidenceIds': unused,
@@ -117,7 +134,8 @@ def test_calculate_benchmark_result_from_sequential_sealed_raw_records(tmp_path,
                             row['boundaryEvidence']['evidenceIds'] = [source_roots[new_anchors[index]]]
                         prior = next(entity for ref in packet['contextRefs'] if ref['canonicalContent'].get('kind') == 'DEPENDENCY_RESULT'
                             and isinstance(ref['canonicalContent']['normalizedResult'], dict)
-                            for entity in ref['canonicalContent']['normalizedResult'].get('entities', []))
+                            for entity in ref['canonicalContent']['normalizedResult'].get('entities', [])
+                            if entity['semanticSummary'] == prior_stories[prior_query])
                         feature = next(row for row in decisions if row['decisionKind'] == 'FEATURE')
                         feature['priorEntityIds'] = [prior['localKey']]
                         feature['relations'].append({'kind': 'ADJUST', 'targetLocalKeys': [feature['localKey']], 'evidenceIds': roots})
@@ -148,6 +166,7 @@ def test_calculate_benchmark_result_from_sequential_sealed_raw_records(tmp_path,
     assert host_result['modelActionCount'] == len(expected)
     value = pair.calculate_benchmark_result(output, pair_id)
     assert value['scopePrecision'] == value['obligationRecall'] == value['changePrecision'] == 1.0
+    assert value['changeRecall'] == value['unchangedRetention'] == 1.0
     assert value['functionalOutcome'] == 'PASS'
     assert value['tokenObservationState'] == 'UNAVAILABLE'
     assert value['observedActualTokens'] is None

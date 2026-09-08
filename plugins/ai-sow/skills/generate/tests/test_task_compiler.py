@@ -13,6 +13,7 @@ SCRIPTS = SKILL_ROOT / "scripts"
 TESTS = SKILL_ROOT / "tests"
 FIXTURES = SKILL_ROOT / "fixtures"
 TEMPLATE = SKILL_ROOT / "assets/sow-template.xlsx"
+LEGACY_TEMPLATE = TESTS / "fixtures/sow-template-legacy.xlsx"
 for path in (SCRIPTS, TESTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -59,12 +60,12 @@ def test_task_decision_ir_contract_normalizes_only_sets_and_preserves_text():
 
 
 # Exact-IR tests use pure sealed values; no Scope/Story host execution.
-def task_input_values(model=None, roles=None):
+def task_input_values(model=None, roles=None, *, template_path=None):
     from ir_samples import task_story_model
     from test_contracts import valid_input_revision
     from sow_model import owner_projection_sha256
     model = task_story_model() if model is None else copy.deepcopy(model)
-    source = catalog(TEMPLATE)
+    source = catalog(TEMPLATE if template_path is None else template_path)
     revision = valid_input_revision()
     revision['templateSha256'] = source.template_sha256
     revision['priorSowState'] = 'NOT_PROVIDED'; revision['priorSowSha256s'] = []
@@ -88,9 +89,9 @@ def task_input_values(model=None, roles=None):
     return candidate, canonical_json_bytes(checkpoint), source, revision_bytes
 
 
-def exact_task_inputs(model=None, roles=None):
+def exact_task_inputs(model=None, roles=None, *, template_path=None):
     import task_compiler as owner
-    candidate, cp, source, revision = task_input_values(model, roles)
+    candidate, cp, source, revision = task_input_values(model, roles, template_path=template_path)
     return owner.prepare_task_inputs(candidate,cp,checkpoint_sha256=sha256_bytes(cp),
         task_catalog=source,input_revision_bytes=revision)
 
@@ -207,6 +208,7 @@ def test_task_obligation_coverage_sealed_input_and_checkpoint_projection_plan():
     from test_stage_planner import policy
     from dataclasses import replace
     inputs=exact_task_inputs()
+    assert inputs.task_catalog.template_sha256 == sha256_bytes(TEMPLATE.read_bytes())
     rules=owner.hydrate_task_rules(inputs,['FE-VIEW'],'订单查询页面')
     assert rules[0]['workTypeId']=='FE-VIEW' and set(rules[0]['complexityRules'])=={'S','M','L'}
     assert len(rules)>1 and 'baseDays' not in rules[0]
@@ -229,9 +231,11 @@ def test_task_obligation_coverage_sealed_input_and_checkpoint_projection_plan():
         with pytest.raises(ValueError): owner.prepare_task_inputs(candidate,cp,checkpoint_sha256='0'*64 if mutation=='hash' else sha256_bytes(cp),task_catalog=source,input_revision_bytes=revision)
     with pytest.raises(ValueError): owner.build_task_work_descriptors((replace(inputs.work_items[0],block_ordinal=99),*inputs.work_items[1:]),inputs.context_refs,policy())
     locked=json.loads((FIXTURES/'planner/task-plan-hash.json').read_bytes())
+    # This byte snapshot binds the historical input template as well as TASK-v1.
+    legacy_inputs=exact_task_inputs(template_path=LEGACY_TEMPLATE)
     legacy_ids={'TASK':'TASK-v1'}
-    legacy_works=owner.build_task_work_descriptors(inputs.work_items,inputs.context_refs,policy(),action_contract_ids=legacy_ids)
-    legacy_plan=plan_stage('TASK',inputs.work_items,inputs.context_refs,legacy_works,[inputs.checkpoint_sha256],policy(),action_contract_ids=legacy_ids)
+    legacy_works=owner.build_task_work_descriptors(legacy_inputs.work_items,legacy_inputs.context_refs,policy(),action_contract_ids=legacy_ids)
+    legacy_plan=plan_stage('TASK',legacy_inputs.work_items,legacy_inputs.context_refs,legacy_works,[legacy_inputs.checkpoint_sha256],policy(),action_contract_ids=legacy_ids)
     assert sha256_bytes(canonical_json_bytes(legacy_plan))==locked['stagePlanSha256']
 
 

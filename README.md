@@ -105,6 +105,20 @@ request start，创建新 run 并完整编译；上一份有效 SOW 始终不被
 发布前必须由 LibreOffice 实际回算并复读全部公式缓存、目录、参数、行级校验和汇总；缺少计算引擎或
 验证失败时不会用候选文件覆盖上一份有效 SOW。
 
+默认模板正式采用 13 列 TaskTable：工作类型名称作为下拉输入，稳定工作类型 ID 由隐藏公式匹配；
+移除 SIT 计费点 ID 列，以全表唯一的任务名称识别计费任务。“集成类型”仅供目录中具备
+`PER_INTEGRATION` 资格的任务选择内部集成/外部集成，其他任务留空。生成前仍按底层 Integration
+引用校验方向唯一归属；生成器继续兼容原 14 列 ID 输入模板，费率、复杂度系数和取整均由模板决定。
+
+默认空白模板预备 60 条故事、200 条任务输入行。`03-工作量汇总` 展示工作量和 8 项参数的受保护
+公式视图，不追加实体 ID、类型或来源台账；原参数表仍在 `90-估算标准` 的隐藏区域。估算标准默认
+展示 10 列，右侧 6 列细则可分组展开，原始机器字段保留隐藏，只冻结前四行。已有项目模板不会被
+插件默认资产自动覆盖；采用新版后须以新 run 冻结模板字节。
+
+[mall 订单履约与售后案例说明及复现输入](plugins/ai-sow/docs/reference/mall订单履约与售后升级_示例说明.md)
+配套正式 reference 示例：22 条 Story、59 条 Task，97.3＋3.5＋3.0＝103.8 人天。公开开源代码是
+现状依据，升级需求与企业资产是示例假设；该样例不是真实历史报价或已批准 SOW。
+
 成功输出位于当前 generation：
 
 ```text
@@ -199,7 +213,7 @@ uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smo
 本项目使用 [Apache License 2.0](LICENSE)。项目自行编写的模板、示例和文档采用同一许可证；
 依赖项仍适用各自许可证。详见 [NOTICE](NOTICE)。
 
-工作簿验证使用 `generation-renderer-v12`：现有汇总 Sheet 显示实体 ID 与公开 SourceRef；全部可见 Sheet 的 Office PDF renders 经一次独立视觉评审通过后，才向用户请求批准。每一步实际生成、Office 与复读都受 active-time 预算约束；预算增加后的恢复保留已完成输出。
+工作簿验证使用 `generation-renderer-v13`：精简模板的汇总 Sheet 只显示工作量和模板参数，追溯信息保留在配套模型/证明中；原 14 列模板兼容可见追溯；全部可见 Sheet 的 Office PDF renders 经一次独立视觉评审通过后，才向用户请求批准。每一步实际生成、Office 与复读都受 active-time 预算约束；预算增加后的恢复保留已完成输出。
 
 内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
 pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，

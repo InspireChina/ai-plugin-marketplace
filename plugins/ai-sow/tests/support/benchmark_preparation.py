@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 
 from contracts import canonical_json_bytes, sha256_bytes, validate_contract
@@ -13,6 +14,15 @@ from prototype_analysis import inventory_demo_bundle
 
 def _binding(path, raw):
     return {'path': path, 'sha256': sha256_bytes(raw)}
+
+
+def _anticipated_prior_locator(locator, source_id):
+    from openpyxl.utils.cell import range_boundaries
+    match = re.fullmatch(re.escape(source_id) + r'#[^\[\]:*?/\\]{1,31}!(\$[A-Z]{1,3}\$[1-9][0-9]*:\$[A-Z]{1,3}\$[1-9][0-9]*)', locator)
+    if match is None:
+        return False
+    left, top, right, bottom = range_boundaries(match[1])
+    return 1 <= left <= right <= 16384 and 1 <= top == bottom <= 1048576
 
 
 def _read_demos(files, locators, draft=None):
@@ -145,12 +155,18 @@ def prepare(api, baseline_root, output_root, expectation_draft):
             source_rows.append({'side': side, 'role': kind.upper(), 'sourceId': source_id,
                 'baselinePath': relative, 'sha256': sha256_bytes(raw_sources[relative]), 'locators': locator_values})
     all_locators = set.union(*locators.values())
+    prior_source_id = next((row['sourceId'] for row in json.loads(raw_sources['requests/v2.json'])['sources']
+        if row['role'] == 'PRIOR_SOW'), 'v2-prior')
     for item in oracle['expectedObligations']:
         if item['sourceId'] + '#' + item['exactLocator'] not in all_locators:
             raise ValueError('oracle obligation does not resolve to frozen source locator')
     for item in oracle['expectedBrownfieldChanges'] + oracle['expectedUnchangedCapabilities']:
-        if not set(item['priorLocatorIds']) <= locators['greenfield'] or not set(item.get('targetLocatorIds', [])) <= locators['brownfield']:
-            raise ValueError('oracle change locators must reference frozen v1/v2 sources')
+        # Author expected XLSX rows before Greenfield runs; resolve them against
+        # its exact transferred workbook's bound Prior evidence at calculation.
+        unresolved_prior = set(item['priorLocatorIds']) - locators['greenfield']
+        if (any(not _anticipated_prior_locator(locator, prior_source_id) for locator in unresolved_prior)
+            or not set(item.get('targetLocatorIds', [])) <= locators['brownfield']):
+            raise ValueError('oracle change locators must reference frozen sources or the selected Prior XLSX')
     demos = _read_demos(files, locators)
     identity = {'baseline': api._BENCHMARK_BASELINE_SHA256, 'expectationSha256': sha256_bytes(oracle_raw),
         'policySha256': sha256_bytes(policy_raw), 'demos': {side: {

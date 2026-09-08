@@ -20,7 +20,7 @@
       "legacySha256": "2c141ed50af121a057ca91b63afffbfdcb341fe8699a44f3f6a19131622c1e09",
       "replacementPath": "fixtures/pipeline/stage1/scope-decision-results.json",
       "replacementSha256": "3753a1f42008ffd560eb86097ff84b0013f002e867b165c96ceb4520c68b2a9c",
-      "replacementTest": "test_scope_compiler.py::test_scope_decision_ir_closes_fact_handles_and_checks_relations_before_waiting"
+      "replacementTest": "test_scope_compiler.py::test_scope_decision_ir_closes_fact_handles_and_checks_relations"
     },
     {
       "legacyPath": "fixtures/greenfield/delivery.json",

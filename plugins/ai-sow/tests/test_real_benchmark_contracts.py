@@ -477,6 +477,33 @@ def test_benchmark_brownfield_evidence_checkpoint_projection_and_unique_join(tmp
     assert value['implicitRetireCount'] == (1 if mutation == 'implicit-retire' else 0)
 
 
+@pytest.mark.parametrize('tampered', [False, True])
+def test_benchmark_visible_source_refs_still_bind_original_hash_with_xlsx_locators(tmp_path, tampered):
+    attempt_fixture()
+    pair = benchmark()
+    files, checkpoint, graph, target, oracle = prior_fixture(tmp_path)
+    snapshot = files.read_json('scope/prior-states/' + checkpoint['priorStateSha256'] + '.json')
+    prior_refs = set()
+    for index, row in enumerate(snapshot['evidence'], start=5):
+        cells = row['canonicalCellValues']
+        ref = json.loads(cells[-1]['value'])
+        prior_refs.add(pair.canonical_json_bytes(ref))
+        if tampered and index == 5:
+            ref['sha256'] = 'f' * 64
+            cells[-1]['value'] = json.dumps(ref)
+        row.update(sheet='03-工作量汇总', absoluteA1Range=f'$A${index}:$C${index}',
+            canonicalCellValuesSha256=pair.sha256_bytes(pair.canonical_json_bytes(cells)))
+    raw = pair.canonical_json_bytes(snapshot)
+    checkpoint['priorStateSha256'] = pair.sha256_bytes(raw)
+    files.publish_new('scope/prior-states/' + checkpoint['priorStateSha256'] + '.json', raw)
+    if tampered:
+        with pytest.raises(ValueError, match='SourceRef does not resolve to frozen v1 bytes'):
+            pair._benchmark_brownfield_evidence(files, 'scope', checkpoint, graph, target, oracle, prior_refs=prior_refs)
+    else:
+        value = pair._benchmark_brownfield_evidence(files, 'scope', checkpoint, graph, target, oracle, prior_refs=prior_refs)
+        assert value['changePrecision'] == value['changeRecall'] == value['unchangedRetention'] == 1.0
+
+
 @pytest.mark.parametrize('mutation', ['valid', 'diagnostic', 'resolved', 'no-repair', 'wrong-trigger', 'non-semantic', 'no-pass'])
 def test_benchmark_final_counts_requires_actual_repair_successor(mutation):
     attempt_fixture()
@@ -615,6 +642,35 @@ def test_frozen_baseline_prepare_complete_inputs_without_starting_runs(tmp_path,
     assert template['project']['plannedEffectiveDate'] == '2027-02-15'
     assert sum(s['role'] == 'PRIOR_SOW' for s in template['sources']) == 1
     assert {p.relative_to(baseline).as_posix(): p.read_bytes() for p in baseline.rglob('*') if p.is_file()} == before
+
+
+@pytest.mark.parametrize('locator, valid', [
+    ('v2-prior#01-需求故事!$A$5:$I$5', True),
+    ('v1-prior#01-需求故事!$A$5:$I$5', False),
+    ('unselected-prior#01-需求故事!$A$5:$I$5', False),
+    ('v2-prior#!$A$5:$I$5', False),
+    ('v2-prior#01-需求故事!A5:I5', False),
+    ('v2-prior#01-需求故事!$A$0:$I$0', False),
+    ('v2-prior#01-需求故事!$I$5:$A$5', False),
+    ('v2-prior#01-需求故事!$A$5:$I$6', False),
+    ('v2-prior#01-需求故事!$A$5:$XFE$5', False),
+    ('v2-prior#01-需求故事!$A$1048577:$I$1048577', False),
+])
+def test_frozen_baseline_anticipated_prior_locator_binds_selected_source_and_row(tmp_path, monkeypatch, locator, valid):
+    attempt_fixture()
+    baseline, output, draft, hashes = preparation_fixture(tmp_path)
+    pair = benchmark()
+    monkeypatch.setattr(pair, '_BENCHMARK_BASELINE_SHA256', hashes)
+    oracle = json.loads(draft.read_bytes())
+    oracle['expectedUnchangedCapabilities'] = [{'expectationId': 'keep-prior-row', 'priorLocatorIds': [locator]}]
+    draft.write_bytes(pair.canonical_json_bytes(oracle))
+    if valid:
+        assert pair._prepare_benchmark(baseline, output, draft)['outcome'] == 'PREPARED'
+        assert not list(output.rglob('.ai-sow'))
+    else:
+        with pytest.raises(ValueError, match='oracle change locators'):
+            pair._prepare_benchmark(baseline, output, draft)
+        assert not (output / 'benchmark-input-manifest.json').exists()
 
 
 def test_frozen_baseline_migrates_legacy_status_and_current_state_delta(tmp_path, monkeypatch):

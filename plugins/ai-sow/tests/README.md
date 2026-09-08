@@ -194,7 +194,10 @@ Analyze 处置，包含合法的 EXCLUDED/NOT_EXERCISED；仅完成 Browser 而�
 它从事件绑定的最终 ArtifactManifest 复读两侧 InputRevision、三个 Owner proof、全部实际
 Attempt/Envelope/packet/raw/normalized 字节，重验生产 checkpoint proof，并用冻结 oracle 的
 精确 locator 计算 Scope、Brownfield ChangeGraph、覆盖、token 和时间指标。Prior 来源只经
-ScopeCheckpoint 绑定的快照及工作簿可见 SourceRef 恢复；四个传递点必须大小和 SHA256 相同。
+ScopeCheckpoint 绑定的快照及工作簿可见行证据恢复；旧版可见 SourceRef 仍须匹配冻结的来源字节。
+精简工作簿的 `priorLocatorIds` 可在 Greenfield 执行前声明为所选 Prior 来源的
+`sourceId#Sheet!$A$5:$I$5`，计算时按实际传递工作簿与快照的行哈希核对。不得从缺失的台账推断
+原始 PRD/HLD 引用；四个传递点必须大小和 SHA256 相同。
 两侧必须顺序完成且均停在 AWAITING_FINAL_REVIEW；test-only 宿主观察报告必须覆盖全部模型 Action，
 证明新 Controller、`maxConcurrency = 1`、逐 Action fresh worker 和 Plugin-Controlled Request hash。
 

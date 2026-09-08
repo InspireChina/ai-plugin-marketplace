@@ -131,9 +131,22 @@ renderer 指纹、输出 hash，以及真实办公软件回算后的工作簿验
 Table、全部输入行、公式缓存、校验结果、参数/目录、汇总和一页宽/纵向分页设置均复读通过，才以
 `VERIFIED` 发布。公式和人天不会在 Python 或稳定 JSON 中重算。
 
+默认模板正式采用 13 列 TaskTable，以工作类型名称下拉输入、隐藏公式匹配稳定 ID；删除 SIT
+计费点 ID 列，以全表唯一的任务名称识别计费任务。“集成类型”仅供目录中具备
+`PER_INTEGRATION` 资格的任务选择内部集成/外部集成，其他任务留空。生成器仍兼容原 14 列
+ID 输入模板，并按所选模板原型保留输入列与计算列。生成前继续按 Integration 引用校验方向唯一
+归属；SIT 费率、复杂度系数与汇总取整仍由模板公式决定。
+
+空白模板预备 60 条故事、200 条任务输入行，名称输入格可编辑，公式格受保护。
+`03-工作量汇总` 仅展示工作量和 8 项参数的受保护公式视图，不追加实体 ID、类型或来源台账；
+原 ProjectParameterTable 留在 `90-估算标准` 隐藏区域。估算标准默认展示 10 列、右侧 6 列分组
+细则，其余原始机器字段隐藏保留，只冻结前四行。
+
 当前只支持 XLSX 模板。intake 在创建 input revision 时把项目模板保存为 revision 内的
 `sow-template.xlsx` 本轮专用副本；Task 编译、评审、渲染和复读只使用该副本。运行期间改动项目模板
 不影响当前轮次。下一轮使用新的模板快照完整编译并重新评审。generation manifest 同时绑定 `templateSha256` 与 `rendererSha256`。
+项目已有 `.ai-sow/templates/sow-template.xlsx` 时优先使用该文件，更新插件默认资产不会覆盖项目
+副本；采用新版模板后须创建新 run。
 
 Epic 和 Feature 使用稳定领域能力的名词或名词短语，并以共同投入理由维持同质边界，不能用“平台”“闭环”“保障”等抽象词把无关主题装入同一层级。Story 使用自然的
 `[模块/接口] 角色或对象＋动作` 标题，只归属一个 Feature、至少包含两条 AC 且最多包含四个 Task。
@@ -166,7 +179,10 @@ Task 名称必须点明一个与模板任务类型匹配的计数对象。接口
 当前任务目录、计数口径、包含/排除项、可用工作方式与 S/M/L/X 标准只以本轮模板的
 `90-估算标准` 为准。概念、判定方法与字段说明见
 [SOW 任务分类与开发交付人天标准](docs/reference/SOW任务分类与开发交付人天标准_v1.3.md)。示例工作簿见
-[SOW 估算与生成示例](docs/reference/SOW估算与生成示例_v1.3.xlsx)。
+[SOW 估算与生成示例](docs/reference/SOW估算与生成示例_v1.3.xlsx)。当前 reference 示例为 mall
+订单履约与售后升级，包含 22 条 Story、59 条 Task；直接开发 97.3、SIT 支持 3.5、UAT 支持 3.0，
+合计 103.8 人天。其升级需求与企业资产均为示例假设，不是真实历史报价或已批准 SOW；
+[配套说明与复现输入](docs/reference/mall订单履约与售后升级_示例说明.md)保留公开来源、适用边界与复现步骤。
 
 ## 运行时
 
@@ -202,7 +218,7 @@ CLI。最终集成需覆盖 Greenfield、Brownfield、新输入完整编译和�
 公式、项目边界和 marketplace 零读取。worker 的 stdout/stderr、临时文件及失败收据都保留在项目或
 精确 smoke work-dir 内，失败现场不会被测试清理掉。
 
-工作簿验证使用 `generation-renderer-v12`：现有汇总 Sheet 显示实体 ID 与公开 SourceRef；全部可见 Sheet 的 Office PDF renders 经一次独立视觉评审通过后，才向用户请求批准。每一步实际生成、Office 与复读都受 active-time 预算约束；预算增加后的恢复保留已完成输出。
+工作簿验证使用 `generation-renderer-v13`：精简模板的汇总 Sheet 只显示工作量和模板参数，追溯信息保留在配套模型/证明中；原 14 列模板兼容可见追溯；全部可见 Sheet 的 Office PDF renders 经一次独立视觉评审通过后，才向用户请求批准。每一步实际生成、Office 与复读都受 active-time 预算约束；预算增加后的恢复保留已完成输出。
 
 内部 checkpoint 自动封存；运行中用户只回答问题或补充材料。严格顺序 Greenfield→Brownfield 的
 pair harness 不属于插件业务 Owner。两侧 verified artifact 均完成后，共同展示两份 Excel，

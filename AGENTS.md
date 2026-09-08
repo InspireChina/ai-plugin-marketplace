@@ -82,7 +82,7 @@ ai-sow:generate
   也不执行 Excel 公式。共享 Task 仅由 renderer 投影 Story 的任务列表与覆盖校验公式；全部计价、汇总与取整公式保持模板原值。
 - renderer 保留命名 Table、公式原型、样式、行高、自动筛选、数据验证、保护和跨 Sheet 引用，并
   在发布前复读。
-- 修改确定性输出语义时更新当前 `generation-renderer-v12` 及
+- 修改确定性输出语义时更新当前 renderer 合同版本及
   `contracts/renderer-fingerprint-baseline.json`，不得只刷新 hash 掩盖合同变化。
 - `@oai/artifact-tool` 和 `.mjs` 只用于视觉检查或一次性修复；一次任务只保留一个临时 `.mjs`，完成后
   删除。可复用生成能力使用 Python。

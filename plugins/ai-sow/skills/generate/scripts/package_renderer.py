@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 import zipfile
+import openpyxl
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -24,7 +25,7 @@ else:
     from workbook import audit_calculated_workbook, write_workbook
 
 
-RENDERER_CONTRACT = "generation-renderer-v12"
+RENDERER_CONTRACT = "generation-renderer-v13"
 
 
 class PackageRenderError(ValueError):
@@ -170,13 +171,29 @@ def office_page_viewports(page):
     return pages
 
 
+def visible_cjk_glyphs(sheet):
+    """Match the cells Office displays, including grouped column visibility."""
+    hidden_columns = {
+        column
+        for dimension in sheet.column_dimensions.values() if dimension.hidden
+        for column in range(dimension.min, dimension.max + 1)
+    }
+    hidden_rows = {row for row, dimension in sheet.row_dimensions.items() if dimension.hidden}
+    return {
+        char for row in sheet for cell in row
+        if cell.row not in hidden_rows and cell.column not in hidden_columns
+        for char in str(cell.value or '') if '\u3400' <= char <= '\u9fff'
+    }
+
+
 def render_visible_sheets(path, output_root):
     """Use actual Office PDF export, then split exact pages without re-drawing cells."""
     import json
+    import re
     import subprocess
-    import os
-    import platform
+    from zipfile import ZipFile
     import openpyxl
+    from office_engine import office_environment
     from pypdf import PdfReader, PdfWriter
     output_root = Path(output_root); output_root.mkdir(parents=True, exist_ok=True)
     engine = require_office_engine()
@@ -184,23 +201,23 @@ def render_visible_sheets(path, output_root):
     try:
         sheets = [(i,s.title) for i,s in enumerate(book) if s.sheet_state == 'visible']
         sheet_count = len(book.sheetnames)
-        cjk_by_sheet = {s.title:{char for row in s for cell in row for char in str(cell.value or '') if '\u3400' <= char <= '\u9fff'} for s in book if s.sheet_state == 'visible'}
+        cjk_by_sheet = {s.title: visible_cjk_glyphs(s) for s in book if s.sheet_state == 'visible'}
     finally: book.close()
     with tempfile.TemporaryDirectory(prefix='.pdf-', dir=output_root) as temporary:
-        root = Path(temporary); source = root/'workbook.xlsx'; shutil.copyfile(path,source)
+        root = Path(temporary); source = root/'workbook.xlsx'
+        # Calc's SinglePageSheets export can clip earlier sheets to the active
+        # sheet's horizontal viewport. Select the first visible sheet only in
+        # the PDF input; retain all formula caches and delivered workbook bytes.
+        with ZipFile(path) as original, ZipFile(source, 'w') as destination:
+            for member in original.infolist():
+                payload = original.read(member.filename)
+                if member.filename == 'xl/workbook.xml':
+                    payload = re.sub(rb'activeTab="[0-9]+"',
+                        ('activeTab="'+str(sheets[0][0])+'"').encode(), payload)
+                destination.writestr(member, payload)
         profile = root/'profile'; profile.mkdir()
         options = json.dumps({'SinglePageSheets':{'type':'boolean','value':'true'}},separators=(',',':'))
-        environment = dict(os.environ)
-        if platform.system() == 'Darwin' and 'FONTCONFIG_FILE' not in environment:
-            # Headless macOS builds may lack a working fontconfig cache. Use installed
-            # system fonts and a cache inside this isolated operation, never ~/.cache.
-            from xml.sax.saxutils import escape
-            config = root/'fonts.conf'; cache=root/'font-cache'; cache.mkdir()
-            config.write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">'
-                '<fontconfig><dir>/System/Library/Fonts</dir><dir>/System/Library/Fonts/Supplemental</dir>'
-                '<dir>/Library/Fonts</dir><cachedir>'+escape(str(cache))+'</cachedir>'
-                '<alias><family>Microsoft YaHei</family><prefer><family>Heiti SC</family></prefer></alias></fontconfig>')
-            environment['FONTCONFIG_FILE']=str(config)
+        environment = office_environment(root)
         result = subprocess.run([engine.executable, '-env:UserInstallation='+profile.as_uri(), '--headless',
             '--convert-to','pdf:calc_pdf_Export:'+options,'--outdir',str(root),str(source)],capture_output=True,timeout=120,env=environment)
         pdf = root/'workbook.pdf'
@@ -210,8 +227,9 @@ def render_visible_sheets(path, output_root):
         if len(reader.pages) != sheet_count: raise ValueError('Office PDF page inventory differs from workbook sheets')
         renders = []
         for i, name in sheets:
-            if not cjk_by_sheet[name] <= set(reader.pages[i].extract_text()):
-                raise ValueError('Office render lost visible CJK glyphs')
+            missing_glyphs = cjk_by_sheet[name] - set(reader.pages[i].extract_text())
+            if missing_glyphs:
+                raise ValueError('Office render lost visible CJK glyphs: '+name+' / '+''.join(sorted(missing_glyphs)))
             pages=office_page_viewports(reader.pages[i])
             writer = PdfWriter()
             for page in pages: writer.add_page(page)
@@ -254,7 +272,7 @@ def verify_artifact(model, template_path, projection, calculated, reference, tem
     from dataclasses import asdict
     from office_engine import OfficeEngine, validate_office_identity
     from prior_state import inventory_prior_workbook
-    from workbook import dual_reopen, visible_identity_rows, safe_text
+    from workbook import dual_reopen, visible_identity_rows, safe_text, projection_contract, COMPACT_TASK_HEADERS
     with tempfile.TemporaryDirectory(prefix='.reopen-', dir=temporary_root) as temporary:
         root = Path(temporary)
         for name,value in [('projected',projection),('final',calculated),('reference',reference)]:
@@ -268,7 +286,14 @@ def verify_artifact(model, template_path, projection, calculated, reference, tem
         inventory = inventory_prior_workbook(root/'final.xlsx')
         actual_rows = [tuple(cell['value'] for cell in e['canonicalCellValues']) for e in inventory['evidence']
             if e['sheet']=='03-工作量汇总']
-        expected_rows = [tuple(safe_text(value) for value in row) for row in visible_identity_rows(model)]
+        template = openpyxl.load_workbook(template_path)
+        try:
+            compact = projection_contract(template)['TaskTable']['headers'] == COMPACT_TASK_HEADERS
+        finally:
+            template.close()
+        # The workbook audit already proves the compact summary is identical to
+        # its template, with no appended identity/source ledger.
+        expected_rows = [] if compact else [tuple(safe_text(value) for value in row) for row in visible_identity_rows(model)]
         for row in expected_rows:
             if actual_rows.count(row) != 1: raise ValueError('visible Prior identity/source reference round-trip mismatch')
         return canonical_json_bytes({'trustState':'VERIFIED','office':office,'structureFormula':report,
