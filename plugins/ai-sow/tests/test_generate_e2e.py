@@ -107,6 +107,18 @@ def test_copy_worker_temp_and_failure_outputs_are_project_local(
     assert environment["TEMP"] == expected_temp
     assert environment["TMP"] == expected_temp
 
+    office = tmp_path / "bin/soffice"
+    monkeypatch.delenv("AI_SOW_OFFICE_BIN", raising=False)
+    monkeypatch.setattr(
+        smoke_plugin.shutil,
+        "which",
+        lambda command: str(office) if command == "soffice" else None,
+    )
+    environment = smoke_plugin._worker_environment(
+        plugin, project, audit_root, audit_log
+    )
+    assert environment["AI_SOW_OFFICE_BIN"] == str(office.resolve())
+
     monkeypatch.setattr(
         subprocess,
         "run",

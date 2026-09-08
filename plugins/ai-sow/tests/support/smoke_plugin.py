@@ -353,7 +353,7 @@ def _worker_environment(
 ) -> dict[str, str]:
     temporary_root = project / ".ai-sow/work/smoke-temp"
     temporary_root.mkdir(parents=True, exist_ok=True)
-    return {
+    environment = {
         **os.environ,
         "PYTHONPATH": str(audit_root),
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -366,6 +366,14 @@ def _worker_environment(
         "TEMP": str(temporary_root),
         "TMP": str(temporary_root),
     }
+    office = (
+        os.environ.get("AI_SOW_OFFICE_BIN")
+        or shutil.which("soffice")
+        or shutil.which("libreoffice")
+    )
+    if office:
+        environment["AI_SOW_OFFICE_BIN"] = str(Path(office).expanduser().resolve())
+    return environment
 
 
 def _run_worker(
