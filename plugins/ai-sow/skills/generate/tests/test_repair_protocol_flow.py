@@ -218,6 +218,8 @@ def test_source_scan_batches_disjoint_schema_repairs_into_one_patch(tmp_path):
     candidate=copy.deepcopy(good)
     candidate[0].update(facts=[],reason='标题未陈述可交付事实。',decision='NO_RELEVANT_FACT')
     candidate[1].update(facts=[],reason='审批状态未陈述可交付事实。',decision='NO_RELEVANT_FACT')
+    candidate[0].pop('disposition')
+    candidate[1].pop('disposition')
     raw=encode(candidate)
     packet=json.loads(files.read_bytes(author['packetPath']))
     origin={
@@ -240,7 +242,7 @@ def test_source_scan_batches_disjoint_schema_repairs_into_one_patch(tmp_path):
         'SOURCE_SCAN',packet,raw,report,origin=origin,
         action_contract_id='SOURCE_SCAN-v1')
     plan=json.loads(plan_raw)
-    assert len(report['issues'])==6
+    assert len(report['issues'])==8
     assert len(plan['groups'])==1
     group=plan['groups'][0]
     assert len(group['slots'])==6
@@ -264,6 +266,68 @@ def test_source_scan_batches_disjoint_schema_repairs_into_one_patch(tmp_path):
         assert 'reason' not in row and 'decision' not in row
         assert row['disposition']=='NO_RELEVANT_FACT'
         assert row['facts']==[] and row['noRelevantReason']
+
+
+def test_public_source_scan_legacy_shape_converges_in_one_patch_action(tmp_path):
+    state=api.start(
+        tmp_path,write_run_store_request(tmp_path),
+        write_budget_policy(tmp_path,maxConcurrency=1,maxActionRevisions=2))['state']
+    files=ProjectFiles.open(tmp_path)
+    action=api._start_public_pipeline(files,state)['nextAction']
+    packet=json.loads(files.read_bytes(action['packetPath']))
+    from ir_samples import scan_ir
+    expected=[
+        entry for item in packet['workItems']
+        for entry in scan_ir(item['payload']['coverageRootId'])]
+    assert len(expected)>=2
+    for index,reason in enumerate([
+            '标题未陈述可交付事实。','审批状态未陈述可交付事实。']):
+        expected[index].update(
+            disposition='NO_RELEVANT_FACT',facts=[],noRelevantReason=reason)
+    legacy=copy.deepcopy(expected)
+    for row in legacy:
+        row['decision']=row.pop('disposition')
+        if 'noRelevantReason' in row:
+            row['reason']=row.pop('noRelevantReason')
+    failed=api.submit(
+        tmp_path,action['actionId'],successful_completion(encode(legacy)))
+    assert failed['record']['failureKind']=='INVALID_IR'
+
+    patch=current_action(files)
+    assert patch['actionContractId']=='CANDIDATE_PATCH-v1'
+    from candidate_repair import patch_context,_at
+    view=patch_context(json.loads(files.read_bytes(patch['packetPath'])))
+    plan=json.loads(files.read_bytes(
+        f".ai-sow/work/runs/{action['runId']}/candidate-repairs/plans/"
+        f"{view['repairPlanSha256']}.json"))
+    assert len(plan['groups'])==1
+    group=plan['groups'][0]
+    index={row['objectId']:row for row in plan['objectIndex']}
+    operations=[]
+    for slot in group['slots']:
+        operation={'slotId':slot['slotId']}
+        if slot['operation']=='SET_FIELDS':
+            schema=slot['valueSchema']
+            operation['value']=schema.get('const',{'disposition':'FACT'})
+        elif slot['operation']=='SET_FIELD':
+            operation['value']=_at(
+                expected,index[slot['objectId']]['path'])[slot['field']]
+        operations.append(operation)
+    raw=encode({
+        'repairPlanSha256':view['repairPlanSha256'],
+        'baseCandidateSha256':view['baseCandidateSha256'],
+        'groupId':group['groupId'],
+        'operations':operations})
+    recorded=api.submit(
+        tmp_path,patch['actionId'],successful_completion(raw))
+    assert recorded['record']['outcome']=='SUCCEEDED'
+    ledger=api._load_action_ledger(files,action['runId'])
+    assert json.loads(effective_result_bytes(
+        ledger,action['logicalWorkId']))==expected
+    patches=[
+        envelope for envelope in ledger.envelopes_by_sha256.values()
+        if envelope.value['actionContractId']=='CANDIDATE_PATCH-v1']
+    assert len(patches)==1
 
 
 def test_failed_patch_revision_resumes_the_patch_leaf_repeatedly(tmp_path):

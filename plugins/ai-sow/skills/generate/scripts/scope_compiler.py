@@ -1319,6 +1319,31 @@ def plan_candidate_repair(action_kind, packet, candidate, report, *, origin, **o
                     {'objectId':slot['objectId'],'fields':fields}
                     if read['objectId']==slot['objectId'] else read
                     for read in group['readSet']]
+        pending=list(groups);groups=[]
+        while pending:
+            group=pending.pop(0)
+            slot_ids={slot['slotId'] for slot in group['slots']}
+            overlap=[other for other in pending
+                     if slot_ids & {slot['slotId'] for slot in other['slots']}]
+            for other in overlap:
+                pending.remove(other)
+            if overlap:
+                batch=[group,*overlap]
+                issue_ids=sorted({key for item in batch for key in item['issueIds']})
+                slots=list({slot['slotId']:slot for item in batch for slot in item['slots']}.values())
+                reads={}
+                for item in batch:
+                    for read in item['readSet']:
+                        reads.setdefault(read['objectId'],set()).update(read['fields'])
+                pending.insert(0,{
+                    'groupId':'group-'+sha256_bytes(canonical_json_bytes(issue_ids))[:24],
+                    'issueIds':issue_ids,
+                    'readSet':[{'objectId':key,'fields':sorted(fields)}
+                               for key,fields in sorted(reads.items())],
+                    'slots':slots,
+                    'verificationObligations':issue_ids})
+            else:
+                groups.append(group)
     observation_issue_ids={issue['issueId'] for issue in report['issues']
                            if issue['code']=='SCOPE_BINDING_INVALID' and issue['paths'][0]=='/observations'}
     for group in groups:
