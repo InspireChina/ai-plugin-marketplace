@@ -553,12 +553,18 @@ def apply_prepared(project: Path, request_id: str, payload):
         return _applied_result(project, applied, current, True)
     saved_check = checked_json(project, prepared['check_ref']['path'], 'check', area)
     report = check_candidate(project, candidate_path, 'full', (saved_check.get('plan_ref') or {}).get('path'))
-    if not report['valid_for_render'] or not checks_match(project, saved_check, report):
+    # A delivered Generate may be retried after Clarify appended input registrations.
+    # Its immutable history and semantic intent remain authoritative; the old mutable
+    # index snapshot is only a pre-application check, not a reason to reject that fact.
+    if not report['valid_for_render'] or (applied is None and not checks_match(project, saved_check, report)):
         error = StorageError('CANDIDATE_INVALID', '候选或实际依赖与完整检查记录不一致。')
         if entrypoint == 'clarify' and report['diagnostics']:
             error.diagnostics = report['diagnostics']
         raise error
     confirmation = seal_confirmation(project, payload['plan_path'], candidate_path) if entrypoint == 'clarify' else None
+    if confirmation:
+        source = confirmation['input_record']
+        confirmation['dependencies'].append(dict(path=source['relative_path'], sha256=source['content_hash']))
     intent = dict(entrypoint=entrypoint, candidate_digest=report['candidate_digest'])
     if confirmation:
         intent.update(plan_digest=confirmation['digest'], base_version_id=candidate['base_version_id'])

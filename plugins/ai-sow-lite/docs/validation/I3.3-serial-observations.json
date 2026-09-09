@@ -1,0 +1,233 @@
+{
+  "case_id": "serial-notes-after-M",
+  "actor_id": "01a0882a-839e-7280-b7d0-d2ba2e2af4c8",
+  "request_id": "f325b858-1b6b-4a88-84d3-fdf3236149b1",
+  "current": {
+    "manifest_hash": "eebc11feed06a1b0eedf7c6522418eed98f68c04883491fada40c294df07374a",
+    "version_id": "63cfa0cc-3b1d-4546-88c2-25b80990b3f3"
+  },
+  "base": {
+    "manifest_hash": "4b8fae787fef963eabe37a398fa26bb2033ac6fcf589e607cc48141a9f2fc002",
+    "version_id": "218b88b6-6105-4e5e-a9da-b28075fa9b03"
+  },
+  "unchanged_prior_version_file_count": 27,
+  "unchanged_plugin_file_count": 35,
+  "verified_manifest_refs": 67,
+  "changed_model_objects": [
+    {
+      "id": "00000000-0000-4000-8000-000000000019",
+      "fields": [
+        "notes",
+        "evidence_refs"
+      ]
+    }
+  ],
+  "tasks_pending_decisions_unchanged": true,
+  "workbook_sha256": "75de9ddca78f94515d21b8cb0479dbd232e46f7ab63b9d66b2e006f4934f170c",
+  "confirmation_sha256": "49e74f8f04af9f4c482beed58feecf846cb987a82918d1d49cea644a4b9fcb31",
+  "runtime_baseline": "f6121b1",
+  "native_usage": {
+    "source_sha256": "e4fc0c5f5035c3878213bd58ba9ee1603b6a5438c98ef99de25052d52a5041d9",
+    "source_bytes": 1156830,
+    "producer_version": "0.153.4",
+    "turns": {
+      "01a0882a-8411-7601-a3ce-6964fa468b83": {
+        "counts": {
+          "input_tokens": 874387,
+          "output_tokens": 10293,
+          "total_tokens": 884680,
+          "cached_input_tokens": 814080,
+          "reasoning_output_tokens": 2638,
+          "cache_write_input_tokens": 0
+        },
+        "responses": 15,
+        "task_started": "2026-09-09T21:54:42.867Z",
+        "task_complete": "2026-09-09T22:00:49.026Z",
+        "native_duration_ms": 366190
+      },
+      "01a08838-3a95-7872-809b-4ca8a707517c": {
+        "counts": {
+          "input_tokens": 996250,
+          "output_tokens": 7373,
+          "total_tokens": 1003623,
+          "cached_input_tokens": 980224,
+          "reasoning_output_tokens": 1170,
+          "cache_write_input_tokens": 0
+        },
+        "responses": 11,
+        "task_started": "2026-09-09T22:09:41.533Z",
+        "task_complete": "2026-09-09T22:13:56.797Z",
+        "native_duration_ms": 255267
+      }
+    },
+    "model_contexts": [
+      {
+        "model": "gpt-6-astra",
+        "effort": "xhigh"
+      }
+    ],
+    "tool_counts": {
+      "render": 1,
+      "apply": 1,
+      "inspect": 11,
+      "ingest": 3,
+      "check": 2
+    },
+    "tool_duration_ns": {
+      "render": 5968801417,
+      "apply": 1337191958,
+      "inspect": 113678293,
+      "ingest": 41244542,
+      "check": 249567458
+    },
+    "marks": [
+      {
+        "name": "design_discussion",
+        "phase": "end",
+        "count": 2
+      },
+      {
+        "name": "design_discussion",
+        "phase": "start",
+        "count": 2
+      },
+      {
+        "name": "export",
+        "phase": "end",
+        "count": 1
+      },
+      {
+        "name": "export",
+        "phase": "start",
+        "count": 1
+      },
+      {
+        "name": "input_analysis",
+        "phase": "end",
+        "count": 1
+      },
+      {
+        "name": "input_analysis",
+        "phase": "start",
+        "count": 1
+      },
+      {
+        "name": "request",
+        "phase": "end",
+        "count": 2
+      },
+      {
+        "name": "request",
+        "phase": "start",
+        "count": 2
+      },
+      {
+        "name": "usable_file",
+        "phase": "milestone",
+        "count": 1
+      },
+      {
+        "name": "useful_feedback",
+        "phase": "milestone",
+        "count": 1
+      },
+      {
+        "name": "user_wait",
+        "phase": "end",
+        "count": 1
+      },
+      {
+        "name": "user_wait",
+        "phase": "start",
+        "count": 1
+      }
+    ]
+  },
+  "offline_review": {
+    "sha256": "53b6630283de84e5211b1ffd8e9671c1c978e7cdffbd710750980e4f5c81d275",
+    "state": "native_excel_opened_viewed_closed_without_save",
+    "observed_at": "2026-09-09T22:09:41.498957+00:00",
+    "observed": [
+      "Workbook opens directly without repair/recovery dialog",
+      "Four expected sheet tabs visible; Story table and source AC inspected",
+      "Task sheet E10 formula bar M and migration row visible",
+      "Native close returned noWindowsAvailable; copied and source workbook hashes unchanged"
+    ],
+    "limits": [
+      "Controller inspected a byte-identical copy, not an actual external customer offline review",
+      "Screenshots displayed by native tool; no persisted screenshot path claimed",
+      "Name-box setValue alone did not focus; click/paste/Return then selected E10 correctly"
+    ]
+  },
+  "limits": [
+    "合成基线经真实 Generate 交付；两次修改分别由文件独立的新会话完成，控制器读具体方案后提供实际确认。",
+    "本案例运行 f6121b1 的冻结副本；I3.3 新增确认原文件依赖后另跑机械回归，不改写本例旧版本或期待摘要。",
+    "原生响应累计不是物理调用数、峰值上下文或纯模型时间；缺少逐活动 token 归属。",
+    "原生 Excel 只查看等字节副本，未修改保存；不代表真实客户线下评审行为。",
+    "request 起止数量相同不代表可配对；实际资源报告 request_wall_ns 为 null，诊断 LIFECYCLE_INCOMPLETE，保留原观察。"
+  ],
+  "resource_metrics": [
+    {
+      "name": "tool_duration_ns",
+      "value": 7710483668,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "f325b858-1b6b-4a88-84d3-fdf3236149b1"
+      },
+      "basis": {
+        "kind": "same_process_monotonic"
+      },
+      "coverage": "partial",
+      "attribution": "unassigned",
+      "diagnostics": []
+    },
+    {
+      "name": "request_wall_ns",
+      "value": null,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "f325b858-1b6b-4a88-84d3-fdf3236149b1"
+      },
+      "basis": {
+        "kind": "utc_observed_interval"
+      },
+      "coverage": "unknown",
+      "attribution": "unassigned",
+      "diagnostics": [
+        "LIFECYCLE_INCOMPLETE"
+      ]
+    },
+    {
+      "name": "user_wait_ns",
+      "value": 578213422000,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "f325b858-1b6b-4a88-84d3-fdf3236149b1"
+      },
+      "basis": {
+        "kind": "utc_observed_union"
+      },
+      "coverage": "partial",
+      "attribution": "unassigned",
+      "diagnostics": []
+    },
+    {
+      "name": "processing_ns",
+      "value": null,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "f325b858-1b6b-4a88-84d3-fdf3236149b1"
+      },
+      "basis": {
+        "kind": "same_process_union"
+      },
+      "coverage": "unknown",
+      "attribution": "unassigned",
+      "diagnostics": []
+    }
+  ]
+}

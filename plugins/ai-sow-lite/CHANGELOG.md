@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 完成I3.3串行使用、真实中断/取消、历史依赖与逐CLI审计验收。修复确认原件遗漏最终依赖，以及Clarify后重复旧Generate被可变输入索引误拒绝的问题；新候选检查、语义意图和精确确认仍保持。完整副本已覆盖Generate→Clarify，实际成本、原失败和修复后验证见 [I3记录](docs/validation/I3-clarify.md)，自主取舍见AD18—AD19。
+
 - 实现 I3.2 独立 clarify Skill，按项目文件讨论 S/M 定档与原文误读修正，再绑定真实执行确认交付；重复采用 M 不重算或创建空版本。新增真实响应消费测试和三类新会话验证，保留机械返修、实际 token/时长及修订计数待收口风险。见 [I3 验证](docs/validation/I3-clarify.md) 和 [实际观察](docs/validation/I3.2-feedback-observations.json)。
 
 - 实现 I3.1 有限编辑构造、稳定地址差异、具体方案与确认绑定，接通原模板修改交付；同值 M 的首次采用更新决定与问题，已无变化不生成空版本。确认后可复用不变预览，版本保留实际确认与展示方案；反例和真实 S/M 交付记录见 [I3 验证](docs/validation/I3-clarify.md)，取舍见 [AD16](docs/validation/implementation-decisions.md)。Clarify Skill 与完整使用周期尚属后续阶段。

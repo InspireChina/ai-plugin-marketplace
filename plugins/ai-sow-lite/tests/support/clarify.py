@@ -12,8 +12,14 @@ from .cli import run_request
 from .fixtures import build_ingested_case, prepare_case, read_json, write_json
 
 
+_SESSION_CASES = pytest.StashKey[dict]()
+
+
 @pytest.fixture(scope='session')
-def delivered_baseline(tmp_path_factory):
+def delivered_baseline(tmp_path_factory, request):
+    cache = request.config.stash.setdefault(_SESSION_CASES, {})
+    if 'baseline' in cache:
+        return cache['baseline']
     metadata = os.environ.get('AI_SOW_LITE_TEST_BASELINE')
     if metadata:
         record = read_json(Path(metadata))
@@ -27,7 +33,8 @@ def delivered_baseline(tmp_path_factory):
     applied = run_request(case.project, case.request_id, 'apply', dict(entrypoint='generate',
         prepared_path=prepared['prepared_ref']['path'], plan_path=None, expected_current=None))
     assert applied['ok'], applied
-    return case.project, case.ids
+    cache['baseline'] = case.project, case.ids
+    return cache['baseline']
 
 
 @pytest.fixture
@@ -142,29 +149,44 @@ def complexity_draft(case, complexity):
 
 
 @pytest.fixture(scope='session')
-def prepared_seed(tmp_path_factory, delivered_baseline):
+def prepared_seed(tmp_path_factory, delivered_baseline, request):
+    cache = request.config.stash.setdefault(_SESSION_CASES, {})
+    if 'prepared' in cache:
+        return cache['prepared']
     capture = os.environ.get('AI_SOW_LITE_TEST_PREPARED')
     if capture:
         return read_json(Path(capture))
     project, ids = delivered_baseline
     case = clone_case(project, ids, tmp_path_factory.mktemp('clarify-preview') / 'project')
-    identity = feedback(case, '请仅将资料查询备注改为“保留已有验收范围”。\n')
+    prepare_notes_change(case, '保留已有验收范围')
+    cache['prepared'] = dict(case, project=str(case['project']))
+    return cache['prepared']
+
+
+def prepare_notes_change(case, notes):
+    """One real preview, then actual controller confirmation; no Office on apply."""
+    identity = feedback(case, f'请仅将资料查询备注改为“{notes}”。\n')
     reply = check_edits(case, edit_draft(case, [dict(op='replace', collection='stories',
-        object_id=ids['S-01'], field='notes', value='保留已有验收范围')], [identity]))
+        object_id=case['ids']['S-01'], field='notes', value=notes)], [identity]))
     assert reply['ok'], reply
     result = reply['result']
     rendered = run_request(case['project'], case['request_id'], 'render', dict(candidate_path=result['candidate_ref']['path'],
         check_path=result['check_ref']['path'], expected_current=case['current']))
     assert rendered['ok'], rendered
-    confirm_plan(case, result)
-    return dict(case, project=str(case['project']), result=result, prepared_ref=rendered['result']['prepared_ref'])
+    confirmed, _ = confirm_plan(case, result)
+    case.update(result=result, prepared_ref=rendered['result']['prepared_ref'], confirmed_path=confirmed)
+    return rendered['result']
 
 
 @pytest.fixture
 def prepared_case(tmp_path, prepared_seed):
     """Clone real prepared bytes. A completed capture is rewound only in this test copy."""
+    return clone_prepared(prepared_seed, tmp_path / 'prepared project')
+
+
+def clone_prepared(prepared_seed, project):
     case = deepcopy(prepared_seed)
-    case['project'] = tmp_path / 'prepared project'
+    case['project'] = project
     shutil.copytree(prepared_seed['project'], case['project'])
     if 'applied_current' in case:
         write_json(case['project'] / '.ai-sow-lite/current.json', case['current'])
@@ -174,6 +196,39 @@ def prepared_case(tmp_path, prepared_seed):
             (work / name).unlink(missing_ok=True)
     case['confirmed_path'] = str(Path(case['result']['plan_ref']['path']).with_name('confirmed-plan.json'))
     return case
+
+
+@pytest.fixture(scope='session')
+def serial_seed(tmp_path_factory, request):
+    metadata = os.environ.get('AI_SOW_LITE_TEST_SERIAL_CHAIN')
+    if metadata:
+        return read_json(Path(metadata))
+    cache = request.config.stash.setdefault(_SESSION_CASES, {})
+    if 'serial' in cache:
+        return cache['serial']
+    first = clone_prepared(request.getfixturevalue('prepared_seed'),
+                           tmp_path_factory.mktemp('clarify-serial') / 'project')
+    project = first['project']
+    record = dict(project=str(project), base_current=first['current'], requests=[])
+    for index in range(2):
+        if index == 0:
+            case = first
+        else:
+            from ai_sow_lite.project import ensure_request
+            request_id = str(uuid4())
+            ensure_request(project, request_id, 'clarify')
+            case = dict(project=project, ids=first['ids'], request_id=request_id,
+                        current=read_json(project / '.ai-sow-lite/current.json'))
+            prepare_notes_change(case, '沿用当前验收范围，保留复核记录')
+        payload = dict(entrypoint='clarify', prepared_path=case['prepared_ref']['path'],
+                       plan_path=case['confirmed_path'], expected_current=case['current'])
+        applied = run_request(project, case['request_id'], 'apply', payload)
+        assert applied['ok'], applied
+        record['requests'].append(dict(request_id=case['request_id'], payload=payload,
+            applied_current=read_json(project / '.ai-sow-lite/current.json')))
+    record['final_current'] = record['requests'][-1]['applied_current']
+    cache['serial'] = record
+    return record
 
 
 def controlled_base_change(case, filename, value):

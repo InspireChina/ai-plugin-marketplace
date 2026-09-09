@@ -65,9 +65,15 @@ def test_copy_smoke_delivers_and_removes_its_temporary_workspace(tmp_path):
                                                          observations=0, history=0)
     assert result['delivery']['tool_duration_ns'] > 0
     assert result['delivery']['total_tokens'] is None
-    assert result['audit']['violations'] == 0 and result['audit']['processes'] >= 8
+    assert result['audit']['violations'] == 0
+    assert result['audit']['processes'] == result['audit']['invocations']
     assert result['audit']['read_counts']['plugin'] > 0 and result['audit']['read_counts']['project'] > 0
-    assert result['audit']['office_conversions'] == 1
+    assert result['audit']['office_conversions'] == 2
+    clarify = result['delivery']['clarify']
+    assert clarify['confirmation'] == 'registered-source-bound'
+    assert clarify['preview_reused'] and clarify['idempotent'] and clarify['unrelated_bytes_preserved']
+    assert clarify['recovered'] == 'applied' and clarify['dependency_counts']['history'] > 0
+    assert result['delivery']['older_request_preserves_current']
 
 
 @pytest.fixture(scope='module')
