@@ -1,4 +1,4 @@
-"""Direct P00 contract fixture. Does not invoke or simulate ingest/apply."""
+"""P00 Case builders: explicit contract-only fixtures and genuine CLI preparation."""
 from dataclasses import dataclass
 import hashlib
 import json
@@ -156,6 +156,19 @@ def build_ingested_case(project):
     candidate['topic_version_ids'] = registered['result']['topic_version_ids']
     write_json(work / 'candidate.json', candidate)
     return Case(project, request, work / 'candidate.json', candidate['template_hash'], translate(ids))
+
+
+def prepare_case(case: Case) -> dict:
+    """Prepare an existing Case via full check and real Office render, without apply."""
+    from .cli import run_request
+    candidate = case.candidate_path.relative_to(case.project).as_posix()
+    checked = run_request(case.project, case.request_id, 'check', dict(
+        candidate_path=candidate, scope='full', plan_path=None))
+    assert checked['ok'], checked
+    rendered = run_request(case.project, case.request_id, 'render', dict(
+        candidate_path=candidate, check_path=checked['result']['check_ref']['path'], expected_current=None))
+    assert rendered['ok'], rendered
+    return rendered['result']
 
 
 def storage_package(project, request_id=None, expected_current=None):

@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 实现 I1.5 独立副本交付验收：通过真实材料登记、Office 重算、应用及恢复验证完整包；补五个生效点的进程中断和14项依赖损坏检查。成功清理自己的临时目录，说明 Python 读取审计的实际边界；运行时与模板未改。阶段结果见 [I1.5 记录](docs/validation/I1-delivery.md)，连续开发取舍见 [自主决策](docs/validation/implementation-decisions.md)。
+
 - 实现 I1.4 工具生命周期/耗时、纯语义活动标记、白名单事件及可重建资源报告；记录失败和真实重试成本，去重重放并保留共享/未知。观测异常通过独立 metadata 降级，迟到事件只更新报告；不设置 token 预算门禁。真实宿主 usage 接入仍属 I2.3，测试与审阅状态见 [I1 记录](docs/validation/I1-reliable-delivery.md)。
 
 - 实现 I1.3 原模板投影、稳定安全别名、扩行及独立问题/长文文件，接通真实 Office 计算、最终核验与 Generate 版本应用。限定处理 LibreOffice 两项已验证的元数据保存差异，原模板、公式和计算结果不改；TDD 回归及 Excel 原生保存重开通过，独立审阅及定点复核已通过。验证范围与后续限制见 [I1 记录](docs/validation/I1-reliable-delivery.md)。

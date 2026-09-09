@@ -2,9 +2,9 @@
 
 **核心：generate 补足必要信息后快速出稿；clarify 根据用户答复或意见，讨论并应用有限修改。两入口共享文件，流程独立。**
 
-本目录包含设计稿与实施进度。I1.1 的最小运行时已完成；I1.2 已实现文本/分析登记、定向读取与版本存储接缝；I1.3 已接通真实 Excel 投影与应用；I1.4 已实现工具计时与事件报告，测试与审阅状态见 [I1 验证](../validation/I1-reliable-delivery.md)。ai-sow 已跑通，Lite 的目标是降低出稿与修改的耗时和 token；流程按本目录独立设计，安装、基础技术栈和 Excel 操作参考已有实现与验证，仅对差异和未知能力补测。模板使用用户选定的 [sow-template.xlsx](../../assets/sow-template.xlsx)，已整理为可独立手填的可见模板，并落实 UAT 类型标准与只读公式。
+本目录保存独立的 Lite 设计。实际开发进度、阶段提交与验证入口统一见 [实施目录](implementation/README.md)，连续实施中的取舍见 [自主决策记录](../validation/implementation-decisions.md)。ai-sow 已跑通，Lite 的目标是降低出稿与修改的耗时和 token；安装、基础技术栈和 Excel 操作复用已有实现经验，仅对差异和未知能力补测。模板使用用户选定的 [sow-template.xlsx](../../assets/sow-template.xlsx)，保持可独立手填的可见结构及 SIT/UAT 只读公式。
 
-统一 review 从 [13 自检结论与已定边界](13-self-review-and-decisions.md) 开始，再按 [实现前审阅入口](REVIEW.md) 查看细节。单人串行、金额交给原模板且不改模板已同步到 D00—D09 和 [P00—P04 实施计划](implementation/README.md)；有限编辑的机械构造接口已补齐，I1.3 的真实 Excel 投影与 Generate 应用已实现并通过回归及原生检查，独立审阅及定点复核已通过；I1.4 观测实现、相关回归及独立审阅/定点复核已完成；下一项为 I1.5 完整副本验收。Lite Skill 和完整交付流程尚未实现。
+领域边界从 [13 自检结论与已定边界](13-self-review-and-decisions.md) 和 [设计审阅入口](REVIEW.md) 查看。单人串行、金额交给原模板且不改模板已落实到设计及实施计划；实际支持范围以对应验证记录为准，设计完成不代表功能已实现。
 
 ## 1. 用户如何使用
 

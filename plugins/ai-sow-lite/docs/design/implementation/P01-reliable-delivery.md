@@ -152,8 +152,8 @@ I1.4 已完成工具计时、纯语义标记及规范化事件报告；TDD、独
 
 **Interfaces:** 消费 I1.1—I1.4 的真实 CLI、文件及事件；产出独立复制验收结果、可读 Excel 与 I2 可用基线。smoke 支持 `--copy-plugin`，仅复制插件到临时目录，另建普通本地项目；测试结束清理自身工件，失败可保留明确路径供定位。
 
-- [ ] 在 tests/support/fixtures.py 增加 `prepare_case(case) -> dict`：run_request(check full) → 取 check_ref.path → run_request(render expected_current=null) → 返回 render.result。它复用 P00 Case，不直接写 prepared 成功标志。
-- [ ] 用真实 ingest 的 Case 接 prepare_case，再 apply 和 recover；在已经 apply 后重复 apply，验证没有新增版本或重算，返回相同已应用身份。
+- [x] 在 tests/support/fixtures.py 增加 `prepare_case(case) -> dict`：run_request(check full) → 取 check_ref.path → run_request(render expected_current=null) → 返回 render.result。它复用 P00 Case，不直接写 prepared 成功标志。
+- [x] 用真实 ingest 的 Case 接 prepare_case，再 apply 和 recover；在已经 apply 后重复 apply，验证没有新增版本或重算，返回相同已应用身份。
 
 ```python
 def test_first_delivery_and_retry(case):
@@ -169,7 +169,9 @@ def test_first_delivery_and_retry(case):
     assert first["result"]["applied_version"] == again["result"]["applied_version"]
 ```
 
-- [ ] 使用同一真实包重跑 I1.2 的生效点故障，避免只证明假 workbook 的事务；核对版本依赖含全部源/观察/历史引用。扫描复制运行的读取范围，不能打开旧插件或仓库根运行文件。
-- [ ] 执行 `uv sync --project plugins/ai-sow-lite --locked`、`uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests -q`、`uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/smoke_plugin.py --copy-plugin`，以及根指南要求的检查。记录原生打开和模板 hash 不变的证据。
+- [x] 使用同一真实包重跑 I1.2 的生效点故障，避免只证明假 workbook 的事务；核对首版实际采用的全部原件/分析/模板依赖；观察附件在 I4.1、已应用业务历史链在 I3.3 接真实包验证，不伪造当前尚未支持的工件。扫描复制运行的读取范围，不能打开旧插件或仓库根运行文件。
+- [x] 执行 `uv sync --project plugins/ai-sow-lite --locked`、`uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests -q`、`uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/smoke_plugin.py --copy-plugin`，以及根指南要求的检查。记录原生打开和模板 hash 不变的证据。
 
 **I1 退出：** 合成模型正确填写原模板，公式和结构保留，待确认/长内容与 Excel 同版可读；current 始终指向完整文件包，独立副本运行，工具耗时与 usage 缺口可见。不以金额完整性判交付，也不宣称已证明真实 generate 语义能力或提速；通过后进入 P02。
+
+**完成证据：** 完整 Lite370项通过、1项因缺少 PowerShell 跳过；独立副本使用自己的锁定环境，真实交付/重复/恢复成功，31份审计收据未发现越界、一次 Office 转换。五个生效点中断及14项依赖损坏检查通过，独立审查无阻断项；审计收据逐进程对账的加固按 AD09 归入 I3.3。见 [I1.5 验证](../../validation/I1-delivery.md)。I1 可靠程序通道已完成，接 P02 的 I2.1；真实 Agent 生成与宿主 usage 不在 I1 完成声明内。

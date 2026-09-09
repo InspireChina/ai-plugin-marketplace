@@ -115,7 +115,7 @@ I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonO
 
 `recover` payload 只有 target_request_id；沿 current 和摘要绑定的 base_version_id 历史链核实，返回 applied/draft/cancelled/incompatible、applied_version、preserved_paths、diagnostics_ref。损坏诊断进入公共信封，diagnostics_ref 无独立文件时为 null；查询不会写源数据或激活孤立版本。已成功请求返回原 applied_version 与当前 current_version，后续串行版本不会被旧请求倒回。取消只能通过已观察到的本地 `cancel_request` 记录执行边界，不承诺收到任意宿主 UI 的取消事件。
 
-`storage_package` 及 `_commit_version` 单测只验证文件事务；其 sow.xlsx 特意不是 Office 工作簿，不能经公共 apply 绕过核验。真实交付回归使用 `office` marker，存储单测不作为 Excel 交付证据。I1.4/I1.5 和 I1 退出由各自验收决定。
+`storage_package` 及 `_commit_version` 单测只验证文件事务；其 sow.xlsx 特意不是 Office 工作簿，不能经公共 apply 绕过核验。真实交付回归使用 `office` marker，存储单测不作为 Excel 交付证据。独立复制及真实包中断覆盖见 [I1.5 交付验收](../docs/validation/I1-delivery.md)。
 
 ## I1.3 模板投影与真实 Office
 
