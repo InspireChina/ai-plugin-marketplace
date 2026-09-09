@@ -4,7 +4,7 @@
 
 本目录包含设计稿，尚未实现 Lite Skill 或运行时。ai-sow 已跑通，Lite 的目标是降低出稿与修改的耗时和 token；流程按本目录独立设计，安装、基础技术栈和 Excel 操作参考已有实现与验证，仅对差异和未知能力补测。模板使用用户选定的 [sow-template.xlsx](../../assets/sow-template.xlsx)，已整理为可独立手填的可见模板，并落实 UAT 类型标准与只读公式。
 
-统一 review 从 [实现前审阅入口](REVIEW.md) 开始；D00—D09 已衔接到 [P00—P04 实施计划](implementation/README.md)，目前停在实现前。
+统一 review 从 [13 自检结论与已定边界](13-self-review-and-decisions.md) 开始，再按 [实现前审阅入口](REVIEW.md) 查看细节。单人串行、金额交给原模板且不改模板已同步到 D00—D09 和 [P00—P04 实施计划](implementation/README.md)；有限编辑的机械构造接口已补齐，当前仍停在实现前。
 
 ## 1. 用户如何使用
 
@@ -13,14 +13,14 @@
 3. agent 用往期 SOW 构建 as-is，用其余项目材料构建 to-be，识别业务、技术及交付的本期 gap；之后只澄清和确认输入相关的缺失事实、歧义、冲突与待决策项。问题先合批，最多首轮加一轮补问；仍缺基础则补料退出；不要求用户批准拆解、分类或出稿。必需材料缺失或信息严重不足时，不推进拆解。
 4. 信息补足后，先按本期 gap 形成覆盖三类需求的 Epic/Feature 骨架，区分公共能力建设、业务接入与迁移/上线等交付工作，再按关联切片补全 Story、AC 与 Task，合并检查后输出 Excel。
 5. 复杂度无法判断时默认 M，附待确认项直接出稿，不回头反复找定档证据；其他局部缺依据字段保持空白并随 SOW 给出待确认项。agent 不猜前提、不代选未知方案或人天；工作方式在无相关候选时默认新建；有相关候选但实例/适用性未定时，也先按新建并附确认项。
-6. 用户可以直接带走 Excel，无需回来定稿。有答复或修改意见时调用 `clarify`，讨论具体调整方案；确认后在限定切片内更新并返回新 Excel。
+6. 用户可以直接带走 Excel 与同版待确认说明，无需回来定稿。后续改稿需保留原项目的 `.ai-sow-lite/` 共享文件，并在该项目中调用 `clarify`；新会话不需要原聊天。讨论具体调整方案、确认后在限定切片内更新并返回新 Excel。只有 Excel 附件不能恢复完整修改基线，按 [D05](detailed/D05-clarify-and-change-scope.md) 处理。
 
 ```mermaid
 flowchart LR
     U["用户：新项目或老项目<br/>PRD、高阶设计；老项目另需往期 SOW"] --> G["generate<br/>往期 SOW → as-is；其他项目材料 → to-be<br/>识别本期 gap → 骨架 → 按片出稿"]
     G -->|必需材料缺失或信息严重不足| N["要求补充资料<br/>本次结束"]
     N -->|用户补充后再次发起| G
-    G -->|成功返回，本次结束| X["可用 SOW Excel<br/>含留空字段与待确认项"]
+    G -->|成功返回，本次结束| X["原模板 SOW Excel<br/>同版独立待确认说明"]
     X --> R["用户离线查看 / 直接使用"]
     R -->|没有反馈| E["使用结束<br/>无需定稿操作"]
     R -->|回答待确认项或提出修改| C["clarify<br/>定位 → 讨论具体方案"]
@@ -72,7 +72,7 @@ SIT/UAT 适用性属于模板标准。系统集成类 Task 的 SIT适用为是�
 | clarify 讨论 | 读取现有文件和新答复，提出有依据的具体修改方案 | 用户确认方案后应用；仍未知的字段保留空白 |
 | 每次成功返回 | Excel 和同版待确认项一起交付 | 无额外定稿、批准结果或再次导出步骤 |
 
-局部未知是允许的业务状态，结构或计算错误仍由插件处理。模板缺值提示不自动意味着必须逼 agent 编一个值；未知也不能被汇总公式忽略后冒充零或完整总数。
+局部未知是允许的业务状态，输入空值和业务缺口如实记录。金额、空白参与计算及 SIT/UAT 均由原模板处理；插件不改公式或结果、不判定金额完整性。插件只修自身填值、引用或文件错误，模板提示不要求 Agent 补猜数值。
 
 ## 4. 执行与稳定性
 
@@ -80,7 +80,7 @@ agent 自主选择专业活动和切片粒度。小项目可以一片完成，�
 
 原件始终保留，输入按物理格式、材料类型和使用用途理解。轻量索引与分析结果按需提取，区分物理读取与用途分析覆盖，不要求全量 IR。[D03](detailed/D03-input-analysis-and-exploration.md) 明确角色/用途区域、来源定位、原型探索结束条件和输入问题移交；[EX02](detailed/examples/EX02-input-analysis-and-exploration.md) 走读多用途材料、原型冲突和局部未知。原型未观察到的交互不能认定不存在，保存观察不等于证明真实后端能力。
 
-代码负责可靠文件操作、结构和引用检查、模板投影及计算、版本一致性、改动边界和资源记录。Clarify 的修改切片按本次反馈界定，可跨越初版生成片，但不能超出已确认方案。相同错误没有新依据或具体修法时停止自动恢复。
+代码负责可靠文件操作、结构和引用检查、原模板填值及 Office 调用、串行版本一致性、有限编辑构造和资源记录。金额由模板计算，不设金额门禁。Clarify 的修改切片按本次反馈界定，可跨越初版生成片，但不能超出已确认方案。相同错误没有新依据或具体修法时停止自动恢复。
 
 [D04B](detailed/D04B-bounded-loops.md) 统一探索、补问、返修及恢复的批量范围、追加上限和退出机制；新路径或新回复本身不能无限延长流程。埋点独立记录真实用时/token，用于优化，次数控制不变成资源预算审批。
 
@@ -88,7 +88,7 @@ agent 自主选择专业活动和切片粒度。小项目可以一片完成，�
 
 用户指定旧版资料的筛选见 [12 专业资料吸收评估](12-reference-absorption.md)：专业方法与反例已同步到 [P00—P04 执行计划](implementation/README.md)，包含参考文件归属、五组生成夹具、有限修改/原型反例及资源实测要求；与 Lite 冲突的旧规则不迁入。当前整包供统一 review，尚未实现 Skill 或改变详细设计合同。
 
-详细设计层级、专题、依赖顺序与验证安排见 [11 详细设计路线图](11-detailed-design-roadmap.md)。[详细设计](detailed/README.md) 已包含 R0 交互、R1 数据/工具接口、R2 输入分析、Generate 与 [D06 Excel 投影](detailed/D06-excel-projection-and-delivery.md)，以及场景追踪表。[EX04](detailed/examples/EX04-excel-projection.md) 走读问题展示、分费用缺值、名称关联与修改后的交付。[D05 Clarify](detailed/D05-clarify-and-change-scope.md) 与 [EX05 修改走读](detailed/examples/EX05-clarify-changes.md) 已细化有限候选、部分答复、拆合和异常出口。[D08 观测与性能](detailed/D08-telemetry-and-performance.md) 与 [EX06 计量走读](detailed/examples/EX06-telemetry-accounting.md) 已定义实际采集、去重/共享/未知和性能对照，并记录有限宿主只读证据。[D09 设计收口与实现增量](detailed/D09-validation-and-implementation.md) 已完成接口衔接核对及 I1—I4 规划，[EX07](detailed/examples/EX07-design-consistency.md) 补充尚未拆明工作与首次生效反例。下一步是 I1 可靠程序交付；逐活动 usage 与输出/修改适配仍待实际验证。
+详细设计层级、专题、依赖顺序与验证安排见 [11 详细设计路线图](11-detailed-design-roadmap.md)。[详细设计](detailed/README.md) 已包含 R0 交互、R1 数据/工具接口、R2 输入分析、Generate 与 [D06 Excel 投影](detailed/D06-excel-projection-and-delivery.md)，以及场景追踪表。[EX04](detailed/examples/EX04-excel-projection.md) 走读独立问题说明、原模板填值、安全名称关联与修改后的交付。[D05 Clarify](detailed/D05-clarify-and-change-scope.md) 与 [EX05 修改走读](detailed/examples/EX05-clarify-changes.md) 已细化有限候选、部分答复、拆合和异常出口。[D08 观测与性能](detailed/D08-telemetry-and-performance.md) 与 [EX06 计量走读](detailed/examples/EX06-telemetry-accounting.md) 已定义实际采集、去重/共享/未知和性能对照，并记录有限宿主只读证据。[D09 设计收口与实现增量](detailed/D09-validation-and-implementation.md) 已完成接口衔接核对及 I1—I4 规划，[EX07](detailed/examples/EX07-design-consistency.md) 补充尚未拆明工作与首次生效反例。下一步是 I1 可靠程序交付；逐活动 usage 与输出/修改适配仍待实际验证。
 
 技术栈参考 ai-sow 已验证的 Python 3.12、uv、jsonschema、openpyxl 与 Office 处理路径，[D00 技术栈与运行形态](detailed/D00-technology-stack.md) 列出来源版本、可复用证据、Lite 差异和新能力验证。R0—R1 先复用证据，仅前置会影响共享接口的未知能力；不重复开展成熟能力的基础可行性选型。
 
@@ -104,7 +104,7 @@ agent 自主选择专业活动和切片粒度。小项目可以一片完成，�
 | 输入职责、逐步产物与最小业务字段 | [02 输入与领域模型](02-inputs-and-domain-model.md) |
 | Agent 自主工作、切片与上下文 | [03 执行与检查](03-agent-execution-and-review.md) |
 | 修改方案、回查边界与 Clarify 时序 | [04 有限修改](04-bounded-change-and-recovery.md) |
-| 复制模板、字段映射、留空与计算 | [05 Excel 与交付](05-excel-and-delivery.md) |
+| 原模板填值、字段映射与独立问题说明 | [05 Excel 与交付](05-excel-and-delivery.md) |
 | 用时、token 与性能验证 | [06 资源观测](06-observability-and-validation.md)、[D08 详细设计](detailed/D08-telemetry-and-performance.md)、[EX06 计量走读](detailed/examples/EX06-telemetry-accounting.md) |
 | 剩余实现与样例验证事项 | [07 设计缺口](07-gaps-and-decisions.md) |
 | 各阶段与组合异常 | [08 场景目录](08-scenario-catalog.md) |

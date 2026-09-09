@@ -14,8 +14,8 @@
 
 - 所有代码和资产位于 Lite 插件，项目输出位于显式项目的 `.ai-sow-lite/`；不依赖 checkout cwd 或旧插件运行时。
 - 迁入 D00 指定提交 `2fc8588` 的机械能力；不迁入旧业务 Schema、Owner/Reviewer 门禁、隐藏辅助列或阶段运行器。
-- 现有手填模板保持不变；新增问题/续页与公式完整性保护只进入输出副本。
-- 未明复杂度 M+问题；类型等真实未知留空；未拆明工作不能被已知小计吞掉。SIT/UAT 仅由模板标准及公式计算。
+- 原模板资产和既有表/列/公式语义保持不变；输出只填可写输入，超容量按已有原型扩行。待确认/超长内容使用独立说明文件，不新增输出 Sheet 或金额保护公式。
+- 未明复杂度 M+问题；类型等真实未知留空；未拆明工作明确列为业务待确认。SIT/UAT、人天及汇总全部让原模板计算，插件不判断金额完整性或添加部分汇总。
 - 每个请求的修复/重试与恢复计数执行 D04B；观测不作为预算门禁。
 - 以下路径相对 Lite 插件；命令从仓库根执行。尚未实现的命令不能计作本轮验证。
 
@@ -28,6 +28,7 @@
 - [ ] 从 D00 来源读取 bootstrap 与对应安装测试，迁入身份/路径适配；pyproject 使用上述锁定依赖和 `runtime` 包位置，CLI 仅用 argparse 的 --request，不加入 Typer/MCP。uv 首次生成锁文件后以 --locked 验证重建；已有测试保留。
 - [ ] 迁入隔离环境复用和中文路径/UTF-8 的适用测试；检查 PowerShell 与 Bash 的源文件编码、子进程输入输出和 Lite 最长实际路径。旧 runtime-environment 的路径长度常量不直接沿用；仅在实际平台验证后写支持声明。不为复用旧说明加入 PDF/OCR 依赖或旧专业运行器。
 - [ ] 创建 EX01 合成 PRD/HLD/答复和预期义务，固定 UUID 映射；读取真实模板标准 ID。严格 JSON tests 先验证重复 key/未知版本/文本空白摘要，首次运行应因尚无实现失败。
+- [ ] 在合同首次可校验后、扩展完整版本保存/投影/事件聚合前，前置 I2.2 的 `three-scope` 最小候选演练和 I2.3 的受控宿主 usage 探针。隔离会话只给真实合成输入、必要指引和模板标准，不给预制 candidate/expectations；观察三类义务、默认 M、候选与依据编写/修正负担，以及请求边界和活动归属实际可得性。仅形成 work 候选及最小观测记录，不伪装未实现 CLI 或正式交付。结果归入既定 I2-generate/host-support 验证记录，I2 在真实通道接通后补其集成证据；不增加新里程碑、运行时阶段或第二套正式验收。
 - [ ] 实现 Schema 与跨文件检查：唯一 ID/父引用、AC 来源、分类/null/不适用、standard_id 对应、问题/决定状态、未拆明工作及空父项、依据图可达且无循环。每批输出全部诊断，不回写业务字段。resolution 精确编码为 resolved 的 decision_id/request_id/summary，superseded 的 replacement_item_ids/lineage_refs/request_id/reason；lineage_refs 使用 P00 的历史复合键。
 - [ ] 为以下反例参数化测试：无说明的 null；complexity=null/X；类型未知但 default M 的 standard_id=null；非集成 null；default M 与新建有值但 open；有 Task 又有未拆明工作；空父项无缺口；循环 judgment；合法空 gap 候选与无分析支持的空候选。最后一项代码只能核对分析记录存在及一致，语义充分性在 I2 演练，不能建关键词充分性规则。
 
@@ -80,8 +81,8 @@ def replace_current(root: Path, pointer: dict) -> None:
         temp.unlink(missing_ok=True)
 ```
 
-- [ ] 对完整准备后、版本目录写完后、replace 前/后、成功响应前注入进程中断。故障注入放测试 monkeypatch/子进程屏障，不暴露生产 CLI 任意 failpoint。recover 只在 current 或其有效 actual_base 链找到本请求时确认已应用；孤立 versions 目录不能自动激活。加快检索的索引不能替代这项事实。
-- [ ] 测 generate expected_current=null 的两写者竞争、同请求重试不重导出、旧请求成功后 current 已更新、取消和未知响应。已成功请求返回原 applied_version + 当前 current_version，不倒回指针。不能因后续日志失败报告未应用。
+- [ ] 对完整准备后、版本目录写完后、replace 前/后、成功响应前注入进程中断。故障注入放测试 monkeypatch/子进程屏障，不暴露生产 CLI 任意 failpoint。recover 只在 current 或其有效 base_version_id 历史链找到本请求时确认已应用；孤立 versions 目录不能自动激活。加快检索的索引不能替代这项事实。
+- [ ] 测 generate expected_current=null 的首次成功、意外已存在 current 的拒绝、同请求重试不重导出、后续串行请求成功后的旧请求查询、取消和未知响应。只加一次短锁繁忙/过期误调用的保护测试，不设计并行改稿成功场景。已成功请求返回原 applied_version 与当前 current_version，不倒回指针；后续日志失败不改变已应用事实。
 - [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_inputs.py plugins/ai-sow-lite/tests/test_project.py -q`；各平台只报告实际可测锁与 replace 结果。纯 project 单测通过还不关闭 I1，必须接 I1.3 实际包。
 
 ## I1.3 · 模板投影、真实计算与最终复读
@@ -92,8 +93,8 @@ def replace_current(root: Path, pointer: dict) -> None:
 
 - [ ] 迁入旧 workbook 的 safe_text、Table 扩行/样式和 OOXML 检查方法，以及 office_engine 的隔离重算/身份/超时；只按方法适配，build_rows、旧模型关联、隐藏身份列、旧审阅合同不复制。保留引擎探测10秒、单次重算120秒的既有默认，超时必须清理所属进程/目录；内部没有自动二次重算。
 - [ ] 按 D06 §2.1 映射真实列：Story A:E 可填、F:J 公式，AC=D；Task A:G 可填、H:L 公式；标准 Q=SIT/R=UAT。校验 Sheet/Table/表头/公式原型，未知原型报 VERSION_INCOMPATIBLE。依据真实 Table 扩展公式、样式、保护、下拉、筛选、打印及跨表范围。
-- [ ] 在输出副本加入 PendingItemTable A4:I、按需内容续页、B/C 完整与已知部分汇总。用 D06 明列的公式适配规则处理 null、未拆明工作、SIT/UAT 三态和字面 criteria；问题行通过 projection 的目标集合直接引用。Python 只组公式和关联，禁止计算另一套金额或生成 complete 布尔值驱动估算。
-- [ ] 处理稳定别名、120 UTF-16 单元上限、同名/大小写/Unicode、字面 `~*?`、超长 AC/任务列表和 `=+-@` 起始文本。超过可见行高/单元格容量的内容完整落续页，projection 反查到原 ID；公式保护仍有效，无隐藏辅助列。
+- [ ] 生成与 Excel 同版的 pending-items.md，按需生成 details.md；既有可写备注只附问题/全文定位。输出保持四张表和原汇总/标准/参数，不增加金额完整性标签、缺值保护、部分汇总或 SIT/UAT 三态规则。结构检查合法缺值与问题一致，金额/适用性缓存由原模板产生，不据问题改变公式或输出值。
+- [ ] 处理 D06 稳定安全别名、120 UTF-16 单元上限、同名/大小写/Unicode、`~*?`、超长 AC/任务列表和 `=+-@` 起始文本。名称可能触发现有模板的匹配运算时采用无特殊运算字符的身份别名，原文保存在模型/details.md，不能改模板 criteria。超长内容明确引用独立全文，不写计算列或静默丢字。
 
 ```python
 def write_literal(cell, value: str) -> None:
@@ -111,8 +112,8 @@ def test_literal_task_name_is_not_a_formula():
 
 实际生产实现放 workbook.py，测试调用该函数；OOXML 写入后和 Office 后再次检查类型与原文本，上述内存测试不能独自证明安全交付。
 
-- [ ] 全分类齐备样本先对照基础模板的实际实算，比较各 Task、Story、分费用与总额，特别是 Story 取整与项目取整差异。参考本只在回归生成，不进入正常请求。再测缺类型/方式/集成、default M、候选新建、父级未拆明工作、有行缺工作、全空真实0、全部未知不可作0、0/1/60/61 Story 和200/201 Task；检查缓存而非只检查公式字符串。
-- [ ] 正常调用一次 Office；最终结果用公式视图和 data_only 双复读，必要 OOXML 检查只修已知元数据且保留缓存。重算后若修改影响计算的输入/公式必须使准备记录失效，不用旧 cache。Office 返回0但 Table/保护/缓存错误仍 WORKBOOK_INVALID。
+- [ ] 用完整分类、缺类型/方式/集成、default M、候选新建、父级未拆明工作、有行缺工作及真实空 gap 的样本核对实际输入与独立待确认一致，原模板公式/参数原值保留。0/1/60/61 Story 和200/201 Task 验证原预留区及必要扩行的关联、缓存保存与保护。Office 结果只用于证明原模板正常往返，不为缺值制定另一套应当空白/为零/完整/部分的金额期待，也不重做标准人天算法验收。
+- [ ] 正常调用一次 Office；最终结果用公式视图和 data_only 双复读，OOXML 检查核对原元数据和缓存保存，不在 Office 保存后直接重写文件。发现自身写入错误时修正填表实现并重新生成；不修原模板公式。重算后若输入或文件内容变化必须使准备记录失效，不用旧 cache。Office 返回0但 Table/保护/缓存保存错误仍 WORKBOOK_INVALID。
 - [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_workbook.py plugins/ai-sow-lite/tests/test_office.py plugins/ai-sow-lite/tests/test_template_uat.py -q`。真实 Office 测试用 `office` marker 区分；本机缺引擎可解释 skip，但 **I1 退出要求至少一个真实引擎环境无此跳过**。在 Microsoft Excel 原生打开代表性输出、保存、重开检查内容修复提示与布局，不操作用户原模板。
 
 ## I1.4 · 从第一个工具开始测量
@@ -122,7 +123,7 @@ def test_literal_task_name_is_not_a_formula():
 **Interfaces:** 消费 D08 原生事件与 observation_context；产出 append_event/build_report。report.metrics 为指标列表，每项保留 D08 的 value/unit/scope/basis/coverage/attribution；value 不可得为 null。时间用整数纳秒，token 用非负整数，不从文字长度换算。
 
 - [ ] 在 CLI execute 外层记录 monotonic_ns 的 start/end、真实 operation/attempt、状态和字节；每执行段独立时钟域，不能跨进程相减。录入失败/取消/重试成本；无 end 标 incomplete，用户等待单列。默认一次轻量收尾，记录失败不重跑业务。
-- [ ] 实现 P00 的 telemetry 模块 --mark-file 入口，供没有原生事件的纯语义大活动标记；只写观测，request end 有界生成报告。测试标记缺失/乱序、跨进程时钟和非法内容，不能把两个 UTC 观察点伪装成精确模型耗时或偷偷改变业务状态。
+- [ ] 按 I1.1 已观察到的宿主能力，实现 P00 的 telemetry 模块 --mark-file 入口，供没有原生事件的纯语义大活动标记；只写观测，request end 有界生成报告。测试标记缺失/乱序、跨进程时钟和非法内容，不能把两个 UTC 观察点伪装成精确模型耗时或偷偷改变业务状态。
 - [ ] 先实现事件白名单落盘和重建报告，再用 EX06 事件夹具测试重复/累计/乱序、epoch、父子重叠、跨活动共享和晚到。源原生身份缺失不造 host_call_id；累计未知起点不能当本请求总量。
 
 ```python
@@ -163,4 +164,4 @@ def test_first_delivery_and_retry(case):
 - [ ] 使用同一真实包重跑 I1.2 的生效点故障，避免只证明假 workbook 的事务；核对版本依赖含全部源/观察/历史引用。扫描复制运行的读取范围，不能打开旧插件或仓库根运行文件。
 - [ ] 执行 `uv sync --project plugins/ai-sow-lite --locked`、`uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests -q`、`uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/smoke_plugin.py --copy-plugin`，以及根指南要求的检查。记录原生打开和模板 hash 不变的证据。
 
-**I1 退出：** 合成模型生成真实可用工作簿，未知/部分/完整区分正确，current 始终指向完整版本，独立副本运行，工具耗时与 usage 缺口可见。没有真实 generate 的语义能力或性能提速声明；通过后进入 P02。
+**I1 退出：** 合成模型正确填写原模板，公式和结构保留，待确认/长内容与 Excel 同版可读；current 始终指向完整文件包，独立副本运行，工具耗时与 usage 缺口可见。不以金额完整性判交付，也不宣称已证明真实 generate 语义能力或提速；通过后进入 P02。

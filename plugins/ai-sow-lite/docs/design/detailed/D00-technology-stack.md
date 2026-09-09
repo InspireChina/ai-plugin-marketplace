@@ -17,8 +17,8 @@ Lite 继续采用此前确定的两个入口、agent 自主专业工作与小范
 | 能力 | 已有实现或测试依据 | Lite 只需补什么 |
 |---|---|---|
 | Python 与依赖安装 | `pyproject.toml`、`uv.lock`；`skills/generate/scripts/bootstrap.sh`、`bootstrap.ps1`；`skills/generate/tests/test_installed_commands.py` | 调整插件身份、路径和两个入口；迁入后的独立副本冒烟、实际启动成本；不重做安装方案选型 |
-| Excel 读写与投影 | `skills/generate/scripts/workbook.py`；`skills/generate/tests/test_workbook.py`，覆盖安全文本、名称关联、Table 与公式等 | 适配 Lite 可见模板、内部文件、UAT 与问题视图，不迁入隐藏字段或旧模型 |
-| Office 重算与复读 | `skills/generate/scripts/office_engine.py`；`skills/generate/tests/test_office_engine.py`，包含真实 Office 往返、隔离运行、公式及缓存复读案例 | 复用引擎发现与调用方法；对 Lite 公式、扩行、空值保护和导出结果做差异回归 |
+| Excel 读写与投影 | `skills/generate/scripts/workbook.py`；`skills/generate/tests/test_workbook.py`，覆盖安全文本、名称关联、Table 与公式等 | 适配 Lite 可见模板、内部文件、UAT 与独立问题说明，不迁入隐藏字段或旧模型 |
+| Office 重算与复读 | `skills/generate/scripts/office_engine.py`；`skills/generate/tests/test_office_engine.py`，包含真实 Office 往返、隔离运行、公式及缓存复读案例 | 复用引擎发现与调用方法；对原模板填值、必要扩行、公式保留和导出文件做差异回归 |
 | 已支持的材料读取 | `skills/generate/scripts/source_readers.py`；`skills/generate/tests/test_source_readers.py` | 复用 Markdown、XLSX、原型源码的结构恢复和定位方法，适配轻量索引和 as-is/to-be 用途，明确不支持格式 |
 | 独立复制运行 | `tests/support/smoke_plugin.py` | 复用测试方式，迁入时只跑 Lite 两入口需要的能力，不复制旧专业流程 |
 | Lite 手工模板 | [模板回归](../../../tests/test_template_uat.py)及 [05 的原生检查记录](../05-excel-and-delivery.md) | 已验证的 UAT、可见标准、手填、Office 计算与保护保留；生成器改动再针对差异检查 |
@@ -36,11 +36,11 @@ Lite 继续采用此前确定的两个入口、agent 自主专业工作与小范
 | 确定性工具运行时 | **Python 3.12 + uv 0.11.7**，采用源版本已使用的组合 | 独立依赖声明、锁文件和环境；专业分析不移入 Python；不为 Lite 默认升级到 3.13 | 迁入时调整身份与路径并做冒烟；测启动和复用成本，有实际阻碍才重新选型 |
 | 工具接入 | **本地 CLI 优先**，结构化小结果与文件引用；需要时增加薄 MCP 适配 | 同一能力不重复实现 CLI/MCP 两套业务逻辑；大量原文和模型留在文件中 | 验证目标宿主能可靠调用、取消及识别错误；常驻服务只有明确收益时引入 |
 | 数据合同 | **JSON Schema + jsonschema 4.26.0**，复用已使用的校验技术 | Lite 自己定义最小结构；跨对象关系用小范围代码检查，语义充分性由 agent 判断 | 验证 Lite 的正常、未知、不适用、非法值及修改实例；不复制旧业务 Schema |
-| 业务存储 | **JSON + Markdown + 不可变版本目录**；当前指向完整版本，首版单写者 | 支持新会话读取、检查 diff 和局部修改；不为单项目文件操作先引入数据库服务 | 验证候选完整性、并发冲突、切换当前版本和中断恢复；原子性由协议证明，不能仅靠目录存在 |
+| 业务存储 | **JSON + Markdown + 不可变版本目录**；当前指向完整版本，同一人串行使用 | 支持新会话读取、检查 diff 和局部修改；不为单项目文件操作先引入数据库服务 | 验证候选文件完整性、过期草案拒绝、切换当前版本和中断恢复；原子性由协议证明，不能仅靠目录存在 |
 | 原始输入 | 保留原件；非原型只支持可直接读取的文本（默认 Markdown）与 `.xlsx` | 复用文本读取与 openpyxl；PDF/DOCX、扫描件及其他输入不支持，不引入 Docling、pypdf、python-docx 或 OCR | 验证轻量索引、用途分离、文本编码及 Excel 相关结构/未读面；不支持格式要求提供可读内容 |
 | 原型探索 | 优先使用宿主已授权浏览器能力；缺少所需能力时验证 **Playwright Python + Chromium** | agent 自主选择探索路径，浏览器只提供动作与观察；不按页面预制 Action 链 | 验证静态与需构建的原型、动态状态、进程清理及浏览器依赖安装成本 |
-| Excel 写入 | **openpyxl 3.1.5**；参考已有投影和必要 OOXML 处理 | 可见模板是规则来源；内部 ID 和来源保存在独立业务文件中 | 验证 Lite 列映射、扩行、UAT、问题视图及保护的差异，不再证明 openpyxl 是否能写 Excel |
-| 公式重算 | **LibreOffice 无界面模式**；复用已有引擎适配方法 | 写入与重算分开；模板保持计算权威，不在 Python 复制估算算法 | 记录实际引擎版本；针对 Lite 输出验证重算、缓存和结构，原生检查聚焦已改公式与布局 |
+| Excel 写入 | **openpyxl 3.1.5**；参考已有投影和必要 OOXML 处理 | 可见模板是规则来源；内部 ID 和来源保存在独立业务文件中 | 验证 Lite 列映射、扩行、UAT、独立问题说明及保护的差异，不再证明 openpyxl 是否能写 Excel |
+| 公式重算 | **LibreOffice 无界面模式**；复用已有引擎适配方法 | 写入与重算分开；模板保持计算权威，不在 Python 复制估算算法 | 记录实际引擎版本；针对 Lite 输出验证重算、缓存和结构，原生检查聚焦填值、扩行与原公式/结构保留 |
 | 观测 | **JSONL 事件 + 工具计时 + 宿主 usage 适配**；业务与观测存储分开 | 记录真实粒度并去重，不通过人为拆调用制造逐步 token | 证明可采范围和盲区；不能把请求总量假分摊到各步骤，也不能让观测失败阻断业务 |
 | 验证 | 保留 Lite unittest 模板回归；Python 工具沿用 **pytest 8.4.1** | 优先复用适用案例；测试并行度按实际成本决定，不照搬固定 worker 数 | D09 明确证据复用、迁入冒烟、差异回归和新能力实验各自范围 |
 
@@ -104,7 +104,7 @@ Playwright 的浏览器安装与缓存需要单独管理，因此 Python 包安�
 | TS01 | 复用宿主插件/CLI 形式；检查 Lite 问答、取消、两入口、单 session 累积及压缩后恢复；若后续评估委派，再检查精简启动、回传和并发资源差异 | 原能力来源、Lite 新交互/执行边界及限制；不重做插件是否可调用的实验，不以子 agent 适配阻挡串行基线 | D01、D04、D05、D07 |
 | TS02 | 采用已用 Python/uv/核心库；迁入时调整身份与路径，运行独立副本冒烟 | 源依赖与安装测试、Lite 锁文件及迁入结果；启动时间用于性能比较 | D02、D07、D09 |
 | TS03 | 复用已支持格式与原型资源读取；仅验证轻量索引/用途差异、支持格式边界及宿主浏览器未知能力 | 原读取器适用范围、文本/XLSX 与原型样例；不支持格式明确拒绝，不自动转换 | D03、D04 |
-| TS04 | 复用 openpyxl/Office 方法与现有测试；检查 Lite 模板、UAT、扩行、缺值和问题视图 | 复用案例与差异结果、原生检查范围、导出性能；不重做 Excel 可行性选型 | D02、D06、D07 |
+| TS04 | 复用 openpyxl/Office 方法与现有测试；检查 Lite 模板、UAT、扩行、缺值和独立问题说明 | 复用案例与差异结果、原生检查范围、导出性能；不重做 Excel 可行性选型 | D02、D06、D07 |
 | TS05 | 保留真实未知能力验证：宿主 usage、活动归因、取消晚到与去重 | 脱敏真实事件、实际粒度、不能采集的部分及影响 | D04、D05、D08 |
 | TS06 | 参考既有可靠文件操作；验证 Lite 自有版本协议、基线变化、中断和幂等应用 | 原方法与 Lite 新协议差异、current 前后状态及恢复结果 | D02、D05、D07 |
 
