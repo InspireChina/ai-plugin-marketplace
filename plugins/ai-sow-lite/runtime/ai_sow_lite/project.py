@@ -561,6 +561,8 @@ def apply_prepared(project: Path, request_id: str, payload):
         if files[name]['sha256'] != file_sha256(safe_path(project, candidate[key], area)):
             raise StorageError('CANDIDATE_INVALID', '输出业务 JSON 必须与候选原字节相同。')
     _verify_delivery(project, prepared)
+    # Recheck original bytes after the external verifier, before snapshotting.
+    _verify_refs(project, [prepared['candidate_ref'], prepared['check_ref'], *report['dependencies']])
     # Snapshot exact validated bytes before taking the lock. Do not bind mutable indexes/work.
     version = prepared['version_id']
     directory = safe_path(project, area + '/.delivery-' + str(uuid4()))

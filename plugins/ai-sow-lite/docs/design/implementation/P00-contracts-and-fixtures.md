@@ -87,6 +87,8 @@ edits 的每项为 `op/collection/object_id/field` 加必要的 `value`。op 为
 
 check 返回以上文件引用及少量诊断，不回显完整模型。相同编辑稿/基线可复用同内容工作工件；内容变化形成新计划修订，不能覆盖已展示并确认的版本。check 验证候选与计划相符；confirmation=null 不妨碍检查或草案预览，但 apply 必须有具体确认。用户确认 review 后，仅填 confirmation 的真实输入引用与摘要；后续 check/candidate、render、apply 复用同一候选，不再构造不同专业内容。生成的 read_set/write_set/changes/hash 都由代码维护，但确认所覆盖的语义仍由 Agent 与用户负责。
 
+I1.3 首次消费投影合同：`projection.json` 内使用 D06 的 `projector_version`；prepared/manifest 沿用已有 `projection_version`。两者保存同一投影器版本值，分别属于各自工件的固定字段名，不在一个文件内添加兼容别名。
+
 ## 4. 摘要、变更与确认不得混用
 
 文件摘要固定为原字节 SHA-256；文本来源摘录按 D03 保留原换行。JSON 语义摘要只用于候选与方案内容，定义如下，不能用于替代文件摘要：

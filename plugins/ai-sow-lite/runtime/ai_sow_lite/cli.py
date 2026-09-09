@@ -36,6 +36,9 @@ def _execute(request):
     if list(schema_validator('protocol').iter_errors(request)):
         return _failure(request, 'PROTOCOL_INVALID', '请求信封或操作字段不符合合同。')
     operation, payload = request['operation'], request['payload']
+    if operation == 'render' and payload:
+        from .workbook import render_candidate
+        return _response(request, result=render_candidate(Path(request['project_path']).resolve(), request['request_id'], payload), ok=True)
     if operation == 'apply' and payload:
         from .project import apply_prepared
         return _response(request, result=apply_prepared(Path(request['project_path']).resolve(), request['request_id'], payload), ok=True)

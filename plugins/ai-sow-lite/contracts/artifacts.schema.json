@@ -1403,29 +1403,38 @@
           "minLength": 36,
           "maxLength": 36
         },
-        "projection_version": {
+        "projector_version": {
           "const": "lite-projection-v1"
         },
-        "workbook_ref": {
-          "type": "object",
-          "properties": {
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
-            },
-            "sha256": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$",
-              "minLength": 64,
-              "maxLength": 64
-            }
-          },
-          "required": [
-            "path",
-            "sha256"
-          ],
-          "additionalProperties": false
+        "template_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "model_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pending_items_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "decisions_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "workbook_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
         },
         "objects": {
           "type": "array",
@@ -1438,24 +1447,45 @@
                 "minLength": 36,
                 "maxLength": 36
               },
+              "kind": {
+                "enum": [
+                  "epic",
+                  "feature",
+                  "story",
+                  "ac",
+                  "task"
+                ]
+              },
               "sheet": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "\\S"
+                "enum": [
+                  "01-需求故事",
+                  "02-任务清单"
+                ]
               },
               "table": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "\\S"
+                "enum": [
+                  "SOWStoryTable",
+                  "TaskTable"
+                ]
               },
-              "input_row": {
-                "type": "integer",
-                "minimum": 1
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 5
+                },
+                "uniqueItems": true
               },
               "display_name": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "\\S"
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "fields": {
                 "type": "array",
@@ -1464,17 +1494,192 @@
                   "properties": {
                     "field": {
                       "type": "string",
-                      "minLength": 1,
-                      "pattern": "\\S"
+                      "minLength": 1
                     },
-                    "cell": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "\\S"
+                    "cells": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "sheet": {
+                            "enum": [
+                              "01-需求故事",
+                              "02-任务清单"
+                            ]
+                          },
+                          "cell": {
+                            "type": "string",
+                            "pattern": "^[A-L][1-9][0-9]*$"
+                          },
+                          "entry": {
+                            "type": "integer",
+                            "minimum": 1
+                          }
+                        },
+                        "required": [
+                          "sheet",
+                          "cell"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 0
                     }
                   },
                   "required": [
                     "field",
+                    "cells"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 0
+              }
+            },
+            "required": [
+              "object_id",
+              "kind",
+              "sheet",
+              "table",
+              "rows",
+              "display_name",
+              "fields"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        },
+        "pending_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pending_item_id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "path": {
+                "const": "pending-items.md"
+              },
+              "anchor": {
+                "type": "string",
+                "pattern": "^pending-[0-9a-f-]+$"
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "object_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "minLength": 36,
+                      "maxLength": 36
+                    },
+                    "field": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cells": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "sheet": {
+                            "enum": [
+                              "01-需求故事",
+                              "02-任务清单"
+                            ]
+                          },
+                          "cell": {
+                            "type": "string",
+                            "pattern": "^[A-L][1-9][0-9]*$"
+                          },
+                          "entry": {
+                            "type": "integer",
+                            "minimum": 1
+                          }
+                        },
+                        "required": [
+                          "sheet",
+                          "cell"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 0
+                    }
+                  },
+                  "required": [
+                    "object_id",
+                    "field",
+                    "cells"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 0
+              }
+            },
+            "required": [
+              "pending_item_id",
+              "path",
+              "anchor",
+              "targets"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "object_id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "minLength": 36,
+                "maxLength": 36
+              },
+              "field": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "const": "details.md"
+              },
+              "anchor": {
+                "type": "string",
+                "pattern": "^detail-[0-9a-f-]+-[a-z_]+$"
+              },
+              "cells": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "enum": [
+                        "01-需求故事",
+                        "02-任务清单"
+                      ]
+                    },
+                    "cell": {
+                      "type": "string",
+                      "pattern": "^[A-L][1-9][0-9]*$"
+                    },
+                    "entry": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "sheet",
                     "cell"
                   ],
                   "additionalProperties": false
@@ -1484,11 +1689,10 @@
             },
             "required": [
               "object_id",
-              "sheet",
-              "table",
-              "input_row",
-              "display_name",
-              "fields"
+              "field",
+              "path",
+              "anchor",
+              "cells"
             ],
             "additionalProperties": false
           },
@@ -1498,9 +1702,15 @@
       "required": [
         "schema_version",
         "version_id",
-        "projection_version",
-        "workbook_ref",
-        "objects"
+        "projector_version",
+        "template_hash",
+        "model_hash",
+        "pending_items_hash",
+        "decisions_hash",
+        "workbook_hash",
+        "objects",
+        "pending_items",
+        "details"
       ],
       "additionalProperties": false
     },
@@ -1679,6 +1889,224 @@
         "entrypoint",
         "intent_digest",
         "expected_current"
+      ],
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "version_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "candidate_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^json-v1:[0-9a-f]{64}$",
+              "minLength": 72,
+              "maxLength": 72
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "office": {
+          "type": "object",
+          "properties": {
+            "office_identity": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "engine": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "LibreOffice"
+                },
+                "version": {
+                  "type": "string",
+                  "pattern": "^LibreOffice [^/\\\\\\r\\n]+$"
+                },
+                "binary_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "platform": {
+                  "enum": [
+                    "Darwin",
+                    "Linux",
+                    "Windows"
+                  ]
+                },
+                "arguments": {
+                  "const": [
+                    "-env:UserInstallation=PROFILE_DIR",
+                    "--headless",
+                    "--convert-to",
+                    "xlsx",
+                    "--outdir",
+                    "OUTPUT_DIR",
+                    "INPUT_XLSX"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "binary_sha256",
+                "platform",
+                "arguments"
+              ],
+              "additionalProperties": false
+            },
+            "input_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "raw_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "final_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "exit_code": {
+              "const": 0
+            },
+            "elapsed_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "verification": {
+              "type": "object",
+              "properties": {
+                "formula_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "cache_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "formula_cache_hash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "formula_hash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "compatibility_changes": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "table_formula"
+                          },
+                          "table": {
+                            "enum": [
+                              "SOWStoryTable",
+                              "TaskTable"
+                            ]
+                          },
+                          "column": {
+                            "type": "integer",
+                            "minimum": 6,
+                            "maximum": 12
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "table",
+                          "column"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "validation_range"
+                          },
+                          "sheet": {
+                            "enum": [
+                              "01-需求故事",
+                              "02-任务清单"
+                            ]
+                          },
+                          "before": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "after": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sheet",
+                          "before",
+                          "after"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "minItems": 0
+                }
+              },
+              "required": [
+                "formula_count",
+                "cache_count",
+                "formula_cache_hash",
+                "formula_hash",
+                "compatibility_changes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "office_identity",
+            "engine",
+            "input_hash",
+            "raw_hash",
+            "final_hash",
+            "exit_code",
+            "elapsed_ms",
+            "verification"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema_version",
+        "version_id",
+        "candidate_digest",
+        "office"
       ],
       "additionalProperties": false
     }

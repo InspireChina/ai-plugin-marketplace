@@ -358,7 +358,7 @@ def test_public_generate_requires_real_i13_verifier_and_has_no_bypass(tmp_path):
                    expected_current=None, plan_path=None)
     response = run_request(case.project, case.request_id, 'apply', payload)
     assert not response['ok']
-    assert response['diagnostics'][0]['code'] == 'OPERATION_UNSUPPORTED'
+    assert response['diagnostics'][0]['code'] == 'WORKBOOK_INVALID'
     assert response['diagnostics'][0]['target']['field'] == 'verification_ref'
     bypass = run_request(case.project, case.request_id, 'apply', dict(payload, skip_verification=True))
     assert bypass['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'

@@ -168,6 +168,25 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "render"
+          },
+          "payload": {
+            "minProperties": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/render_payload"
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -927,6 +946,37 @@
         "prepared_path",
         "expected_current",
         "plan_path"
+      ],
+      "additionalProperties": false
+    },
+    "render_payload": {
+      "type": "object",
+      "properties": {
+        "candidate_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "check_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "expected_current": {
+          "anyOf": [
+            {
+              "$ref": "artifacts.schema.json#/$defs/current"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "candidate_path",
+        "check_path",
+        "expected_current"
       ],
       "additionalProperties": false
     }

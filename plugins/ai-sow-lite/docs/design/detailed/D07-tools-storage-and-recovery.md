@@ -2,7 +2,7 @@
 
 [详细设计目录](README.md) · [技术基线 D00](D00-technology-stack.md) · [数据 D02](D02-shared-data-and-evidence.md)
 
-状态：按单人串行、原模板计算的用户决定收口。I1.1 候选校验及 I1.2 文本/分析登记、定向查询、存储与恢复接缝已有实现，当前可调用范围见[工具合同](../../../references/tools.md)，验证与限制见 [I1 记录](../../validation/I1-reliable-delivery.md)。真实 Excel 核验接入前，公共 apply 明确拒绝交付；D05 的具体修改/确认仍待 I3。本文件包含后续设计合同，不能将所有设计操作视为已经可用。
+状态：按单人串行、原模板计算的用户决定收口。I1.1 候选校验及 I1.2 文本/分析登记、定向查询、存储与恢复接缝已有实现，当前可调用范围见[工具合同](../../../references/tools.md)，验证与限制见 [I1 记录](../../validation/I1-reliable-delivery.md)。I1.3 已接入真实 Excel 核验及 Generate apply，并通过回归与原生检查，独立审阅及定点复核已通过；D05 的具体修改/确认仍待 I3。本文件包含后续设计合同，不能将所有设计操作视为已经可用。
 
 ## 1. Agent 与工具的调用关系
 

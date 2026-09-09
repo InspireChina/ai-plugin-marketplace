@@ -95,10 +95,10 @@ def replace_current(root: Path, pointer: dict) -> None:
 
 **Interfaces:** 消费已完整检查的 candidate、真实模板与 expected_current；产出 render_candidate/recalculate 和 P00 prepared，接入 I1.2 apply。版本 ID 在 render 分配，投影/summary/manifest 使用同一身份。
 
-- [ ] 迁入旧 workbook 的 safe_text、Table 扩行/样式和 OOXML 检查方法，以及 office_engine 的隔离重算/身份/超时；只按方法适配，build_rows、旧模型关联、隐藏身份列、旧审阅合同不复制。保留引擎探测10秒、单次重算120秒的既有默认，超时必须清理所属进程/目录；内部没有自动二次重算。
-- [ ] 按 D06 §2.1 映射真实列：Story A:E 可填、F:J 公式，AC=D；Task A:G 可填、H:L 公式；标准 Q=SIT/R=UAT。校验 Sheet/Table/表头/公式原型，未知原型报 VERSION_INCOMPATIBLE。依据真实 Table 扩展公式、样式、保护、下拉、筛选、打印及跨表范围。
-- [ ] 生成与 Excel 同版的 pending-items.md，按需生成 details.md；既有可写备注只附问题/全文定位。输出保持四张表和原汇总/标准/参数，不增加金额完整性标签、缺值保护、部分汇总或 SIT/UAT 三态规则。结构检查合法缺值与问题一致，金额/适用性缓存由原模板产生，不据问题改变公式或输出值。
-- [ ] 处理 D06 稳定安全别名、120 UTF-16 单元上限、同名/大小写/Unicode、`~*?`、超长 AC/任务列表和 `=+-@` 起始文本。名称可能触发现有模板的匹配运算时采用无特殊运算字符的身份别名，原文保存在模型/details.md，不能改模板 criteria。超长内容明确引用独立全文，不写计算列或静默丢字。
+- [x] 迁入旧 workbook 的 safe_text、Table 扩行/样式和 OOXML 检查方法，以及 office_engine 的隔离重算/身份/超时；只按方法适配，build_rows、旧模型关联、隐藏身份列、旧审阅合同不复制。保留引擎探测10秒、单次重算120秒的既有默认，超时必须清理所属进程/目录；内部没有自动二次重算。
+- [x] 按 D06 §2.1 映射真实列：Story A:E 可填、F:J 公式，AC=D；Task A:G 可填、H:L 公式；标准 Q=SIT/R=UAT。校验 Sheet/Table/表头/公式原型，未知原型报 VERSION_INCOMPATIBLE。依据真实 Table 扩展公式、样式、保护、下拉、筛选、打印及跨表范围。
+- [x] 生成与 Excel 同版的 pending-items.md，按需生成 details.md；既有可写备注只附问题/全文定位。输出保持四张表和原汇总/标准/参数，不增加金额完整性标签、缺值保护、部分汇总或 SIT/UAT 三态规则。结构检查合法缺值与问题一致，金额/适用性缓存由原模板产生，不据问题改变公式或输出值。
+- [x] 处理 D06 稳定安全别名、120 UTF-16 单元上限、同名/大小写/Unicode、`~*?`、超长 AC/任务列表和 `=+-@` 起始文本。名称可能触发现有模板的匹配运算时采用无特殊运算字符的身份别名，原文保存在模型/details.md，不能改模板 criteria。超长内容明确引用独立全文，不写计算列或静默丢字。
 
 ```python
 def write_literal(cell, value: str) -> None:
@@ -116,9 +116,11 @@ def test_literal_task_name_is_not_a_formula():
 
 实际生产实现放 workbook.py，测试调用该函数；OOXML 写入后和 Office 后再次检查类型与原文本，上述内存测试不能独自证明安全交付。
 
-- [ ] 用完整分类、缺类型/方式/集成、default M、候选新建、父级未拆明工作、有行缺工作及真实空 gap 的样本核对实际输入与独立待确认一致，原模板公式/参数原值保留。0/1/60/61 Story 和200/201 Task 验证原预留区及必要扩行的关联、缓存保存与保护。Office 结果只用于证明原模板正常往返，不为缺值制定另一套应当空白/为零/完整/部分的金额期待，也不重做标准人天算法验收。
-- [ ] 正常调用一次 Office；最终结果用公式视图和 data_only 双复读，OOXML 检查核对原元数据和缓存保存，不在 Office 保存后直接重写文件。发现自身写入错误时修正填表实现并重新生成；不修原模板公式。重算后若输入或文件内容变化必须使准备记录失效，不用旧 cache。Office 返回0但 Table/保护/缓存保存错误仍 WORKBOOK_INVALID。
-- [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_workbook.py plugins/ai-sow-lite/tests/test_office.py plugins/ai-sow-lite/tests/test_template_uat.py -q`。真实 Office 测试用 `office` marker 区分；本机缺引擎可解释 skip，但 **I1 退出要求至少一个真实引擎环境无此跳过**。在 Microsoft Excel 原生打开代表性输出、保存、重开检查内容修复提示与布局，不操作用户原模板。
+- [x] 用完整分类、缺类型/方式/集成、default M、候选新建、父级未拆明工作、有行缺工作及真实空 gap 的样本核对实际输入与独立待确认一致，原模板公式/参数原值保留。0/1/60/61 Story 和200/201 Task 验证原预留区及必要扩行的关联、缓存保存与保护。Office 结果只用于证明原模板正常往返，不为缺值制定另一套应当空白/为零/完整/部分的金额期待，也不重做标准人天算法验收。
+- [x] 正常调用一次 Office；最终结果用公式视图和 data_only 双复读，OOXML 检查核对原元数据和缓存保存；按 D06 §8 仅处理已验证的 LibreOffice 计算列元数据省略与整列校验范围裁剪，再只读核验并绑定最终文件，不重写单元格公式或缓存。发现自身写入错误时修正填表实现并重新生成；不修原模板公式。重算后若输入或文件内容变化必须使准备记录失效，不用旧 cache。Office 返回0但 Table/保护/缓存保存错误仍 WORKBOOK_INVALID。
+- [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_workbook.py plugins/ai-sow-lite/tests/test_office.py plugins/ai-sow-lite/tests/test_template_uat.py -q`。真实 Office 测试用 `office` marker 区分；本机缺引擎可解释 skip，但 **I1 退出要求至少一个真实引擎环境无此跳过**。在 Microsoft Excel 原生打开代表性输出、保存、重开检查内容修复提示与布局，不操作用户原模板。
+
+**完成证据：** I1.3 已通过测试先行实现、两项审阅问题的定点修复与独立复核：完整 Lite279项通过、1项因缺少 PowerShell 跳过；冻结副本30次公共 CLI 调用通过，常规/扩行/三任务边界均完成原生 Excel 打开、保存、重开。原模板与旧插件未修改；已知引擎保存差异按 D06 的窄范围处理。实际证据及 Windows 限制见 [I1 验证](../../validation/I1-reliable-delivery.md)。下一项为 I1.4，I1 整体保持未完成。
 
 ## I1.4 · 从第一个工具开始测量
 

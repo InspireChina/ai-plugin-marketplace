@@ -1,6 +1,6 @@
-# Lite I1.2 工具合同
+# Lite I1.3 工具合同
 
-当前提供真实文本 `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `apply` 已有机械预检和存储接缝，但缺少 I1.3 实际 Office/投影核验器时明确拒绝；`render`、Clarify 方案/确认应用、`check/edits` 和带 `plan_path` 的检查仍返回 `OPERATION_UNSUPPORTED`。运行时不依赖旧插件，不生成模拟观察或交付。
+当前提供真实文本 `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 方案/确认应用、`check/edits` 和带 `plan_path` 的检查仍返回 `OPERATION_UNSUPPORTED`。运行时不依赖旧插件，不生成模拟观察或交付。
 
 ```text
 <Lite 隔离 Python> <Lite 安装目录>/scripts/lite.py --request <UTF-8 请求文件>
@@ -15,7 +15,7 @@
 - [decisions.schema.json](../contracts/decisions.schema.json)：`schema_version/items`；决定的 `applies_to` 同 target。
 - [evidence.schema.json](../contracts/evidence.schema.json)：`schema_version/items`；analysis 的 `evidence[]` 使用其 `$defs/item`。来源定位为 `text_lines`、`xlsx_range`、`observation`。
 - [protocol.schema.json](../contracts/protocol.schema.json)：请求及 `$defs/response`。支持的 payload 和 inspect 选择器采用封闭结构；不接受任意路径、脚本或绕过开关。I1.1 的空占位调用仍明确返回未支持。
-- [artifacts.schema.json](../contracts/artifacts.schema.json)：首次消费者的工件结构，按 `$defs` 校验。增加 prepared、request、intent、analysis_index；checkpoint 保存业务续接信息，manifest/current 由公共核验后的存储内核写入。projection 的交付核验仍属于 I1.3。
+- [artifacts.schema.json](../contracts/artifacts.schema.json)：首次消费者的工件结构，按 `$defs` 校验。增加 prepared、request、intent、analysis_index；checkpoint 保存业务续接信息，manifest/current 由公共核验后的存储内核写入。projection 与 verification 由 I1.3 实际消费者核对完整交付。
 
 以下路径由真实登记/检查操作消费。既有 I1.1 `contract_case` 与 seed history 保持独立合成单测含义；新增 `build_ingested_case` 使用真实 CLI ingest→inspect→analysis→check，保留真实返回的身份和定位。
 
@@ -105,9 +105,9 @@ cursor 绑定查询、实际来源/索引/所读版本和续读位置。绑定�
 
 - Clarify 或非 null plan_path：OPERATION_UNSUPPORTED；I3 的真实方案/确认校验尚未提供，JSON confirmed 标志不授予权威。
 - Generate 的准备/候选/检查/文件结构或实际摘要不一致：协议、候选或依据诊断；已有非预期 current：BASE_STALE。
-- 其余可机械预检的 Generate 准备包：缺少 I1.3 `workbook.verify_prepared` 时返回 OPERATION_UNSUPPORTED，target.field=verification_ref。自填 `valid=true` 无效；没有 skip/force/failpoint 等生产绕过参数。
+- 其余 Generate 准备包：`workbook.verify_prepared` 复核实际投影、Office 记录、原始产物和最终工作簿；不符返回 WORKBOOK_INVALID，target.field=verification_ref。自填 `valid=true` 无效；没有 skip/force/failpoint 等生产绕过参数。
 
-I1.3 最小接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，另可有 details.md；verification_ref 独立指向核验记录。
+I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，另可有 details.md；verification_ref 独立指向核验记录。
 
 公共入口在重新执行完整候选检查并通过实际 I1.3 核验后，冻结业务 JSON 和输入记录快照，将可达输入/分析/读取附件列入 manifest；不把可变 inputs/index 或 work 当稳定依赖，再交给 `_commit_version` 存储内核。`application.json` 绑定原应用调用，`intent.json` 在应用候选进入保存时封存意图，讨论/分析登记不会提前封存。
 
@@ -115,4 +115,52 @@ I1.3 最小接入函数为 `workbook.verify_prepared(project: Path, prepared: Js
 
 `recover` payload 只有 target_request_id；沿 current 和摘要绑定的 base_version_id 历史链核实，返回 applied/draft/cancelled/incompatible、applied_version、preserved_paths、diagnostics_ref。损坏诊断进入公共信封，diagnostics_ref 无独立文件时为 null；查询不会写源数据或激活孤立版本。已成功请求返回原 applied_version 与当前 current_version，后续串行版本不会被旧请求倒回。取消只能通过已观察到的本地 `cancel_request` 记录执行边界，不承诺收到任意宿主 UI 的取消事件。
 
-`storage_package` 及 `_commit_version` 单测只验证文件事务；其 sow.xlsx 特意不是 Office 工作簿，不能经公共 apply 绕过核验。I1.3 实际包接入和交付回归完成前，不关闭 I1，也不把存储测试称为 Excel 交付通过。
+`storage_package` 及 `_commit_version` 单测只验证文件事务；其 sow.xlsx 特意不是 Office 工作簿，不能经公共 apply 绕过核验。真实交付回归使用 `office` marker，存储单测不作为 Excel 交付证据。I1.4/I1.5 和 I1 退出由各自验收决定。
+
+## I1.3 模板投影与真实 Office
+
+`render` payload 必须为 candidate_path、check_path、expected_current。首版 Generate 的期望指针为 null。工具重新执行 full check，并与指定检查文件完整比较；slice、候选/来源字节变化、自填通过标志均不能作为导出依据。候选和检查文件必须属于本请求 work，原业务 JSON 逐字节复制。
+
+版本 ID 在 render 分配。返回 prepared_ref、version_id、workbook_ref、projection_ref、summary_ref、pending_items_ref、details_ref（无全文文件为 null）、office_identity、verification_ref、pending_count（仅 open）。引用均为项目相对 `{path, sha256}`，不返回金额结论。
+
+`render-<version_id>/` 保留 projected.xlsx（Office 前输入）、sow.office-raw.xlsx（Office 原始输出）、最终 sow.xlsx 和同版 JSON/Markdown。失败保留工作目录及可得 raw，failure.json 记录诊断，不产生成功 prepared，不切换 current。正式文件集合仍是 model/pending-items/decisions/projection JSON、sow.xlsx、summary.md、pending-items.md，按需增加 details.md；apply 另保存 verification 和输入索引快照。raw/投影输入只用于 work 核验，不成为不可变版本的 work 依赖。
+
+模板 SHA 固定为 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`。Story A:E、Task A:G 是输入；Story D 是 AC，F:J 和 Task H:L 保留原公式。标准 Q/R 分别为 SIT/UAT。容量内保留 Story 5—64、Task 5—204；超容量仅按模板原型追加，保留样式、保护、数组公式 ref、Table/filter 与计算列元数据。当前固定模板使用结构化跨表引用、整列 DV/条件格式和数据表空 print_area，扩行无需改写这些范围或公式。未知模板字节/原型返回 VERSION_INCOMPATIBLE。
+
+业务字符串由 write_literal 强制写为字符串，不加单引号。Story/Task 名分别按 NFC、casefold 和 trim 比较键检查碰撞；安全原名保留。通配符、criteria 运算符、数值/布尔/错误码形名称、换行和超过120个 UTF-16 单元的名称使用稳定 ID 别名，原文保留在备注或 details。单元格长文、原始 CRLF 和超出可读行高的内容使用全文锚点；片段明确标注。行高按实际列宽、CJK 宽度和换行保守估算，超过409pt使用正文入口，不修改列宽/字体。Task 列表公式保持原样；按实际输入所需行高比较任务显示名、分类文字及保守余量，列表可能超出本行可见高度时，即使只有少量任务，也在 Story E 提供 details 全文入口。该布局判断不计算 H 公式；备注/问题过长时仍保留列表的独立入口。
+
+projection.json 使用 **projector_version**；prepared/manifest 继续使用既有 **projection_version**，均为 lite-projection-v1，不接受双别名。projection 还含 schema_version、version_id、template_hash、model_hash、pending_items_hash、decisions_hash、workbook_hash、objects、pending_items、details。objects 记录 object_id/kind/sheet/table/rows/display_name/fields；单行也使用 rows 数组，无行父项使用空数组。fields 为 `{field,cells}`；cell 为 `{sheet,cell}`，AC 增加1起始 entry。AC 自身 ID 保留，正文不复制进映射。问题 targets 含 object_id/field/cells；问题与全文使用同版相对路径和稳定锚点。正文哈希由 prepared/files 和 manifest 绑定。
+
+### 引擎与最终封存
+
+`office.recalculate(source, destination)` 从 AI_SOW_LITE_OFFICE_BIN 或 PATH 的 soffice/libreoffice 发现引擎；探测10秒、单次重算120秒。每次使用独立输入、输出、配置目录与所属进程组；超时清理所属进程树和临时目录，不接管桌面 Excel，不安装宿主工具，无内部二次重算。Office 不存在为 OFFICE_ENGINE_UNAVAILABLE，超时/非零退出/退出0却无文件为 CALCULATION_FAILED，实际文件/缓存/保护损坏为 WORKBOOK_INVALID。
+
+按 Controller Ruling3（先前复用已验证旧机械能力的用户授权下的实现裁定，并非新收到的用户决定），raw 先经公式视图、data_only、OOXML 与元数据核验，再只允许两项变换：已有 Table 身份、列和 ref 完全一致时补缺失的 calculatedColumnFormula 子节点；DV 规则未变且 sqref 精确符合已观察到的占用末行+1000裁切时恢复原范围。不整段替换 Table/保护，不改任何单元格、公式、缓存或保护。变换前后公式/cache 清单哈希一致，最终路径再次只读核验。Office 保存后不调用 openpyxl.save。
+
+只读比较承认的等价表示包括引号外 TRUE→TRUE()；缺省保护属性的解码值；空白单元格的有效行/列样式继承；Table part ID/样式 ID 重编号；未指定打印项显式化；list/custom 规则不适用的默认 operator 与 formula2；单条条件规则的优先级编号及同色 differential fill 表示；行高向下量化到0.75pt。这些不触发写入修复。其余范围、规则、已指定打印设置、有效样式/锁定、原公式及数组 ref 均核对。行 hidden/collapsed/outlineLevel、声明字体和实际主题字体（含 CJK）、charset/family 默认值、上标/下标及其他字体显示属性也纳入复读。
+
+唯一字体例外是 Controller 为已观察保存回退限定的三个固定说明格：01-需求故事/02-任务清单/03-工作量汇总 的 A2，模板 Calibri/minor → raw Arial Unicode MS/无 scheme。文本、其余字体属性及原 minor 主题字体必须不变；这是观察到的 fallback，不是相同主题或有效字体。业务格、其他位置或字体对、主题/文本/样式变动和隐藏行仍拒绝。此例外只影响只读比较，不恢复字体或修改 OOXML；增加本机已有 Office 字体目录的隔离探针仍未保留原 A2 字体身份，因此没有增加字体发现或安装子系统。
+
+verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏的引擎名/版本、可执行文件 hash、平台、固定参数、退出码、实际单调时钟毫秒、Office 输入/raw/最终字节 hash，以及实际公式/缓存清单与兼容变换记录。office_identity 是引擎记录的稳定 sha256 字符串。它是本地执行记录，不是签名执行证明；不能抵御有权重写整个项目与全部收据的攻击者。程序仍从模板/候选重新构造预期映射并读取实际文件，不信任自填 valid 标志，不用 Python 验算金额。
+
+### 复用、变动与测试入口
+
+render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+
+测试命令：
+
+```text
+uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_workbook.py plugins/ai-sow-lite/tests/test_office.py plugins/ai-sow-lite/tests/test_template_uat.py -q
+```
+
+office marker 表示真实引擎；没有引擎时允许解释 skip，但 I1 退出仍需至少一个环境没有真实引擎跳过。受控子进程测试仅用于超时、输出丢失与重试边界，存储夹具仍不冒充 Office。
+
+测试专用 native-QA builder 在 tests/support/excel.py。对新的临时/ignored 项目目录运行：
+
+```text
+uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/excel.py --project <新的QA项目目录> --variant representative
+uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/excel.py --project <另一个新的QA项目目录> --variant expanded
+uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/excel.py --project <新的中等列表QA目录> --variant medium-list
+```
+
+builder 真实 ingest/inspect/analysis/check/render，并输出准备包引用。representative 含三个范围、默认 M 与待确认；expanded 含61 Story/201 Task、特殊名称和长正文；medium-list 含1 Story/3 Task、短 AC/空备注和中等任务名，另登记其较小范围的测试分析，不改既有登记记录。原生 Excel 保存/重开应使用整包副本，保持已绑定原文件不变。该入口是测试资产，不是 I1.5 独立安装验收，也不运行 Controller 的独立 CLI smoke。
