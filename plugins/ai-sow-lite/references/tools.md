@@ -1,6 +1,6 @@
-# Lite I1.3 工具合同
+# Lite 工具合同
 
-当前提供真实文本 `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 方案/确认应用、`check/edits` 和带 `plan_path` 的检查仍返回 `OPERATION_UNSUPPORTED`。运行时不依赖旧插件，不生成模拟观察或交付。
+当前提供真实文本/XLSX `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 方案/确认应用、`check/edits` 和带 `plan_path` 的检查仍返回 `OPERATION_UNSUPPORTED`。运行时不依赖旧插件，不生成模拟观察或交付。
 
 ```text
 <Lite 隔离 Python> <Lite 安装目录>/scripts/lite.py --request <UTF-8 请求文件>
@@ -23,10 +23,10 @@
 | --- | --- |
 | `.ai-sow-lite/project.json` | artifacts `project`：schema_version、project_id、project_type（new/existing）、template_hash |
 | `.ai-sow-lite/template/<sha256>/sow-template.xlsx` | 原 Lite assets 模板的逐字节副本 |
-| `.ai-sow-lite/inputs/index.json` | artifacts `input_index`：schema_version、items；input 含 input_version_id/input_id/content_hash/relative_path/format/material_types/uses/use_regions，文本增加 encoding="utf-8" |
+| `.ai-sow-lite/inputs/index.json` | artifacts `input_index`：schema_version、items；input 含 input_version_id/input_id/content_hash/relative_path/format/material_types/uses/use_regions，文本增加 encoding="utf-8" 或识别 BOM 后的 "utf-8-sig" |
 | `.ai-sow-lite/inputs/originals/<input-version-id>/<filename>` | 不可变源文件字节；relative_path 指到这里 |
 | `.ai-sow-lite/analysis/topics/<topic-version-id>/analysis.json` | artifacts `analysis`：schema_version、evidence[]、topics[]、observations[]（文件引用）；topics 使用 `$defs/topic`，版本 ID 须与目录及候选一致 |
-| `.ai-sow-lite/inputs/readings/<read-id>/reading.json` | artifacts `reading`：绑定真实 input_version_id/content_hash，文本适配器 lite-text-v1、options={}、text_lines locator 与摘录附件引用 |
+| `.ai-sow-lite/inputs/readings/<read-id>/reading.json` | artifacts `reading`：绑定真实 input_version_id/content_hash，文本适配器 lite-text-v1、options={}；XLSX 适配器 lite-xlsx-v1、固定 options={data_only:false}、selection、目录或区域附件引用 |
 | `.ai-sow-lite/analysis/observations/<observation-id>/observation.json` | artifacts `observation`；必须是真实观察记录，不得写模拟成功 |
 | `.ai-sow-lite/work/generate/<request-id>/candidate.json` | artifacts `candidate`；引用同请求的 model/pending-items/decisions，列所采用 evidence_ids/input_version_ids/topic_version_ids 和 template_hash |
 | `.ai-sow-lite/work/generate/<request-id>/checks/<sha256>.json` | artifacts `check`；真实 CLI 检查报告，字节和依赖绑定 |
@@ -37,7 +37,7 @@
 
 covered/uncovered 区域的 input_version_id 必须同时属于登记索引、候选和所在主题的输入集合。已支持 text_lines 的 start_line 不得大于 end_line，path 遵循下面的单文件规则。uncovered 区域没有成功摘录，不要求 excerpt_hash，不用已读行数或解码结果冒称该区域已经读取；本项检查仅说明声明的身份和基本定位一致。
 
-`text_lines` 的 start_line/end_line 为 1 起始、含端点。单文件 `path` 可省略；提供时必须精确等于该 input_version_id 登记的 `relative_path` 或其 basename（如 `prd.md`）。工具始终读取登记原件，只将 locator.path 用于一致性核对，不跟随任意路径；错误文件名、未登记路径、绝对路径和逃逸路径均拒绝。摘录按已登记编码严格解码，保留原换行后以 UTF-8 编码计算 SHA-256；字符串不 trim 或 Unicode 归一化。UUID 示例短别名不能作为生产 ID。真实模板身份与标准行必须从 assets 读取，不能复制计算数值或旧业务合同。
+`text_lines` 的 start_line/end_line 为 1 起始、含端点。单文件 `path` 可省略；提供时必须精确等于该 input_version_id 登记的 `relative_path` 或其 basename（如 `prd.md`）。工具始终读取登记原件，只将 locator.path 用于一致性核对，不跟随任意路径；错误文件名、未登记路径、绝对路径和逃逸路径均拒绝。摘录按已登记编码严格解码，保留原换行后以 UTF-8 编码计算 SHA-256；基线登记的 utf-8+BOM 保留原 BOM，新的 utf-8-sig 登记按其显式编码去除 BOM，字符串不 trim 或 Unicode 归一化。UUID 示例短别名不能作为生产 ID。真实模板身份与标准行必须从 assets 读取，不能复制计算数值或旧业务合同。
 
 ## 返回与限制
 
@@ -49,7 +49,7 @@ I1.1 保留的 CLI/校验错误码：`PROTOCOL_INVALID`、`VERSION_INCOMPATIBLE`
 
 UUID4 必须恰好 36 字符，SHA-256 恰好 64 字符，json-v1 摘要恰好 72 字符；均拒绝尾随换行，不修剪或改写。业务文件或登记/分析文件无效时保留其真实诊断，继续运行其余有效依赖足以支持的检查；不会把无效文件当作合法空集合制造悬空引用。`valid_for_render=false` 的报告不授予任何交付权威；pending 文件无效时 `unknowns_count` 的占位 0 不代表业务没有待确认项，以文件诊断为准。
 
-实际定位校验支持已登记单文件文本的 `text_lines`；`xlsx_range` 的读取适配属于 I2.1，原型包内文本和 `observation` 属于 I4，当前明确拒绝，不冒充附件已验证。历史复合键及恢复沿 current → manifest 的摘要绑定基线链读取；存储验证不等于工作簿交付验证。候选语义摘要覆盖所采用主题分析及依据；报告另绑定实际文件字节和依赖摘要，不把字节格式变化当作业务文字变化。
+实际定位校验支持已登记单文件文本的 `text_lines` 和类型化 XLSX 的 `xlsx_range`；原型包内文本和 `observation` 属于 I4，当前明确拒绝，不冒充附件已验证。历史复合键及恢复沿 current → manifest 的摘要绑定基线链读取；存储验证不等于工作簿交付验证。候选语义摘要覆盖所采用主题分析及依据；报告另绑定实际文件字节和依赖摘要，不把字节格式变化当作业务文字变化。
 
 Lineage 仅检查 current 到显式 from_version_id 所需的已绑定历史区间。对象保持 `(version_id, object_id)` 身份；继承记录须与该区间已保存的同复合键记录完全一致，以其首次出现的后继模型定位替换发生版本。原对象须在替换前持续存在，去向须在该次模型存在；已退出的中间去向只能由时间更晚的有效替换继续到当前对象或明确删除。缺少摘要绑定模型、缺少实际继承记录或只在任意早期历史找到同名 ID 的链不支持据此通过，会返回文件或 lineage 诊断；不推断发生顺序、不恢复缺件、不扫描显式区间以外的无关历史。
 
@@ -62,11 +62,11 @@ Bash/PowerShell 自举迁入来源为 D00 的 `2fc8588`，只适配身份、路�
 
 `ingest/sources` payload：`kind="sources"`、`entrypoint="generate"/"clarify"`、`project_type="new"/"existing"`、`sources[]`。每项必须含 source_path、input_id（首登 null）、material_types、uses、use_regions（无区域为空）。首次初始化固定项目身份和内置模板逐字节副本；后续项目类型/模板冲突拒绝；已有原件而索引丢失时保留文件并诊断，不重建空索引。ingest 不创建 current。
 
-本轮只读取 `.md`、`.markdown`、`.txt` 的严格 UTF-8；CRLF/LF/CR 保留，拒绝伪装成文本的常见二进制格式。外部 source_path 是唯一允许的项目外读取位置；目录别名可解析，源文件链接拒绝。所有持久项目路径拒绝链接/reparse 重定向。每项先复制并复读 hash，再登记；解码失败也保留已登记原件，不影响同批其他输入。相同原字节复用 input_version_id 和 reading；显式已有 input_id 的新内容获得新版本，旧原件不覆盖；未知 input_id 拒绝。新增材料角色/用途合并到登记索引，原件字节不改。
+读取 `.md`、`.markdown`、`.txt` 的严格 UTF-8 和 `.xlsx`；UTF-8 BOM 只按识别出的 utf-8-sig 解码，CRLF/LF/CR 保留，拒绝伪装成文本的常见二进制格式。外部 source_path 是唯一允许的项目外读取位置；目录别名可解析，源文件链接拒绝。所有持久项目路径拒绝链接/reparse 重定向。每项先复制并复读 hash，再登记；解码失败也保留已登记原件，不影响同批其他输入。相同原字节复用 input_version_id 和 reading；显式已有 input_id 的新内容获得新版本，旧原件不覆盖；未知 input_id 拒绝。新增材料角色/用途合并到登记索引，原件字节不改。
 
 相同原字节以不同文件名再次导入时，先按本次 source_path 的 basename 核对输入 locator；复用身份后，将本次用途区域中显式提供的 locator.path 绑定到实际保存原件的 basename 再合并。返回区域可原样用于 inspect/regions；原件身份、字节和 reading 保持不变，未保存的别名仍不能用于读取。
 
-返回 project_id、input_refs（登记项）、reading_refs（文件引用）、failures（诊断）和 checkpoint_ref。原件下的 reading-ref.json 指向不可变读取记录，后续复用复核原件、记录和摘录附件。读取成功只证明文本可读。
+返回 project_id、input_refs（登记项）、reading_refs（文件引用）、failures（诊断）和 checkpoint_ref。文本原件下的 reading-ref.json 指向不可变读取记录；XLSX 使用 originals/<input-version-id>/readings/<读取身份哈希>.json。后续复用复核原件、记录和摘录附件。读取成功只证明物理读取可用。完整字段、边界与历史理解方法见 [输入分析](input-analysis.md)。
 
 `ingest/analysis` payload：`kind="analysis"`、entrypoint、analysis_path。文件必须在本请求 work 内。共用候选的来源、摘要、依据图与主题校验后，保存实际输入分析字节至 `analysis/registrations/<sha256>/analysis.json`，按 topic_version_id 拆存分析并登记 `analysis/index.json`。各主题保存 registration-ref.json 以回查原始登记候选。返回 analysis_ref、evidence_ids、topic_version_ids；同依据/主题版本冲突拒绝；新依据须由新的主题版本实际承载，不能通过重复旧主题返回未保存的依据身份。observations 非空或不支持的 locator 明确拒绝。登记不代表当前 SOW 已采用。
 
@@ -78,14 +78,14 @@ Bash/PowerShell 自举迁入来源为 D00 的 `2fc8588`，只适配身份、路�
 | --- | --- | --- |
 | current | `{}` | 当前指针和 manifest 引用；核对指针结构、manifest 摘要/结构/版本身份；没有 current 为显式空集合，所读绑定损坏则诊断 |
 | inputs | `{}`，或 input_version_ids，或 input_ids | 所选登记目录页 |
-| regions | input_version_id、locator | 已登记 text_lines 的实际正文、行号及摘录 hash；单文件 path 沿用上文规则 |
-| topics | `{}`，或 topic_version_ids，或 topic_ids | 所选不可变主题；分析索引/工件损坏不会当作空集合 |
+| regions | input_version_id；可选 locator | 省略 locator 读目录；text_lines 返回实际行；xlsx_range 返回类型化单元格和 coverage.locator/excerpt_hash/excerpt_ref，必须采用返回的区域 read_id |
+| topics | `{}`，或 topic_version_ids，或 topic_ids，或 uses，或 historical_label 加可选 uses | 所选不可变主题；historical_label 返回历史条目并保留零命中范围摘要；分析索引/工件损坏不会当作空集合 |
 | objects | collection，加 object_ids/title 二选一；可选 version_id | 定向对象或标题子串命中；collection 为 epics/features/stories/acs/tasks/dependencies/pending_items/decisions，pending_items 的 title 检索 question，AC 附所属 story_id |
 | objects | collection="pending_items"、status；可选 version_id | open/resolved/superseded 问题 |
 | objects | collection="dependencies"、relation={object_id,direction}；可选 version_id | from_story_id/to_story_id 的 outgoing/incoming/both 关系；空结果保留查询条件与所读版本 |
 | standards | `{}`，或 work_type_ids，或 work_type_names | 空选择器仅返回类型目录；指定类型返回定性规则、包含边界和 S/M/L/X 规模门槛。逐次从项目固定模板读取，不返回 PD/倍率/公式 |
 | request | request_id | 本请求恢复事实，损坏返回诊断 |
-| telemetry | 当前未支持 | I1.4 接入真实观测后提供，不返回模拟成功 |
+| telemetry | request_id | 真实遥测指标分页与 report_ref；未接入的宿主 usage 为 null/unknown，游标绑定来源事件摘要 |
 
 current 查询只读取项目身份、current 和其摘要绑定的 manifest，不读取工作簿、原件或业务文件。objects 默认读取一次 current 后固定该版；显式 version_id 仅沿摘要绑定的 base_version_id manifest 链选择历史版本，不读取孤立目录。选定版本后，仅复核所选 collection 所在业务 JSON 的实际字节摘要与 Schema，再筛选对象；不匹配也必须先完成该文件复核。问题/决定分别读取 pending-items.json/decisions.json，其他 collection 读取 model.json；单个选中文件仍完整读取，不新增数据库或缓存。
 

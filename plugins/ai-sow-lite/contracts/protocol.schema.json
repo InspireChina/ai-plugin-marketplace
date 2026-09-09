@@ -590,6 +590,46 @@
                       "topic_ids"
                     ],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "uses": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "uses"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "uses": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "historical_label": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "historical_label"
+                    ],
+                    "additionalProperties": false
                   }
                 ]
               }
@@ -620,8 +660,7 @@
                   }
                 },
                 "required": [
-                  "input_version_id",
-                  "locator"
+                  "input_version_id"
                 ],
                 "additionalProperties": false
               }

@@ -26,9 +26,9 @@
 
 **Interfaces:** 消费 P00 ingest_sources/ingest_analysis/inspect_view；产出实际 text_lines/xlsx_range、可复用 reading、按用途的 topics/evidence、历史候选范围摘要。读取事实与语义结论仍分别保存。
 
-- [ ] 创建多 Sheet 历史 XLSX、合并区域、隐藏附注、公式有/无缓存、空白行/同名条目和单文件 PRD/HLD 区域夹具。文本采用 UTF-8 严格解码，BOM 只按已识别编码解释；无法解码返回 INPUT_UNAVAILABLE 并要求可读文本，不装自动转码/解析服务。XLSX ZIP 预检沿既有解压/成员上限，超限给明确区域/文件诊断，不返回半份完整假象。
-- [ ] 实现 XLSX 结构目录与指定区域读取。附件保留地址、类型化原值/公式、缓存有无、合并/附注/隐藏状态；original_hash/reader_version/options/selection 共同确定读取身份。时间/数字保留类型，不转成不带类型的显示字符串再冒充原值。
-- [ ] 实现查询、分页与精确覆盖；来源/选择器改变使游标失效，相同游标无进展拒绝继续。新增用途复用物理读取但新建用途分析；新增历史成员使相关候选范围摘要变化，包括原来零命中的范围。
+- [x] 创建多 Sheet 历史 XLSX、合并区域、隐藏附注、公式有/无缓存、空白行/同名条目和单文件 PRD/HLD 区域夹具。文本采用 UTF-8 严格解码，BOM 只按已识别编码解释；无法解码返回 INPUT_UNAVAILABLE 并要求可读文本，不装自动转码/解析服务。XLSX ZIP 预检沿既有解压/成员上限，超限给明确区域/文件诊断，不返回半份完整假象。
+- [x] 实现 XLSX 结构目录与指定区域读取。附件保留地址、类型化原值/公式、缓存有无、合并/附注/隐藏状态；original_hash/reader_version/options/selection 共同确定读取身份。时间/数字保留类型，不转成不带类型的显示字符串再冒充原值。
+- [x] 实现查询、分页与精确覆盖；来源/选择器改变使游标失效，相同游标无进展拒绝继续。新增用途复用物理读取但新建用途分析；新增历史成员使相关候选范围摘要变化，包括原来零命中的范围。
 
 ```python
 def test_cursor_pins_input_snapshot(case):
@@ -42,9 +42,9 @@ def test_cursor_pins_input_snapshot(case):
 
 此片段检查分页合同的起点；同一测试中再用真实 ingest 增加夹具材料，以首个 next_cursor 续读时应返回 VERSION_INCOMPATIBLE，不能静默混入新增成员。查询最新集合需从 cursor=null 开始并返回新范围摘要；旧原件仍不可变，但首版不另外保存输入集合的历史查询快照。这样与 P00 及上文的来源版本失效规则保持一致。
 
-- [ ] 分析候选落盘前验证实际来源/摘要；输入问题仍在 work，I2.2 绑定正式目标。稀疏历史不要求 AC/Task/type_hint；无依据的历史完整层级不得由工具补造。references 给出 API/事件候选与实例区分、零匹配依赖和统一补问规则。
-- [ ] 在 references/input-analysis.md 写清历史理解方法：表头、合并/跨行与附注共同确定条目，分页不切断语义；目录/标准/示例不当成历史交付，明确取消/排除/未来范围保留限定；部分内容相同不合并整条。使用下述 sparse-history 夹具核对读取结果和定位，语义判断交给 I2.2。合并既有分析只补新增关系与必要修正，不重新输出全部历史，也不增加历史 AC 补全或多层汇聚阶段。
-- [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_inputs.py -q`；记录 source_readers 的迁入方法与差异。测试只证明读取/失效机制，历史复用判断在 I2.2 真实演练。
+- [x] 分析候选落盘前验证实际来源/摘要；输入问题仍在 work，I2.2 绑定正式目标。稀疏历史不要求 AC/Task/type_hint；无依据的历史完整层级不得由工具补造。references 给出 API/事件候选与实例区分、零匹配依赖和统一补问规则。
+- [x] 在 references/input-analysis.md 写清历史理解方法：表头、合并/跨行与附注共同确定条目，分页不切断语义；目录/标准/示例不当成历史交付，明确取消/排除/未来范围保留限定；部分内容相同不合并整条。使用下述 sparse-history 夹具核对读取结果和定位，语义判断交给 I2.2。合并既有分析只补新增关系与必要修正，不重新输出全部历史，也不增加历史 AC 补全或多层汇聚阶段。
+- [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_inputs.py -q`；记录 source_readers 的迁入方法与差异。测试只证明读取/失效机制，历史复用判断在 I2.2 真实演练。
 
 ## I2.2 · 一个 Skill 的完整初版生成
 

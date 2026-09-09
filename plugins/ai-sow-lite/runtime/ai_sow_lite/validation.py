@@ -423,38 +423,24 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, an
             ctx.add(field, '来源必须在输入索引登记并由候选采用。', object_id=owner, code='EVIDENCE_MISSING')
         if topic_inputs is not None and identity not in topic_inputs:
             ctx.add(field, '覆盖记录的来源必须属于该主题采用的输入集合。', object_id=owner)
-        locator = source['locator']
-        if locator['kind'] != 'text_lines':
-            # XLSX readers belong to I2.1; prototype/observations to I4.
-            ctx.add('locator', '仅支持 text_lines 原字节定位；此定位适配尚未实现。', object_id=owner, code='OPERATION_UNSUPPORTED')
-            return
-        if locator['start_line'] > locator['end_line']:
-            ctx.add('locator', '文本范围的起始行不能大于结束行。', object_id=owner)
-            return
         if not registered:
             return
-        accepted_paths = (None, entry['relative_path'], PurePosixPath(entry['relative_path']).name)
-        if entry['format'] != 'text' or locator.get('path') not in accepted_paths:
-            ctx.add('locator', '单文件定位路径须省略或精确匹配登记相对路径/文件名。', object_id=owner)
-            return
-        if uncovered:
-            # An unread region has no successful excerpt yet. Check its declared
-            # identity/order, without manufacturing a read or an excerpt hash.
-            return
-        if raw is None:
+        if raw is None and not uncovered:
             ctx.add(field, '采用的来源原件不可读取。', object_id=owner, code='EVIDENCE_MISSING')
             return
+        from .inputs import source_excerpt
+        from .project import StorageError
         try:
-            text = raw.decode(entry.get('encoding', 'utf-8'), errors='strict')
-            lines = text.splitlines(keepends=True)
-            start, end = locator['start_line'], locator['end_line']
-            if not 1 <= start <= end <= len(lines):
-                raise ValueError('line range')
-            excerpt = ''.join(lines[start - 1:end]).encode('utf-8')
-            if hashlib.sha256(excerpt).hexdigest() != source['excerpt_hash']:
-                raise ValueError('excerpt hash')
-        except (UnicodeError, LookupError, ValueError):
-            ctx.add('source_refs', '来源行范围、编码或摘录摘要无法匹配真实原件。', object_id=owner, code='EVIDENCE_MISSING')
+            excerpt, dependencies = source_excerpt(ctx.project, entry, source['locator'], raw=raw, uncovered=uncovered)
+            for ref in dependencies:
+                ctx.dependencies[ref['path']] = ref
+            if not uncovered and hashlib.sha256(excerpt).hexdigest() != source['excerpt_hash']:
+                raise StorageError('EVIDENCE_MISSING', '来源摘录摘要无法匹配真实原件。')
+        except StorageError as error:
+            for issue in error.diagnostics:
+                ctx.add(issue['target']['field'] or field, issue['message'], object_id=owner, code=issue['code'])
+        except (OSError, ValueError, KeyError):
+            ctx.add(field, '来源或读取附件缺失、损坏或定位不匹配。', object_id=owner, code='EVIDENCE_MISSING')
 
     evidence, topics_by_version = {}, {}
     analyses_valid = True

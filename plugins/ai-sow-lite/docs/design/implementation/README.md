@@ -4,7 +4,7 @@
 
 连续实施中的取舍及理由见 [自主决策记录](../../validation/implementation-decisions.md)。用户已授权按本计划持续完成开发，每个 I1.4 这样的实施任务验证/审查完成后提交一次，中间无需等待用户确认；推送、安装及发布不在本次开发范围。
 
-状态：I1.1—I1.4 已完成实现、验证和独立审查；I1.4 已提交为 `e05ebe0`。I1.5 的独立副本交付、完整回归与独立审查已通过，I1 可靠程序通道完成。其余任务按下方依赖继续，当前进入 I2.1。实际边界见 [I1 机械能力验证](../../validation/I1-reliable-delivery.md) 与 [I1.5 独立交付验收](../../validation/I1-delivery.md)。未实现的命令不能当作已完成的测试记录；Q1/Q2 已定边界见 [13](../13-self-review-and-decisions.md)。
+状态：I1.1—I2.1 已完成实现、验证和独立审查，当前进入 I2.2。实际能力与限制见 [I1 机械能力](../../validation/I1-reliable-delivery.md)、[I1.5 独立交付](../../validation/I1-delivery.md) 和 [I2 输入与 Generate 验证](../../validation/I2-generate.md)。尚未实现的入口不视为已完成；Q1/Q2 已定边界见 [13](../13-self-review-and-decisions.md)。
 
 ## 1. 阅读与实施顺序
 

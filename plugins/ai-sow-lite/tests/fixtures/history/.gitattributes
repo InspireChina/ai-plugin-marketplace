@@ -1,0 +1,4 @@
+# 这些输入夹具绑定实际 BOM/CRLF 字节，不能随 Git 换行策略转换。
+prd-hld.md binary
+legacy-bom-dd1e5b3/inputs/originals/*/legacy-bom.md binary
+legacy-bom-dd1e5b3/inputs/readings/*/text.txt binary

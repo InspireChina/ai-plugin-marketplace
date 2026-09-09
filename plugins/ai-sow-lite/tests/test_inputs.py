@@ -605,3 +605,101 @@ def test_review_q2_pending_title_search_uses_question_without_expanding_empty_re
         assert title in result['items'][0]['question']
     else:
         assert result['items'] == []
+
+
+def test_utf8_bom_is_decoded_once_without_changing_original_bytes(tmp_path):
+    raw = b'\xef\xbb\xbf# PRD\r\nvalue\r\n'
+    project, request, source, result = ingest(tmp_path, raw)
+    entry = result['input_refs'][0]
+    assert entry['encoding'] == 'utf-8-sig'
+    selected = inspect(project, request, 'regions', dict(input_version_id=entry['input_version_id'],
+                       locator=dict(kind='text_lines', start_line=1, end_line=1)))
+    assert selected['result']['items'][0]['text'] == '# PRD\r\n'
+    assert (project / entry['relative_path']).read_bytes() == raw
+    assert selected['result']['coverage']['excerpt_hash'] == hashlib.sha256(b'# PRD\r\n').hexdigest()
+
+
+def test_utf16_bom_is_not_guessed_or_transcoded(tmp_path):
+    source = tmp_path / 'utf16.md'
+    source.write_bytes('hello'.encode('utf-16'))
+    response = run_request(tmp_path / 'project', str(uuid4()), 'ingest', sources_payload(source))
+    assert not response['ok']
+    assert response['diagnostics'][0]['code'] == 'INPUT_UNAVAILABLE'
+    assert response['result']['reading_refs'] == []
+    assert response['result']['input_refs']
+
+
+def test_single_file_prd_hld_has_exact_directory_and_separate_uses(tmp_path):
+    from pathlib import Path
+    source = Path(__file__).parent / 'fixtures/history/prd-hld.md'
+    payload = sources_payload(source)
+    payload['sources'][0].update(material_types=['prd', 'hld'], uses=['to-be-scope', 'to-be-architecture'], use_regions=[
+        dict(material_type='prd', use='to-be-scope', locators=[dict(kind='text_lines', start_line=1, end_line=2)]),
+        dict(material_type='hld', use='to-be-architecture', locators=[dict(kind='text_lines', start_line=3, end_line=4)])])
+    project, request = tmp_path / 'project', str(uuid4())
+    response = run_request(project, request, 'ingest', payload)
+    assert response['ok'], response
+    entry = response['result']['input_refs'][0]
+    directory = inspect(project, request, 'regions', {'input_version_id': entry['input_version_id']}, limit=1)
+    assert directory['ok'], directory
+    assert directory['result']['items'][0]['heading'] == 'PRD'
+    assert directory['result']['items'][0]['locator'] == dict(kind='text_lines', start_line=1, end_line=2)
+    second = inspect(project, request, 'regions', {'input_version_id': entry['input_version_id']}, cursor=directory['result']['next_cursor'])
+    assert second['result']['items'][0]['heading'] == 'HLD'
+    assert len(entry['use_regions']) == 2
+    assert len(list((project / '.ai-sow-lite/inputs/originals').iterdir())) == 1
+
+
+def test_review_f1_zero_history_scope_counts_all_returned_members(tmp_path):
+    sources = []
+    for number in range(400):
+        source = tmp_path / f'history-{number}.md'
+        source.write_text(f'历史范围 {number}\n', encoding='utf-8')
+        sources.append(source)
+    payload = sources_payload(*sources)
+    for source in payload['sources']:
+        source.update(uses=['as-is'], material_types=['prior-sow'])
+    project, request = tmp_path / 'project', str(uuid4())
+    registered = run_request(project, request, 'ingest', payload)
+    assert registered['ok'], registered
+    response = inspect(project, request, 'topics', {'historical_label': '不存在', 'uses': ['as-is']}, limit=1)
+    assert not response['ok'], response
+    assert response['diagnostics'][0]['code'] == 'RESULT_TOO_LARGE'
+    assert 'coverage' not in response['result'] and 'items' not in response['result']
+
+
+def test_review_f3_reuses_actual_baseline_bom_registration_and_source_hash(tmp_path):
+    import shutil
+    from pathlib import Path
+    from ai_sow_lite.contracts import PLUGIN_ROOT
+    from ai_sow_lite.project import initialize
+    fixture = Path(__file__).parent / 'fixtures/history/legacy-bom-dd1e5b3'
+    project, request = tmp_path / 'project', str(uuid4())
+    initialize(project, 'new', PLUGIN_ROOT / 'assets/sow-template.xlsx')
+    shutil.copytree(fixture / 'inputs', project / '.ai-sow-lite/inputs', dirs_exist_ok=True)
+    entry = read_json(fixture / 'inputs/index.json')['items'][0]
+    source = project / entry['relative_path']
+    reading_ref = read_json(source.parent / 'reading-ref.json')
+    before = {p.relative_to(project): p.read_bytes() for p in (project / '.ai-sow-lite/inputs').rglob('*') if p.is_file()}
+    response = run_request(project, request, 'ingest', sources_payload(source))
+    assert response['ok'], response
+    assert response['result']['input_refs'] == [entry]
+    assert response['result']['reading_refs'] == [reading_ref]
+    assert entry['encoding'] == 'utf-8'
+    assert before == {p.relative_to(project): p.read_bytes() for p in (project / '.ai-sow-lite/inputs').rglob('*') if p.is_file()}
+    locator = dict(kind='text_lines', start_line=1, end_line=1)
+    observed = inspect(project, request, 'regions', dict(input_version_id=entry['input_version_id'], locator=locator))
+    assert observed['ok'], observed
+    assert observed['result']['items'][0]['text'] == '\ufeff# PRD\r\n'
+    expected_hash = hashlib.sha256(b'\xef\xbb\xbf# PRD\r\n').hexdigest()
+    assert observed['result']['coverage']['excerpt_hash'] == expected_hash
+    evidence_id = str(uuid4())
+    source_ref = dict(input_version_id=entry['input_version_id'], locator=locator, excerpt_hash=expected_hash)
+    evidence = dict(id=evidence_id, kind='statement', text='旧版来源正文', source_refs=[source_ref], basis_refs=[], limitations='')
+    topic = dict(topic_id=str(uuid4()), topic_version_id=str(uuid4()), title='旧版来源兼容', input_version_ids=[entry['input_version_id']],
+                 uses=['to-be-scope'], covered_regions=[source_ref], uncovered_regions=[], evidence_refs=[evidence_id], related_object_ids=[],
+                 external_responsibilities='', limitations='', conclusion='保留旧版摘录含义。', historical_items=[])
+    path = project / f'.ai-sow-lite/work/generate/{request}/analysis.json'
+    write_json(path, dict(schema_version='1.0', evidence=[evidence], topics=[topic], observations=[]))
+    adopted = run_request(project, request, 'ingest', dict(kind='analysis', entrypoint='generate', analysis_path=path.relative_to(project).as_posix()))
+    assert adopted['ok'], adopted

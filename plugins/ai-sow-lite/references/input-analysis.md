@@ -1,0 +1,47 @@
+# 输入阅读、用途与历史范围
+
+本参考指导同一主 session 的专业分析。工具提供物理定位和一致性检查，不决定材料充分、历史已交付、实例可复用或本期工作类型。输入问题先保存在本请求 work；正式目标绑定在后续生成片中完成。
+
+## 读取入口和证据
+
+先用 `ingest/sources` 登记不可变物理文件。支持严格 UTF-8 文本（`.md/.markdown/.txt`）与 `.xlsx`；UTF-8 BOM 识别为 `utf-8-sig`，原字节及 CRLF/LF/CR 均保留。摘录是识别编码解码后的所选原始行，以 UTF-8 重编码；新登记的 BOM 不成为首行内容；基线已登记为 `utf-8` 的文本仍按该编码读取，保留首行 BOM 与原 reading/摘录哈希，不重编码或迁移。不能解码时给 `INPUT_UNAVAILABLE`、保留已登记原件，要求可读 UTF-8 文本，不安装转码、PDF/DOCX/OCR 服务。
+
+`inspect` 的 `view="regions", selector={input_version_id}` 返回结构目录。文本目录按实际 ATX 标题及前导正文定位，围栏代码中的 `#` 不作为标题；纯文本可以只有一个区域。XLSX 目录列出 Sheet、Table、使用范围、合并区域、隐藏行列、附注地址和未读面；缺少或偏小的 dimension 由实际单元格与合并边界共同补足，仍遵守尺寸上限。目录只表示导航范围，不表示完成该区域内容分析。
+
+文本区域用 `text_lines` locator。XLSX 首次区域请求使用目录 reading 的 `read_id`：
+
+```json
+{"view":"regions","selector":{"input_version_id":"<UUID4>","locator":{"kind":"xlsx_range","sheet":"历史范围","range":"A1:C8","read_id":"<目录 read_id>"}},"limit":20,"cursor":null}
+```
+
+以响应 `coverage.locator` 和 `coverage.excerpt_hash` 建立 source_ref，不能将请求中的目录 read_id 冒充所选区域的 read_id。`coverage.reading_ref` 和 `coverage.excerpt_ref` 分别指向不可变 reading 与真实摘录。区域使用有限 A1 范围，包含端点，规范化 `$A$1:$C$8` 为 `A1:C8`；Sheet 名不规范化。
+
+单元格字符串只读取直接正文 t 或富文本 r/t，不把 rPh 注音拼进正文；注音不作为单元格值解释。区域附件为类型化 JSON，逐格保留地址、`value`、`raw_value`、`formula`、`cache`、`number_format`、合并锚点、隐藏状态与附注。`value/raw_value` 使用 `{type,value}`；数字为带类型的十进制字符串，布尔值保持 JSON boolean，日期/时间是带类型 ISO 字符串，duration 为秒的十进制字符串。日期仍保留 Excel 原序列值和格式。公式的原始属性与可读公式分开保存，shared formula 按原引用平移展开；不计算公式。`cache.present=false` 与缓存 `0/false` 不同，无公式时 cache 为 null。缓存只证明文件保存了该值，不能当作新计算或当前生产事实。
+
+读取身份由原件 SHA-256、`adapter_version="lite-xlsx-v1"`、固定 `options={"data_only":false}` 和精确 `selection` 共同决定；目录 selection 为 `{kind:"workbook"}`，区域为 `{kind:"xlsx_range",sheet,range}`。相同身份复用 reading；来源或区域变化产生新身份。复用时复核原件、登记、附件，证据检查按同一解析规则重建摘录。旧原件不覆盖。reading/附件进入 candidate check 的实际依赖，错误范围、哈希、版本和附件无法进入分析登记或完整候选。
+
+## 边界、分页和用途
+
+文件上限50 MiB；XLSX ZIP 最多2048成员、200 MiB解压体积和100倍整体压缩比，最多64 Sheet，每 Sheet 最多100000行、512列、1000000格，合计2000000格，单格文本32767字符、总文本10000000字符。声明维度及实际地址均检查，超限返回 `RESULT_TOO_LARGE` 和文件/Sheet/单元格诊断，不返回半份完整假象。XML 实体声明拒绝。图形、媒体、VML、嵌入对象、图表、外链等暴露为 `limitations` 的未读面，不刷新链接、不执行对象、不调用 Office 重算输入。
+
+单页默认20项、最多100项，完整返回正文最多64 KiB，计入 selector、版本、coverage、元数据、limitations 和历史范围摘要，并为既有 CLI 元信息预留1 KiB。每页使用 matched/returned/remaining、coverage 和 next_cursor；coverage.complete 仅表示当前物理查询返回完毕。大于单格正文上限的单元格返回 `representation="attachment"`、地址和摘录引用，完整值仍在附件同址 cell 中，不无限续读同一巨大单元格。完整 Sheet 元数据本身过大时给缩小范围/文件诊断，不静默截断。
+
+分页不是语义分割：跨页条目须继续读到表头、合并组、跨行工作说明和相邻限定条件齐全；区域只读到合并从属格时，按 merge_anchor 补读锚点。附注、隐藏 Sheet/行列不能仅因隐藏而省略。通过完整附件和明确邻域补读，不自动将所有页重新输出一遍。
+
+同一物理文件可按用途分为 PRD、HLD、历史和本期 draft。登记用途区域必须有实际定位，不能靠两个标签补足材料。XLSX 首次登记 `use_regions=[]`，读取实际区域后以返回 locator 再登记用途。新增用途复用物理 reading，但旧主题的用途分析不自动扩大；新分析使用新的不可变 topic_version_id，共享同一依据时保持依据 ID 与内容一致。
+
+游标绑定实际查询、来源集合/版本和上次结束位置。来源成员或 selector 改变、越界或零进展游标均拒绝；用 `cursor=null` 明确查询新集合，不混入新增成员。首版不保存输入集合的历史查询快照。
+
+## 历史理解与有限补问
+
+先区分实际历史范围、附注、标准目录和示例。目录里的 API 类型或样例不是历史交付。由表头、合并/跨行和附注共同确定条目；保留明确取消、排除、未交付或未来范围的限定。按用户指定往期 SOW 建立估算 as-is，不另设生产核验或逐项交付确认。一个文件的本期 draft 属于 to-be，旧标准不能替代当前内置模板。
+
+历史索引保留实际粒度：标题/原意说明、来源、已有层级或父关系。缺 AC、Task 或 type_hint 不补造，不要求重建完整历史层级。两个部分重叠范围分别保留，不能因部分内容或名称相同而合并整条。合并已有分析时只补新增关系和必要修正，不重新输出全部历史，不增加历史 AC 补全或多层汇聚阶段。
+
+API/事件类型相近只是线索。API 实例可结合已知服务/系统、业务对象、读写含义、契约范围和调用条件判断；事件可结合发送/接收方、触发时机、对象、载荷/版本与通道判断。这些是相关线索，不能变成要求历史补齐的强制字段表。只在实例及本期适用边界有依据时，采用已满足/调整/接入判断；不能仅凭同名或同类型抵扣本期工作。
+
+`inspect/topics` 可用 `{uses:["as-is"]}` 查看用途主题；`{historical_label:"订单",uses:["as-is"]}` 按已登记历史 label 的精确子串查询条目（省略 uses 默认 as-is），不进行语义匹配或分类猜测。每项含 topic_id/topic_version_id/historical_item；相同标签的不同条目分别返回。coverage 保留 `scope_digest/source_members/analysis_refs`，零命中也绑定范围。新增有关用途的历史输入，即便尚未分析，也会改变摘要和旧游标；空结果不能被解释为该新文件不存在相关能力。
+
+相关读取完成且没有候选时，按既定新建口径，不制造泛化复用问题。有相关候选但实例不明、且本期目标/方案/责任可界定时，默认新建并保存具体候选待确认；无法定复杂度时独立采用默认 M 并附问题。不能用默认值替代缺失的目标、基础方案或责任。原文明示同一实例及其适用性时可采用，不例行重复询问。
+
+首轮问题批量归并，最多一次补问；输入/历史/原型共用一次追加调查，不按 Task 各自重开调查。相同候选影响多个 Task 合并一个问题，待正式目标出现后绑定。补充历史后复核相关候选及原来零匹配的范围，不无条件重扫全案。本文件与合成 history 夹具证明读取和定位；历史复用语义由后续真实 Agent 演练验证。

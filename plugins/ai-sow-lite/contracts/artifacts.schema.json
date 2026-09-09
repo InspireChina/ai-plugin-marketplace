@@ -767,6 +767,47 @@
             ]
           },
           "minItems": 0
+        },
+        "selection": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "workbook"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "xlsx_range"
+                },
+                "sheet": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "range": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "kind",
+                "sheet",
+                "range"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "directory_ref": {
+          "$ref": "#/$defs/file_ref"
         }
       },
       "required": [
@@ -778,7 +819,56 @@
         "options",
         "excerpts"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "adapter_version": {
+                "const": "lite-xlsx-v1"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "selection"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "selection": {
+                      "properties": {
+                        "kind": {
+                          "const": "workbook"
+                        }
+                      }
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "directory_ref"
+                  ],
+                  "properties": {
+                    "excerpts": {
+                      "maxItems": 0
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "excerpts": {
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
     },
     "observation": {
       "type": "object",

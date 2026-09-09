@@ -61,6 +61,8 @@ ingest 续接只复核已知 project_type，不因新 payload 改项目身份。
 
 inspect.view 首版为 current、inputs、regions、topics、objects、standards、request、telemetry。selector 按 view 为互斥结构：版本/ID 集、已登记区域定位、关系查询、标题检索或问题状态；不得把任意路径/SQL/脚本塞进 selector。`objects` 关系查询返回查询条件、成员及所读版本，零结果同样保留查询和版本；串行改稿不维护用于自动合并的字段/关系成员摘要。`regions` 使用 D03 locator；`standards` 返回定性标准及规模门槛，不返回估算倍率副本。cursor 绑定查询、来源版本和上次结束位置，失效返回诊断；没有命中不扩大查询。默认20条、最多100条、单次正文最多64 KiB，超限提供准确续读；这些是首版可调整的物理分页参数，不是 token 配额。
 
+I2.1 的 XLSX `regions` 查询省略 locator 时返回结构目录；指定区域时返回实际区域 read_id、类型化单元格摘录及覆盖摘要。目录 read_id 可用于发起区域选择，正式来源引用须采用响应中的区域 locator。单个超大单元格保留地址及完整摘录附件引用，明确标记正文未展开，不让分页持续停在同一格。实际选择器及附件字段见 [工具参考](../../../references/tools.md) 和 artifacts Schema。
+
 ### 纯语义活动怎样埋点
 
 六项操作以外只提供一个内部观测入口：`python -m ai_sow_lite.telemetry --project <project-dir> --mark-file <mark.json>`，使用同一隔离 Python。当前插件不安装为 Python package，调用方须只在该子进程环境中将 `PYTHONPATH` 指向已解析 Lite 安装目录的 `runtime`；不依赖 checkout cwd，也不修改宿主持久环境。mark 字段为 schema_version、request_id、execution_id、activity_ids、slice_ids、phase（start/end/milestone）和 name；程序填写实际 observed_at/事件身份，再调用 append_event。它不接受业务候选或下一阶段，不改变 checkpoint/current，失败按 D08 降级。只有没有现成宿主生命周期事件的大活动边界才调用，不每次思考都打一次工具点。

@@ -1,4 +1,4 @@
-"""Immutable source copies and strict text reading; no semantic analysis runner."""
+"""Immutable source copies and strict text/XLSX reading; no semantic analysis runner."""
 from __future__ import annotations
 
 import hashlib
@@ -26,14 +26,29 @@ def _source_bytes(path):
     # The source file itself cannot be a link; project-owned paths remain stricter.
     if path.is_symlink():
         raise StorageError('INPUT_UNAVAILABLE', '来源不能使用符号链接；请提供实际文件。')
-    if path.suffix.lower() not in ('.md', '.markdown', '.txt'):
-        raise StorageError('FORMAT_UNSUPPORTED', 'I1.2 只读取 Markdown/纯文本；XLSX、原型及其他格式尚不支持。')
+    if path.suffix.lower() not in ('.md', '.markdown', '.txt', '.xlsx'):
+        raise StorageError('FORMAT_UNSUPPORTED', '只读取 Markdown/纯文本和 XLSX；其他非原型格式请提供可读文本或 XLSX。')
     if not stat.S_ISREG(path.stat().st_mode):
         raise StorageError('INPUT_UNAVAILABLE', '来源必须是普通文件。')
+    if path.stat().st_size > 50 * 1024 * 1024:
+        raise StorageError('RESULT_TOO_LARGE', '来源文件超过50 MiB读取上限；请提供较小的可读文件。')
     raw = path.read_bytes()
-    if raw.startswith((b'%PDF-', b'PK\x03\x04', b'\xd0\xcf\x11\xe0')) or b'\x00' in raw:
+    if path.suffix.lower() == '.xlsx':
+        if not raw.startswith(b'PK\x03\x04'):
+            raise StorageError('FORMAT_UNSUPPORTED', 'XLSX 文件头无效，改名不能转换格式。')
+        return raw
+    if raw.startswith((b'%PDF-', b'PK\x03\x04', b'\xd0\xcf\x11\xe0')) or (b'\x00' in raw and not raw.startswith((b'\xff\xfe', b'\xfe\xff'))):
         raise StorageError('FORMAT_UNSUPPORTED', '文件字节不是受支持的文本，改扩展名不能改变格式。')
     return raw
+
+
+def _decode_text(raw, entry):
+    # Baseline lite-text-v1 registered utf-8 even with a BOM; preserve that meaning.
+    # Newly registered BOM inputs explicitly use utf-8-sig. Neither rewrites originals.
+    encoding = entry.get('encoding', 'utf-8')
+    if encoding not in ('utf-8', 'utf-8-sig') or (encoding == 'utf-8-sig' and not raw.startswith(b'\xef\xbb\xbf')):
+        raise StorageError('EVIDENCE_MISSING', '文本登记编码不受支持或与原件 BOM 不同。')
+    return raw.decode(encoding, errors='strict')
 
 
 def text_lines(project, entry):
@@ -42,12 +57,14 @@ def text_lines(project, entry):
     if hashlib.sha256(raw).hexdigest() != entry['content_hash']:
         raise StorageError('EVIDENCE_MISSING', '原件与登记摘要不同。', entry['relative_path'])
     try:
-        return raw.decode('utf-8', errors='strict').splitlines(keepends=True)
+        return _decode_text(raw, entry).splitlines(keepends=True)
     except UnicodeError:
-        raise StorageError('INPUT_UNAVAILABLE', '文本无法严格按 UTF-8 解码；已保留原件。', entry['relative_path']) from None
+        raise StorageError('INPUT_UNAVAILABLE', '文本无法严格按 UTF-8 解码；已保留原件，请提供可读 UTF-8 文本。', entry['relative_path']) from None
 
 
 def _reading(project, entry):
+    if entry['format'] == 'xlsx':
+        return _xlsx_reading(project, entry, {'kind': 'workbook'})[0]
     identity = entry['input_version_id']
     area = f'.ai-sow-lite/inputs/originals/{identity}'
     locator_path = safe_path(project, area + '/reading-ref.json')
@@ -81,6 +98,137 @@ def _reading(project, entry):
     return ref
 
 
+def _original_bytes(project, entry):
+    path = safe_path(project, entry['relative_path'], f".ai-sow-lite/inputs/originals/{entry['input_version_id']}")
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != entry['content_hash']:
+        raise StorageError('EVIDENCE_MISSING', '原件与登记摘要不同。')
+    return raw
+
+
+def _checked_xlsx_reading(project, entry, read_id):
+    from . import _xlsx
+    area = f'.ai-sow-lite/inputs/readings/{read_id}'
+    reading = checked_json(project, area + '/reading.json', 'reading', area)
+    if (reading['read_id'] != read_id or reading['input_version_id'] != entry['input_version_id'] or
+            reading['content_hash'] != entry['content_hash'] or reading['adapter_version'] != _xlsx.READER_VERSION or
+            reading['options'] != _xlsx.OPTIONS):
+        raise StorageError('EVIDENCE_MISSING', 'XLSX 读取身份与实际来源、适配器或选项不同。')
+    selection = reading.get('selection')
+    if selection is None:
+        raise StorageError('EVIDENCE_MISSING', 'XLSX reading 缺少 selection。')
+    identity = dict(content_hash=entry['content_hash'], adapter_version=_xlsx.READER_VERSION, options=_xlsx.OPTIONS, selection=selection)
+    key = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
+    registration = checked_json(project, f".ai-sow-lite/inputs/originals/{entry['input_version_id']}/readings/{key}.json", 'file_ref')
+    if registration != file_ref(project, safe_path(project, area + '/reading.json')):
+        raise StorageError('EVIDENCE_MISSING', 'XLSX reading 未由此读取身份登记。')
+    if selection['kind'] == 'xlsx_range':
+        if len(reading['excerpts']) != 1 or any(reading['excerpts'][0][k] != selection[k] for k in ('sheet', 'range')):
+            raise StorageError('EVIDENCE_MISSING', 'XLSX reading 附件定位与 selection 不同。')
+    observed = _xlsx.read(_original_bytes(project, entry), selection)
+    ref = reading['directory_ref'] if reading['selection']['kind'] == 'workbook' else reading['excerpts'][0]['file_ref']
+    path = safe_path(project, ref['path'], area)
+    if file_ref(project, path) != ref or path.read_bytes() != canonical_json_bytes(observed):
+        raise StorageError('EVIDENCE_MISSING', 'XLSX 摘录与实际原件或选择范围不同。')
+    return reading, observed
+
+
+def _locator_error(message):
+    error = StorageError('CANDIDATE_INVALID', message)
+    error.diagnostics[0]['target']['field'] = 'locator'
+    return error
+
+
+def _text_directory(lines):
+    """ATX headings are navigation only; fenced code is not a section boundary."""
+    import re
+    starts, fence = [], None
+    for number, line in enumerate(lines, 1):
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})', line)
+        if marker:
+            token = marker[1]
+            if fence is None:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = None
+            continue
+        heading = re.match(r'^ {0,3}(#{1,6})[ \t]+(.+?)[\r\n]*$', line) if fence is None else None
+        if heading:
+            starts.append((number, heading[2]))
+    if lines and (not starts or starts[0][0] != 1):
+        starts.insert(0, (1, None))
+    return [dict(heading=title, locator=dict(kind='text_lines', start_line=start,
+                 end_line=starts[index + 1][0] - 1 if index + 1 < len(starts) else len(lines)))
+            for index, (start, title) in enumerate(starts)]
+
+
+def source_excerpt(project, entry, locator, *, raw=None, uncovered=False):
+    """Shared deterministic source verifier; returns bytes and physical dependencies."""
+    from . import _xlsx
+    if locator['kind'] == 'text_lines':
+        if entry['format'] != 'text' or locator.get('path') not in (None, entry['relative_path'], Path(entry['relative_path']).name):
+            raise _locator_error('文本定位与已登记来源不同。')
+        if locator['start_line'] > locator['end_line']:
+            raise _locator_error('文本定位起止顺序不合法。')
+        if uncovered:
+            return None, []
+        raw = _original_bytes(project, entry) if raw is None else raw
+        try:
+            lines = _decode_text(raw, entry).splitlines(keepends=True)
+        except UnicodeError:
+            raise StorageError('INPUT_UNAVAILABLE', '来源无法严格按 UTF-8 读取；请提供可读文本。') from None
+        start, end = locator['start_line'], locator['end_line']
+        if not 1 <= start <= end <= len(lines):
+            raise StorageError('EVIDENCE_MISSING', '文本行范围超出实际来源。')
+        return ''.join(lines[start - 1:end]).encode('utf-8'), []
+    if locator['kind'] != 'xlsx_range':
+        raise StorageError('OPERATION_UNSUPPORTED', '此来源定位适配尚未实现。')
+    if entry['format'] != 'xlsx':
+        raise StorageError('EVIDENCE_MISSING', 'XLSX 定位不能用于其他输入格式。')
+    reading, observed = _checked_xlsx_reading(project, entry, locator['read_id'])
+    selection = dict(kind='xlsx_range', sheet=locator['sheet'], range=_xlsx.canonical_range(locator['range']))
+    if reading['selection'] != selection:
+        if not uncovered or reading['selection'] != {'kind': 'workbook'}:
+            raise StorageError('EVIDENCE_MISSING', '来源范围与不可变 reading selection 不同。')
+        sheet = next((s for s in observed['sheets'] if s['sheet'] == selection['sheet']), None)
+        if sheet is None or _xlsx.bounds(selection['range'])[2] > _xlsx.bounds(sheet['used_range'])[2] or _xlsx.bounds(selection['range'])[3] > _xlsx.bounds(sheet['used_range'])[3]:
+            raise StorageError('EVIDENCE_MISSING', '未读区域不在已登记 XLSX 结构内。')
+    area = f".ai-sow-lite/inputs/readings/{reading['read_id']}"
+    ref = file_ref(project, safe_path(project, area + '/reading.json'))
+    attachment = reading.get('directory_ref') or reading['excerpts'][0]['file_ref']
+    return (None if uncovered else canonical_json_bytes(observed)), [ref, attachment]
+
+
+def _xlsx_reading(project, entry, selection):
+    from . import _xlsx
+    identity = dict(content_hash=entry['content_hash'], adapter_version=_xlsx.READER_VERSION, options=_xlsx.OPTIONS, selection=selection)
+    key = hashlib.sha256(canonical_json_bytes(identity)).hexdigest()
+    cache = f".ai-sow-lite/inputs/originals/{entry['input_version_id']}/readings/{key}.json"
+    if safe_path(project, cache).exists():
+        ref = checked_json(project, cache, 'file_ref')
+        path = safe_path(project, ref['path'], '.ai-sow-lite/inputs/readings')
+        if file_ref(project, path) != ref:
+            raise StorageError('EVIDENCE_MISSING', 'XLSX reading 摘要不同。')
+        reading, observed = _checked_xlsx_reading(project, entry, path.parent.name)
+        if reading['selection'] != selection:
+            raise StorageError('EVIDENCE_MISSING', 'XLSX selection 与缓存不同。')
+        return ref, reading, observed
+    observed = _xlsx.read(_original_bytes(project, entry), selection)
+    read_id = str(uuid4())
+    area = f'.ai-sow-lite/inputs/readings/{read_id}'
+    attachment = safe_path(project, area + '/excerpt.json')
+    atomic_bytes(attachment, canonical_json_bytes(observed), immutable=True)
+    reading = dict(schema_version='1.0', read_id=read_id, input_version_id=entry['input_version_id'],
+                   **identity, excerpts=[])
+    if selection['kind'] == 'workbook':
+        reading['directory_ref'] = file_ref(project, attachment)
+    else:
+        reading['excerpts'] = [dict(sheet=selection['sheet'], range=selection['range'], file_ref=file_ref(project, attachment))]
+    ref = write_json(project, area + '/reading.json', reading, immutable=True)
+    write_json(project, cache, ref, immutable=True)
+    return ref, reading, observed
+
+
 def ingest_sources(project: Path, request_id: str, payload):
     project = Path(project).resolve()
     record = initialize(project, payload['project_type'], PLUGIN_ROOT / 'assets/sow-template.xlsx')
@@ -91,15 +239,23 @@ def ingest_sources(project: Path, request_id: str, payload):
         entry = None
         try:
             raw = _source_bytes(source['source_path'])
+            digest = hashlib.sha256(raw).hexdigest()
+            source_format = 'xlsx' if Path(source['source_path']).suffix.lower() == '.xlsx' else 'text'
             for region in source['use_regions']:
                 if region['material_type'] not in source['material_types'] or region['use'] not in source['uses']:
                     raise StorageError('CANDIDATE_INVALID', '用途区域必须属于所声明的角色与用途。')
                 for locator in region['locators']:
-                    if locator['kind'] != 'text_lines':
-                        raise StorageError('OPERATION_UNSUPPORTED', 'I1.2 用途区域只支持 text_lines。')
-                    if locator['start_line'] > locator['end_line'] or locator.get('path') not in (None, Path(source['source_path']).name):
-                        raise StorageError('CANDIDATE_INVALID', '文本用途区域的顺序或文件定位不合法。')
-            digest = hashlib.sha256(raw).hexdigest()
+                    if source_format == 'xlsx':
+                        registered = next((e for e in index['items'] if e['content_hash'] == digest and
+                                           source['input_id'] in (None, e['input_id'])), None)
+                        if registered is None:
+                            raise StorageError('EVIDENCE_MISSING', 'XLSX 用途定位须采用实际 reading；首次登记先省略 use_regions，再 inspect 所选区域。')
+                        source_excerpt(project, registered, locator)
+                    else:
+                        # Validate the supplied basename before deduplication binds the stored name.
+                        temporary_entry = dict(format='text', relative_path=Path(source['source_path']).name,
+                                               encoding='utf-8-sig' if raw.startswith(b'\xef\xbb\xbf') else 'utf-8')
+                        source_excerpt(project, temporary_entry, locator, raw=raw)
             logical = source['input_id']
             if logical is not None and not any(e['input_id'] == logical for e in index['items']):
                 raise StorageError('INPUT_ID_CONFLICT', '指定 input_id 未登记；首次登记必须为 null。')
@@ -123,9 +279,11 @@ def ingest_sources(project: Path, request_id: str, payload):
                 if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
                     raise StorageError('IO_FAILED', '拷贝后摘要不一致；没有登记成功。')
                 entry = dict(input_version_id=identity, input_id=logical or str(uuid4()), content_hash=digest,
-                             relative_path=relative, format='text', encoding='utf-8',
+                             relative_path=relative, format='xlsx' if Path(source['source_path']).suffix.lower() == '.xlsx' else 'text',
                              material_types=list(source['material_types']), uses=list(source['uses']),
                              use_regions=list(source['use_regions']))
+                if entry['format'] == 'text':
+                    entry['encoding'] = 'utf-8-sig' if raw.startswith(b'\xef\xbb\xbf') else 'utf-8'
                 index['items'].append(entry)
             write_json(project, '.ai-sow-lite/inputs/index.json', index)
             refs.append(entry)
@@ -269,32 +427,80 @@ def inspect_view(project: Path, payload):
         refs, records = _analysis_records(project)
         version = semantic_digest(refs)
         items = _selected([t for r in records for t in r['topics']], selector, ('topic_version_id', 'topic_id'))
+        if 'uses' in selector or 'historical_label' in selector:
+            uses = selector.get('uses', ['as-is'])
+            items = [t for t in items if set(t['uses']) & set(uses)]
+            # An empty label query still depends on unanalysed members of this use.
+            members = [e for e in input_index(project)['items'] if set(e['uses']) & set(uses)]
+            source_members = [dict(input_version_id=e['input_version_id'], content_hash=e['content_hash'],
+                                   uses=e['uses'], use_regions=e['use_regions']) for e in members]
+            relevant_refs = [ref for ref, record in zip(refs, records) if any(set(t['uses']) & set(uses) for t in record['topics'])]
+            scope = dict(uses=uses, source_members=source_members, analysis_refs=relevant_refs)
+            version = semantic_digest(scope)
+            coverage.update(scope_digest=version, source_members=source_members, analysis_refs=relevant_refs)
+            if 'historical_label' in selector:
+                items = [dict(topic_id=t['topic_id'], topic_version_id=t['topic_version_id'], historical_item=h)
+                         for t in items for h in t['historical_items'] if selector['historical_label'] in h['label']]
     elif view == 'regions':
         entries = {entry['input_version_id']: entry for entry in input_index(project)['items']}
         entry = entries.get(selector['input_version_id'])
         if entry is None:
             raise StorageError('EVIDENCE_MISSING', '未登记指定输入版本。')
-        locator = selector['locator']
-        if locator['kind'] != 'text_lines' or entry['format'] != 'text':
-            raise StorageError('OPERATION_UNSUPPORTED', '当前仅支持已登记单文本的 text_lines。')
-        if locator.get('path') not in (None, entry['relative_path'], Path(entry['relative_path']).name):
-            raise StorageError('EVIDENCE_MISSING', '定位路径与已登记原件不同。')
-        lines = text_lines(project, entry)
-        start, end = locator['start_line'], locator['end_line']
-        if not 1 <= start <= end <= len(lines):
-            raise StorageError('CANDIDATE_INVALID', '行范围超出实际文本。')
-        selected = lines[start - 1:end]
-        version = dict(input_version_id=entry['input_version_id'], content_hash=entry['content_hash'])
-        coverage['excerpt_hash'] = hashlib.sha256(''.join(selected).encode('utf-8')).hexdigest()
-        coverage['line_count'] = len(selected)
-        # Finite byte-bounded fragments let even a single long line be continued exactly.
-        items = []
-        for number, line in enumerate(selected, start):
-            offset = 0
-            while offset < len(line):
-                fragment = line[offset:offset + 8192]
-                items.append(dict(line_number=number, character_offset=offset, text=fragment))
-                offset += len(fragment)
+        if entry['format'] == 'xlsx':
+            from . import _xlsx
+            selection = {'kind': 'workbook'}
+            locator = selector.get('locator')
+            if locator is not None:
+                if locator['kind'] != 'xlsx_range':
+                    raise StorageError('CANDIDATE_INVALID', 'XLSX 必须使用 xlsx_range。')
+                _checked_xlsx_reading(project, entry, locator['read_id'])
+                selection = dict(kind='xlsx_range', sheet=locator['sheet'], range=_xlsx.canonical_range(locator['range']))
+            ref, reading, observed = _xlsx_reading(project, entry, selection)
+            version = dict(input_version_id=entry['input_version_id'], content_hash=entry['content_hash'],
+                           read_id=reading['read_id'], selection=selection, adapter_version=reading['adapter_version'], options=reading['options'])
+            coverage.update(reading_ref=ref)
+            if locator is None:
+                items = observed['sheets']
+                coverage['limitations'] = observed['limitations']
+            else:
+                excerpt = reading['excerpts'][0]['file_ref']
+                coverage.update(locator=dict(selection, read_id=reading['read_id']), excerpt_ref=excerpt,
+                                excerpt_hash=excerpt['sha256'], metadata=observed['metadata'], cell_count=len(observed['cells']))
+                coverage['limitations'] = observed['limitations']
+                items = [cell if len(canonical_json_bytes(cell)) <= 48 * 1024 else
+                         dict(address=cell['address'], representation='attachment', excerpt_ref=excerpt,
+                              message='单格正文超过分页上限；完整类型、值及附注保存在附件的同址 cell。')
+                         for cell in observed['cells']]
+        else:
+            locator = selector.get('locator')
+            if locator is not None and locator['kind'] != 'text_lines':
+                raise StorageError('CANDIDATE_INVALID', '文本区域需要 text_lines。')
+            lines = text_lines(project, entry)
+            if locator is None:
+                ref = _reading(project, entry)
+                reading = checked_json(project, ref['path'], 'reading', '.ai-sow-lite/inputs/readings')
+                version = dict(input_version_id=entry['input_version_id'], content_hash=entry['content_hash'],
+                               adapter_version=reading['adapter_version'], read_id=reading['read_id'])
+                items = _text_directory(lines)
+                coverage.update(reading_ref=ref, line_count=len(lines), limitations=[])
+            else:
+                if locator.get('path') not in (None, entry['relative_path'], Path(entry['relative_path']).name):
+                    raise StorageError('EVIDENCE_MISSING', '定位路径与已登记原件不同。')
+                start, end = locator['start_line'], locator['end_line']
+                if not 1 <= start <= end <= len(lines):
+                    raise StorageError('CANDIDATE_INVALID', '行范围超出实际文本。')
+                selected = lines[start - 1:end]
+                version = dict(input_version_id=entry['input_version_id'], content_hash=entry['content_hash'])
+                coverage['excerpt_hash'] = hashlib.sha256(''.join(selected).encode('utf-8')).hexdigest()
+                coverage['line_count'] = len(selected)
+                # Finite byte-bounded fragments let even a single long line be continued exactly.
+                items = []
+                for number, line in enumerate(selected, start):
+                    offset = 0
+                    while offset < len(line):
+                        fragment = line[offset:offset + 8192]
+                        items.append(dict(line_number=number, character_offset=offset, text=fragment))
+                        offset += len(fragment)
     elif view == 'objects':
         version, items, selected_ref = _inspect_objects(project, selector)
         coverage.update(verification_scope='selected_file' if selected_ref else 'manifest', verified_file_ref=selected_ref)
@@ -328,20 +534,35 @@ def inspect_view(project: Path, payload):
                 raise ValueError('offset')
         except (ValueError, TypeError, KeyError, UnicodeError):
             raise StorageError('VERSION_INCOMPATIBLE', '游标与当前查询或来源版本不同；请用 cursor=null 明确读取新集合。') from None
-    selected, size = [], 0
+    # CLI adds bounded observation status and envelope after this reader returns.
+    body_limit = 64 * 1024 - 1024
+
+    def page(selected):
+        end = offset + len(selected)
+        cursor = None if end == len(items) else base64.urlsafe_b64encode(canonical_json_bytes(dict(binding=binding, offset=end))).decode('ascii')
+        return dict(selected_version=version, items=selected, matched_count=len(items), returned_count=len(selected),
+                    remaining_count=len(items) - end, next_cursor=cursor,
+                    coverage=dict(coverage, start_offset=offset, end_offset=end, complete=cursor is None), report_ref=None)
+
+    def too_large():
+        error = StorageError('RESULT_TOO_LARGE', '查询元数据或单项正文超过64 KiB返回上限；请缩小查询或读取已保存的附件。')
+        if coverage.get('excerpt_ref'):
+            error.diagnostics[0]['preserved_paths'] = [coverage['excerpt_ref']['path']]
+        return error
+
+    selected = []
     for item in items[offset:offset + payload.get('limit', 20)]:
-        item_size = len(canonical_json_bytes(item))
-        if size + item_size > 64 * 1024:
+        candidate = selected + [item]
+        if len(canonical_json_bytes(page(candidate))) > body_limit:
             if not selected:
-                raise StorageError('RESULT_TOO_LARGE', '单项超过正文上限，请缩小已支持的选择范围。')
+                raise too_large()
             break
-        selected.append(item)
-        size += item_size
-    end = offset + len(selected)
-    cursor = None if end == len(items) else base64.urlsafe_b64encode(canonical_json_bytes(dict(binding=binding, offset=end))).decode('ascii')
-    coverage.update(start_offset=offset, end_offset=end, complete=cursor is None)
-    return dict(selected_version=version, items=selected, matched_count=len(items), returned_count=len(selected),
-                remaining_count=len(items) - end, next_cursor=cursor, coverage=coverage, report_ref=None)
+        selected = candidate
+    result = page(selected)
+    # Zero matches still return scope/selector/limits, which must obey the same bound.
+    if len(canonical_json_bytes(result)) > body_limit:
+        raise too_large()
+    return result
 
 
 def _inspect_objects(project, selector):
