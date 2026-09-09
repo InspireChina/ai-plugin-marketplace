@@ -18,7 +18,7 @@ I1.1 已完成实现、TDD 回归及独立审阅收口。I1 整体尚未完成�
 | 原模板 | assets SHA-256 保持 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`；既有模板测试原字节不变，包含原 LibreOffice 回归 |
 | 真实 Agent 候选 | 两轮生成后以独立运行时副本实际调用 check CLI，通过、1项 open、无业务改写；见下方探针记录 |
 | 已保存样本复现 | 将下方合成样本复制到另一临时项目，补原模板，再用独立运行时副本校验：通过、1项 open，14份已有文件原字节不变、未创建 current |
-| 仓库边界 | 根42项测试、仓库验证器、旧插件独立副本 smoke 通过；旧插件全目录537 passed、4 skipped、2项既有架构断言失败，相关文件未改 |
+| 仓库边界 | 根42项测试、仓库验证器、旧插件独立副本 smoke 通过；I1.1 初测曾有2项旧架构断言失败，后续专项修复后旧插件全目录539 passed、4 skipped |
 
 复核命令：
 
@@ -30,7 +30,7 @@ sh -n plugins/ai-sow-lite/scripts/bootstrap.sh
 
 严格摘要向量 `{"a":[1,true,null],"z":"中文"}` 对应 `json-v1:db6a0f2ebe94b34e63a8bbcc767de7852280476696e69e1152bdbb07a6f3cf32`；保留业务字符串空白、数组顺序和精确整数。运行时不接受外部 Schema 取回或复制旧领域规则。
 
-旧插件全目录的两项既有失败仍保留：`test_runtime_is_plugin_shared_owner_agnostic_infrastructure` 的精确文件清单未包含已有 findings.py；`test_all_professional_owners_freeze_owner_local_candidate_first_interface` 的指定文字断言未匹配已有 generate-task 指引。本轮未改这些文件；不能把 Lite 的通过结果表述成全仓库通过。
+旧插件全目录曾有两项既有失败：`test_runtime_is_plugin_shared_owner_agnostic_infrastructure` 的精确文件清单未包含已有 findings.py；`test_all_professional_owners_freeze_owner_local_candidate_first_interface` 的指定文字断言未匹配已有 generate-task 指引。I1.1 提交后按用户要求专项修复了过期清单与措辞断言，保留 Owner 边界、页序、已读页不重复读取和截断恢复检查；旧插件运行时与 Skill 原字节未改。先复现2 failed，再验证架构12 passed、全目录539 passed/4 skipped，根42项、仓库验证器与独立副本 smoke 均通过。
 
 ## 独立审阅与定点返修
 

@@ -169,6 +169,7 @@ def test_runtime_is_plugin_shared_owner_agnostic_infrastructure() -> None:
         "controls.py",
         "diagnostics.py",
         "fact_source.py",
+        "findings.py",
         "handoff.py",
         "patch.py",
         "project_io.py",
@@ -341,7 +342,10 @@ def test_all_professional_owners_freeze_owner_local_candidate_first_interface() 
         "`<plugin-root>/skills/generate-task/contracts/estimate.schema.json`"
         in task_skill
     )
-    assert "五个 fragment 各读取且只读取一次" in task_skill
+    assert "五个输入 fragment 的 `pages[].order` 各读取一次" in task_skill
+    assert "被截断 page 视为 `NOT_READ`" in task_skill
+    assert "从同一 manifest 的首个未读页恢复" in task_skill
+    assert "不得在随后回合重新筛选、摘要或复读已完成 page" in task_skill
     assert "普通 candidate 流程不得运行 `read_template.py`" in task_skill
     assert "`<plugin-root>/references/output-language.md`" in task_skill
     assert "`<plugin-root>/skills/references/`" in task_skill
