@@ -1,0 +1,50 @@
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant C as clarify agent
+    participant F as 共享文件
+    participant T as 分析与文件工具
+    participant X as Excel 与必要检查
+    participant O as 用时与 token 记录
+    U->>C: 回答待确认项 / 提出自己的修改建议
+    C->>O: 开始 clarify 请求
+    C->>F: 读取当前版本、相关对象、问题和依据
+    alt 无可用或可兼容的基线
+        C->>U: 说明如何恢复文件，或先使用 generate
+    else 基线可用
+        C->>T: 定位业务、公共能力/接入及交付影响，按需补读依据
+        C->>F: 保存答案与方案草案，当前 SOW 保持原样
+        loop 用户在讨论且有具体进展，首份方案加最多一次主动修订
+            C->>U: 展示有依据的调整、分类变化、留空项与回查边界
+            U->>C: 补充 / 选择 / 要求调整方案
+            C->>F: 更新讨论草案，保留未回答项
+        end
+        alt 用户取消、到限或尚未确认
+            C->>U: 保留当前 Excel，说明讨论状态
+        else 用户确认具体方案
+            C->>F: 核对方案所依赖的版本、写对象和规则
+            alt 相关内容已变化
+                C->>U: 解释变化，回到方案讨论；不直接应用旧确认
+            else 确认仍有效
+                C->>T: 在确认切片内应用，不扩大上游回查
+                alt 必须改变已确认方案或扩大范围
+                    C->>F: 保存候选，不激活部分修改
+                    C->>U: 返回差异与修订方案，重新讨论确认
+                else 保持在方案内
+                    C->>X: 必要检查、模板计算、生成并复读工作簿
+                    opt 明确且可在原方案内修复，并仍有共享返修次数
+                        X-->>C: 局部错误及定位
+                        C->>X: 仅修失败对象或工具步骤
+                    end
+                    alt 必要检查通过
+                        C->>F: 一致提交模型、决策、待确认项与 Excel 新版本
+                        C->>U: 返回更新 Excel、变化摘要及剩余待确认项
+                    else 到限、失败或无进展
+                        C->>U: 返回具体诊断，原版本仍有效
+                    end
+                end
+            end
+        end
+    end
+    C->>O: 结束请求；讨论、等待、应用分别计量
+    Note over U,F: 不要求用户对更新后的 Excel 再定稿；有新反馈才开启下一次 clarify

@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant A as Clarify Agent
+    participant W as 文件与 Excel 工具
+    participant V as 不可变版本目录
+    participant P as current 指针
+    A->>W: 已确认方案、有限候选、期望基线
+    W->>W: 检查候选，导出、重算、复读
+    alt 准备失败
+        W-->>A: 保留候选与旧版本；仅恢复具体故障
+    else 准备完整
+        W->>W: 获取提交锁，复核请求/确认/基线/摘要
+        alt 已有相同请求成功结果
+            W-->>A: 返回已应用版本，不重复执行
+        else 基线变化、越界或已观察到取消
+            W-->>A: 不应用；释放锁并返回诊断
+        else 可应用
+            W->>V: 保存完整新版本与 manifest
+            Note over V,P: 此处中断：current 仍指向旧版
+            W->>P: 原子替换指针（生效点）
+            Note over V,P: 此后中断：recover 识别成功，不能重复应用
+            W->>W: 释放锁，补记非关键日志
+            W-->>A: 新版本及文件位置
+        end
+    end

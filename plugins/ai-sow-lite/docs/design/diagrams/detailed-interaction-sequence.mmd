@@ -1,0 +1,61 @@
+sequenceDiagram
+    actor U as 用户
+    participant G as Generate Agent
+    participant T as 确定性工具
+    participant F as 项目文件
+    participant C as Clarify Agent（新会话）
+    U->>G: 生成 SOW，提供材料
+    opt 开场 1：项目类型未给出
+        G->>U: 确定新项目还是旧项目
+        U-->>G: 项目类型
+    end
+    opt 开场 2：必要输入尚未收齐
+        G->>U: 收集缺少的 PRD、HLD；旧项目加往期 SOW；原型可选
+        U-->>G: 提供必要输入，可附加补充材料
+    end
+    G->>T: 登记并读取必要输入
+    T-->>G: 来源定位、内容及读取限制
+    alt 必需材料缺失或基础明显不足
+        G-->>U: 具体补料清单；保留资料和分析，本次结束
+    else 可以开展分析
+        Note over G: 自主分析业务、技术和交付范围
+        loop 仍有关键输入问题且值得补充，最多两轮主动提问
+            G->>U: 仅澄清和确认输入的事实、含义、冲突与决定
+            U-->>G: 确认输入事项、答复或补充材料
+            Note over G: 仅复核受影响结论；到限仍缺基础或无进展则退出补料
+        end
+        Note over G,U: 无输入问题直接继续；不审批拆解、分类或出稿
+        opt 基础已足够
+            Note over G: 组织骨架，按关联切片联合形成 Story / AC / Task
+            Note over G: 复杂度未定按 M 并附问题；其他缺值留空；复用候选新建 + 待确认；检查/修正按 D04B 上限
+            G->>T: 检查候选、生成并核验 Excel
+            alt 文件步骤失败
+                T-->>G: 诊断及可恢复候选
+                G-->>U: 未交付成功；保留专业成果，恢复范围限于故障步骤
+            else 完整版本可用
+                T->>F: 保存完整版本并切换 current
+                G-->>U: Excel、同版待确认项与说明；本次结束
+            end
+        end
+    end
+    Note over U,F: 用户可直接使用并离开；没有必须回来触发的工作
+    opt 用户有反馈且当前版本存在
+        U->>C: 答复问题或提出自由建议
+        C->>F: 读取当前版本及相关证据
+        Note over C: 定位有限读写范围，保存讨论草案
+        C-->>U: 具体调整方案、影响和仍未知内容
+        alt 未确认或取消
+            Note over C,F: 当前版本不变；草案可保留
+        else 用户确认方案
+            U->>C: 执行该方案
+            C->>T: 核对基线、检查实际修改范围
+            alt 范围扩大或相关依据改变
+                T-->>C: 拒绝激活候选并给出差异
+                C-->>U: 具体修订方案，回到讨论
+            else 方案仍适用
+                C->>T: 生成并核验新 Excel，应用完整版本
+                T->>F: 保存成功后切换 current
+                C-->>U: 更新 Excel 与剩余问题；本次结束
+            end
+        end
+    end

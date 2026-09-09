@@ -1,0 +1,36 @@
+sequenceDiagram
+    actor U as 用户
+    participant A as 宿主 Agent
+    participant T as Python 工具
+    participant O as 本地观测记录与报告
+    participant F as SOW 版本文件
+    U->>A: generate 输入 / clarify 意见
+    A->>O: 已知请求关联、活动起点（未覆盖处保留未知）
+    loop 本次有限活动，次数由 D04B 约束
+        A->>T: 原有工具请求 + 小型活动标签
+        T->>O: 实际工具开始/结束、工作量、状态
+        T-->>A: 文件定位、检查或诊断
+        opt 宿主提供可验证的 usage
+            A-->>O: 原生 scope/身份、真实计数与覆盖
+        end
+        opt 需要输入澄清或具体修改确认
+            A->>U: 批量输入问题 / 已准备的修改方案
+            A->>O: 等待开始（若可观察）
+            U->>A: 回答 / 确认 / 取消
+            A->>O: 等待结束或观测缺口
+        end
+    end
+    alt 业务满足交付条件
+        T->>F: 按 D07 生效完整版本
+        T-->>A: 可用文件与同版问题
+    else 补料退出 / 仅讨论 / 取消 / 失败
+        A->>O: 实际结果与保留位置
+        Note over A,F: 不为统计补跑业务，已有版本保留
+    end
+    A->>O: 一次有界收尾并获取报告摘要
+    O-->>A: 截止点、已知指标与缺口
+    A-->>U: 本次结果；资源只作简洁说明
+    opt 后续实际收到迟到 usage 或显式查询
+        A-->>O: 关联原请求的计数；去重更新报告
+        Note over O,F: 不改不可变 SOW 版本，不重启已结束流程
+    end
