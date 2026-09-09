@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "items": [
+    {
+      "id": "8083cca8-b0ae-42b1-bf10-550f5b292f05",
+      "revision": 1,
+      "question": "迁移资产、版本发布与切换方案和各执行活动分别由谁交付？",
+      "targets": [
+        {
+          "object_id": "6f203267-9aba-4ef2-86fa-f0529de82a56",
+          "field": null
+        },
+        {
+          "object_id": "b8d01435-d96e-491d-a530-3a5265b2b276",
+          "field": null
+        }
+      ],
+      "evidence_refs": [
+        "35a43142-90c2-4a57-8ab4-c3d510ffccd7",
+        "63555b49-c22d-4ba9-8a29-4cf04436f1ab",
+        "44106ccd-3f9a-40d0-a730-0f30c528c66f"
+      ],
+      "current_handling": "根据 Q1 明确本期制作与客户执行的边界。",
+      "unestimated_work": false,
+      "status": "resolved",
+      "resolution": {
+        "decision_id": "1d46caea-174a-4c5c-9007-01d80fa79f97",
+        "request_id": "95b424f4-8703-4c4d-9ace-298cd6421cab",
+        "summary": "本期负责迁移资产及必要验证和发布方案；客户负责独立演练、生产执行及正式验收，其他边界沿用 HLD。"
+      }
+    },
+    {
+      "id": "386099d0-d20f-4a8d-8b35-c11a5762cb41",
+      "revision": 1,
+      "question": "不直接访问生产取数时，谁提供迁移开发验证输入，谁执行核验并交付结果？",
+      "targets": [
+        {
+          "object_id": "97de96e4-30e8-4958-81b5-c8d76b7066bd",
+          "field": "notes"
+        }
+      ],
+      "evidence_refs": [
+        "d94cc735-fd04-4c2c-878e-fa1aa15ab765",
+        "63555b49-c22d-4ba9-8a29-4cf04436f1ab",
+        "830a4412-eb3b-4b70-b9fb-5355d37d3f02"
+      ],
+      "current_handling": "按 Q2 使用客户承诺提供的脱敏样本和非生产目标环境，由本期开发团队验证并出具核验结果。",
+      "unestimated_work": false,
+      "status": "resolved",
+      "resolution": {
+        "decision_id": "c3c80e51-6878-4c99-a1bc-e3fe0373d563",
+        "request_id": "95b424f4-8703-4c4d-9ace-298cd6421cab",
+        "summary": "已明确受控输入供给方、验证方及结果交付方；不推断生产访问授权或生产数据量。"
+      }
+    },
+    {
+      "id": "998fff89-6537-409f-931a-978bdb2ef091",
+      "revision": 1,
+      "question": "资料迁移资产的复杂度暂按默认 M 保留，是否接受该暂定口径？",
+      "targets": [
+        {
+          "object_id": "97de96e4-30e8-4958-81b5-c8d76b7066bd",
+          "field": "complexity"
+        }
+      ],
+      "evidence_refs": [
+        "d94cc735-fd04-4c2c-878e-fa1aa15ab765",
+        "830a4412-eb3b-4b70-b9fb-5355d37d3f02",
+        "f83f9794-4b83-47b6-830d-2514a14ab722"
+      ],
+      "current_handling": "DATA-MIGRATION 的数据量维度未知；保留已明确的迁移交付，默认 M 并保持 open，不视为已确认规模，不追加查找或询问记录条数。",
+      "unestimated_work": false,
+      "status": "open",
+      "resolution": null
+    }
+  ]
+}

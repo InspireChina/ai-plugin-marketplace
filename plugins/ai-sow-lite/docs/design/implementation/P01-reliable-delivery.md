@@ -25,12 +25,12 @@
 
 **Interfaces:** 消费 P00 信封、candidate 和 D02 字段；产出 execute、check_candidate、严格 JSON/摘要及 Case/run_request。I1.2 尚未完成前用 P00 的 contract_case 测校验单元，不伪造 CLI ingest 成功；未实现操作返回明确不支持，不能返回假成功。
 
-- [ ] 从 D00 来源读取 bootstrap 与对应安装测试，迁入身份/路径适配；pyproject 使用上述锁定依赖和 `runtime` 包位置，CLI 仅用 argparse 的 --request，不加入 Typer/MCP。uv 首次生成锁文件后以 --locked 验证重建；已有测试保留。
-- [ ] 迁入隔离环境复用和中文路径/UTF-8 的适用测试；检查 PowerShell 与 Bash 的源文件编码、子进程输入输出和 Lite 最长实际路径。旧 runtime-environment 的路径长度常量不直接沿用；仅在实际平台验证后写支持声明。不为复用旧说明加入 PDF/OCR 依赖或旧专业运行器。
-- [ ] 创建 EX01 合成 PRD/HLD/答复和预期义务，固定 UUID 映射；读取真实模板标准 ID。严格 JSON tests 先验证重复 key/未知版本/文本空白摘要，首次运行应因尚无实现失败。
-- [ ] 在合同首次可校验后、扩展完整版本保存/投影/事件聚合前，前置 I2.2 的 `three-scope` 最小候选演练和 I2.3 的受控宿主 usage 探针。隔离会话只给真实合成输入、必要指引和模板标准，不给预制 candidate/expectations；观察三类义务、默认 M、候选与依据编写/修正负担，以及请求边界和活动归属实际可得性。仅形成 work 候选及最小观测记录，不伪装未实现 CLI 或正式交付。结果归入既定 I2-generate/host-support 验证记录，I2 在真实通道接通后补其集成证据；不增加新里程碑、运行时阶段或第二套正式验收。
-- [ ] 实现 Schema 与跨文件检查：唯一 ID/父引用、AC 来源、分类/null/不适用、standard_id 对应、问题/决定状态、未拆明工作及空父项、依据图可达且无循环。每批输出全部诊断，不回写业务字段。resolution 精确编码为 resolved 的 decision_id/request_id/summary，superseded 的 replacement_item_ids/lineage_refs/request_id/reason；lineage_refs 使用 P00 的历史复合键。
-- [ ] 为以下反例参数化测试：无说明的 null；complexity=null/X；类型未知但 default M 的 standard_id=null；非集成 null；default M 与新建有值但 open；有 Task 又有未拆明工作；空父项无缺口；循环 judgment；合法空 gap 候选与无分析支持的空候选。最后一项代码只能核对分析记录存在及一致，语义充分性在 I2 演练，不能建关键词充分性规则。
+- [x] 从 D00 来源读取 bootstrap 与对应安装测试，迁入身份/路径适配；pyproject 使用上述锁定依赖和 `runtime` 包位置，CLI 仅用 argparse 的 --request，不加入 Typer/MCP。uv 首次生成锁文件后以 --locked 验证重建；已有测试保留。
+- [x] 迁入隔离环境复用和中文路径/UTF-8 的适用测试；检查 PowerShell 与 Bash 的源文件编码、子进程输入输出和 Lite 最长实际路径。旧 runtime-environment 的路径长度常量不直接沿用；仅在实际平台验证后写支持声明。不为复用旧说明加入 PDF/OCR 依赖或旧专业运行器。
+- [x] 创建 EX01 合成 PRD/HLD/答复和预期义务，固定 UUID 映射；读取真实模板标准 ID。严格 JSON tests 先验证重复 key/未知版本/文本空白摘要，首次运行应因尚无实现失败。
+- [x] 在合同首次可校验后、扩展完整版本保存/投影/事件聚合前，前置 I2.2 的 `three-scope` 最小候选演练和 I2.3 的受控宿主 usage 探针。隔离会话只给真实合成输入、必要指引和模板标准，不给预制 candidate/expectations；观察三类义务、默认 M、候选与依据编写/修正负担，以及请求边界和活动归属实际可得性。仅形成 work 候选及最小观测记录，不伪装未实现 CLI 或正式交付。结果归入既定 I2-generate/host-support 验证记录，I2 在真实通道接通后补其集成证据；不增加新里程碑、运行时阶段或第二套正式验收。
+- [x] 实现 Schema 与跨文件检查：唯一 ID/父引用、AC 来源、分类/null/不适用、standard_id 对应、问题/决定状态、未拆明工作及空父项、依据图可达且无循环。每批输出全部诊断，不回写业务字段。resolution 精确编码为 resolved 的 decision_id/request_id/summary，superseded 的 replacement_item_ids/lineage_refs/request_id/reason；lineage_refs 使用 P00 的历史复合键。
+- [x] 为以下反例参数化测试：无说明的 null；complexity=null/X；类型未知但 default M 的 standard_id=null；非集成 null；default M 与新建有值但 open；有 Task 又有未拆明工作；空父项无缺口；循环 judgment；合法空 gap 候选与无分析支持的空候选。最后一项代码只能核对分析记录存在及一致，语义充分性在 I2 演练，不能建关键词充分性规则。
 
 ```python
 def test_null_complexity_is_not_a_legal_unknown(contract_case):
@@ -49,7 +49,9 @@ def test_null_complexity_is_not_a_legal_unknown(contract_case):
 
 check_candidate 返回报告本体，CLI 将其落盘并返回 check_ref；报告固定含 diagnostics 和 valid_for_render，与 CLI result 不混用。有效 slice 也为 valid_for_render=false。
 
-- [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_contracts.py plugins/ai-sow-lite/tests/test_bootstrap.py -q`；失败预期转为当前可测范围全部通过后关闭此任务，其他平台执行面明确未验证。记录严格摘要向量和真实模板身份，不提交生成缓存；I1.5 再以独立副本验证完整安装/交付。
+- [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_contracts.py plugins/ai-sow-lite/tests/test_bootstrap.py -q`；失败预期转为当前可测范围全部通过后关闭此任务，其他平台执行面明确未验证。记录严格摘要向量和真实模板身份，不提交生成缓存；I1.5 再以独立副本验证完整安装/交付。
+
+**完成证据：** I1.1 已通过 TDD 回归和独立审阅收口，完整 Lite 144项通过、1项因缺少 pwsh 跳过；真实 Agent 候选及宿主探针已记录。见 [I1 验证](../../validation/I1-reliable-delivery.md)。I1.2及以后仍未完成。
 
 ## I1.2 · 文本登记与有效版本保存
 

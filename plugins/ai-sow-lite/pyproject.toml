@@ -1,0 +1,17 @@
+[project]
+name = "ai-sow-lite-runtime"
+version = "0.1.0a1"
+description = "Self-contained mechanical runtime for AI SOW Lite"
+requires-python = ">=3.12,<3.13"
+dependencies = ["jsonschema==4.26.0", "openpyxl==3.1.5"]
+
+[dependency-groups]
+dev = ["pytest==8.4.1"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["runtime"]
+addopts = ["--import-mode=importlib"]

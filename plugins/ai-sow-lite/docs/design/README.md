@@ -2,9 +2,9 @@
 
 **核心：generate 补足必要信息后快速出稿；clarify 根据用户答复或意见，讨论并应用有限修改。两入口共享文件，流程独立。**
 
-本目录包含设计稿，尚未实现 Lite Skill 或运行时。ai-sow 已跑通，Lite 的目标是降低出稿与修改的耗时和 token；流程按本目录独立设计，安装、基础技术栈和 Excel 操作参考已有实现与验证，仅对差异和未知能力补测。模板使用用户选定的 [sow-template.xlsx](../../assets/sow-template.xlsx)，已整理为可独立手填的可见模板，并落实 UAT 类型标准与只读公式。
+本目录包含设计稿与实施进度。I1.1 的最小运行时已实现并通过当前测试，独立审阅与定点修复复核已完成；Lite Skill 和完整交付流程尚未实现，实际范围见 [I1 验证](../validation/I1-reliable-delivery.md)。ai-sow 已跑通，Lite 的目标是降低出稿与修改的耗时和 token；流程按本目录独立设计，安装、基础技术栈和 Excel 操作参考已有实现与验证，仅对差异和未知能力补测。模板使用用户选定的 [sow-template.xlsx](../../assets/sow-template.xlsx)，已整理为可独立手填的可见模板，并落实 UAT 类型标准与只读公式。
 
-统一 review 从 [13 自检结论与已定边界](13-self-review-and-decisions.md) 开始，再按 [实现前审阅入口](REVIEW.md) 查看细节。单人串行、金额交给原模板且不改模板已同步到 D00—D09 和 [P00—P04 实施计划](implementation/README.md)；有限编辑的机械构造接口已补齐，当前仍停在实现前。
+统一 review 从 [13 自检结论与已定边界](13-self-review-and-decisions.md) 开始，再按 [实现前审阅入口](REVIEW.md) 查看细节。单人串行、金额交给原模板且不改模板已同步到 D00—D09 和 [P00—P04 实施计划](implementation/README.md)；有限编辑的机械构造接口已补齐，当前正在按 I1.1 开始实现，后续增量仍按依赖推进。
 
 ## 1. 用户如何使用
 
@@ -86,7 +86,7 @@ agent 自主选择专业活动和切片粒度。小项目可以一片完成，�
 
 ## 5. 文档导航
 
-用户指定旧版资料的筛选见 [12 专业资料吸收评估](12-reference-absorption.md)：专业方法与反例已同步到 [P00—P04 执行计划](implementation/README.md)，包含参考文件归属、五组生成夹具、有限修改/原型反例及资源实测要求；与 Lite 冲突的旧规则不迁入。当前整包供统一 review，尚未实现 Skill 或改变详细设计合同。
+用户指定旧版资料的筛选见 [12 专业资料吸收评估](12-reference-absorption.md)：专业方法与反例已同步到 [P00—P04 执行计划](implementation/README.md)，包含参考文件归属、五组生成夹具、有限修改/原型反例及资源实测要求；与 Lite 冲突的旧规则不迁入。设计 review 已收口，当前按执行计划推进；尚未实现 Skill。
 
 详细设计层级、专题、依赖顺序与验证安排见 [11 详细设计路线图](11-detailed-design-roadmap.md)。[详细设计](detailed/README.md) 已包含 R0 交互、R1 数据/工具接口、R2 输入分析、Generate 与 [D06 Excel 投影](detailed/D06-excel-projection-and-delivery.md)，以及场景追踪表。[EX04](detailed/examples/EX04-excel-projection.md) 走读独立问题说明、原模板填值、安全名称关联与修改后的交付。[D05 Clarify](detailed/D05-clarify-and-change-scope.md) 与 [EX05 修改走读](detailed/examples/EX05-clarify-changes.md) 已细化有限候选、部分答复、拆合和异常出口。[D08 观测与性能](detailed/D08-telemetry-and-performance.md) 与 [EX06 计量走读](detailed/examples/EX06-telemetry-accounting.md) 已定义实际采集、去重/共享/未知和性能对照，并记录有限宿主只读证据。[D09 设计收口与实现增量](detailed/D09-validation-and-implementation.md) 已完成接口衔接核对及 I1—I4 规划，[EX07](detailed/examples/EX07-design-consistency.md) 补充尚未拆明工作与首次生效反例。下一步是 I1 可靠程序交付；逐活动 usage 与输出/修改适配仍待实际验证。
 

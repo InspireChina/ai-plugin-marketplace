@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000042",
+      "revision": 1,
+      "question": "资料记录条数未提供，请确认默认 M 或提供调整意见。",
+      "targets": [
+        {
+          "object_id": "00000000-0000-4000-8000-000000000036",
+          "field": "complexity"
+        }
+      ],
+      "evidence_refs": [
+        "00000000-0000-4000-8000-000000000051"
+      ],
+      "current_handling": "按默认 M 出稿，条数未知；保留映射、装载与内含核验范围。",
+      "unestimated_work": false,
+      "status": "open",
+      "resolution": null
+    }
+  ]
+}

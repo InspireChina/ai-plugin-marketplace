@@ -1,0 +1,300 @@
+{
+  "schema_version": "1.0",
+  "evidence": [
+    {
+      "id": "1d8c0ae0-0d9e-4a3c-832e-07b66f86a2f8",
+      "kind": "statement",
+      "text": "既有资料需在上线后可查询，资料编号、标题、正文等约定字段保持一致；公告由平台提供，无需迁移。",
+      "source_refs": [
+        {
+          "input_version_id": "704a9dae-51fb-4235-ac8b-a0ae92f94618",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/704a9dae-51fb-4235-ac8b-a0ae92f94618/prd.md",
+            "start_line": 17,
+            "end_line": 17,
+            "heading_path": [
+              "P-D1"
+            ]
+          },
+          "excerpt_hash": "e1fff71a697bdbb1fd046c7ac5fe8111ee65d2ccf2e7053ffd15180f565a1601"
+        }
+      ],
+      "basis_refs": [],
+      "limitations": ""
+    },
+    {
+      "id": "d94cc735-fd04-4c2c-878e-fa1aa15ab765",
+      "kind": "statement",
+      "text": "原资料库由目标存储替代；迁移资产新建，单源目标、一个对象组、14 字段一对一映射，质量基线明确，含装载与字段/记录核验。无需清洗、持续同步或双写，允许整体回滚，无零停机或独立停机时长门禁；开发方不直接访问生产取数。",
+      "source_refs": [
+        {
+          "input_version_id": "1622fb81-4338-4a5c-9426-01d17149c95f",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/1622fb81-4338-4a5c-9426-01d17149c95f/hld.md",
+            "start_line": 17,
+            "end_line": 17,
+            "heading_path": [
+              "H-D1"
+            ]
+          },
+          "excerpt_hash": "f0858965d84634d0029dca97c176012cf1af26e3cdd6f485f93d834ada31468a"
+        }
+      ],
+      "basis_refs": [],
+      "limitations": "生产记录条数未提供。"
+    },
+    {
+      "id": "35a43142-90c2-4a57-8ab4-c3d510ffccd7",
+      "kind": "statement",
+      "text": "一个部署组件、一个执行团队、一个已定窗口，沿用六步发布规范、标准回滚及 Go/No-Go 判据，需形成对应版本发布与切换方案，不设计新发布策略。",
+      "source_refs": [
+        {
+          "input_version_id": "1622fb81-4338-4a5c-9426-01d17149c95f",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/1622fb81-4338-4a5c-9426-01d17149c95f/hld.md",
+            "start_line": 21,
+            "end_line": 21,
+            "heading_path": [
+              "H-D2"
+            ]
+          },
+          "excerpt_hash": "68fc000ca5ac90a913280594b85ff5ede7a5a7756afb9d004c1389d03de4f22c"
+        }
+      ],
+      "basis_refs": [],
+      "limitations": "原文所留交付责任问题已由本次 Q1、Q2 答复明确，不能继续据此视为未知。"
+    },
+    {
+      "id": "63555b49-c22d-4ba9-8a29-4cf04436f1ab",
+      "kind": "statement",
+      "text": "发布方案引用迁移资产验证通过的字段/记录核验结果；独立迁移演练、生产迁移、部署、正式验收测试及培训由客户已有团队承担，各开发 Task 自身必要验证包含在相应工作中。",
+      "source_refs": [
+        {
+          "input_version_id": "1622fb81-4338-4a5c-9426-01d17149c95f",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/1622fb81-4338-4a5c-9426-01d17149c95f/hld.md",
+            "start_line": 25,
+            "end_line": 25,
+            "heading_path": [
+              "H-D3"
+            ]
+          },
+          "excerpt_hash": "5d470fa8a36d91d8b702ee715b72abcf2cd4bce9b6387629df3ae6e0d3c74156"
+        }
+      ],
+      "basis_refs": [],
+      "limitations": "执行责任以本次答复为最终边界；答复其余事项沿用 HLD。"
+    },
+    {
+      "id": "44106ccd-3f9a-40d0-a730-0f30c528c66f",
+      "kind": "statement",
+      "text": "本期负责迁移资产、自测、字段和记录核验及发布与切换方案；独立演练、生产迁移、部署及正式验收由客户已有团队负责，其他边界沿用 HLD。",
+      "source_refs": [
+        {
+          "input_version_id": "a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae/answer.md",
+            "start_line": 4,
+            "end_line": 4,
+            "heading_path": [
+              "Q1 交付责任"
+            ]
+          },
+          "excerpt_hash": "30fa6ccde63ca582a3dee0bec811e185dcab7894fb35ff40476224ca13d6749e"
+        }
+      ],
+      "basis_refs": [],
+      "limitations": ""
+    },
+    {
+      "id": "830a4412-eb3b-4b70-b9fb-5355d37d3f02",
+      "kind": "statement",
+      "text": "客户提供与既定映射一致的脱敏样本和非生产目标环境；本期开发团队执行资产自测及字段/记录核验并交付供发布方案引用的结果。开发方不直接访问生产取数，生产迁移及部署仍由客户执行。",
+      "source_refs": [
+        {
+          "input_version_id": "a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae/answer.md",
+            "start_line": 7,
+            "end_line": 7,
+            "heading_path": [
+              "Q2 开发与验证输入"
+            ]
+          },
+          "excerpt_hash": "121ba3c42ccbc457959277d84f741642e637d64f219a1ebdec621c0581acdd78"
+        }
+      ],
+      "basis_refs": [],
+      "limitations": "答复未补充生产记录总数；样本和环境是供给承诺，并非已观察到就绪。"
+    },
+    {
+      "id": "f83f9794-4b83-47b6-830d-2514a14ab722",
+      "kind": "judgment",
+      "text": "替换原资料存储且交付一次性迁移资产，匹配 DATA-MIGRATION 新建；字段/记录核验和自测内含。记录总数未知，复杂度按本轮规则暂取 M 并保持 open，不将默认值解释成生产规模。",
+      "source_refs": [],
+      "basis_refs": [
+        "1d8c0ae0-0d9e-4a3c-832e-07b66f86a2f8",
+        "d94cc735-fd04-4c2c-878e-fa1aa15ab765",
+        "63555b49-c22d-4ba9-8a29-4cf04436f1ab",
+        "44106ccd-3f9a-40d0-a730-0f30c528c66f",
+        "830a4412-eb3b-4b70-b9fb-5355d37d3f02"
+      ],
+      "limitations": "未知数据量使精确定档受限；本轮不为定档追加取数、补证或询问条数。"
+    },
+    {
+      "id": "bcf8d9fd-12ba-491d-b709-32a330d2b5f8",
+      "kind": "judgment",
+      "text": "本期购买对应版本的发布与切换方案，沿用既有策略；按 REL-PLAN 新建一份方案。单组件、单执行团队、六步、标准回滚且无特别停机门禁支持 S 档；不因资料迁移或引用核验结果自动增加专项设计或发布执行工作。",
+      "source_refs": [],
+      "basis_refs": [
+        "d94cc735-fd04-4c2c-878e-fa1aa15ab765",
+        "35a43142-90c2-4a57-8ab4-c3d510ffccd7",
+        "63555b49-c22d-4ba9-8a29-4cf04436f1ab",
+        "44106ccd-3f9a-40d0-a730-0f30c528c66f",
+        "830a4412-eb3b-4b70-b9fb-5355d37d3f02"
+      ],
+      "limitations": ""
+    },
+    {
+      "id": "1b55a6a5-67c8-4c08-b889-e694ad293cfd",
+      "kind": "judgment",
+      "text": "本期资产制作及自身验证，与客户的演练、生产执行和正式验收分开。平台既有资产保持不变；培训仍按 HLD 归客户。承诺的脱敏样本与非生产环境构成迁移验证前提，不代表开发方取得生产访问权限。",
+      "source_refs": [],
+      "basis_refs": [
+        "a1d48717-5a97-43e9-aa2e-da703b0127cb",
+        "63555b49-c22d-4ba9-8a29-4cf04436f1ab",
+        "44106ccd-3f9a-40d0-a730-0f30c528c66f",
+        "830a4412-eb3b-4b70-b9fb-5355d37d3f02"
+      ],
+      "limitations": ""
+    }
+  ],
+  "topics": [
+    {
+      "topic_id": "b929ff12-5f65-4a98-9ca7-f4470e7cf304",
+      "topic_version_id": "c748ada4-c0d6-422c-85e4-8d78c0c50e1f",
+      "title": "既有资料迁移、发布方案及客户执行边界",
+      "input_version_ids": [
+        "704a9dae-51fb-4235-ac8b-a0ae92f94618",
+        "1622fb81-4338-4a5c-9426-01d17149c95f",
+        "a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae"
+      ],
+      "uses": [
+        "to-be-scope",
+        "to-be-architecture"
+      ],
+      "covered_regions": [
+        {
+          "input_version_id": "704a9dae-51fb-4235-ac8b-a0ae92f94618",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/704a9dae-51fb-4235-ac8b-a0ae92f94618/prd.md",
+            "start_line": 17,
+            "end_line": 17,
+            "heading_path": [
+              "P-D1"
+            ]
+          },
+          "excerpt_hash": "e1fff71a697bdbb1fd046c7ac5fe8111ee65d2ccf2e7053ffd15180f565a1601"
+        },
+        {
+          "input_version_id": "1622fb81-4338-4a5c-9426-01d17149c95f",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/1622fb81-4338-4a5c-9426-01d17149c95f/hld.md",
+            "start_line": 17,
+            "end_line": 17,
+            "heading_path": [
+              "H-D1"
+            ]
+          },
+          "excerpt_hash": "f0858965d84634d0029dca97c176012cf1af26e3cdd6f485f93d834ada31468a"
+        },
+        {
+          "input_version_id": "1622fb81-4338-4a5c-9426-01d17149c95f",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/1622fb81-4338-4a5c-9426-01d17149c95f/hld.md",
+            "start_line": 21,
+            "end_line": 21,
+            "heading_path": [
+              "H-D2"
+            ]
+          },
+          "excerpt_hash": "68fc000ca5ac90a913280594b85ff5ede7a5a7756afb9d004c1389d03de4f22c"
+        },
+        {
+          "input_version_id": "1622fb81-4338-4a5c-9426-01d17149c95f",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/1622fb81-4338-4a5c-9426-01d17149c95f/hld.md",
+            "start_line": 25,
+            "end_line": 25,
+            "heading_path": [
+              "H-D3"
+            ]
+          },
+          "excerpt_hash": "5d470fa8a36d91d8b702ee715b72abcf2cd4bce9b6387629df3ae6e0d3c74156"
+        },
+        {
+          "input_version_id": "a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae/answer.md",
+            "start_line": 4,
+            "end_line": 4,
+            "heading_path": [
+              "Q1 交付责任"
+            ]
+          },
+          "excerpt_hash": "30fa6ccde63ca582a3dee0bec811e185dcab7894fb35ff40476224ca13d6749e"
+        },
+        {
+          "input_version_id": "a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae",
+          "locator": {
+            "kind": "text_lines",
+            "path": ".ai-sow-lite/inputs/originals/a3869e1c-4c2f-48a0-ba8c-ebca302ea2ae/answer.md",
+            "start_line": 7,
+            "end_line": 7,
+            "heading_path": [
+              "Q2 开发与验证输入"
+            ]
+          },
+          "excerpt_hash": "121ba3c42ccbc457959277d84f741642e637d64f219a1ebdec621c0581acdd78"
+        }
+      ],
+      "uncovered_regions": [],
+      "evidence_refs": [
+        "1d8c0ae0-0d9e-4a3c-832e-07b66f86a2f8",
+        "d94cc735-fd04-4c2c-878e-fa1aa15ab765",
+        "35a43142-90c2-4a57-8ab4-c3d510ffccd7",
+        "63555b49-c22d-4ba9-8a29-4cf04436f1ab",
+        "44106ccd-3f9a-40d0-a730-0f30c528c66f",
+        "830a4412-eb3b-4b70-b9fb-5355d37d3f02",
+        "f83f9794-4b83-47b6-830d-2514a14ab722",
+        "bcf8d9fd-12ba-491d-b709-32a330d2b5f8",
+        "1b55a6a5-67c8-4c08-b889-e694ad293cfd",
+        "a1d48717-5a97-43e9-aa2e-da703b0127cb"
+      ],
+      "related_object_ids": [
+        "082919ac-553b-4d1f-b0a7-b33a3661f2f3",
+        "15d9e368-7bbe-4c4c-9410-9785c6bc0d3c",
+        "6f203267-9aba-4ef2-86fa-f0529de82a56",
+        "b8d01435-d96e-491d-a530-3a5265b2b276",
+        "97de96e4-30e8-4958-81b5-c8d76b7066bd",
+        "cbdba750-739e-49c2-8efc-9a8581e7303f"
+      ],
+      "external_responsibilities": "客户提供匹配字段映射的脱敏样本和非生产目标环境；客户已有团队承担独立演练、生产迁移、部署、正式验收及培训。平台既有结构和环境不改。",
+      "limitations": "生产记录总数未知，迁移复杂度仅默认 M 且保留 open；未证明样本/环境已就绪，也未执行迁移、自测或生产验证。",
+      "conclusion": "Q1、Q2 已明确资产、方案与执行责任。新建一份 DATA-MIGRATION 资产，内含自测、字段和记录核验；新建一份 REL-PLAN 方案，以迁移核验结果为交付前提。迁移 M 为默认值；发布按单组件、单执行团队、六步、标准回滚及无特殊停机门禁匹配 S。未另造存储建设、专项策略设计、PoC、演练、生产执行、正式测试或培训任务。",
+      "historical_items": []
+    }
+  ],
+  "observations": []
+}

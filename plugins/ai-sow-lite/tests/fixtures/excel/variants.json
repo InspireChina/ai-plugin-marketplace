@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "variants": [
+    {
+      "id": "long-text",
+      "description": "超过 Excel 单元格容量的文字保存在独立 details.md。"
+    },
+    {
+      "id": "duplicate-wildcard",
+      "description": "同名与 *?~ 标题保持对象身份和真实文字。"
+    },
+    {
+      "id": "unknown-type",
+      "description": "work_type_name=null，默认 M，standard_id=null，精确 open 问题。"
+    },
+    {
+      "id": "unestimated-work",
+      "description": "已有 Task 与父项未拆明剩余义务并存。"
+    },
+    {
+      "id": "empty-gap",
+      "description": "无模型对象但有来源可追溯且一致的无 gap 分析。"
+    }
+  ]
+}
