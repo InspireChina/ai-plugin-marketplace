@@ -254,6 +254,9 @@ def inspect_view(project: Path, payload):
     from .project import recover_request
     project = Path(project).resolve()
     view, selector = payload['view'], payload['selector']
+    if view == 'telemetry':
+        from .telemetry import inspect_report
+        return inspect_report(project, payload)
     if view not in ('inputs', 'regions', 'topics', 'current', 'request', 'objects', 'standards'):
         raise StorageError('OPERATION_UNSUPPORTED', '此视图尚未实现，不能返回模拟数据。')
     checked_json(project, '.ai-sow-lite/project.json', 'project')

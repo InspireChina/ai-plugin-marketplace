@@ -36,6 +36,8 @@ project_path 相对调用 cwd 解析一次；示例请求需放在测试工作�
 
 stdout 只输出一个 UTF-8 JSON 结果，固定字段 `ok/request_id/operation/result/diagnostics`。result 的大内容以 `{path, sha256}` 文件引用返回；小摘要包含数量、版本、范围和续读位置。结果预算只限制工具返回大小，不判断业务充分性。异常 stderr 保持脱敏，完整错误不回显输入。
 
+I1.4 为已进入执行的工具结果增加非业务 `result.observation`：`recording` 为 recorded/degraded，`gaps` 为稳定缺口代码列表，`report_path` 为项目相对路径或 null。它不改变原业务结果、顶层字段或退出码；观测失败也不改成业务失败。非法业务信封仍先拒绝，不能借观测降级跳过 payload 或路径校验。实际文件与字段以 [工具合同](../../../references/tools.md) 为准。
+
 退出码：0 表示操作完成（可有合法未知）；2 表示请求/版本/候选/边界不合法；3 表示可诊断的 I/O、锁或计算故障；4 表示观察到取消且未应用；未预料错误为 1 并给 `INTERNAL_ERROR`。如果已越过生效点，即使收尾失败也返回已应用事实；响应丢失由 recover 查询。错误结果也必须有信封，CLI 无法解析请求时 request_id 可为 null。
 
 诊断结构固定 `code/target/message/preserved_paths`。target 使用文件引用、对象 ID 与字段，未知部分可 null；D07 已有错误码保持原值。补 `REQUEST_ID_CONFLICT` 表示同 ID 已封存意图不一致，`PROTOCOL_INVALID` 表示信封错误，`LOOP_LIMIT_REACHED` 表示已可见次数到限。一次返回全部同候选诊断，供 agent 合批处理；不逐个错误逼出往复调用。
@@ -61,7 +63,7 @@ inspect.view 首版为 current、inputs、regions、topics、objects、standards
 
 ### 纯语义活动怎样埋点
 
-六项操作以外只提供一个内部观测入口：`python -m ai_sow_lite.telemetry --project <project-dir> --mark-file <mark.json>`，使用同一隔离 Python。mark 字段为 schema_version、request_id、execution_id、activity_ids、slice_ids、phase（start/end/milestone）和 name；程序填写实际 observed_at/事件身份，再调用 append_event。它不接受业务候选或下一阶段，不改变 checkpoint/current，失败按 D08 降级。只有没有现成宿主生命周期事件的大活动边界才调用，不每次思考都打一次工具点。
+六项操作以外只提供一个内部观测入口：`python -m ai_sow_lite.telemetry --project <project-dir> --mark-file <mark.json>`，使用同一隔离 Python。当前插件不安装为 Python package，调用方须只在该子进程环境中将 `PYTHONPATH` 指向已解析 Lite 安装目录的 `runtime`；不依赖 checkout cwd，也不修改宿主持久环境。mark 字段为 schema_version、request_id、execution_id、activity_ids、slice_ids、phase（start/end/milestone）和 name；程序填写实际 observed_at/事件身份，再调用 append_event。它不接受业务候选或下一阶段，不改变 checkpoint/current，失败按 D08 降级。只有没有现成宿主生命周期事件的大活动边界才调用，不每次思考都打一次工具点。
 
 短命 CLI 的两个标记只能证明两个观察时刻，不能当作同一进程的单调时钟区间或精确模型耗时。报告保留这种时间口径；工具时长来自真实进程内时钟，模型耗时来自已验证宿主事件。request end 标记触发一次有界采集/报告重建，已交付 summary 保持原快照；不等待迟到 usage。此适配自 I1.4 实现，I2.3 验证能采到的实际粒度和自身开销。
 

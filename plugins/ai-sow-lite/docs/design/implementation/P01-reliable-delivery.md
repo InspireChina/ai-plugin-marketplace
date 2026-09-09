@@ -128,9 +128,9 @@ def test_literal_task_name_is_not_a_formula():
 
 **Interfaces:** 消费 D08 原生事件与 observation_context；产出 append_event/build_report。report.metrics 为指标列表，每项保留 D08 的 value/unit/scope/basis/coverage/attribution；value 不可得为 null。时间用整数纳秒，token 用非负整数，不从文字长度换算。
 
-- [ ] 在 CLI execute 外层记录 monotonic_ns 的 start/end、真实 operation/attempt、状态和字节；每执行段独立时钟域，不能跨进程相减。录入失败/取消/重试成本；无 end 标 incomplete，用户等待单列。默认一次轻量收尾，记录失败不重跑业务。
-- [ ] 按 I1.1 已观察到的宿主能力，实现 P00 的 telemetry 模块 --mark-file 入口，供没有原生事件的纯语义大活动标记；只写观测，request end 有界生成报告。测试标记缺失/乱序、跨进程时钟和非法内容，不能把两个 UTC 观察点伪装成精确模型耗时或偷偷改变业务状态。
-- [ ] 先实现事件白名单落盘和重建报告，再用 EX06 事件夹具测试重复/累计/乱序、epoch、父子重叠、跨活动共享和晚到。源原生身份缺失不造 host_call_id；累计未知起点不能当本请求总量。
+- [x] 在 CLI execute 外层记录 monotonic_ns 的 start/end、真实 operation/attempt、状态和字节；每执行段独立时钟域，不能跨进程相减。录入失败/取消/重试成本；无 end 标 incomplete，用户等待单列。默认一次轻量收尾，记录失败不重跑业务。
+- [x] 按 I1.1 已观察到的宿主能力，实现 P00 的 telemetry 模块 --mark-file 入口，供没有原生事件的纯语义大活动标记；只写观测，request end 有界生成报告。测试标记缺失/乱序、跨进程时钟和非法内容，不能把两个 UTC 观察点伪装成精确模型耗时或偷偷改变业务状态。
+- [x] 先实现事件白名单落盘和重建报告，再用 EX06 事件夹具测试重复/累计/乱序、epoch、父子重叠、跨活动共享和晚到。源原生身份缺失不造 host_call_id；累计未知起点不能当本请求总量。
 
 ```python
 def test_empty_usage_is_unknown(tmp_path):
@@ -141,8 +141,10 @@ def test_empty_usage_is_unknown(tmp_path):
     assert tokens["coverage"] == "unknown"
 ```
 
-- [ ] 一个写者一条 JSONL；先保存事件再推进游标，重放去重。尾行中断与中间损坏不同诊断；迟到仅刷新 report，断言版本目录/current 字节完全不变。测日志盘满/源版本变化，业务成功仍成功，报告说明缺口。
-- [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_telemetry.py -q`。此处只证明工具计时/事件算法；真实宿主 usage 在 I2 接入，不能由合成事件宣称逐步 token 已采集。
+- [x] 一个写者一条 JSONL；先保存事件再推进游标，重放去重。尾行中断与中间损坏不同诊断；迟到仅刷新 report，断言版本目录/current 字节完全不变。测日志盘满/源版本变化，业务成功仍成功，报告说明缺口。
+- [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_telemetry.py -q`。此处只证明工具计时/事件算法；真实宿主 usage 在 I2 接入，不能由合成事件宣称逐步 token 已采集。
+
+I1.4 已完成工具计时、纯语义标记及规范化事件报告；TDD、独立审阅和定点返修复核通过。修复前完整 Lite340项通过、1项因 PowerShell 缺失跳过；最终统计/报告返修后相关196项通过，新副本公共入口与迟到事件验收通过。原模板、旧插件及 Office 实现未改，真实宿主 usage 仍由 I2.3 验证。完整证据及快照范围见 [I1 验证](../../validation/I1-reliable-delivery.md)。下一项为 I1.5，I1 整体保持未完成。
 
 ## I1.5 · 独立副本的完整交付与失败验收
 

@@ -164,3 +164,96 @@ uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/s
 ```
 
 builder 真实 ingest/inspect/analysis/check/render，并输出准备包引用。representative 含三个范围、默认 M 与待确认；expanded 含61 Story/201 Task、特殊名称和长正文；medium-list 含1 Story/3 Task、短 AC/空备注和中等任务名，另登记其较小范围的测试分析，不改既有登记记录。原生 Excel 保存/重开应使用整包副本，保持已绑定原文件不变。该入口是测试资产，不是 I1.5 独立安装验收，也不运行 Controller 的独立 CLI smoke。
+
+## I1.4 观测接口
+
+CLI 的五个顶层字段与退出码保持原合同。合法业务信封的实际执行在 `result.observation`
+附带 `{recording, gaps, report_path}`：recording 为 recorded/degraded，gaps 为去重后的稳定缺口码，
+report_path 为 `.ai-sow-lite/telemetry/<request_id>/report.json` 或 null。它只描述观测；
+不进入业务 diagnostics，不改变 ok、取消/I/O 退出码或触发业务重试。即使观测目录完全不可写，
+该字段仍一次返回 TELEMETRY_RECORDING_FAILED。非法可选 observation_context 单独降级为
+OBSERVATION_CONTEXT_INVALID；非法业务信封仍按 PROTOCOL_INVALID 拒绝。
+
+内部函数固定为 `append_event(project, event) -> None`、`build_report(project, request_id) -> dict`。
+Schema 位于 artifacts 的 telemetry_event/telemetry_report 定义。每个实际写者使用独立 producer_id，
+写入 `telemetry/<request_id>/events/<execution_id>/<producer_id>.jsonl`；重放保留原事件身份。
+事件信封为 schema_version/event_id/event_type/request_id/execution_id/producer_id/sequence/
+observed_at/activity_ids/slice_ids/data。lifecycle 的 data 保存 name/phase/span_id/parent_span_id/
+clock_domain/monotonic_ns/status/operation_id/attempt_id/host_call_id，工具另填 operation 和 timing。
+同一逻辑查询再次实际执行仍产生新的 operation/attempt 与成本；无宿主调用身份时 host_call_id=null。
+
+纯语义活动通过同一隔离 Python 的模块入口标记。由于运行时未安装为 Python package，须在**本次子进程**
+设置 `PYTHONPATH=<Lite 安装目录>/runtime`，再执行以下命令；不修改持久宿主环境、依赖或 bootstrap：
+
+```text
+<Lite 隔离 Python> -m ai_sow_lite.telemetry --project <显式项目目录> --mark-file <标记 JSON>
+```
+
+mark 只接受 schema_version/request_id/execution_id/activity_ids/slice_ids/phase/name。
+name=request 且 phase=start/end 表示请求观察边界；end 做一次有界报告重建。其他可用 name 为
+activity/input_analysis/outline/generation/merge/design_discussion/export/user_wait/useful_feedback/usable_file。
+phase 可为 start/end/milestone；不接受 token、客户正文、路径或业务 payload。
+短命进程的标记没有 monotonic_ns/clock_domain；request_wall_ns 的 basis.kind 为
+utc_observed_interval，绝不作为模型时间。该观测专用命令 stdout 为同样的 recording/gaps/report_path 小对象，
+观测降级仍退出0，不触发业务重试。
+
+报告 metrics 为列表，每项固定 name/value/unit/scope/basis/coverage/attribution/diagnostics；
+时间为整数 ns，字节为 bytes，token 为非负整数或 null。初始工具指标为 tool_duration_ns、
+model_duration_ns、request_wall_ns、user_wait_ns、input_bytes/output_bytes；无 usage 的 total_tokens 为
+null、coverage=unknown。字节统计为规范化业务信封及附加 observation 前响应的 UTF-8 字节数，
+不包含原始材料内容大小，也不换算 token。宿主能力均保持 unverified；合成事件不能证明当前宿主完整可采。
+
+### 规范化 usage、边界及查询
+
+当前内部适配合同只计算 `adapter_version="normalized-v1"`、`source_schema_version="1.0"` 的事件。
+`producer_version` 必须非 null、等于来源明确声明的 `verified_producer_version`，同一 source_id 的声明
+必须一致；未知版本/语义或声明变化保留事件并产生 SOURCE_UNVERIFIED/SOURCE_VERSION_CHANGED，
+不推断总量。source_kind 为 synthetic/normalized_host，来源 capability 声明只绑定该来源，
+不能提升 report.host_capabilities（仍全部 unverified）。EX06 夹具使用 synthetic-ex06-v1，明显标为合成。
+`observed_at` 固定为 UTC **YYYY-MM-DDTHH:MM:SS.ffffffZ**，恰好6位小数；例如
+`2026-09-09T00:00:00.000000Z`。该时间是接收时刻，不是 usage 覆盖边界。
+
+usage 的 data 使用 `source/scope_kind/scope_id/counter_epoch/native_event_id/source_sequence/revision/
+observation_kind/host_call_id/counts/coverage`。source 另含 source_id、上述版本、semantics、role 和五项
+capabilities。source_sequence 是明确来源流的原生顺序/游标，须在该 source_id 下跨 epoch 持续可比较；
+重启后无法维持此语义时使用新的明确来源身份，不能把进程重启当零基线。
+observation_kind 为 cumulative/call_absolute/delta；revision 为非负整数或 null，物理调用修订必须可排序。
+原生身份缺失为 null 并留缺口，不生成 host_call_id；call_absolute 要求 call_identity=verified、
+scope_kind=call 且 scope_id 等于真实 host_call_id。相同 source/native_event/revision 去重，最新调用修订
+取代旧值，真实重试用新调用身份计费。同来源混用累计/调用或重叠 native scope 不求和；多个 primary 来源
+同样不求和。role=cross_check 的来源仅保留核对证据，不加入 primary 总量，当前不自动解释二者差额。
+
+coverage 固定 `{start,end,boundary,complete,exclusive}`：start/end 是真实原生边界身份，boundary 为
+request_start/request_end/interval/unknown；exclusive 表示该区间确实只属于本请求，complete 表示该区间
+结束覆盖完整。累计差值只在同 scope/epoch 按源顺序计算；缺请求前起点时 total_tokens 为 null，仍可在
+known_tokens 列出已覆盖区间。缺尾段返回 partial；下降不裁零、不猜 reset，后续同 epoch 区间也保留未知。
+边界不相接/混合请求的差值留在 host 范围；跨活动只给一个 activity_group，绝不逐活动重复或按时长分摊。
+显式 delta 首版只接受源顺序下首尾相接、无重复边界的链；不能据接收 UTC 宣称区间互斥。
+
+counts 只接受 total/input/output/cached_input/cache_write_input/reasoning_output 的 `*_tokens` 字段，
+每项为非负整数或 null。semantics=native_total 只使用原生 total；total_is_input_plus_output 才允许
+在 total 缺失且 input/output 都存在时求和并标记 derived。该语义同时声明 cached_input 属于 input、
+reasoning_output 属于 output；cache_write 保留原义，所有细分均不再加到 total。
+未测实的语义使用 unverified；不从字符、文件大小、上下文窗口或账户限额转换 token。
+
+事件先 flush/fsync，再原子推进 `cursors/<source_id>.json`；游标写入失败可重放既有事件后重试游标，
+不重跑业务。尾部无换行的断行标 EVENT_TAIL_INCOMPLETE，中间损坏标 EVENT_MIDDLE_CORRUPT；
+保留可读事件，拒绝继续向损坏的同一写者文件追加。内部 gap 事件只接受 Schema 枚举的稳定缺口码。
+
+每次报告最多读取256个事件文件、10000行、8 MiB，目录枚举最多768个条目；单事件最多64 KiB。
+报告最多2000项指标。到限明确 READ_LIMIT/REPORT_LIMIT 和部分覆盖，不轮询补齐、不设 token 预算。
+报告有 as_of/source_digest/event_count/sources/limits；context.json 是可重建的身份/来源能力视图。
+文件分别原子替换，整体不是多文件事务；写入失败通过 result.observation 通知，旧报告可能仍存在。
+
+`inspect` 使用 `view="telemetry", selector={"request_id":"<UUID4>"}`，只返回该请求的指标分页和
+`report_ref={path,sha256}`；limit 默认20、最大100，单页指标正文64 KiB。游标绑定来源事件摘要，迟到事件后
+返回 VERSION_INCOMPATIBLE，需显式 cursor=null 重读。该查询与纯标记不递归记录工具事件，避免报告自改
+导致游标立即失效。无 telemetry 的合法项目查询也可生成全未知报告；不读取 current 或业务候选。
+
+tool_duration_ns 是完整工具调用耗时之和；tool_union_ns/processing_ns 只在同域可对齐且端点完整时按
+区间并集计算。user_wait_ns 单列等待并集，UTC 标记使用 utc_observed_union；不完整/不可对齐则 null。
+exclusive_duration_ns 是完整父区间减完整子区间并集，仍不能称精确模型耗时；model_duration_ns 保持未知。
+无结束的 span 有 duration_ns=null、LIFECYCLE_INCOMPLETE。KeyboardInterrupt 仅记录 interrupted 并原样传播，
+不判断业务是否已生效、不创建 cancelled.json；指针生效后的事实仍由已有 recover 核验。业务明确返回
+REQUEST_CANCELLED 才记录 cancelled。迟到 usage、request end 和显式查询仅写 telemetry 文件，
+不会改 model/Excel/manifest/summary/current/checkpoint。

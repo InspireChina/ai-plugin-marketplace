@@ -93,7 +93,7 @@ def _execute(request):
     return _response(request, ok=not report['diagnostics'], result=result, diagnostics=report['diagnostics'])
 
 
-def execute(request):
+def _business_execute(request):
     """Return the CLI response; expected and unexpected failures stay redacted."""
     try:
         return _execute(request)
@@ -105,6 +105,41 @@ def execute(request):
         return _failure(request, 'CANDIDATE_INVALID', '候选路径或内容不符合合同。')
     except Exception:
         return _failure(request, 'INTERNAL_ERROR', '工具发生未预期错误；未应用任何版本。')
+
+
+def execute(request):
+    """Keep business validation/exit semantics separate from optional observation."""
+    import time
+    from . import telemetry
+    start_ns = time.monotonic_ns()
+    if not isinstance(request, dict):
+        return _business_execute(request)
+    business = {k: v for k, v in request.items() if k != 'observation_context'}
+    if next(schema_validator('protocol').iter_errors(business), None):
+        return _business_execute(business)
+    gaps = []
+    if 'observation_context' in request:
+        if next(schema_validator('protocol').iter_errors(request), None):
+            gaps.append('OBSERVATION_CONTEXT_INVALID')
+        else:
+            business['observation_context'] = request['observation_context']
+    if business['operation'] == 'inspect' and business['payload'].get('view') == 'telemetry':
+        response = _business_execute(business)  # Reporting never recursively observes itself.
+        if gaps:
+            observation = response['result'].setdefault('observation', dict(recording='degraded', gaps=[],
+                report_path=(response['result'].get('report_ref') or {}).get('path')))
+            observation['gaps'] = sorted(set(observation['gaps'] + gaps))
+            observation['recording'] = 'degraded'
+        return response
+    start = telemetry.begin_tool(business, start_ns, gaps)
+    try:
+        response = _business_execute(business)
+    except KeyboardInterrupt:
+        telemetry.finish_tool(business, start, _response(business), time.monotonic_ns(), gaps, interrupted=True)
+        raise
+    observation = telemetry.finish_tool(business, start, response, time.monotonic_ns(), gaps)
+    response['result']['observation'] = observation
+    return response
 
 
 def exit_code(response):

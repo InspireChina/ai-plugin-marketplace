@@ -167,9 +167,9 @@ def test_inspect_empty_corrupt_and_future_views_are_distinct(tmp_path):
     project, request, source, result = ingest(tmp_path)
     empty = inspect(project, request, 'topics', {'topic_version_ids': [str(uuid4())]})
     assert empty['ok'] and empty['result']['matched_count'] == 0
-    for view in ['telemetry']:
-        response = inspect(project, request, view)
-        assert not response['ok'] and response['diagnostics'][0]['code'] == 'OPERATION_UNSUPPORTED'
+    response = inspect(project, request, 'telemetry', {'request_id': request})
+    assert response['ok'] and response['result']['report_ref'] is not None
+    assert next(m for m in response['result']['items'] if m['name'] == 'total_tokens')['value'] is None
     (project / '.ai-sow-lite/inputs/index.json').write_bytes(b'broken')
     assert not inspect(project, request, 'inputs')['ok']
 
@@ -410,7 +410,7 @@ def _review_s1_interrupted_registration(tmp_path, monkeypatch):
 def test_review_s1_same_candidate_completes_only_missing_index_entry(tmp_path, monkeypatch):
     from ai_sow_lite.cli import execute
     case, request, topic, area = _review_s1_interrupted_registration(tmp_path, monkeypatch)
-    before = {p.relative_to(case.project).as_posix(): p.read_bytes() for p in case.project.rglob('*') if p.is_file()}
+    before = {p.relative_to(case.project).as_posix(): p.read_bytes() for p in case.project.rglob('*') if p.is_file() and p.relative_to(case.project).parts[:2] != ('.ai-sow-lite', 'telemetry')}
     retry = execute(request)
     assert retry['ok'], retry
     assert topic in retry['result']['topic_version_ids']
@@ -421,7 +421,7 @@ def test_review_s1_same_candidate_completes_only_missing_index_entry(tmp_path, m
     expected = dict(path=(area / 'analysis.json').relative_to(case.project).as_posix(),
                     sha256=hashlib.sha256((area / 'analysis.json').read_bytes()).hexdigest())
     assert index.count(expected) == 1
-    after = {p.relative_to(case.project).as_posix(): p.read_bytes() for p in case.project.rglob('*') if p.is_file()}
+    after = {p.relative_to(case.project).as_posix(): p.read_bytes() for p in case.project.rglob('*') if p.is_file() and p.relative_to(case.project).parts[:2] != ('.ai-sow-lite', 'telemetry')}
     assert before.keys() == after.keys()
     assert [name for name in before if before[name] != after[name]] == ['.ai-sow-lite/analysis/index.json']
 

@@ -1,0 +1,20 @@
+{
+  "synthetic": true,
+  "source": {
+    "source_id": "00000000-0000-4000-8000-000000000010",
+    "source_kind": "synthetic",
+    "producer_version": "synthetic-ex06-v1",
+    "verified_producer_version": "synthetic-ex06-v1",
+    "source_schema_version": "1.0",
+    "adapter_version": "normalized-v1",
+    "semantics": "total_is_input_plus_output",
+    "role": "primary",
+    "capabilities": {"request_usage":"verified","call_identity":"unavailable","activity_attribution":"partial","tool_lifecycle":"unavailable","interrupt_signal":"unavailable"}
+  },
+  "snapshots": [
+    {"id":"B0","counts":{"input_tokens":10000,"output_tokens":2000,"cached_input_tokens":6000,"reasoning_output_tokens":500,"total_tokens":12000},"boundary":"request_start","activities":[]},
+    {"id":"B1","counts":{"input_tokens":11200,"output_tokens":2300,"cached_input_tokens":6700,"reasoning_output_tokens":560,"total_tokens":13500},"boundary":"interval","activities":["00000000-0000-4000-8000-000000000011"]},
+    {"id":"B2","counts":{"input_tokens":14200,"output_tokens":3000,"cached_input_tokens":8000,"reasoning_output_tokens":800,"total_tokens":17200},"boundary":"interval","activities":["00000000-0000-4000-8000-000000000012","00000000-0000-4000-8000-000000000013"]},
+    {"id":"B3","counts":{"input_tokens":14800,"output_tokens":3200,"cached_input_tokens":8200,"reasoning_output_tokens":850,"total_tokens":18000},"boundary":"request_end","activities":["00000000-0000-4000-8000-000000000014","00000000-0000-4000-8000-000000000015"]}
+  ]
+}
