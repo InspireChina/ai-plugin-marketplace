@@ -123,3 +123,31 @@ def test_authoring_example_maps_real_region_and_standard_response_fields(tmp_pat
         input_version_id=entry["input_version_id"], locator=locator, excerpt_hash=excerpt_hash)
     assert context["standard_id"] == row["工作类型 ID"]
     assert context["work_type_name"] == row["工作类型"]
+
+
+def test_authoring_observation_recipe_executes_coarse_boundaries(tmp_path, capsys):
+    """The published mark example and boundary table must work in the real recorder."""
+    from uuid import uuid4
+    from ai_sow_lite import telemetry
+
+    guide = required_text(PLUGIN / 'references/generate-authoring.md')
+    example = re.search(r'<!-- observation-mark-example -->\s*```json\n(.*?)\n```', guide, re.S)
+    assert example, 'The required best-effort observation recipe needs a runnable mark envelope'
+    ids = {key: str(uuid4()) for key in ('request-id', 'execution-id', 'activity-id')}
+    raw = example[1]
+    for key, value in ids.items(): raw = raw.replace('<'+key+'>', value)
+    mark = json.loads(raw)
+    rows = re.findall(r'^\|[^\n|]+\| `(\w+)` \| `(start/end|milestone)` \|', guide, re.M)
+    assert dict(rows) == dict(request='start/end', input_analysis='start/end', outline='start/end',
+                             generation='start/end', merge='start/end', export='start/end',
+                             user_wait='start/end', useful_feedback='milestone', usable_file='milestone')
+    project = tmp_path / 'project'; path = tmp_path / 'mark.json'
+    for name, phases in rows:
+        for phase in phases.split('/'):
+            path.write_text(json.dumps(dict(mark, name=name, phase=phase)))
+            assert telemetry.main(['--project', str(project), '--mark-file', str(path)]) == 0
+            assert json.loads(capsys.readouterr().out)['recording'] == 'recorded'
+    report = telemetry.build_report(project, ids['request-id'])
+    assert report['event_count'] == 16
+    assert not (project / '.ai-sow-lite/current.json').exists()
+    assert all(m['value'] is None for m in report['metrics'] if m['name'] in ('total_tokens', 'model_duration_ns'))

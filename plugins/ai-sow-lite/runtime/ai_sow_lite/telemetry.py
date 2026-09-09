@@ -174,11 +174,13 @@ def build_report(project: Path, request_id: str) -> dict:
                   metrics=metrics, sources=sources, diagnostics=sorted(set(gaps)), coverage='partial' if events else 'unknown',
                   limits=dict(max_files=MAX_FILES, max_events=MAX_EVENTS, max_bytes=MAX_BYTES, max_metrics=MAX_METRICS),
                   host_capabilities={k:'unverified' for k in ('request_usage','call_identity','activity_attribution','tool_lifecycle','interrupt_signal')})
+    if any(_native_supported(source) for source in sources):
+        result['host_capabilities']['request_usage']='partial'
     context=dict(schema_version='1.0',request_id=request_id,execution_ids=sorted({e['execution_id'] for e in events}),host_capabilities=result['host_capabilities'],sources=sources)
     atomic_bytes(_path(project,request_id,'context.json'),_validate('telemetry_context',context))
     raw = _validate('telemetry_report', result)
     atomic_bytes(_path(project, request_id, 'report.json'), raw)
-    body = '观测报告\n\n计量始于实际记录边界；宿主 usage 接入尚未验证。\n\n'
+    body = '观测报告\n\n计量始于实际记录边界；原生响应用量不代表物理模型调用或完整请求覆盖。\n\n'
     body += f"截止：{result['as_of']}\n\n来源事件摘要：{result['source_digest']}\n\n"
     body += '请求合计与活动/共享分组是同一用量的不同视图，请勿再次相加。\n\n'
     for m in metrics:
@@ -192,6 +194,66 @@ def build_report(project: Path, request_id: str) -> dict:
 
 
 TOKEN_FIELDS = ('total_tokens','input_tokens','output_tokens','cached_input_tokens','reasoning_output_tokens','cache_write_input_tokens')
+
+
+def _native_supported(source):
+    return (source['source_kind']=='codex_session_jsonl'
+            and source.get('producer_name')=='codex-desktop'
+            and source['producer_version']==source['verified_producer_version']=='0.153.4'
+            and source['source_schema_version'] is None and source['adapter_version']=='codex-jsonl-v1'
+            and source['semantics']=='total_is_input_plus_output')
+
+
+def _response_segments(items, gaps):
+    """Absolute response observations; cumulative counters only check non-overlap."""
+    selected={}; sequences={}; bad=False
+    for e in sorted(items,key=lambda e:e['data']['source_sequence']):
+        d=e['data'];n=d.get('native',{});source=d['source']
+        if (d['observation_kind']!='response_absolute' or d['scope_kind']!='response'
+            or d['scope_id']!=n.get('response_id') or d['host_call_id'] is not None
+            or d['counter_epoch'] is not None or d['revision'] is not None
+            or n.get('thread_id')!=source.get('host_thread_id')
+            or n.get('turn_id') not in source.get('host_turn_ids',[])):
+            gaps.append('USAGE_IDENTITY_UNKNOWN');bad=True;continue
+        seq=d['source_sequence']
+        if seq in sequences and sequences[seq]['data']!=d:
+            gaps.append('USAGE_SEQUENCE_CONFLICT');bad=True;continue
+        sequences[seq]=e
+        identity=(n['thread_id'],n['turn_id'],n['response_id'])
+        if identity in selected:
+            previous=selected[identity]
+            old=previous['data']
+            # Source position may change on a duplicate callback, its accounting may not.
+            fields=('session_id','root_turn_id','turn_counts','thread_counts')
+            if (old['counts']!=d['counts'] or any(old['native'][k]!=n[k] for k in fields)
+                or previous['activity_ids']!=e['activity_ids'] or previous['slice_ids']!=e['slice_ids']):
+                gaps.append('NATIVE_RESPONSE_CONFLICT');bad=True
+            continue
+        selected[identity]=e
+    if bad:
+        return [],True
+    segments=[];turns={};thread=None
+    for e in selected.values():
+        d=e['data'];n=d['native'];counts,_=_counts(d,gaps)
+        snapshots=[_counts(dict(counts=n[k],source=d['source']),gaps)[0]
+                   for k in ('turn_counts','thread_counts')]
+        if counts is None or any(x is None for x in snapshots):
+            bad=True;continue
+        turn_count,thread_count=snapshots
+        prev=turns.get(n['turn_id'])
+        if prev is None and turn_count!=counts:
+            gaps.append('USAGE_START_UNKNOWN');bad=True
+        elif prev is not None and any(turn_count[k]!=prev[k]+counts[k] for k in TOKEN_FIELDS):
+            gaps.append('NATIVE_COUNTER_MISMATCH');bad=True
+        if thread is not None and any(thread_count[k]!=thread[k]+counts[k] for k in TOKEN_FIELDS):
+            gaps.append('NATIVE_COUNTER_MISMATCH');bad=True
+        if any(thread_count[k]<counts[k] for k in TOKEN_FIELDS):
+            gaps.append('NATIVE_COUNTER_MISMATCH');bad=True
+        turns[n['turn_id']]=turn_count;thread=thread_count
+        segments.append(dict(counts=counts,event=e,activities=e['activity_ids'],
+            exclusive=d['coverage']['exclusive'] and not bad,
+            basis=dict(kind='response_absolute',source_id=d['source']['source_id'])))
+    return segments,bad
 
 
 def _counts(data, gaps):
@@ -213,7 +275,8 @@ def _counts(data, gaps):
 
 def _usage_metrics(events, request_id, gaps):
     usages=[e for e in events if e['event_type']=='usage']
-    sources={canonical_json_bytes(e['data']['source']):e['data']['source'] for e in usages}
+    sources={canonical_json_bytes(e['data']['source']):e['data']['source']
+             for e in events if 'source' in e['data']}
     by_source={}
     for e in usages:
         by_source.setdefault(e['data']['source']['source_id'],[]).append(e)
@@ -224,6 +287,13 @@ def _usage_metrics(events, request_id, gaps):
     for source_id,items in by_source.items():
         declarations={canonical_json_bytes(e['data']['source']) for e in items}
         source=items[0]['data']['source']
+        if source['source_kind']=='codex_session_jsonl':
+            if len(declarations)!=1 or not _native_supported(source):
+                gaps.append('SOURCE_UNVERIFIED');invalid=True;continue
+            if source['role']=='primary' and len(primaries)==1:
+                native_segments,native_invalid=_response_segments(items,gaps)
+                segments.extend(native_segments);invalid|=native_invalid
+            continue
         if len(declarations)!=1 or any(e['data']['source']['producer_version']!=e['data']['source']['verified_producer_version'] for e in items):
             gaps.append('SOURCE_VERSION_CHANGED'); invalid=True; continue
         if (source['producer_version'] is None or source['source_schema_version']!='1.0'
@@ -373,11 +443,13 @@ def _utc_ns(value):
 
 
 def _time_metrics(events, request_id, gaps):
-    groups, intervals, metrics = {}, [], []
+    groups, intervals, metrics = {}, [], _native_time_metrics(events,request_id,gaps)
     for e in events:
         if e['event_type'] != 'lifecycle' or e['data']['phase']=='milestone':
             continue
         d=e['data']
+        if d.get('timing')=='native_turn':
+            continue
         key = ((e['execution_id'],d['name'],tuple(e['activity_ids']),tuple(e['slice_ids']))
                if d.get('timing')=='utc_marker' else (e['execution_id'],d['span_id']))
         groups.setdefault(key,[]).append(e)
@@ -440,6 +512,32 @@ def _time_metrics(events, request_id, gaps):
     return metrics
 
 
+def _native_time_metrics(events,request_id,gaps):
+    groups={};metrics=[]
+    for e in events:
+        d=e['data']
+        if e['event_type']=='lifecycle' and d.get('timing')=='native_turn' and _native_supported(d['source']):
+            groups.setdefault((d['source']['source_id'],d['native']['turn_id']),[]).append(e)
+    for (source_id,turn),items in groups.items():
+        starts=[e for e in items if e['data']['phase']=='start']
+        ends=[e for e in items if e['data']['phase']=='end']
+        diagnostic=[];value=None
+        if not starts:diagnostic.append('NATIVE_TURN_START_UNKNOWN')
+        if not ends:diagnostic.append('NATIVE_TURN_END_UNKNOWN')
+        if len(starts)>1 or len(ends)>1:diagnostic.append('NATIVE_TURN_LIFECYCLE_CONFLICT')
+        if len(starts)==len(ends)==1:
+            a,b=starts[0]['data'],ends[0]['data']
+            if a['source_sequence']>=b['source_sequence'] or _utc_ns(a['native']['timestamp'])>_utc_ns(b['native']['timestamp']):
+                diagnostic.append('NATIVE_TURN_LIFECYCLE_CONFLICT')
+            elif b['native']['duration_ms'] is not None:
+                value=b['native']['duration_ms']*1000000
+        m=_metric('native_turn_duration_ns',value,request_id,unit='ns',scope=dict(kind='host_turn',id=turn),
+                  basis='native_reported_turn_duration',coverage='complete',diagnostics=diagnostic)
+        m['basis']['source_id']=source_id
+        metrics.append(m);gaps.extend(diagnostic)
+    return metrics
+
+
 def _new_event(request_id, execution_id, producer_id, sequence, kind, data, activity_ids=(), slice_ids=()):
     from uuid import uuid4
     return dict(schema_version='1.0',event_id=str(uuid4()),event_type=kind,request_id=request_id,
@@ -496,10 +594,25 @@ def main(argv=None):
     from .cli import _Parser
     parser=_Parser(add_help=False)
     parser.add_argument('--project',required=True)
-    parser.add_argument('--mark-file',required=True)
+    mode=parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--mark-file')
+    mode.add_argument('--collect-file')
+    parser.add_argument('--native-source')
     outcome=dict(recording='degraded',gaps=['TELEMETRY_MARK_INVALID'],report_path=None)
     try:
         args=parser.parse_args(argv)
+        if args.collect_file:
+            from .host_usage import collect_native_usage
+            raw=_read(Path(args.collect_file),MAX_EVENT_BYTES)
+            if len(raw)>MAX_EVENT_BYTES or not args.native_source:
+                raise ValueError('collection')
+            binding=strict_json_loads(raw)
+            outcome=collect_native_usage(Path(args.project).resolve(),binding['request_id'],
+                source_path=Path(args.native_source),binding=binding)
+            print(canonical_json_bytes(outcome).decode('utf-8'))
+            return 0
+        if args.native_source:
+            raise ValueError('collection')
         raw=_read(Path(args.mark_file),MAX_EVENT_BYTES)
         if len(raw)>MAX_EVENT_BYTES:
             raise ValueError('TELEMETRY_LIMIT')

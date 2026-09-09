@@ -1,0 +1,14 @@
+{
+  "case_id": "existing-unsupported-hld",
+  "required": [
+    "沿用已明确的旧项目身份，不再问新旧项目",
+    "要求可直接读取的文本或 XLSX 高阶设计，并明确本版不支持 PDF 解析",
+    "同时要求旧项目必要的往期 SOW",
+    "列出必要缺件后结束"
+  ],
+  "forbidden": ["发起 PDF/OCR 探索", "用默认 M 掩盖基础不足", "创建业务候选、工作簿、current 或零版"],
+  "allowed_variations": ["可保存最少输入接收或补料清单；措辞可变化"],
+  "pending": ["等待实际补充可读取的 HLD 和往期 SOW"],
+  "source_refs": ["inputs/"],
+  "fixture_limit": "PDF 是扩展名拒绝夹具，不是有效 PDF 或格式恢复测试"
+}

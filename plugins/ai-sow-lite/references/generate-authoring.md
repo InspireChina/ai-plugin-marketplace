@@ -122,7 +122,38 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
 
 已有 checkpoint 中的 additional_investigation_batches、repair_batches、recovery_queries 和 operation_retries 按实际消耗保存；其他专业次数保存在 activity-record，避免扩展运行时领域合同。更新 checkpoint 使用已有 `ai_sow_lite.project.ensure_request`/`save_checkpoint`：在本次隔离 Python 子进程中令 `PYTHONPATH=<plugin-root>/runtime`，加载原 checkpoint、只修改本批已知事实、调用 save_checkpoint。不要重建或归零已有/未知计数。render 可能自己消耗 repair_batches，外层更新前先复读，不能用旧字典覆盖。
 
-在实际请求、输入分析、生成、合并、用户等待、可用文件等边界需要观测时，使用同一隔离 Python，进程内设置上述 PYTHONPATH，执行 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。mark 的字段仅为 `schema_version="1.0", request_id, execution_id, activity_ids, slice_ids, phase, name`；ID 用 UUID4，phase=start/end/milestone，name 可用 request/input_analysis/outline/generation/merge/export/user_wait/useful_feedback/usable_file。大活动共享标记即可，不逐思考或逐 Task 打点。观测失败不触发业务重做，无宿主 usage 时 token 为未知；完整观测字段按需查看工具合同的 I1.4 部分。
+每次 generate **必须尽力记录**请求边界、首次有用反馈、首个可用文件和实际大活动。生成 request_id 后，在最早可执行工具的位置记录 request/start；缺失的前段如实保留为未观测，结束本次处理前记录 request/end。发生过的边界才记录，缺标记不回填时间。它们是同一专业工作的观察，不增加专业阶段、问答或审批；记录失败给一次简短缺口后继续业务。
+
+| 实际边界 | name | phase | 记录时机 |
+| --- | --- | --- | --- |
+| 本请求执行 | `request` | `start/end` | 最早可记录点 / 交付或补料等本次处理退出前；恢复沿原 request_id，执行段可换 execution_id |
+| 输入理解 | `input_analysis` | `start/end` | 开始读取分析 / 本段输入判断形成 |
+| 骨架与分片 | `outline` | `start/end` | 开始组织义务 / 骨架与片索引形成 |
+| 联合生成 | `generation` | `start/end` | 当前片开始 / 本片候选形成；附当前 slice_ids |
+| 语义合并 | `merge` | `start/end` | 开始整合 / 合并候选形成 |
+| 文件交付 | `export` | `start/end` | 进入核验、导出与应用 / 本段完成或实际失败退出 |
+| 等待用户 | `user_wait` | `start/end` | 实际提出需要答复的问题 / 实际收到答复；未配对区间保持未知 |
+| 首次有用反馈 | `useful_feedback` | `milestone` | 首次给出可回答的问题包或可用方案；普通进度消息不算 |
+| 首个可用文件 | `usable_file` | `milestone` | 首版已核验并应用、可以交给用户时 |
+
+使用同一隔离 Python、仅在本次进程设置上述 PYTHONPATH，执行 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。多个恰好同处的边界可与已有工具命令合在一次宿主调用中执行；标记不能移动到事后伪造起点。已有业务信封附 `observation_context={"execution_id":"<execution-id>","activity_ids":["<activity-id>"],"slice_ids":[]}`，保持当前活动/片标签。纯语义边界才补轻量mark，不逐思考或逐 Task 埋点。
+
+以下是请求起点mark；复制后按实际边界更换name/phase，活动ID沿当前大活动复用，片ID只填实际关联：
+
+<!-- observation-mark-example -->
+```json
+{
+  "schema_version": "1.0",
+  "request_id": "<request-id>",
+  "execution_id": "<execution-id>",
+  "activity_ids": ["<activity-id>"],
+  "slice_ids": [],
+  "name": "request",
+  "phase": "start"
+}
+```
+
+request/end记录发生在最终答复用量到达之前，报告可为partial。宿主明确提供已授权来源路径和准确thread/turn关联时，按[原生采集合同](tools.md#原生响应的有界采集)执行一次有界采集；源不可得即保留unknown，不搜索聊天目录。生产者结束后只有显式采集才补迟到用量。响应结束时间不证明活动独占token；跨活动有证据就记shared，无法关联就未归属。记录故障不重跑模型、Office或专业工作。
 
 ## 有效交付
 

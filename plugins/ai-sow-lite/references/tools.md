@@ -205,15 +205,16 @@ utc_observed_interval，绝不作为模型时间。该观测专用命令 stdout 
 时间为整数 ns，字节为 bytes，token 为非负整数或 null。初始工具指标为 tool_duration_ns、
 model_duration_ns、request_wall_ns、user_wait_ns、input_bytes/output_bytes；无 usage 的 total_tokens 为
 null、coverage=unknown。字节统计为规范化业务信封及附加 observation 前响应的 UTF-8 字节数，
-不包含原始材料内容大小，也不换算 token。宿主能力均保持 unverified；合成事件不能证明当前宿主完整可采。
+不包含原始材料内容大小，也不换算 token。旧规范化来源不提升宿主能力；有下述已适配原生来源时
+request_usage 可显示 partial，其他能力仍为 unverified。合成事件不能证明当前宿主完整可采。
 
 ### 规范化 usage、边界及查询
 
-当前内部适配合同只计算 `adapter_version="normalized-v1"`、`source_schema_version="1.0"` 的事件。
+原有规范化分支计算 `adapter_version="normalized-v1"`、`source_schema_version="1.0"` 的事件。
 `producer_version` 必须非 null、等于来源明确声明的 `verified_producer_version`，同一 source_id 的声明
 必须一致；未知版本/语义或声明变化保留事件并产生 SOURCE_UNVERIFIED/SOURCE_VERSION_CHANGED，
 不推断总量。source_kind 为 synthetic/normalized_host，来源 capability 声明只绑定该来源，
-不能提升 report.host_capabilities（仍全部 unverified）。EX06 夹具使用 synthetic-ex06-v1，明显标为合成。
+不能提升 report.host_capabilities。EX06 夹具使用 synthetic-ex06-v1，明显标为合成。
 `observed_at` 固定为 UTC **YYYY-MM-DDTHH:MM:SS.ffffffZ**，恰好6位小数；例如
 `2026-09-09T00:00:00.000000Z`。该时间是接收时刻，不是 usage 覆盖边界。
 
@@ -261,3 +262,57 @@ exclusive_duration_ns 是完整父区间减完整子区间并集，仍不能称�
 不判断业务是否已生效、不创建 cancelled.json；指针生效后的事实仍由已有 recover 核验。业务明确返回
 REQUEST_CANCELLED 才记录 cancelled。迟到 usage、request end 和显式查询仅写 telemetry 文件，
 不会改 model/Excel/manifest/summary/current/checkpoint。
+
+### 原生响应的有界采集
+
+内部`host_usage.collect_native_usage(project, request_id, *, source_path, binding, limits=None)`只读取
+一个显式提供、已授权的常规文件。CLI复用观测模块，进程内的PYTHONPATH仍指向本插件runtime：
+
+```text
+<Lite 隔离 Python> -m ai_sow_lite.telemetry --project <项目目录> --collect-file <关联JSON> --native-source <已知原生文件>
+```
+
+`--collect-file`与`--mark-file`互斥。关联JSON仅含以下字段，UUID与宿主标识均替换为实际已知值：
+
+```json
+{
+  "schema_version": "1.0", "request_id": "<UUID4>", "execution_id": "<UUID4>",
+  "source_id": "<UUID4>", "host_thread_id": "<实际thread-id>",
+  "host_turn_ids": ["<实际turn-id>"]
+}
+```
+
+source_id/关联在同一次来源续读中保持固定；改变thread/turn选择或execution绑定会使native cursor失效。
+首版不自动扩展选中turn，也不通过换source_id重复计量已有范围。缺少可靠关联就保留未知，不扫描宿主目录。
+原生路径仅由本次参数传入，不写入事件、游标、报告或诊断。普通`inspect(view=telemetry)`只重建已有事件，
+不会自动读取宿主文件。请求收尾做一次有界采集；生产者结束后仅后续显式采集补迟到数据，不忙等或后台监听。
+
+当前唯一native分支为source_kind=`codex_session_jsonl`、producer_name=`codex-desktop`、
+producer_version=`0.153.4`、adapter_version=`codex-jsonl-v1`；原生未提供schema/epoch，分别保持null。
+未知producer/version/字段形状产生SOURCE_UNVERIFIED/SOURCE_VERSION_CHANGED等稳定缺口并停止此适配，
+保留Python工具计时和已应用文件。未知producer名称仅保存`unknown`分类，不回显任意原始metadata。
+
+规范化usage新增`scope_kind=response`及`observation_kind=response_absolute`。source另保存已绑定的
+host_thread_id/host_turn_ids；data.native白名单为thread_id/turn_id/session_id/root_turn_id/response_id、
+turn_counts/thread_counts及byte_start/byte_end/line_sha256。六项响应counts为primary，turn/thread累计仅
+核对分解的连续性，不再计入总量。原生ordinal用作source_sequence，原生未给event_id/revision时保留null。
+重复同响应同值去重；同响应冲突为NATIVE_RESPONSE_CONFLICT，累计核对失败为NATIVE_COUNTER_MISMATCH，
+失败区间不能进入请求known_tokens。独立host_call_id仍null，不用response数冒充model_call_count。
+来源未证明活动关联时activity_ids/slice_ids为空；已有明确集合的共享观察只计一次，不均分或逐片复制。
+
+原生task_started/task_complete/turn_aborted作为`timing=native_turn`的processing生命周期保存，
+data.native含实际turn、原生timestamp、可得duration_ms及字节定位。native_turn_duration_ns只换算宿主报告的
+duration_ms，basis为native_reported_turn_duration；它与Python单调时钟、纯模型耗时和请求墙钟分别列示。
+缺起点/终点为NATIVE_TURN_START_UNKNOWN/NATIVE_TURN_END_UNKNOWN。即使native EOF和成对turn均可见，
+本分支的请求usage仍为partial，不宣称完整Skill请求、首次有用反馈或等待边界；这些由实际大活动mark记录。
+
+一次native读取上限8 MiB、10,000行、单原生行256 KiB；header/游标锚点复读也计入该预算。与规范化报告的
+8 MiB/64 KiB事件上限分别计算。可选内部limits仅能降低max_bytes/max_lines；没有业务token预算。
+超限/断尾/中间坏行分别为NATIVE_READ_LIMIT/NATIVE_RECORD_LIMIT/NATIVE_TAIL_INCOMPLETE/
+NATIVE_MIDDLE_CORRUPT，保持已接受前缀；没有进展时不得忙重试。返回read摘要含实际bytes_read/lines_read、
+start_offset/end_offset/eof，collector_duration_ns仅描述该次采集，不换算token。eof描述本次文件观察范围。
+
+`cursors/<source_id>-native.json`保存绑定/头部摘要、文件身份、最后完整行锚点、ordinal、offset和固定写者UUID4。
+事件先fsync，随后原子推进native游标。游标落盘失败可按旧位置重放，并复用原event_id/producer_id/observed_at；
+不新增原生调用。替换、截短、锚点或关联变化产生NATIVE_CURSOR_INVALID。原始transcript、提示词、工具正文、
+本机路径均不复制。采集进程收到KeyboardInterrupt时记录INTERRUPTED并原样传播，不能据此声称宿主可中断模型。

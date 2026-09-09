@@ -2,9 +2,9 @@
 
 [详细设计目录](README.md) · [观测目的](../06-observability-and-validation.md) · [单 session 全景](D04A-single-session-panorama.md) · [EX06 计量走读与探针](examples/EX06-telemetry-accounting.md)
 
-状态：I1.4 已实现本地工具计时、活动标记和标准化事件报告，最终验证与审阅状态见 [I1 验证](../../validation/I1-reliable-delivery.md)。当前已有 Codex 环境的有限只读探针，真实宿主 usage 适配、SOW 性能基准及逐活动 token 完整采集仍待后续验证。以下为观测合同；实际已实现字段见工具合同和 I1 验证，宿主字段及限制见第 2 节与 EX06，二者不能混用。
+状态：I1.4 的本地工具观测和 I2.3 的版本绑定原生响应采集已完成，实际 Generate 接入、重放、回归和独立审查通过。实现状态见 [I1](../../validation/I1-reliable-delivery.md) 与 [I2 验证](../../validation/I2-generate.md)，字段编码见工具合同。逐活动 token 和完整宿主能力仍有缺口，不能把本设计的目标当作全部已实测。
 
-I1.1 更新：两轮真实 Agent 探针已观察到带 turn/response 身份的 `token_usage_record`，逐 response 累加与 turn 累计一致；这补充了 EX06 最初只观察到 `token_count` 的记录。当前生产者版本、实测计数和未验证项以 [宿主验证](../../validation/host-support.md) 为准；活动归属、异常生命周期及完整 generate 仍未验证，G12 保持开放。
+I1.1 的两轮探针补充了 EX06 最初的 `token_count` 观察；I2.2 又取得完整 Generate 的 `token_usage_record`、实际工具和文件记录。I2.3 复用这些精确来源，响应加总与 turn/thread 累计核对一致。当前生产者版本、实测计数和未验证项以 [宿主验证](../../validation/host-support.md) 为准；精确活动归属和宿主模型中断仍未验证，G12 保持开放。
 
 ## 1. 目标和首版边界
 
@@ -24,9 +24,9 @@ I1.1 更新：两轮真实 Agent 探针已观察到带 turn/response 身份的 `
 | Agent 的活动标记 | Skill 可表达当前活动、范围和完成点 | 与已有工具请求一起记录，必要时独立写轻量标记；是标记被接收的时间，不能追溯成精确模型启动时间 |
 | Codex App Server usage 通知 | 官方接口有 usage 更新；本机 CLI 生成的类型含 thread/turn、total/last 和 token 明细 | 协议存在不等于普通 Skill 能订阅桌面当前流；待验证接入、计数语义、结束覆盖及对应关系，不为采集另启动一个 agent |
 | Codex hooks | 官方提供会话、部分 turn、工具及结束等元数据；transcript 格式明确不是稳定接口 | 待在目标宿主验证后，可用于活动/工具关联；不能把 hooks 当完整模型调用账本，不能只用父 session ID 区分子任务 |
-| 当前 Codex 会话记录 | 初始 token_count 无 turn_id；I1.1 两轮探针另观察到带 turn/response 身份的 token_usage_record，并核对累计一致 | 仅为候选兼容适配路径；必须按生产者版本验证，并由宿主提供精确会话定位。不能默认扫描聊天目录或把尾部 last 当本活动消耗 |
+| 当前 Codex 会话记录 | I2.3 对生产者 0.153.4 的 token_usage_record 实现 response_absolute 适配；实际 31 条响应与两轮累计一致，重放身份不变 | 只接受显式来源和固定 thread/turn 绑定，范围仍为 partial；未知版本降级。不能默认扫描聊天目录、自动扩展 turn 集合或把尾部 last 当本活动消耗 |
 | Codex OTel | 官方列出请求、工具事件及 usage 指标；需要显式配置 | 非首版默认依赖，本轮未启用/实测；若后来采用，先验证事件身份、覆盖及隐私过滤，直方图不能冒充逐调用明细 |
-| 其他宿主，包括 Claude Code | 本轮未探针 | 先显示工具计时和 usage 未知；不得复用 Codex 的字段/去重假设或宣称支持 |
+| 其他宿主，包括 Claude Code | Claude 原生 manifest 和临时插件发现已验证；实际调用因本机 OAuth 撤销失败 | 执行及 usage 未验证，先显示工具计时和 usage 未知；不复用 Codex 的字段/去重假设 |
 
 官方依据：[App Server](https://learn.chatgpt.com/docs/app-server) 描述客户端事件接口；[Hooks](https://learn.chatgpt.com/docs/hooks) 描述元数据、工具覆盖和 transcript 稳定性限制；[高级配置](https://learn.chatgpt.com/docs/config-file/config-advanced) 描述可选 OTel 和事件/指标。以上仅证明文档所述能力，不证明当前插件已接通。当前版本探针的具体范围与结果见 [EX06](examples/EX06-telemetry-accounting.md#1-真实只读探针与限制)。
 
@@ -111,6 +111,8 @@ I1.4 用 `result.observation` 返回 recorded/degraded、简短 gaps 和报告�
 
 内部大活动标记入口与调用编码见 [P00](../implementation/P00-contracts-and-fixtures.md#纯语义活动怎样埋点)，由 I1.4 实现、I2.3 接实际宿主验证；没有原生事件时才使用，观测时刻不冒充精确模型耗时。它不新增专业流程动作或改变业务状态。
 
+Skill 对请求、主要专业活动、首次有用反馈、用户等待及可用文件的真实边界尽力记录；已有工具调用复用 observation_context，纯语义边界合批写最少标记。不逐思考或逐 Task 往返。标记缺失就记录缺口，不补写过去时刻；“尽力”表示观测故障不阻断业务，不表示正常情况下可省略全部阶段标记。
+
 ### 4.3 与交付版本分离
 
 `report.json/md` 是可重建视图，包含 `as_of`、来源事件集合摘要、口径/适配版本、各指标覆盖与诊断。Markdown 同步展示截止点、来源事件摘要、每项范围/归属/依据，区分请求合计和共享分组，避免人工重复相加。各报告文件以临时文件加替换避免半份文件，但 JSON/Markdown 不是多文件事务；失败时保留原报告并返回缺口。迟到事件可在后续真实回调或显式查询时更新报告，但不触发专业重做。
@@ -128,6 +130,8 @@ I1.4 报告单次读取最多256个文件、10,000行和8 MiB，目录枚举最�
 每条 usage 保存 `source_kind`、`source_schema_version`、`scope_kind`、`scope_id`、`counter_epoch`、`observation_kind`（单次调用绝对值 / 累计快照 / 明确增量）、`native_event_id` 或稳定游标，以及来源实际给出的计数。`coverage_start/end` 和结束是否完整只在有证据时填写，不能把观察到的 UTC 等同于 usage 覆盖边界。
 
 宿主未提供的原生身份/版本保持 null；适配器自己的版本与观察到的格式特征另记，不能冒充宿主 schema 版本。epoch 仅在验证过的计数连续范围内成立，宿主重启本身不证明计数从零开始。
+
+I2.3 的 response_absolute 保存一个原生响应的绝对观察，按已绑定来源、thread/turn/response 去重，同响应同值重放不加总，冲突与失败后缀保留未知；turn/thread 累计只作交叉核对。该分支不跨 epoch 相减，允许原生 epoch=null；既有累计差值仍需要可信起点和 epoch，不放宽其合同。响应身份和来源文件 EOF 均不能单独证明物理调用或整个 Skill 请求完整。
 
 原生线程、turn、调用和 Lite 请求是不同范围。只有调用 ID 确实存在时，才能按物理调用去重；没有调用 ID 的累计快照必须按原生 scope、epoch 和顺序处理，不能每条回调造一个调用。会话混入其他请求或并行任务时，未能隔离的用量保留宿主范围，不能全部归本项目。
 
