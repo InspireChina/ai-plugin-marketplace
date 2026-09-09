@@ -110,7 +110,7 @@
               "type": "string",
               "minLength": 1,
               "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
-              "description": "单文件可省略；提供时必须精确匹配已登记 input.relative_path 或 basename。只核对身份，不跟随此路径。"
+              "description": "单文件可省略；提供时精确匹配已登记 input.relative_path 或 basename。prototype 必须提供精确资源包内相对路径；不跟随任意外部路径。"
             },
             "start_line": {
               "type": "integer",
@@ -181,7 +181,8 @@
             "attachment": {
               "type": "string",
               "minLength": 1,
-              "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+              "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
+              "description": "原始 observation 附件列表中的项目相对路径，或该附件采用后的不可变路径；不是任意图片引用。"
             },
             "region": {
               "type": "string"

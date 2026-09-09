@@ -124,7 +124,8 @@
         "relative_path": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
+          "description": "文本/XLSX 指单文件原件；prototype 指规范资源清单 manifest.json。"
         },
         "format": {
           "enum": [
@@ -213,7 +214,8 @@
             ],
             "additionalProperties": false
           },
-          "minItems": 0
+          "minItems": 0,
+          "description": "prototype 的规范包内相对名/原字节 SHA-256 数组，按 path 排序；其 canonical JSON 原字节 SHA-256 为 content_hash。"
         }
       },
       "required": [
@@ -418,7 +420,8 @@
             ],
             "additionalProperties": false
           },
-          "minItems": 0
+          "minItems": 0,
+          "description": "ingest 接受本请求 work 中 observation JSON 的 file_ref 或已登记观察；不可变主题保存采用后的观察 file_ref。"
         }
       },
       "required": [
@@ -938,7 +941,8 @@
             ],
             "additionalProperties": false
           },
-          "minItems": 0
+          "minItems": 0,
+          "description": "指向绑定原型 input_version_id 下已登记资源文件的项目相对 file_ref。"
         },
         "attachments": {
           "type": "array",
@@ -963,7 +967,8 @@
             ],
             "additionalProperties": false
           },
-          "minItems": 0
+          "minItems": 0,
+          "description": "原始观察保留本请求 work 附件 file_ref；登记按原数组索引复制到 observation-owned attachments/<index>/<basename>，复用时核对不可变副本。"
         },
         "limitations": {
           "type": "string"

@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "status": "stage_completed",
+  "template_sha256": "6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332",
+  "prototype": {
+    "resource_count": 5,
+    "observations": [
+      {
+        "observation_id": "c4ec1809-173b-480a-a879-0117f4e9f6d5",
+        "attachment_count": 11,
+        "actual_original_sha256": "6ccd5e7a0920f5369d26408a2f310af7eef5d74150e99aa142ec272532f09417"
+      },
+      {
+        "observation_id": "fe427f36-0e82-48dc-9da7-70a1af1bb968",
+        "attachment_count": 1,
+        "actual_original_sha256": "32bd0b0620ac0ef010669eba0c957a607c43826c3a2d562dcccbc696b2e10aed"
+      }
+    ],
+    "capture_limitations": [
+      "Independent original observation and separate same-value control, not the generator own browser operation.",
+      "Original overlap not forced reverse completion; cleared-then-refreshed does not prove nonempty note loss."
+    ],
+    "candidate_counts": {
+      "epics": 2,
+      "features": 3,
+      "stories": 5,
+      "acs": 13,
+      "tasks": 5,
+      "pending_items": 4
+    }
+  },
+  "verification": {
+    "red_workbook_sources": {
+      "failed": 4,
+      "passed": 1
+    },
+    "harness_exception_mismatch": {
+      "failed": 3,
+      "passed": 2
+    },
+    "green_workbook_sources": {
+      "passed": 5,
+      "deselected": 38,
+      "seconds": 8.39
+    },
+    "red_directory_boundary": {
+      "failed": 10
+    },
+    "green_prototype_consumers": {
+      "passed": 46
+    },
+    "independent_rereview": {
+      "passed": 21,
+      "deselected": 36,
+      "seconds": 15.28
+    },
+    "nearest_including_office": {
+      "passed": 156,
+      "seconds": 184.2
+    },
+    "full_lite": {
+      "passed": 594,
+      "skipped": 12,
+      "seconds": 536.24
+    },
+    "old_plugin": {
+      "passed": 388,
+      "skipped": 4,
+      "seconds": 47.28
+    },
+    "root_unittest": {
+      "passed": 42,
+      "seconds": 3.013
+    },
+    "validator": "passed",
+    "old_copied_smoke": "setup/generate OK; own temporary copy removed"
+  },
+  "limits": [
+    "Full Lite suite includes its real copied-plugin delivery consumer; not an extra separately counted smoke.",
+    "Numbers are mechanical/case evidence, not semantic correctness rate or performance improvement.",
+    "Windows prototype directory reading not supported without required fd facilities and not live tested."
+  ],
+  "delivery": {
+    "verified_manifest_refs": 56,
+    "prototype_dependencies": 22,
+    "workbook_sha256": "589ecbef8eaf307efb65791db133381a1663a13e20652484c70d2718e65e1cd0",
+    "details_sha256": "0d15538fee680e2a5fc409510efcd89c95516766354ebc5e1217c8f5ad1b7daf"
+  },
+  "native_excel": {
+    "excel_version": "16.112.3",
+    "workbook_sha256": "589ecbef8eaf307efb65791db133381a1663a13e20652484c70d2718e65e1cd0",
+    "copy_equal": true,
+    "recovery_prompt": false,
+    "visible_sheets": 4,
+    "checked_sheets": [
+      "01-需求故事",
+      "02-任务清单",
+      "90-估算标准"
+    ],
+    "screenshot_scope": "Actual CUA images displayed, not persisted as screenshot artifacts.",
+    "method": "Excel open panel Open was disabled; canceled and Finder opened exact copy successfully."
+  },
+  "late_core_withdrawal": {
+    "existing_slices": 3,
+    "current_absent": true,
+    "version_files": 0,
+    "new_question_rounds": 0,
+    "new_investigation_batches": 0,
+    "retained_additional_investigation_batches": 1,
+    "retained_repair_batches": 1,
+    "outcome": "Old immutable sources and slices preserved; active analysis and work indexes superseded; material request, no fake/zero SOW."
+  }
+}

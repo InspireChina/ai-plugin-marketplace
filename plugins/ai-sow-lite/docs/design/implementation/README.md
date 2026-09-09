@@ -4,7 +4,7 @@
 
 连续实施中的取舍及理由见 [自主决策记录](../../validation/implementation-decisions.md)。用户已授权按本计划持续完成开发，每个 I1.4 这样的实施任务验证/审查完成后提交一次，中间无需等待用户确认；推送、安装及发布不在本次开发范围。
 
-状态：I1.1—I3.3 已完成，回归与独立审查通过；接续 I4.1 的原型资源、观察附件和多用途材料。I2/I3 已取得实际成本基线，但性能优化、G12 的逐活动用量及 I4.2 修订计数组合风险仍需收口。实际能力与限制见 [I1 机械能力](../../validation/I1-reliable-delivery.md)、[I1.5 独立交付](../../validation/I1-delivery.md)、[I2 输入与 Generate 验证](../../validation/I2-generate.md) 和 [I3 有限修改验证](../../validation/I3-clarify.md)。尚未验证的扩展组合不视为已完成；Q1/Q2 已定边界见 [13](../13-self-review-and-decisions.md)。
+状态：I1.1—I4.1 已完成，回归与独立审查通过；原型资源、实际观察附件、BA草稿和晚期基础撤回已有消费者证据，接续 I4.2 复杂修改。I2/I3 已取得实际成本基线，但性能优化、G12 的逐活动用量及 I4.2 修订计数组合风险仍需收口。实际能力与限制见 [I1 机械能力](../../validation/I1-reliable-delivery.md)、[I1.5 独立交付](../../validation/I1-delivery.md)、[I2 输入与 Generate 验证](../../validation/I2-generate.md) 、[I3 有限修改验证](../../validation/I3-clarify.md) 和 [I4 输入与修改验证](../../validation/I4-inputs-and-changes.md)。尚未验证的扩展组合不视为已完成；Q1/Q2 已定边界见 [13](../13-self-review-and-decisions.md)。
 
 ## 1. 阅读与实施顺序
 

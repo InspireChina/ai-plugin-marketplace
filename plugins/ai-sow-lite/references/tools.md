@@ -119,13 +119,13 @@ artifacts.clarify_confirmation 的 confirmation.json；后者用版本内可达�
 
 `ingest/sources` payload：`kind="sources"`、`entrypoint="generate"/"clarify"`、`project_type="new"/"existing"`、`sources[]`。每项必须含 source_path、input_id（首登 null）、material_types、uses、use_regions（无区域为空）。首次初始化固定项目身份和内置模板逐字节副本；后续项目类型/模板冲突拒绝；已有原件而索引丢失时保留文件并诊断，不重建空索引。ingest 不创建 current。
 
-读取 `.md`、`.markdown`、`.txt` 的严格 UTF-8 和 `.xlsx`；UTF-8 BOM 只按识别出的 utf-8-sig 解码，CRLF/LF/CR 保留，拒绝伪装成文本的常见二进制格式。外部 source_path 是唯一允许的项目外读取位置；目录别名可解析，源文件链接拒绝。所有持久项目路径拒绝链接/reparse 重定向。每项先复制并复读 hash，再登记；解码失败也保留已登记原件，不影响同批其他输入。相同原字节复用 input_version_id 和 reading；显式已有 input_id 的新内容获得新版本，旧原件不覆盖；未知 input_id 拒绝。新增材料角色/用途合并到登记索引，原件字节不改。
+读取 `.md`、`.markdown`、`.txt` 的严格 UTF-8、`.xlsx` 和显式原型目录包；原型清单身份、资源边界与观察采用见 [原型输入](prototype-inputs.md)。UTF-8 BOM 只按识别出的 utf-8-sig 解码，CRLF/LF/CR 保留，拒绝伪装成文本的常见二进制格式。外部 source_path 是唯一允许的项目外读取位置；普通文件的目录别名可解析，源文件链接拒绝，原型包根与成员也拒绝链接。所有持久项目路径拒绝链接/reparse 重定向。每项先复制并复读 hash，再登记；解码失败也保留已登记原件，不影响同批其他输入。相同原字节复用 input_version_id 和 reading；显式已有 input_id 的新内容获得新版本，旧原件不覆盖；未知 input_id 拒绝。新增材料角色/用途合并到登记索引，原件字节不改。
 
 相同原字节以不同文件名再次导入时，先按本次 source_path 的 basename 核对输入 locator；复用身份后，将本次用途区域中显式提供的 locator.path 绑定到实际保存原件的 basename 再合并。返回区域可原样用于 inspect/regions；原件身份、字节和 reading 保持不变，未保存的别名仍不能用于读取。
 
 返回 project_id、input_refs（登记项）、reading_refs（文件引用）、failures（诊断）和 checkpoint_ref。文本原件下的 reading-ref.json 指向不可变读取记录；XLSX 使用 originals/<input-version-id>/readings/<读取身份哈希>.json。后续复用复核原件、记录和摘录附件。读取成功只证明物理读取可用。完整字段、边界与历史理解方法见 [输入分析](input-analysis.md)。
 
-`ingest/analysis` payload：`kind="analysis"`、entrypoint、analysis_path。文件必须在本请求 work 内。共用候选的来源、摘要、依据图与主题校验后，保存实际输入分析字节至 `analysis/registrations/<sha256>/analysis.json`，按 topic_version_id 拆存分析并登记 `analysis/index.json`。各主题保存 registration-ref.json 以回查原始登记候选。返回 analysis_ref、evidence_ids、topic_version_ids；同依据/主题版本冲突拒绝；新依据须由新的主题版本实际承载，不能通过重复旧主题返回未保存的依据身份。observations 非空或不支持的 locator 明确拒绝。登记不代表当前 SOW 已采用。
+`ingest/analysis` payload：`kind="analysis"`、entrypoint、analysis_path。文件必须在本请求 work 内。共用候选的来源、摘要、依据图与主题校验后，保存实际输入分析字节至 `analysis/registrations/<sha256>/analysis.json`，按 topic_version_id 拆存分析并登记 `analysis/index.json`。各主题保存 registration-ref.json 以回查原始登记候选。返回 analysis_ref、evidence_ids、topic_version_ids；同依据/主题版本冲突拒绝；新依据须由新的主题版本实际承载，不能通过重复旧主题返回未保存的依据身份。observations 可引用本请求 work 中的真实观察或已登记观察，核对后保留不可变记录和附件；每个主题仅保留其输入相关观察。不支持的 locator 明确拒绝。登记不代表当前 SOW 已采用。
 
 复用已有主题前核对索引成员及摘要、主题实际字节和 registration-ref 绑定的原始候选。若现存有效索引仅缺本主题一项，且主题与来源已完整保存、来源绑定与本次候选原字节完全相同，重试只补缺失索引项，不重写主题或来源。主题/来源损坏、ref 缺失或冲突、候选字节不同均不据此返回成功；整个索引丢失时不重建，不提供通用恢复层。
 
@@ -135,7 +135,7 @@ artifacts.clarify_confirmation 的 confirmation.json；后者用版本内可达�
 | --- | --- | --- |
 | current | `{}` | 当前指针和 manifest 引用；核对指针结构、manifest 摘要/结构/版本身份；没有 current 为显式空集合，所读绑定损坏则诊断 |
 | inputs | `{}`，或 input_version_ids，或 input_ids | 所选登记目录页 |
-| regions | input_version_id；可选 locator | 省略 locator 读目录；text_lines 返回实际行；xlsx_range 返回类型化单元格和 coverage.locator/excerpt_hash/excerpt_ref，必须采用返回的区域 read_id |
+| regions | input_version_id；可选 locator | 省略 locator 读目录；text_lines 返回实际行，原型源码须指定包内path；xlsx_range 返回类型化单元格和实际区域read_id；observation 返回采用记录与附件引用。定位与摘要使用coverage中的实际值 |
 | topics | `{}`，或 topic_version_ids，或 topic_ids，或 uses，或 historical_label 加可选 uses | 所选不可变主题；historical_label 返回历史条目并保留零命中范围摘要；分析索引/工件损坏不会当作空集合 |
 | objects | collection，加 object_ids/title 二选一；可选 version_id | 定向对象或标题子串命中；collection 为 epics/features/stories/acs/tasks/dependencies/pending_items/decisions，pending_items 的 title 检索 question，AC 附所属 story_id |
 | objects | collection="pending_items"、status；可选 version_id | open/resolved/superseded 问题 |
@@ -202,7 +202,7 @@ verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏�
 
 ### 复用、变动与测试入口
 
-render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。实现修订 `implementation_version=lite-render-v2` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。修复前成功 prepared 的旧签名只有在相同检查/指针/引擎且完整复核通过时才可复用。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。实现修订 `implementation_version=lite-render-v3` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。修复前成功 prepared 的旧签名只有在相同检查/指针/引擎且完整复核通过时才可复用。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
 
 待确认正文的来源标签按真实 locator 显示：文本保留文件名和起止行，XLSX 使用文件名、Sheet 和 range；judgment 沿 basis_refs 回溯相同来源标签，不猜文本行号。此显示修复不改候选、模板、标准或公式。
 

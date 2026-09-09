@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 完成I4.1原型目录、不可变观察/附件与多用途材料消费；真实BA草稿加PRD/HLD生成并在Excel打开，基础撤回后保留草稿停止。修复目录替换越界与原型来源导出接缝，内部render修订为v3，原模板不改。完整Lite594通过、12跳过；真实观察、TDD失败/修复和适用边界见[I4记录](docs/validation/I4-inputs-and-changes.md)，取舍见AD20—AD21。
+
 - 完成I3.3串行使用、真实中断/取消、历史依赖与逐CLI审计验收。修复确认原件遗漏最终依赖，以及Clarify后重复旧Generate被可变输入索引误拒绝的问题；新候选检查、语义意图和精确确认仍保持。完整副本已覆盖Generate→Clarify，实际成本、原失败和修复后验证见 [I3记录](docs/validation/I3-clarify.md)，自主取舍见AD18—AD19。
 
 - 实现 I3.2 独立 clarify Skill，按项目文件讨论 S/M 定档与原文误读修正，再绑定真实执行确认交付；重复采用 M 不重算或创建空版本。新增真实响应消费测试和三类新会话验证，保留机械返修、实际 token/时长及修订计数待收口风险。见 [I3 验证](docs/validation/I3-clarify.md) 和 [实际观察](docs/validation/I3.2-feedback-observations.json)。

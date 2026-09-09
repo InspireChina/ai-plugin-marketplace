@@ -176,18 +176,24 @@ def test_public_packet_real_render_apply_recover_and_no_repeat_office(tmp_path,m
     assert projection['workbook_hash']==output['workbook_ref']['sha256']
     assert output['pending_count']==1 and output['details_ref'] is not None
     assert not (case.project/'.ai-sow-lite/current.json').exists()
-    # A genuine successful v1 packet must still be verified/reused without Office.
+    # Prior successful text signatures reuse the same genuinely calculated bytes.
     attempt=read_json(case.file('render-attempt.json'))
-    attempt['signature']=semantic_digest(dict(check=read_json(case.project/payload['check_path']),payload=payload,
-        projector_version='lite-projection-v1',engine=office.selection_fingerprint()))
-    attempt.pop('implementation_version',None)
-    write_json(case.file('render-attempt.json'),attempt)
     def forbidden(*args,**kwargs): pytest.fail('Prepared reuse/apply must not invoke Office')
     monkeypatch.setattr(office,'recalculate',forbidden)
     def invoke(op,p):
         return cli.execute(dict(protocol_version='1.0',request_id=case.request_id,project_path=str(case.project),operation=op,payload=p))
-    repeated=invoke('render',payload)
-    assert repeated['ok'] and repeated['result']==output
+    for implementation in (None,'lite-render-v2'):
+        signature_inputs=dict(check=read_json(case.project/payload['check_path']),payload=payload,
+            projector_version='lite-projection-v1',engine=office.selection_fingerprint())
+        if implementation is None:
+            attempt.pop('implementation_version',None)
+        else:
+            attempt['implementation_version']=implementation
+            signature_inputs['implementation_version']=implementation
+        attempt['signature']=semantic_digest(signature_inputs)
+        write_json(case.file('render-attempt.json'),attempt)
+        repeated=invoke('render',payload)
+        assert repeated['ok'] and repeated['result']==output
     before={p:p.read_bytes() for p in case.project.rglob('*') if p.is_file() and ('inputs' in p.parts or 'analysis' in p.parts)}
     applied_payload=dict(entrypoint='generate',prepared_path=output['prepared_ref']['path'],expected_current=None,plan_path=None)
     applied=invoke('apply',applied_payload)
@@ -344,7 +350,8 @@ def test_registered_xlsx_and_judgment_sources_render_before_office(tmp_path,monk
     assert not (case.project/'.ai-sow-lite/current.json').exists()
 
 
-def test_renderer_implementation_fix_retries_legacy_failure_without_reset(tmp_path,monkeypatch):
+@pytest.mark.parametrize('previous_version', [None, 'lite-render-v2'])
+def test_renderer_implementation_fix_retries_legacy_failure_without_reset(tmp_path,monkeypatch,previous_version):
     from .support.excel import prepare_case
     from .support.fixtures import write_json
     from ai_sow_lite import office
@@ -352,8 +359,10 @@ def test_renderer_implementation_fix_retries_legacy_failure_without_reset(tmp_pa
     from ai_sow_lite.project import StorageError
     case,payload,_=prepare_case(tmp_path/'project',render=False)
     check=read_json(case.project/payload['check_path'])
-    # Actual pre-fix signature shape; no implementation revision was recorded.
-    legacy=semantic_digest(dict(check=check,payload=payload,projector_version='lite-projection-v1',engine=office.selection_fingerprint()))
+    # Previous signatures, including the implementation before prototype labels.
+    signature_inputs=dict(check=check,payload=payload,projector_version='lite-projection-v1',engine=office.selection_fingerprint())
+    if previous_version is not None: signature_inputs['implementation_version']=previous_version
+    legacy=semantic_digest(signature_inputs)
     attempt=case.file('render-attempt.json');write_json(attempt,dict(signature=legacy,prepared_ref=None))
     checkpoint=read_json(case.file('checkpoint.json'));checkpoint['repair_batches']=1
     write_json(case.file('checkpoint.json'),checkpoint)

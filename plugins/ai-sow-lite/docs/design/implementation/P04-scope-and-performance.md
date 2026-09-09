@@ -16,7 +16,7 @@
 - 不增加 PDF/DOCX/扫描件支持、无损手改回导、固定多 agent 团队、模型执行服务或预算门禁。
 - 技术/交付义务和来源覆盖必须保留，不能靠漏项、少记 usage 或更早失败宣称更快。
 - 支持矩阵只填写已有来源的适用证据与 Lite 实测，不因 manifest/库存在就宣称平台可用。
-- 可安装包准备不等于安装、发布或提交授权；本轮计划不进行这些动作。
+- 用户已单独授权按阶段提交；可安装包准备不等于安装、推送或发布授权，本轮开发不进行这些动作。
 - [12 资料吸收评估](../12-reference-absorption.md) 的原型/复杂边界案例按下文加入现有任务。旧示例假设只有显式写进合成输入才可采用，旧 projection/金额留在评估侧；不复制旧行动串联或全阶段复审。
 
 ## I4.1 · 原型、多用途材料和 BA Draft
@@ -25,10 +25,10 @@
 
 **Interfaces:** 消费 P00 已有 source/analysis 两种 ingest 和 D03 observation locator；产出真实原型资源版本、不可变观察/必要附件与范围限制。浏览器动作由宿主 agent 决定，工具不返回点击 Action 列表。
 
-- [ ] 创建自包含 HTML/JS/CSS：列表→详情、一个输入后才可见状态、模拟成功按钮、不可达状态、取消后的迟到结果；一个启动型变体附完整本地运行说明。夹具不接真实业务端点；启动服务归本请求，记录/清理自身进程，不能全局杀浏览器。
-- [ ] 原型作为资源清单拷贝，拒绝包外逃逸。observation 记录实际入口/前置、最少操作、结果、限制及附件 hash；同源多主题复用同一观察。静态 HTML 不能充当动态观察的 hash。无浏览能力如实返回限制，不能写“交互不存在”。
-- [ ] 在实际宿主分别做一次静态观察与需交互观察；用首批目标集合及一次共享追加验证有限退出。新路由不断出现不递归重开批次；有生产写入风险的资料只能在已有授权内观察，说明实际缺口，不预设所有原型都能运行。
-- [ ] 将以下观察边界写入 references/input-analysis.md 的原型段，并并入同一合成资源包；期待在评估侧，不向 Agent 提供预先规定的点击列表。使用已有首次观察与一次共享追加额度，未覆盖目标记真实限制。
+- [x] 创建自包含 HTML/JS/CSS：列表→详情、一个输入后才可见状态、模拟成功按钮、不可达状态、取消后的迟到结果；一个启动型变体附完整本地运行说明。夹具不接真实业务端点；启动服务归本请求，记录/清理自身进程，不能全局杀浏览器。
+- [x] 原型作为资源清单拷贝，拒绝包外逃逸。observation 记录实际入口/前置、最少操作、结果、限制及附件 hash；同源多主题复用同一观察。静态 HTML 不能充当动态观察的 hash。无浏览能力如实返回限制，不能写“交互不存在”。
+- [x] 在实际宿主分别做一次静态观察与需交互观察；用首批目标集合及一次共享追加验证有限退出。新路由不断出现不递归重开批次；有生产写入风险的资料只能在已有授权内观察，说明实际缺口，不预设所有原型都能运行。
+- [x] 将以下观察边界写入 references/input-analysis.md 的原型段，并并入同一合成资源包；期待在评估侧，不向 Agent 提供预先规定的点击列表。使用已有首次观察与一次共享追加额度，未覆盖目标记真实限制。
 
 | 包内反例 | 预期的观察与结论 |
 |---|---|
@@ -49,8 +49,8 @@ def test_observation_cannot_replace_source_with_unregistered_attachment(case):
 
 在 test_prototype_records 的 fixture 中先创建该合法结构的分析文件，仅让 observation 附件指向未登记资源；进一步断言 EVIDENCE_MISSING、原件保留且 current 不变。再提供真实包/附件正例通过，防止一个不存在的 JSON 路径冒充来源校验测试。
 
-- [ ] 使用同一 XLSX 的不同区域分别作历史与 draft，验证原件只登记一次、用途分别分析。BA draft 只给 Epic/Feature 时，配完整 PRD/HLD 能复用其有效骨架；仅 draft+tech note 必须按不足退出；冲突明确定位，不把 draft 默认为更高权威。手改 SOW 作为意见/辅助输入，没有无损回导承诺。
-- [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_inputs.py plugins/ai-sow-lite/tests/test_prototype_records.py -q`；真实观察另记录宿主、资源/引擎版本与未覆盖面。没有实际浏览器证据的场景保留未验证，不用 source reader 测试代替。
+- [x] 使用同一 XLSX 的不同区域分别作历史与 draft，验证原件只登记一次、用途分别分析。BA draft 只给 Epic/Feature 时，配完整 PRD/HLD 能复用其有效骨架；仅 draft+tech note 必须按不足退出；冲突明确定位，不把 draft 默认为更高权威。手改 SOW 作为意见/辅助输入，没有无损回导承诺。
+- [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_inputs.py plugins/ai-sow-lite/tests/test_prototype_records.py -q`；真实观察另记录宿主、资源/引擎版本与未覆盖面。没有实际浏览器证据的场景保留未验证，不用 source reader 测试代替。
 
 ## I4.2 · 拆合、共享与交付变化、部分子集
 

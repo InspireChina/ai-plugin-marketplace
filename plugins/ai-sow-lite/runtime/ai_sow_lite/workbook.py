@@ -22,7 +22,7 @@ from .project import StorageError, atomic_bytes
 TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
 PROJECTOR_VERSION = 'lite-projection-v1'
 # Render retry identity is separate from the unchanged projection data contract.
-RENDER_IMPLEMENTATION_VERSION = 'lite-render-v2'
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v3'
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
 # Display policy, not model limits or calculation rules.
@@ -632,7 +632,7 @@ def seal_office_output(source, raw_path, destination):
 def _evidence_labels(project,candidate):
     from .project import checked_json
     index=checked_json(project,'.ai-sow-lite/inputs/index.json','input_index')
-    sources={x['input_version_id']:Path(x['relative_path']).name for x in index['items']}
+    sources={x['input_version_id']:x for x in index['items']}
     records={}
     for version in candidate['topic_version_ids']:
         analysis=checked_json(project,f'.ai-sow-lite/analysis/topics/{version}/analysis.json','analysis')
@@ -646,13 +646,20 @@ def _evidence_labels(project,candidate):
             visited.add(current); record=records[current]
             for ref in record['source_refs']:
                 loc=ref['locator']
+                source=sources[ref['input_version_id']]
+                name=Path(source['relative_path']).name
                 if loc['kind']=='text_lines':
+                    if source['format']=='prototype': name=loc['path']
                     position=f'第 {loc["start_line"]}—{loc["end_line"]} 行'
                 elif loc['kind']=='xlsx_range':
                     position=f'{loc["sheet"]}!{loc["range"]}'
+                elif loc['kind']=='observation':
+                    name='原型'
+                    position='；'.join(str(value) for value in (
+                        '观察 '+loc['observation_id'],loc.get('attachment'),loc.get('region')) if value)
                 else:
                     raise StorageError('OPERATION_UNSUPPORTED','来源定位尚不支持工作簿显示。')
-                lines.append(f'{sources[ref["input_version_id"]]}；{position}；依据 {current}')
+                lines.append(f'{name}；{position}；依据 {current}')
             if record['limitations']: lines.append('限制：'+record['limitations'])
             stack.extend(reversed(record['basis_refs']))
         labels[identity]='\n'.join(lines)+'\n'
@@ -819,6 +826,7 @@ def render_candidate(project: Path,request_id: str,payload):
     signature_inputs=dict(check=checked,payload=payload,projector_version=PROJECTOR_VERSION,
                           engine=office.selection_fingerprint())
     legacy_signature=semantic_digest(signature_inputs)
+    v2_signature=semantic_digest(dict(signature_inputs,implementation_version='lite-render-v2'))
     signature=semantic_digest(dict(signature_inputs,implementation_version=RENDER_IMPLEMENTATION_VERSION))
     previous=load_json(attempt_path) if attempt_path.exists() else None
     reusable=False
@@ -832,7 +840,7 @@ def render_candidate(project: Path,request_id: str,payload):
                   and old_prepared['template_hash']==candidate['template_hash']
                   and old_check.get('plan_digest')==report.get('plan_digest'))
     # Pre-fix successful text packages remain reusable only after full verification.
-    if previous and (previous['signature'] in (signature,legacy_signature) or reusable) and previous.get('prepared_ref'):
+    if previous and (previous['signature'] in (signature,legacy_signature,v2_signature) or reusable) and previous.get('prepared_ref'):
         prepared_path=safe_path(project,previous['prepared_ref']['path'],area)
         if file_ref(project,prepared_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
         prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)

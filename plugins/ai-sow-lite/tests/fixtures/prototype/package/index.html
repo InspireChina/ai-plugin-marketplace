@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>资料查询原型</title><link rel="stylesheet" href="assets/style.css"><script defer src="assets/app.js"></script></head>
+<body>
+<header><h1>资料查询原型</h1><p>本地演示数据，所有操作均不连接后端。</p><nav><a href="#list">资料列表</a> · <a href="#detail/record-1">资料详情</a></nav></header>
+<main>
+<section id="list-view" aria-labelledby="list-title">
+<h2 id="list-title">资料列表</h2><label>查询条件 <input id="query" autocomplete="off"></label>
+<button id="search">查询</button><button id="cancel">取消查询</button>
+<p id="query-state" role="status">尚未查询</p>
+<ul id="results"><li><a href="#detail/record-1">资料 A001 · 入库说明</a></li></ul>
+<button id="list-confirm">确认</button><p id="list-result" role="status"></p>
+</section>
+<section id="detail-view" aria-labelledby="detail-title" hidden>
+<h2 id="detail-title">资料 A001 详情</h2><p>标题：入库说明</p>
+<label><input type="checkbox" id="subscribed" checked> 关注此资料</label>
+<p>关注状态变化次数：<output id="change-count">0</output></p>
+<label>修订备注 <input id="note" autocomplete="off"></label>
+<p id="note-preview" hidden></p>
+<button id="detail-confirm">确认</button><p id="detail-result" role="status"></p>
+</section>
+</main><footer>模拟原型 · 不代表生产能力或真实数据</footer>
+</body></html>

@@ -1,4 +1,4 @@
-"""Immutable source copies and strict text/XLSX reading; no semantic analysis runner."""
+"""Immutable source copies and strict text/XLSX/prototype reading; no semantic analysis runner."""
 from __future__ import annotations
 
 import hashlib
@@ -63,6 +63,9 @@ def text_lines(project, entry):
 
 
 def _reading(project, entry):
+    if entry['format'] == 'prototype':
+        from ._prototype import reading
+        return reading(project, entry)
     if entry['format'] == 'xlsx':
         return _xlsx_reading(project, entry, {'kind': 'workbook'})[0]
     identity = entry['input_version_id']
@@ -164,7 +167,16 @@ def _text_directory(lines):
 
 def source_excerpt(project, entry, locator, *, raw=None, uncovered=False):
     """Shared deterministic source verifier; returns bytes and physical dependencies."""
-    from . import _xlsx
+    from . import _xlsx, _prototype
+    if locator['kind'] == 'observation':
+        excerpt, _, dependencies = _prototype.observation_excerpt(project, entry, locator)
+        return (None if uncovered else excerpt), dependencies
+    if entry['format'] == 'prototype':
+        _, dependencies, contents = _prototype.checked_package(project, entry)
+        if locator['kind'] != 'text_lines':
+            raise _locator_error('原型源码必须使用 text_lines。')
+        lines = _prototype.source_lines(contents, locator)
+        return (None if uncovered else ''.join(lines).encode('utf-8')), dependencies
     if locator['kind'] == 'text_lines':
         if entry['format'] != 'text' or locator.get('path') not in (None, entry['relative_path'], Path(entry['relative_path']).name):
             raise _locator_error('文本定位与已登记来源不同。')
@@ -238,6 +250,15 @@ def ingest_sources(project: Path, request_id: str, payload):
     for number, source in enumerate(payload['sources']):
         entry = None
         try:
+            if Path(source['source_path']).is_dir():
+                from ._prototype import ingest_package
+                entry = ingest_package(project, index, source)
+                write_json(project, '.ai-sow-lite/inputs/index.json', index)
+                refs.append(entry)
+                ref = _reading(project, entry)
+                if ref not in readings:
+                    readings.append(ref)
+                continue
             raw = _source_bytes(source['source_path'])
             digest = hashlib.sha256(raw).hexdigest()
             source_format = 'xlsx' if Path(source['source_path']).suffix.lower() == '.xlsx' else 'text'
@@ -259,7 +280,7 @@ def ingest_sources(project: Path, request_id: str, payload):
             logical = source['input_id']
             if logical is not None and not any(e['input_id'] == logical for e in index['items']):
                 raise StorageError('INPUT_ID_CONFLICT', '指定 input_id 未登记；首次登记必须为 null。')
-            matches = [e for e in index['items'] if e['content_hash'] == digest and
+            matches = [e for e in index['items'] if e['format'] == source_format and e['content_hash'] == digest and
                        (logical is None or e['input_id'] == logical)]
             if matches:
                 entry = matches[0]
@@ -333,6 +354,13 @@ def ingest_analysis(project: Path, request_id: str, payload):
     raw = path.read_bytes()
     from .contracts import strict_json_loads
     analysis = strict_json_loads(raw)
+    from .contracts import schema_validator
+    from ._prototype import register_observations, topic_observations
+    if list(schema_validator('artifacts', 'analysis').iter_errors(analysis)):
+        raise StorageError('CANDIDATE_INVALID', '分析字段不符合当前 Schema。')
+    adopted_inputs = {i for t in analysis['topics'] for i in t['input_version_ids']}
+    entries = {e['input_version_id']: e for e in input_index(project)['items'] if e['input_version_id'] in adopted_inputs}
+    analysis['observations'] = register_observations(project, analysis['observations'], entries, area)
     issues = check_analysis(project, analysis)
     if issues:
         error = StorageError('CANDIDATE_INVALID', '分析来源或结构无效。', payload['analysis_path'])
@@ -355,7 +383,7 @@ def ingest_analysis(project: Path, request_id: str, payload):
     digest = hashlib.sha256(raw).hexdigest()
     registration_relative = f'.ai-sow-lite/analysis/registrations/{digest}/analysis.json'
     candidate_ref = dict(path=registration_relative, sha256=digest)
-    available_evidence = set()
+    available_evidence, available_observations = set(), set()
     for topic in analysis['topics']:
         relative = f".ai-sow-lite/analysis/topics/{topic['topic_version_id']}/analysis.json"
         if safe_path(project, relative).exists():
@@ -367,23 +395,30 @@ def ingest_analysis(project: Path, request_id: str, payload):
             if file_ref(project, original) != provenance:
                 raise StorageError('EVIDENCE_MISSING', '已有主题的来源原字节与绑定摘要不同。')
             registered = checked_json(project, provenance['path'], 'analysis', '.ai-sow-lite/analysis/registrations')
-            bound_record = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'], observations=[])
+            if not {r['sha256'] for r in stored['observations']} <= {r['sha256'] for r in registered['observations']}:
+                raise StorageError('EVIDENCE_MISSING', '已有主题的观察摘要不属于原始登记来源。')
+            bound_record = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'], observations=stored['observations'])
             if topic not in registered['topics'] or safe_path(project, relative).read_bytes() != canonical_json_bytes(bound_record):
                 raise StorageError('EVIDENCE_MISSING', '已有主题原字节与登记来源不同。')
             if not any(ref['path'] == relative for ref in refs) and provenance != candidate_ref:
                 raise StorageError('EVIDENCE_MISSING', '缺失索引项只能由相同原字节的候选完成登记。')
             available_evidence.update(e['id'] for e in stored['evidence'])
+            available_observations.update((r['path'], r['sha256']) for r in stored['observations'])
         else:
             available_evidence.update(e['id'] for e in analysis['evidence'])
+            available_observations.update((r['path'], r['sha256']) for r in topic_observations(project, analysis['observations'], topic))
     if not {e['id'] for e in analysis['evidence']} <= available_evidence:
         raise StorageError('IDENTITY_CONFLICT', '新依据需要新的主题版本承载；不能声称已登记到旧不可变主题。')
+    if not {(r['path'], r['sha256']) for r in analysis['observations']} <= available_observations:
+        raise StorageError('IDENTITY_CONFLICT', '新观察需要新的主题版本承载；不能声称已登记到旧不可变主题。')
     # Keep the actual candidate bytes as provenance; split topics for narrow adoption.
     registration = safe_path(project, registration_relative)
     atomic_bytes(registration, raw, immutable=True)
     for topic in analysis['topics']:
         relative = f".ai-sow-lite/analysis/topics/{topic['topic_version_id']}/analysis.json"
         existing = safe_path(project, relative)
-        record = dict(schema_version='1.0', topics=[topic], evidence=analysis['evidence'], observations=[])
+        record = dict(schema_version='1.0', topics=[topic], evidence=analysis['evidence'],
+                      observations=topic_observations(project, analysis['observations'], topic))
         if existing.exists():
             # Shared evidence can arrive in a different bundle; the immutable topic stays as first registered.
             if any(ref['path'] == relative for ref in refs):
@@ -446,7 +481,46 @@ def inspect_view(project: Path, payload):
         entry = entries.get(selector['input_version_id'])
         if entry is None:
             raise StorageError('EVIDENCE_MISSING', '未登记指定输入版本。')
-        if entry['format'] == 'xlsx':
+        if entry['format'] == 'prototype':
+            from . import _prototype
+            _, _, contents = _prototype.checked_package(project, entry)
+            locator = selector.get('locator')
+            version = dict(input_version_id=entry['input_version_id'], content_hash=entry['content_hash'],
+                           adapter_version=_prototype.READER_VERSION)
+            coverage['limitations'] = list(_prototype.LIMITATIONS)
+            if locator is None:
+                coverage['reading_ref'] = _reading(project, entry)
+                items = []
+                for resource in entry['resources']:
+                    item = dict(resource, file_ref=_prototype.resource_ref(entry, resource), readable=False)
+                    if Path(resource['path']).suffix.lower() in _prototype.TEXT_SUFFIXES:
+                        try:
+                            raw = contents[resource['path']]
+                            lines = raw.decode('utf-8-sig' if raw.startswith(b'\xef\xbb\xbf') else 'utf-8').splitlines(keepends=True)
+                            if b'\x00' in raw:
+                                raise UnicodeError('binary')
+                            item.update(readable=True, line_count=len(lines))
+                            if lines:
+                                item['locator'] = dict(kind='text_lines', path=resource['path'], start_line=1, end_line=len(lines))
+                        except UnicodeError:
+                            item['limitation'] = '无法按 UTF-8 读取；仅保留原件。'
+                    items.append(item)
+            elif locator['kind'] == 'observation':
+                raw, record, dependencies = _prototype.observation_excerpt(project, entry, locator)
+                version['observation_ref'] = dependencies[0]
+                coverage.update(locator=locator, excerpt_hash=hashlib.sha256(raw).hexdigest(),
+                                excerpt_ref=dependencies[0], attachment_refs=_prototype.attachment_refs(record))
+                coverage['limitations'] = [record['limitations'], '仅校验提供的观察记录及附件，未执行或复放浏览器。']
+                items = [record]
+            elif locator['kind'] == 'text_lines':
+                lines = _prototype.source_lines(contents, locator)
+                coverage.update(locator=locator, excerpt_hash=hashlib.sha256(''.join(lines).encode('utf-8')).hexdigest(),
+                                line_count=len(lines))
+                items = [dict(line_number=n, character_offset=offset, text=line[offset:offset + 8192])
+                         for n, line in enumerate(lines, locator['start_line']) for offset in range(0, len(line), 8192)]
+            else:
+                raise StorageError('CANDIDATE_INVALID', '原型区域需要 text_lines 或 observation。')
+        elif entry['format'] == 'xlsx':
             from . import _xlsx
             selection = {'kind': 'workbook'}
             locator = selector.get('locator')

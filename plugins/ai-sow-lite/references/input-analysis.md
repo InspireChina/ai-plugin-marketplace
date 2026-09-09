@@ -10,7 +10,7 @@
 
 ## 读取入口和证据
 
-先用 `ingest/sources` 登记不可变物理文件。支持严格 UTF-8 文本（`.md/.markdown/.txt`）与 `.xlsx`；UTF-8 BOM 识别为 `utf-8-sig`，原字节及 CRLF/LF/CR 均保留。摘录是识别编码解码后的所选原始行，以 UTF-8 重编码；新登记的 BOM 不成为首行内容；基线已登记为 `utf-8` 的文本仍按该编码读取，保留首行 BOM 与原 reading/摘录哈希，不重编码或迁移。不能解码时给 `INPUT_UNAVAILABLE`、保留已登记原件，要求可读 UTF-8 文本，不安装转码、PDF/DOCX/OCR 服务。
+先用 `ingest/sources` 登记不可变物理文件。支持严格 UTF-8 文本（`.md/.markdown/.txt`）、`.xlsx` 与显式目录原型包；原型的登记、观察与附件采用方式见 [原型输入](prototype-inputs.md)。UTF-8 BOM 识别为 `utf-8-sig`，原字节及 CRLF/LF/CR 均保留。摘录是识别编码解码后的所选原始行，以 UTF-8 重编码；新登记的 BOM 不成为首行内容；基线已登记为 `utf-8` 的文本仍按该编码读取，保留首行 BOM 与原 reading/摘录哈希，不重编码或迁移。不能解码时给 `INPUT_UNAVAILABLE`、保留已登记原件，要求可读 UTF-8 文本，不安装转码、PDF/DOCX/OCR 服务。
 
 `inspect` 的 `view="regions", selector={input_version_id}` 返回结构目录。文本目录按实际 ATX 标题及前导正文定位，围栏代码中的 `#` 不作为标题；纯文本可以只有一个区域。XLSX 目录列出 Sheet、Table、使用范围、合并区域、隐藏行列、附注地址和未读面；缺少或偏小的 dimension 由实际单元格与合并边界共同补足，仍遵守尺寸上限。目录只表示导航范围，不表示完成该区域内容分析。
 

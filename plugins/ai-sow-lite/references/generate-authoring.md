@@ -77,7 +77,7 @@ standard_id = standard_row["工作类型 ID"]
 work_type_name = standard_row["工作类型"]
 ```
 
-分析文件形状为 `{"schema_version":"1.0","evidence":[],"topics":[],"observations":[]}`；topics 必须非空且有实际依据，当前 observations 保持空，不伪造浏览器/原型观察。初次分析可先用主题 ID，实际业务对象尚未形成时 related_object_ids 为空。
+分析文件形状为 `{"schema_version":"1.0","evidence":[],"topics":[],"observations":[]}`；topics 必须非空且有实际依据。没有采用实际观察时 observations 为空；有目录原型及真实观察时，按 [原型输入](prototype-inputs.md) 填已保存记录的file_ref并核对附件，不能伪造浏览器状态。初次分析可先用主题 ID，实际业务对象尚未形成时 related_object_ids 为空。
 
 | 记录 | 字段与实际来源 |
 | --- | --- |

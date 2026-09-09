@@ -412,6 +412,18 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, an
         if not entry:
             ctx.add('input_version_ids', '候选输入版本未登记。', object_id=identity, code='EVIDENCE_MISSING')
             continue
+        if entry['format'] == 'prototype':
+            from ._prototype import checked_package
+            from .project import StorageError
+            try:
+                raw, dependencies, _ = checked_package(ctx.project, entry)
+                raw_sources[identity] = raw
+                for ref in dependencies:
+                    ctx.dependencies[ref['path']] = ref
+            except StorageError as error:
+                for issue in error.diagnostics:
+                    ctx.add('resources', issue['message'], code=issue['code'])
+            continue
         path, raw = ctx.bytes(entry['relative_path'], f'.ai-sow-lite/inputs/originals/{identity}', 'relative_path')
         if raw is not None:
             raw_sources[identity] = raw
@@ -435,6 +447,8 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, an
         from .inputs import source_excerpt
         from .project import StorageError
         try:
+            if source['locator']['kind'] == 'observation' and source['locator']['observation_id'] not in observations:
+                raise StorageError('EVIDENCE_MISSING', '采用的 observation locator 必须由分析的 observations 明确登记。')
             excerpt, dependencies = source_excerpt(ctx.project, entry, source['locator'], raw=raw, uncovered=uncovered)
             for ref in dependencies:
                 ctx.dependencies[ref['path']] = ref
@@ -446,7 +460,7 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, an
         except (OSError, ValueError, KeyError):
             ctx.add(field, '来源或读取附件缺失、损坏或定位不匹配。', object_id=owner, code='EVIDENCE_MISSING')
 
-    evidence, topics_by_version = {}, {}
+    evidence, topics_by_version, observations = {}, {}, {}
     analyses_valid = True
     if not candidate['topic_version_ids']:
         ctx.add('topic_version_ids', '候选必须绑定实际分析记录；空模型也不例外。', code='EVIDENCE_MISSING')
@@ -457,6 +471,16 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, an
         if not analysis:
             analyses_valid = False
             continue
+        if analysis_records is None and (analysis['observations'] or any(
+                inputs.get(identity, {}).get('format') == 'prototype'
+                for topic in analysis['topics'] for identity in topic['input_version_ids'])):
+            from ._prototype import topic_dependencies
+            from .project import StorageError
+            try:
+                for ref in topic_dependencies(ctx.project, version, analysis):
+                    ctx.dependencies[ref['path']] = ref
+            except StorageError as error:
+                ctx.add('analysis', error.diagnostics[0]['message'], code='EVIDENCE_MISSING')
         if not any(topic['topic_version_id'] == version for topic in analysis['topics']):
             ctx.add('topic_version_id', '分析记录与不可变目录身份不同。')
         local_versions = set()
@@ -481,8 +505,21 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, an
             if old is not None and old != record:
                 ctx.add('id', '不同分析不能用相同依据 ID 覆盖不同内容。', object_id=record['id'])
             evidence[record['id']] = record
-        if analysis['observations']:
-            ctx.add('observations', '观察登记与附件校验将在 I4 实现。', code='OPERATION_UNSUPPORTED')
+        for ref in analysis['observations']:
+            from ._prototype import checked_observation
+            from .project import StorageError
+            try:
+                _, observation, dependencies = checked_observation(ctx.project, ref, {
+                    i: inputs[i] for i in candidate['input_version_ids'] if i in inputs})
+                identity = observation['observation_id']
+                if identity in observations and observations[identity] != ref:
+                    raise StorageError('IDENTITY_CONFLICT', '同一观察身份不能引用不同原字节。')
+                observations[identity] = ref
+                for dependency in dependencies:
+                    ctx.dependencies[dependency['path']] = dependency
+            except (StorageError, OSError, ValueError) as error:
+                message = error.diagnostics[0]['message'] if isinstance(error, StorageError) else '观察或附件缺失、损坏。'
+                ctx.add('observations', message, code='EVIDENCE_MISSING')
     topics = list(topics_by_version.values())
     adopted = set(candidate['evidence_ids'])
     for identity in adopted:
