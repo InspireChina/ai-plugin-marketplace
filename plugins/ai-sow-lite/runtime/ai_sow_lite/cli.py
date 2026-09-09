@@ -1,4 +1,4 @@
-"""One argparse request envelope; I1.1 dispatches only real candidate checks."""
+"""One request envelope for actual registration, inspection, checking and storage."""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,7 @@ from uuid import UUID
 
 from .contracts import canonical_json_bytes, load_json, schema_validator
 from .validation import check_candidate, diagnostic, project_file
+from .project import StorageError
 
 
 def _response(request, *, result=None, diagnostics=None, ok=False):
@@ -35,8 +36,32 @@ def _execute(request):
     if list(schema_validator('protocol').iter_errors(request)):
         return _failure(request, 'PROTOCOL_INVALID', '请求信封或操作字段不符合合同。')
     operation, payload = request['operation'], request['payload']
+    if operation == 'apply' and payload:
+        from .project import apply_prepared
+        return _response(request, result=apply_prepared(Path(request['project_path']).resolve(), request['request_id'], payload), ok=True)
+    if operation == 'ingest' and 'entrypoint' in payload:
+        if list(schema_validator('protocol', 'ingest_payload').iter_errors(payload)):
+            return _failure(request, 'PROTOCOL_INVALID', '输入登记字段不符合合同。')
+        if payload['kind'] == 'sources':
+            from .inputs import ingest_sources
+            result = ingest_sources(Path(request['project_path']).resolve(), request['request_id'], payload)
+            return _response(request, result=result, ok=not result['failures'], diagnostics=result['failures'])
+        from .inputs import ingest_analysis
+        return _response(request, result=ingest_analysis(Path(request['project_path']).resolve(), request['request_id'], payload), ok=True)
+    if operation in ('inspect', 'recover') and payload:
+        if list(schema_validator('protocol', operation + '_payload').iter_errors(payload)):
+            return _failure(request, 'PROTOCOL_INVALID', '查询字段不符合合同。')
+        project = Path(request['project_path']).resolve()
+        if operation == 'inspect':
+            from .inputs import inspect_view
+            result = inspect_view(project, payload)
+        else:
+            from .project import recover_request
+            result = recover_request(project, payload['target_request_id'])
+        diagnostics = result.pop('diagnostics', [])
+        return _response(request, result=result, diagnostics=diagnostics, ok=not diagnostics)
     if operation != 'check' or 'edit_path' in payload or payload.get('plan_path') is not None:
-        return _failure(request, 'OPERATION_UNSUPPORTED', '当前 I1.1 尚未实现此操作或检查形式。', 'operation')
+        return _failure(request, 'OPERATION_UNSUPPORTED', '尚未实现此操作，或没有提供受支持的 payload 形式。', 'operation')
     project = Path(request['project_path']).resolve()
     try:
         path = project_file(project, payload['candidate_path'], f".ai-sow-lite/work")
@@ -69,6 +94,8 @@ def execute(request):
     """Return the CLI response; expected and unexpected failures stay redacted."""
     try:
         return _execute(request)
+    except StorageError as error:
+        return _response(request, diagnostics=error.diagnostics)
     except OSError:
         return _failure(request, 'IO_FAILED', '本地文件读写失败；保留现有文件。')
     except (ValueError, RuntimeError):
@@ -83,8 +110,10 @@ def exit_code(response):
     codes = {item['code'] for item in response['diagnostics']}
     if 'INTERNAL_ERROR' in codes:
         return 1
-    if 'IO_FAILED' in codes:
+    if codes & {'IO_FAILED', 'WRITE_BUSY', 'INPUT_UNAVAILABLE', 'CALCULATION_FAILED', 'WORKBOOK_INVALID'}:
         return 3
+    if 'REQUEST_CANCELLED' in codes:
+        return 4
     return 2
 
 

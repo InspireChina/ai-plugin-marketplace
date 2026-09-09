@@ -2,11 +2,11 @@
 
 [设计总览](README.md) · [详细设计目录](detailed/README.md) · [实施计划目录](implementation/README.md)
 
-当前设计已按用户决定收口：**同一人串行使用；金额交给既有模板计算，插件不改模板。** [13 自检结论与已定边界](13-self-review-and-decisions.md) 记录决定及成本取舍；P00/D07/P03 已补齐有限编辑到完整候选的机械构造入口。设计收口已提交为 `311fee2`。I1.1 最小运行时已实现并完成当前测试，独立审阅与定点修复复核已完成；Lite Skill 和完整交付尚未实现，最新证据见 [I1 验证](../validation/I1-reliable-delivery.md)。以下第6—9节保留设计期记录。
+当前设计已按用户决定收口：**同一人串行使用；金额交给既有模板计算，插件不改模板。** [13 自检结论与已定边界](13-self-review-and-decisions.md) 记录决定及成本取舍；P00/D07/P03 已补齐有限编辑到完整候选的机械构造入口。设计收口已提交为 `311fee2`。I1.1 已完成实现与独立审阅；I1.2 文本/分析登记、定向读取和版本存储接缝已实现，测试及审阅状态见 [I1 验证](../validation/I1-reliable-delivery.md)。以下第6—9节保留设计期记录。
 
 ## 1. 建议的 Review 顺序
 
-本次优先看 [13 已定边界](13-self-review-and-decisions.md) 和下文第9节，再核对 D05/D06/P00/P03 的对应合同。前次资料吸收见 [实施目录第4节](implementation/README.md#4-已落实的资料吸收与验收归属)、下文第3.1节及 [12](12-reference-absorption.md)。两项产品选择已同步到合同，14项实施任务保留，现从 I1.1 进入实现。
+本次优先看 [13 已定边界](13-self-review-and-decisions.md) 和下文第9节，再核对 D05/D06/P00/P03 的对应合同。前次资料吸收见 [实施目录第4节](implementation/README.md#4-已落实的资料吸收与验收归属)、下文第3.1节及 [12](12-reference-absorption.md)。两项产品选择已同步到合同，14项实施任务保留，当前推进到 I1.2，下一项为 I1.3；Lite Skill 和完整交付尚未实现。
 
 1. [总览](README.md) + [D01](detailed/D01-interaction-and-outcomes.md)：generate 快速初版、允许的输入交互、clarify 有限修改、无定稿。
 2. [D04A 单 session 全景](detailed/D04A-single-session-panorama.md) + [D04B 有限环路](detailed/D04B-bounded-loops.md)：各步实际需要什么、上下文怎样累积、哪些地方必须停止。

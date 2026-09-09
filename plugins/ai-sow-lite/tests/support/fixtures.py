@@ -107,3 +107,85 @@ def seed_lineage_versions(case, versions):
         previous_ref = dict(path=path.relative_to(case.project).as_posix(), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
         previous = version
     write_json(case.project / '.ai-sow-lite/current.json', dict(version_id=previous, manifest_hash=previous_ref['sha256']))
+
+
+def build_ingested_case(project):
+    """Use genuine public CLI sources/analysis; only business drafts remain fixtures."""
+    from .cli import run_request
+    from uuid import uuid4
+    source = FIXTURES / 'generate'
+    ids = read_json(source / 'ids.json')
+    request = str(uuid4())
+    payload = dict(kind='sources', entrypoint='generate', project_type='new', sources=[
+        dict(source_path=str(source / filename), input_id=None, material_types=[role], uses=[use], use_regions=[])
+        for filename, role, use in [('prd.md', 'prd', 'to-be-scope'), ('hld.md', 'hld', 'to-be-architecture'),
+                                    ('answers.md', 'answer', 'to-be-scope')]])
+    result = run_request(project, request, 'ingest', payload)
+    assert result['ok'], result
+    refs = result['result']['input_refs']
+    replacements = {ids[k]: ref['input_version_id'] for k, ref in zip(['P1', 'H1', 'A1'], refs)}
+    replacements[ids['request']] = request
+    def translate(value):
+        if isinstance(value, str):
+            for before, after in replacements.items():
+                value = value.replace(before, after)
+            return value
+        if isinstance(value, dict):
+            return {key: translate(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [translate(item) for item in value]
+        return value
+    work = project / '.ai-sow-lite/work/generate' / request
+    for name in ['model.json', 'pending-items.json', 'decisions.json', 'candidate.json', 'analysis.json']:
+        write_json(work / name, translate(read_json(source / name)))
+    # Resolve real locators through inspect and keep the actual returned excerpt hashes.
+    analysis = read_json(work / 'analysis.json')
+    for owner in [*analysis['evidence'], *analysis['topics']]:
+        for ref in owner.get('source_refs', owner.get('covered_regions', [])):
+            observed = run_request(project, request, 'inspect', dict(view='regions', selector=dict(
+                input_version_id=ref['input_version_id'], locator=ref['locator']), limit=100, cursor=None))
+            assert observed['ok'], observed
+            ref['excerpt_hash'] = observed['result']['coverage']['excerpt_hash']
+    write_json(work / 'analysis.json', analysis)
+    registered = run_request(project, request, 'ingest', dict(kind='analysis', entrypoint='generate',
+                            analysis_path=(work / 'analysis.json').relative_to(project).as_posix()))
+    assert registered['ok'], registered
+    candidate = read_json(work / 'candidate.json')
+    candidate['input_version_ids'] = [ref['input_version_id'] for ref in refs]
+    candidate['evidence_ids'] = registered['result']['evidence_ids']
+    candidate['topic_version_ids'] = registered['result']['topic_version_ids']
+    write_json(work / 'candidate.json', candidate)
+    return Case(project, request, work / 'candidate.json', candidate['template_hash'], translate(ids))
+
+
+def storage_package(project, request_id=None, expected_current=None):
+    """Controlled storage contract only. sow.xlsx is deliberately not an Office workbook."""
+    from uuid import uuid4
+    from ai_sow_lite.contracts import canonical_json_bytes, semantic_digest
+    from ai_sow_lite.project import initialize, ensure_request
+    request_id = request_id or str(uuid4())
+    entrypoint = 'clarify' if expected_current else 'generate'
+    identity = initialize(project, 'new', PLUGIN / 'assets/sow-template.xlsx')
+    ensure_request(project, request_id, entrypoint)
+    version = str(uuid4())
+    directory = project / f'.ai-sow-lite/work/{entrypoint}/{request_id}/package-{version}'
+    directory.mkdir()
+    contents = {'model.json': b'{"controlled":"model"}', 'pending-items.json': b'{}', 'decisions.json': b'{}',
+                'projection.json': b'{}', 'sow.xlsx': b'NOT AN OFFICE WORKBOOK; STORAGE UNIT ONLY',
+                'summary.md': b'controlled summary', 'pending-items.md': b'controlled pending',
+                'verification.json': b'{"unit":"storage-only"}'}
+    files = []
+    for name, raw in contents.items():
+        (directory / name).write_bytes(raw)
+        files.append(dict(path=f'.ai-sow-lite/versions/{version}/{name}', sha256=hashlib.sha256(raw).hexdigest()))
+    digest = semantic_digest(dict(request_id=request_id, scope='storage-unit'))
+    dependencies = [] if expected_current is None else [dict(
+        path=f".ai-sow-lite/versions/{expected_current['version_id']}/manifest.json", sha256=expected_current['manifest_hash'])]
+    manifest = dict(schema_version='1.0', version_id=version, request_id=request_id,
+                    base_version_id=expected_current['version_id'] if expected_current else None,
+                    intent_digest=digest, candidate_digest=digest, files=files,
+                    input_version_ids=[], topic_version_ids=[], evidence_ids=[], dependencies=dependencies,
+                    template_hash=identity['template_hash'], projection_version='lite-projection-v1',
+                    office_identity='unit-storage-no-office', verification_ref=files[-1])
+    return dict(project=project, request_id=request_id, entrypoint=entrypoint, prepared_directory=directory,
+                manifest=manifest, expected_current=expected_current)

@@ -51,7 +51,7 @@ check_candidate 返回报告本体，CLI 将其落盘并返回 check_ref；报�
 
 - [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_contracts.py plugins/ai-sow-lite/tests/test_bootstrap.py -q`；失败预期转为当前可测范围全部通过后关闭此任务，其他平台执行面明确未验证。记录严格摘要向量和真实模板身份，不提交生成缓存；I1.5 再以独立副本验证完整安装/交付。
 
-**完成证据：** I1.1 已通过 TDD 回归和独立审阅收口，完整 Lite 144项通过、1项因缺少 pwsh 跳过；真实 Agent 候选及宿主探针已记录。见 [I1 验证](../../validation/I1-reliable-delivery.md)。I1.2及以后仍未完成。
+**完成证据：** I1.1 已通过 TDD 回归和独立审阅收口，完整 Lite 144项通过、1项因缺少 pwsh 跳过；真实 Agent 候选及宿主探针已记录。见 [I1 验证](../../validation/I1-reliable-delivery.md)。后续任务的完成范围以各节证据为准。
 
 ## I1.2 · 文本登记与有效版本保存
 
@@ -59,9 +59,9 @@ check_candidate 返回报告本体，CLI 将其落盘并返回 check_ref；报�
 
 **Interfaces:** 消费 initialize、ingest_sources/analysis、inspect_view、apply_prepared、recover_request 的 P00 签名；产出真实输入/依据身份、短锁提交、current/manifest 和 checkpoint。Excel 准备文件由 I1.3 提供，早期 project 单测使用内容受控的准备包，不能宣称其工作簿已通过交付检查。
 
-- [ ] 用临时本地目录测试首次 ingest、重复输入、部分失败、身份冲突和符号链接逃逸；实现逐输入拷贝后验 hash、不可变原件、严格文本解码与保留换行的 text_lines，登记分析候选及其实际来源。已有文件和读取成功结果不因另一输入失败丢失；ingest 不创建 current。
-- [ ] 建立 P00 checkpoint 与请求意图记录。原子写临时文件后 replace；分开源记录、业务恢复和 telemetry。没有可用计数时先 recover 一次，再明确退出，不自动归零。真正新增材料可定向读取，不重置旧探索额度。
-- [ ] 实现提交协议：锁外验证/准备完整目录；同文件系统；操作系统释放型锁（Unix flock、Windows msvcrt 对固定锁字节非阻塞锁定）；锁内复核意图/取消/current/摘要，再保存不可变版本和切换指针。锁争用立即 WRITE_BUSY，锁内没有 Office、模型或等待用户。
+- [x] 用临时本地目录测试首次 ingest、重复输入、部分失败、身份冲突和符号链接逃逸；实现逐输入拷贝后验 hash、不可变原件、严格文本解码与保留换行的 text_lines，登记分析候选及其实际来源。已有文件和读取成功结果不因另一输入失败丢失；ingest 不创建 current。
+- [x] 建立 P00 checkpoint 与请求意图记录。原子写临时文件后 replace；分开源记录、业务恢复和 telemetry。没有可用计数时先 recover 一次，再明确退出，不自动归零。真正新增材料可定向读取，不重置旧探索额度。
+- [x] 实现提交协议：锁外验证/准备完整目录；同文件系统；操作系统释放型锁（Unix flock、Windows msvcrt 对固定锁字节非阻塞锁定）；锁内复核意图/取消/current/摘要，再保存不可变版本和切换指针。锁争用立即 WRITE_BUSY，锁内没有 Office、模型或等待用户。
 
 指针替换的关键代码形态如下；调用方已经持锁且目标版本完整。文件和目录刷新平台差异分别测试，不将此片段声称为断电持久性证明。
 
@@ -83,9 +83,11 @@ def replace_current(root: Path, pointer: dict) -> None:
         temp.unlink(missing_ok=True)
 ```
 
-- [ ] 对完整准备后、版本目录写完后、replace 前/后、成功响应前注入进程中断。故障注入放测试 monkeypatch/子进程屏障，不暴露生产 CLI 任意 failpoint。recover 只在 current 或其有效 base_version_id 历史链找到本请求时确认已应用；孤立 versions 目录不能自动激活。加快检索的索引不能替代这项事实。
-- [ ] 测 generate expected_current=null 的首次成功、意外已存在 current 的拒绝、同请求重试不重导出、后续串行请求成功后的旧请求查询、取消和未知响应。只加一次短锁繁忙/过期误调用的保护测试，不设计并行改稿成功场景。已成功请求返回原 applied_version 与当前 current_version，不倒回指针；后续日志失败不改变已应用事实。
-- [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_inputs.py plugins/ai-sow-lite/tests/test_project.py -q`；各平台只报告实际可测锁与 replace 结果。纯 project 单测通过还不关闭 I1，必须接 I1.3 实际包。
+- [x] 对完整准备后、版本目录写完后、replace 前/后、成功响应前注入进程中断。故障注入放测试 monkeypatch/子进程屏障，不暴露生产 CLI 任意 failpoint。recover 只在 current 或其有效 base_version_id 历史链找到本请求时确认已应用；孤立 versions 目录不能自动激活。加快检索的索引不能替代这项事实。
+- [x] 测 generate expected_current=null 的首次成功、意外已存在 current 的拒绝、同请求重试不重导出、后续串行请求成功后的旧请求查询、取消和未知响应。只加一次短锁繁忙/过期误调用的保护测试，不设计并行改稿成功场景。已成功请求返回原 applied_version 与当前 current_version，不倒回指针；后续日志失败不改变已应用事实。
+- [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_inputs.py plugins/ai-sow-lite/tests/test_project.py -q`；各平台只报告实际可测锁与 replace 结果。纯 project 单测通过还不关闭 I1，必须接 I1.3 实际包。
+
+**完成证据：** I1.2 已通过测试先行实现及独立审阅/定点复核：聚焦71项通过，完整 Lite 215项通过、1项因缺少 PowerShell 跳过，独立副本的10次公共 CLI 验收通过。输入登记、定向查询与受控包存储事实已验证；公共 apply 仍等待 I1.3 实际工作簿核验器，I1 整体未关闭。详见 [I1 验证](../../validation/I1-reliable-delivery.md)。
 
 ## I1.3 · 模板投影、真实计算与最终复读
 

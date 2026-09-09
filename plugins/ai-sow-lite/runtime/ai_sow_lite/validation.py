@@ -392,7 +392,7 @@ def _model_classification(ctx, model, standards, exact_open, work_gaps):
                 ctx.add(field, '有效分类和明确不适用均须有分类依据。', object_id=task['id'])
 
 
-def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects):
+def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, analysis_records=None):
     model_valid = objects is not None
     index = ctx.json('.ai-sow-lite/inputs/index.json', '.ai-sow-lite/inputs', 'artifacts', 'input_index')
     inputs, raw_sources = {}, {}
@@ -425,8 +425,8 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects):
             ctx.add(field, '覆盖记录的来源必须属于该主题采用的输入集合。', object_id=owner)
         locator = source['locator']
         if locator['kind'] != 'text_lines':
-            # Reader/observation registration belongs to I1.2; never pretend to verify an attachment.
-            ctx.add('locator', 'I1.1 仅执行 text_lines 原字节定位；此定位适配尚未实现。', object_id=owner, code='OPERATION_UNSUPPORTED')
+            # XLSX readers belong to I2.1; prototype/observations to I4.
+            ctx.add('locator', '仅支持 text_lines 原字节定位；此定位适配尚未实现。', object_id=owner, code='OPERATION_UNSUPPORTED')
             return
         if locator['start_line'] > locator['end_line']:
             ctx.add('locator', '文本范围的起始行不能大于结束行。', object_id=owner)
@@ -462,7 +462,8 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects):
         ctx.add('topic_version_ids', '候选必须绑定实际分析记录；空模型也不例外。', code='EVIDENCE_MISSING')
     for version in candidate['topic_version_ids']:
         area = f'.ai-sow-lite/analysis/topics/{version}'
-        analysis = ctx.json(area + '/analysis.json', area, 'artifacts', 'analysis')
+        analysis = (analysis_records[version] if analysis_records is not None else
+                    ctx.json(area + '/analysis.json', area, 'artifacts', 'analysis'))
         if not analysis:
             analyses_valid = False
             continue
@@ -491,7 +492,7 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects):
                 ctx.add('id', '不同分析不能用相同依据 ID 覆盖不同内容。', object_id=record['id'])
             evidence[record['id']] = record
         if analysis['observations']:
-            ctx.add('observations', '观察登记与附件校验将在 I1.2 实现。', code='OPERATION_UNSUPPORTED')
+            ctx.add('observations', '观察登记与附件校验将在 I4 实现。', code='OPERATION_UNSUPPORTED')
     topics = list(topics_by_version.values())
     adopted = set(candidate['evidence_ids'])
     for identity in adopted:
@@ -565,6 +566,20 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects):
         graph[identity] = edges
     _acyclic(ctx, graph, 'basis_refs')
     return evidence, topics
+
+
+def check_analysis(project, analysis):
+    """Share source/identity checks with candidates; no business objects are invented."""
+    ctx = _Check(Path(project))
+    for error in schema_validator('artifacts', 'analysis').iter_errors(analysis):
+        ctx.add('analysis', '分析字段不符合当前 Schema。')
+    if ctx.diagnostics:
+        return ctx.diagnostics
+    records = {topic['topic_version_id']: analysis for topic in analysis['topics']}
+    candidate = dict(input_version_ids=list(dict.fromkeys(i for t in analysis['topics'] for i in t['input_version_ids'])),
+                     topic_version_ids=list(records), evidence_ids=[e['id'] for e in analysis['evidence']])
+    _sources_and_evidence(ctx, candidate, None, None, dict(items=[]), None, records)
+    return ctx.diagnostics
 
 
 def _acyclic(ctx, graph, field):

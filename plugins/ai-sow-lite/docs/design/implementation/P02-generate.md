@@ -40,7 +40,7 @@ def test_cursor_pins_input_snapshot(case):
     assert first["result"]["coverage"] is not None
 ```
 
-此片段检查分页合同的起点；同一测试中再用真实 ingest 增加夹具材料，以首个 next_cursor 续读时，固定读取其已绑定旧快照。旧来源不可变，不混入新增成员；查询最新集合需从 cursor=null 开始并返回新范围摘要。若绑定快照缺失则 VERSION_INCOMPATIBLE，不静默转到最新集合。
+此片段检查分页合同的起点；同一测试中再用真实 ingest 增加夹具材料，以首个 next_cursor 续读时应返回 VERSION_INCOMPATIBLE，不能静默混入新增成员。查询最新集合需从 cursor=null 开始并返回新范围摘要；旧原件仍不可变，但首版不另外保存输入集合的历史查询快照。这样与 P00 及上文的来源版本失效规则保持一致。
 
 - [ ] 分析候选落盘前验证实际来源/摘要；输入问题仍在 work，I2.2 绑定正式目标。稀疏历史不要求 AC/Task/type_hint；无依据的历史完整层级不得由工具补造。references 给出 API/事件候选与实例区分、零匹配依赖和统一补问规则。
 - [ ] 在 references/input-analysis.md 写清历史理解方法：表头、合并/跨行与附注共同确定条目，分页不切断语义；目录/标准/示例不当成历史交付，明确取消/排除/未来范围保留限定；部分内容相同不合并整条。使用下述 sparse-history 夹具核对读取结果和定位，语义判断交给 I2.2。合并既有分析只补新增关系与必要修正，不重新输出全部历史，也不增加历史 AC 补全或多层汇聚阶段。

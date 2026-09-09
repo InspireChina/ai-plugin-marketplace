@@ -694,46 +694,77 @@
         "excerpts": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "sheet": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "\\S"
-              },
-              "range": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "\\S"
-              },
-              "file_ref": {
+            "oneOf": [
+              {
                 "type": "object",
                 "properties": {
-                  "path": {
+                  "sheet": {
                     "type": "string",
                     "minLength": 1,
-                    "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+                    "pattern": "\\S"
                   },
-                  "sha256": {
+                  "range": {
                     "type": "string",
-                    "pattern": "^[0-9a-f]{64}$",
-                    "minLength": 64,
-                    "maxLength": 64
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "file_ref": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$",
+                        "minLength": 64,
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "sha256"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
-                  "path",
-                  "sha256"
+                  "sheet",
+                  "range",
+                  "file_ref"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "locator": {
+                    "allOf": [
+                      {
+                        "$ref": "evidence.schema.json#/$defs/locator"
+                      },
+                      {
+                        "properties": {
+                          "kind": {
+                            "const": "text_lines"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "file_ref": {
+                    "$ref": "#/$defs/file_ref"
+                  }
+                },
+                "required": [
+                  "locator",
+                  "file_ref"
                 ],
                 "additionalProperties": false
               }
-            },
-            "required": [
-              "sheet",
-              "range",
-              "file_ref"
-            ],
-            "additionalProperties": false
+            ]
           },
           "minItems": 0
         }
@@ -1097,14 +1128,28 @@
           ]
         },
         "additional_investigation_batches": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "repair_batches": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 2
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "candidate_path": {
           "anyOf": [
@@ -1133,6 +1178,22 @@
               "type": "null"
             }
           ]
+        },
+        "recovery_queries": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "operation_retries": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          }
         }
       },
       "required": [
@@ -1462,6 +1523,162 @@
       "required": [
         "version_id",
         "manifest_hash"
+      ],
+      "additionalProperties": false
+    },
+    "analysis_index": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/file_ref"
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "prepared": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "version_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "candidate_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "check_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "expected_current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/current"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/file_ref"
+          },
+          "minItems": 7
+        },
+        "template_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "projection_version": {
+          "const": "lite-projection-v1"
+        },
+        "office_identity": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "verification_ref": {
+          "$ref": "#/$defs/file_ref"
+        }
+      },
+      "required": [
+        "schema_version",
+        "version_id",
+        "candidate_ref",
+        "check_ref",
+        "expected_current",
+        "files",
+        "template_hash",
+        "projection_version",
+        "office_identity",
+        "verification_ref"
+      ],
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "entrypoint": {
+          "enum": [
+            "generate",
+            "clarify"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "request_id",
+        "entrypoint"
+      ],
+      "additionalProperties": false
+    },
+    "intent": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "entrypoint": {
+          "enum": [
+            "generate",
+            "clarify"
+          ]
+        },
+        "intent_digest": {
+          "type": "string",
+          "pattern": "^json-v1:[0-9a-f]{64}$",
+          "minLength": 72,
+          "maxLength": 72
+        },
+        "expected_current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/current"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "request_id",
+        "entrypoint",
+        "intent_digest",
+        "expected_current"
       ],
       "additionalProperties": false
     }

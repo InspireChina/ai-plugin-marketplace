@@ -2,7 +2,7 @@
 
 [详细设计目录](README.md) · [技术基线 D00](D00-technology-stack.md) · [数据 D02](D02-shared-data-and-evidence.md)
 
-状态：按单人串行、原模板计算的用户决定收口。D05 定义具体修改/确认，P00 补齐有限编辑构造接口，P01/P03 安排中断/幂等/取消验证；尚未实现工具，不能把本文件当作已可运行的命令手册。
+状态：按单人串行、原模板计算的用户决定收口。I1.1 候选校验及 I1.2 文本/分析登记、定向查询、存储与恢复接缝已有实现，当前可调用范围见[工具合同](../../../references/tools.md)，验证与限制见 [I1 记录](../../validation/I1-reliable-delivery.md)。真实 Excel 核验接入前，公共 apply 明确拒绝交付；D05 的具体修改/确认仍待 I3。本文件包含后续设计合同，不能将所有设计操作视为已经可用。
 
 ## 1. Agent 与工具的调用关系
 
@@ -14,7 +14,7 @@ Agent 可在本请求 work 目录写草案；版本目录由工具独占生成�
 
 ## 2. 六项机械操作
 
-逻辑操作保持以下六项，CLI 统一为 `python scripts/lite.py --request <request.json>`；具体 payload、版本和错误信封见 [P00](../implementation/P00-contracts-and-fixtures.md)。命令将在 I1 实现后才可用。大参数通过 UTF-8 JSON 请求文件传递，大结果存文件并返回定位；不把整份 PRD/模型反复塞进命令行或 stdout。
+逻辑操作保持以下六项，CLI 统一为 `python scripts/lite.py --request <request.json>`；具体 payload、版本和错误信封见 [P00](../implementation/P00-contracts-and-fixtures.md)。各操作按实施任务逐项接入，实际支持范围以上述工具合同为准。大参数通过 UTF-8 JSON 请求文件传递，大结果存文件并返回定位；不把整份 PRD/模型反复塞进命令行或 stdout。
 
 | 操作 | 主要输入 | 输出 | 写入范围与失败边界 |
 |---|---|---|---|

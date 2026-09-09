@@ -1,12 +1,12 @@
-# Lite I1.1 工具合同
+# Lite I1.2 工具合同
 
-I1.1 仅提供严格 JSON/摘要与 `check/candidate`。`ingest`、`inspect`、`render`、`apply`、`recover`、`check/edits` 及带 `plan_path` 的检查尚未实现，返回 `OPERATION_UNSUPPORTED`，不生成假登记或交付。运行时不依赖旧插件。
+当前提供真实文本 `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `apply` 已有机械预检和存储接缝，但缺少 I1.3 实际 Office/投影核验器时明确拒绝；`render`、Clarify 方案/确认应用、`check/edits` 和带 `plan_path` 的检查仍返回 `OPERATION_UNSUPPORTED`。运行时不依赖旧插件，不生成模拟观察或交付。
 
 ```text
 <Lite 隔离 Python> <Lite 安装目录>/scripts/lite.py --request <UTF-8 请求文件>
 ```
 
-请求固定字段为 `protocol_version="1.0"`、UUID4 `request_id`、显式 `project_path`、`operation="check"`、`payload`。payload 为 `candidate_path`、`scope="full"/"slice"`、`plan_path=null`。项目路径相对调用 cwd 解析一次；其余引用使用项目相对 POSIX 路径。候选及其三份业务 JSON 限定在本请求 `.ai-sow-lite/work/<entrypoint>/<request_id>/`，不得通过 `..` 或符号链接逃逸。
+请求固定字段为 `protocol_version="1.0"`、UUID4 `request_id`、显式 `project_path`、`operation`、`payload`。`check/candidate` 的 payload 为 `candidate_path`、`scope="full"/"slice"`、`plan_path=null`。项目路径相对调用 cwd 解析一次；其余引用使用项目相对 POSIX 路径。候选及其三份业务 JSON 限定在本请求 `.ai-sow-lite/work/<entrypoint>/<request_id>/`，不得通过 `..` 或符号链接逃逸。
 
 ## 六份 Schema 与实际文件位置
 
@@ -14,10 +14,10 @@ I1.1 仅提供严格 JSON/摘要与 `check/candidate`。`ingest`、`inspect`、`
 - [pending-items.schema.json](../contracts/pending-items.schema.json)：`schema_version/items`；target 为 `{object_id, field}`。resolved 精确为 `{decision_id, request_id, summary}`；superseded 为 `{replacement_item_ids, lineage_refs, request_id, reason}`，其中 lineage 引用 `{from_version_id, from_ids}`。
 - [decisions.schema.json](../contracts/decisions.schema.json)：`schema_version/items`；决定的 `applies_to` 同 target。
 - [evidence.schema.json](../contracts/evidence.schema.json)：`schema_version/items`；analysis 的 `evidence[]` 使用其 `$defs/item`。来源定位为 `text_lines`、`xlsx_range`、`observation`。
-- [protocol.schema.json](../contracts/protocol.schema.json)：请求及 `$defs/response`。未来操作只识别操作名并明确拒绝，尚不宣称其 payload 已可执行。
-- [artifacts.schema.json](../contracts/artifacts.schema.json)：首次消费者的工件结构，按 `$defs` 校验。未来 manifest/projection/checkpoint 定义仅为结构，当前没有写入/应用实现。
+- [protocol.schema.json](../contracts/protocol.schema.json)：请求及 `$defs/response`。支持的 payload 和 inspect 选择器采用封闭结构；不接受任意路径、脚本或绕过开关。I1.1 的空占位调用仍明确返回未支持。
+- [artifacts.schema.json](../contracts/artifacts.schema.json)：首次消费者的工件结构，按 `$defs` 校验。增加 prepared、request、intent、analysis_index；checkpoint 保存业务续接信息，manifest/current 由公共核验后的存储内核写入。projection 的交付核验仍属于 I1.3。
 
-I1.1 的独立合同夹具直接写以下文件；这不是 `ingest` 已实现的证明。Agent 探测也只可在临时项目准备合同输入和 work 候选。
+以下路径由真实登记/检查操作消费。既有 I1.1 `contract_case` 与 seed history 保持独立合成单测含义；新增 `build_ingested_case` 使用真实 CLI ingest→inspect→analysis→check，保留真实返回的身份和定位。
 
 | 文件 | Schema 定义及关键字段 |
 | --- | --- |
@@ -26,7 +26,7 @@ I1.1 的独立合同夹具直接写以下文件；这不是 `ingest` 已实现�
 | `.ai-sow-lite/inputs/index.json` | artifacts `input_index`：schema_version、items；input 含 input_version_id/input_id/content_hash/relative_path/format/material_types/uses/use_regions，文本增加 encoding="utf-8" |
 | `.ai-sow-lite/inputs/originals/<input-version-id>/<filename>` | 不可变源文件字节；relative_path 指到这里 |
 | `.ai-sow-lite/analysis/topics/<topic-version-id>/analysis.json` | artifacts `analysis`：schema_version、evidence[]、topics[]、observations[]（文件引用）；topics 使用 `$defs/topic`，版本 ID 须与目录及候选一致 |
-| `.ai-sow-lite/inputs/readings/<read-id>/reading.json` | artifacts `reading`：绑定输入、内容哈希、适配器/选项和摘录文件引用；I1.1 尚无读取器 |
+| `.ai-sow-lite/inputs/readings/<read-id>/reading.json` | artifacts `reading`：绑定真实 input_version_id/content_hash，文本适配器 lite-text-v1、options={}、text_lines locator 与摘录附件引用 |
 | `.ai-sow-lite/analysis/observations/<observation-id>/observation.json` | artifacts `observation`；必须是真实观察记录，不得写模拟成功 |
 | `.ai-sow-lite/work/generate/<request-id>/candidate.json` | artifacts `candidate`；引用同请求的 model/pending-items/decisions，列所采用 evidence_ids/input_version_ids/topic_version_ids 和 template_hash |
 | `.ai-sow-lite/work/generate/<request-id>/checks/<sha256>.json` | artifacts `check`；真实 CLI 检查报告，字节和依赖绑定 |
@@ -43,14 +43,76 @@ covered/uncovered 区域的 input_version_id 必须同时属于登记索引、�
 
 stdout 仅一个 JSON：`ok/request_id/operation/result/diagnostics`。检查报告本体含 schema_version、validator_version、scope、candidate_ref、candidate_digest、dependencies、valid_for_render、unknowns_count、diagnostics；直接 `check_candidate(project, candidate_path, scope, plan_path)` 返回此本体且不写文件。CLI 保存报告，result 返回 check_ref/candidate_ref/plan_ref/review_ref/candidate_digest/valid_for_render/unknowns_count。slice 无错误也不能作为 render 权威。
 
-诊断为 `code/target/message/preserved_paths`，target 为 `{path, object_id, field}`，未知部分 null。退出码 0 完成，2 不合法/不支持，3 I/O，1 未预期故障；取消与可靠交付尚未实现，不返回虚假的取消/生效事实。
+诊断为 `code/target/message/preserved_paths`，target 为 `{path, object_id, field}`，未知部分 null。退出码 0 完成，2 不合法/不支持，3 本地 I/O/输入读取/锁/工作簿故障，4 已观察取消且未应用，1 未预期故障。部分输入失败返回 ok=false，同时保留成功引用；技术失败不冒充业务待确认。
 
-当前 CLI/校验错误码：`PROTOCOL_INVALID`、`VERSION_INCOMPATIBLE`、`OPERATION_UNSUPPORTED`、`CANDIDATE_INVALID`、`EVIDENCE_MISSING`、`IO_FAILED`、`INTERNAL_ERROR`。自举错误码：`BOOTSTRAP_DIRECTORY_FAILED`、`UV_INSTALL_DOWNLOAD_FAILED`、`UV_INSTALL_DOWNLOADER_MISSING`、`UV_INSTALL_FAILED`、`UV_INSTALL_INVALID`、`UV_CHECK_FAILED`、`UV_VERSION_INVALID`、`PYTHON_INSTALL_FAILED`、`DEPENDENCY_SYNC_FAILED`、`VENV_MISSING`、`PYTHON_CHECK_FAILED`、`PYTHON_VERSION_INVALID`、`DEPENDENCY_IMPORT_FAILED`。自举失败使用相同信封、request_id/operation=null 和退出码 3。不回显原始异常或业务输入。合法未知、默认 M、有值 open 问题和未拆明工作不会被自动改值或关闭；工具不判断金额或语义充分性。
+I1.1 保留的 CLI/校验错误码：`PROTOCOL_INVALID`、`VERSION_INCOMPATIBLE`、`OPERATION_UNSUPPORTED`、`CANDIDATE_INVALID`、`EVIDENCE_MISSING`、`IO_FAILED`、`INTERNAL_ERROR`。自举错误码：`BOOTSTRAP_DIRECTORY_FAILED`、`UV_INSTALL_DOWNLOAD_FAILED`、`UV_INSTALL_DOWNLOADER_MISSING`、`UV_INSTALL_FAILED`、`UV_INSTALL_INVALID`、`UV_CHECK_FAILED`、`UV_VERSION_INVALID`、`PYTHON_INSTALL_FAILED`、`DEPENDENCY_SYNC_FAILED`、`VENV_MISSING`、`PYTHON_CHECK_FAILED`、`PYTHON_VERSION_INVALID`、`DEPENDENCY_IMPORT_FAILED`。自举失败使用相同信封、request_id/operation=null 和退出码 3。不回显原始异常或业务输入。合法未知、默认 M、有值 open 问题和未拆明工作不会被自动改值或关闭；工具不判断金额或语义充分性。
 
 UUID4 必须恰好 36 字符，SHA-256 恰好 64 字符，json-v1 摘要恰好 72 字符；均拒绝尾随换行，不修剪或改写。业务文件或登记/分析文件无效时保留其真实诊断，继续运行其余有效依赖足以支持的检查；不会把无效文件当作合法空集合制造悬空引用。`valid_for_render=false` 的报告不授予任何交付权威；pending 文件无效时 `unknowns_count` 的占位 0 不代表业务没有待确认项，以文件诊断为准。
 
-I1.1 实际定位校验仅支持已登记单文件文本的 `text_lines`；`xlsx_range`、原型包内文本、`observation` 的登记/复核适配属于 I1.2，当前返回明确诊断，不冒充附件已验证。历史复合键可只读核对 current → manifest 依赖链及相应旧模型；这些读取不实现可靠生效、恢复或完整交付核验。候选语义摘要覆盖所采用主题分析及依据；报告另绑定实际文件字节和依赖摘要，不把字节格式变化当作业务文字变化。
+实际定位校验支持已登记单文件文本的 `text_lines`；`xlsx_range` 的读取适配属于 I2.1，原型包内文本和 `observation` 属于 I4，当前明确拒绝，不冒充附件已验证。历史复合键及恢复沿 current → manifest 的摘要绑定基线链读取；存储验证不等于工作簿交付验证。候选语义摘要覆盖所采用主题分析及依据；报告另绑定实际文件字节和依赖摘要，不把字节格式变化当作业务文字变化。
 
 Lineage 仅检查 current 到显式 from_version_id 所需的已绑定历史区间。对象保持 `(version_id, object_id)` 身份；继承记录须与该区间已保存的同复合键记录完全一致，以其首次出现的后继模型定位替换发生版本。原对象须在替换前持续存在，去向须在该次模型存在；已退出的中间去向只能由时间更晚的有效替换继续到当前对象或明确删除。缺少摘要绑定模型、缺少实际继承记录或只在任意早期历史找到同名 ID 的链不支持据此通过，会返回文件或 lineage 诊断；不推断发生顺序、不恢复缺件、不扫描显式区间以外的无关历史。
 
 Bash/PowerShell 自举迁入来源为 D00 的 `2fc8588`，只适配身份、路径与单请求 CLI。脚本固定 uv 0.11.7、Python 3.12 和锁定依赖；缓存/下载安装放在 Lite 副本 `.ai-sow-tools/`。没有沿用旧 Windows 97 字符支持声明；本轮平台验证范围以任务报告为准。
+
+
+## I1.2 登记与查询
+
+新增诊断包括 INPUT_UNAVAILABLE、FORMAT_UNSUPPORTED、INPUT_ID_CONFLICT、PROJECT_ID_CONFLICT、IDENTITY_CONFLICT、REQUEST_ID_CONFLICT、PATH_UNSAFE、CHECKPOINT_UNKNOWN、LOOP_LIMIT_REACHED、BASE_STALE、WRITE_BUSY、REQUEST_CANCELLED、WORKBOOK_INVALID、RESULT_TOO_LARGE。游标失效沿用 VERSION_INCOMPATIBLE。
+
+`ingest/sources` payload：`kind="sources"`、`entrypoint="generate"/"clarify"`、`project_type="new"/"existing"`、`sources[]`。每项必须含 source_path、input_id（首登 null）、material_types、uses、use_regions（无区域为空）。首次初始化固定项目身份和内置模板逐字节副本；后续项目类型/模板冲突拒绝；已有原件而索引丢失时保留文件并诊断，不重建空索引。ingest 不创建 current。
+
+本轮只读取 `.md`、`.markdown`、`.txt` 的严格 UTF-8；CRLF/LF/CR 保留，拒绝伪装成文本的常见二进制格式。外部 source_path 是唯一允许的项目外读取位置；目录别名可解析，源文件链接拒绝。所有持久项目路径拒绝链接/reparse 重定向。每项先复制并复读 hash，再登记；解码失败也保留已登记原件，不影响同批其他输入。相同原字节复用 input_version_id 和 reading；显式已有 input_id 的新内容获得新版本，旧原件不覆盖；未知 input_id 拒绝。新增材料角色/用途合并到登记索引，原件字节不改。
+
+相同原字节以不同文件名再次导入时，先按本次 source_path 的 basename 核对输入 locator；复用身份后，将本次用途区域中显式提供的 locator.path 绑定到实际保存原件的 basename 再合并。返回区域可原样用于 inspect/regions；原件身份、字节和 reading 保持不变，未保存的别名仍不能用于读取。
+
+返回 project_id、input_refs（登记项）、reading_refs（文件引用）、failures（诊断）和 checkpoint_ref。原件下的 reading-ref.json 指向不可变读取记录，后续复用复核原件、记录和摘录附件。读取成功只证明文本可读。
+
+`ingest/analysis` payload：`kind="analysis"`、entrypoint、analysis_path。文件必须在本请求 work 内。共用候选的来源、摘要、依据图与主题校验后，保存实际输入分析字节至 `analysis/registrations/<sha256>/analysis.json`，按 topic_version_id 拆存分析并登记 `analysis/index.json`。各主题保存 registration-ref.json 以回查原始登记候选。返回 analysis_ref、evidence_ids、topic_version_ids；同依据/主题版本冲突拒绝；新依据须由新的主题版本实际承载，不能通过重复旧主题返回未保存的依据身份。observations 非空或不支持的 locator 明确拒绝。登记不代表当前 SOW 已采用。
+
+复用已有主题前核对索引成员及摘要、主题实际字节和 registration-ref 绑定的原始候选。若现存有效索引仅缺本主题一项，且主题与来源已完整保存、来源绑定与本次候选原字节完全相同，重试只补缺失索引项，不重写主题或来源。主题/来源损坏、ref 缺失或冲突、候选字节不同均不据此返回成功；整个索引丢失时不重建，不提供通用恢复层。
+
+`inspect` payload 为 view、selector；limit 默认20、最大100，cursor 默认 null。只读，不修改索引、current 或业务文件。选择器如下；表外组合和字段拒绝：
+
+| view | selector | 返回范围 |
+| --- | --- | --- |
+| current | `{}` | 当前指针和 manifest 引用；核对指针结构、manifest 摘要/结构/版本身份；没有 current 为显式空集合，所读绑定损坏则诊断 |
+| inputs | `{}`，或 input_version_ids，或 input_ids | 所选登记目录页 |
+| regions | input_version_id、locator | 已登记 text_lines 的实际正文、行号及摘录 hash；单文件 path 沿用上文规则 |
+| topics | `{}`，或 topic_version_ids，或 topic_ids | 所选不可变主题；分析索引/工件损坏不会当作空集合 |
+| objects | collection，加 object_ids/title 二选一；可选 version_id | 定向对象或标题子串命中；collection 为 epics/features/stories/acs/tasks/dependencies/pending_items/decisions，pending_items 的 title 检索 question，AC 附所属 story_id |
+| objects | collection="pending_items"、status；可选 version_id | open/resolved/superseded 问题 |
+| objects | collection="dependencies"、relation={object_id,direction}；可选 version_id | from_story_id/to_story_id 的 outgoing/incoming/both 关系；空结果保留查询条件与所读版本 |
+| standards | `{}`，或 work_type_ids，或 work_type_names | 空选择器仅返回类型目录；指定类型返回定性规则、包含边界和 S/M/L/X 规模门槛。逐次从项目固定模板读取，不返回 PD/倍率/公式 |
+| request | request_id | 本请求恢复事实，损坏返回诊断 |
+| telemetry | 当前未支持 | I1.4 接入真实观测后提供，不返回模拟成功 |
+
+current 查询只读取项目身份、current 和其摘要绑定的 manifest，不读取工作簿、原件或业务文件。objects 默认读取一次 current 后固定该版；显式 version_id 仅沿摘要绑定的 base_version_id manifest 链选择历史版本，不读取孤立目录。选定版本后，仅复核所选 collection 所在业务 JSON 的实际字节摘要与 Schema，再筛选对象；不匹配也必须先完成该文件复核。问题/决定分别读取 pending-items.json/decisions.json，其他 collection 读取 model.json；单个选中文件仍完整读取，不新增数据库或缓存。
+
+current 的 coverage.verification_scope 为 manifest，verified_file_ref 为 null；objects 成功读取业务文件时为 selected_file，并在 verified_file_ref 返回所核对文件引用，无 current 时为 manifest/null。这些范围不证明整包、原件或 Office 交付完整性；未选文件损坏可能不影响窄查询。apply/recover 保留完整版本文件及依赖校验，不能用 inspect 成功替代。
+
+`objects` 不接受空 selector。结果含 selected_version、items、matched_count、returned_count、remaining_count、next_cursor、coverage、report_ref（不适用 null）。正文物理上限64 KiB；文本长行分为有 character_offset 的有限片段，逐页拼接保持原字节，coverage 保留完整所选行范围的 excerpt_hash。区域的数量按正文片段计，另给 line_count。coverage.complete 仅指查询分页完成。超大的单个非文本对象明确返回 RESULT_TOO_LARGE，不静默截断或假称覆盖完成。
+
+cursor 绑定查询、实际来源/索引/所读版本和续读位置。绑定变化或游标不合法统一返回 VERSION_INCOMPATIBLE；调用方必须用 cursor=null 明确选择新集合。没有历史输入集合快照，不因零命中扩大查询。
+
+## 检查点、应用与恢复边界
+
+请求 work 内 `request.json` 记录请求/入口，`checkpoint.json` 保存 P00 活动、目标、游标、追加调查/返修计数、候选、最近进展/修法和退出原因。已知计数不得倒退；未知用 null 保留，不能自动归零。可选 recovery_queries 为0/1/null，operation_retries 的每个已知操作/根因计数至多1。`save_checkpoint` 只持久化有界计数和续接事实，不决定专业活动，不拦截宿主内的纯模型活动。
+
+检查点缺失/损坏/计数未知时，ensure_request 先以不可变 unknown-recovery.json 记录一次恢复查询尝试，查询后仍未知就 CHECKPOINT_UNKNOWN 退出；再次调用不忙等或重置。真正新增材料可定向登记，不刷新旧探索/返修额度。工具内部不自动重试、backoff、重算或重新生成；共享语义批次仍由调用方按 D04B 记录。源登记、业务恢复与未来 telemetry 分开保存。
+
+公共 apply payload 固定 entrypoint、prepared_path、expected_current、plan_path。当前拒绝条件：
+
+- Clarify 或非 null plan_path：OPERATION_UNSUPPORTED；I3 的真实方案/确认校验尚未提供，JSON confirmed 标志不授予权威。
+- Generate 的准备/候选/检查/文件结构或实际摘要不一致：协议、候选或依据诊断；已有非预期 current：BASE_STALE。
+- 其余可机械预检的 Generate 准备包：缺少 I1.3 `workbook.verify_prepared` 时返回 OPERATION_UNSUPPORTED，target.field=verification_ref。自填 `valid=true` 无效；没有 skip/force/failpoint 等生产绕过参数。
+
+I1.3 最小接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，另可有 details.md；verification_ref 独立指向核验记录。
+
+公共入口在重新执行完整候选检查并通过实际 I1.3 核验后，冻结业务 JSON 和输入记录快照，将可达输入/分析/读取附件列入 manifest；不把可变 inputs/index 或 work 当稳定依赖，再交给 `_commit_version` 存储内核。`application.json` 绑定原应用调用，`intent.json` 在应用候选进入保存时封存意图，讨论/分析登记不会提前封存。
+
+存储内核在锁外构造并刷新完整目录，要求与 versions 同一文件系统；Unix 用 flock，Windows 用 msvcrt 对固定字节非阻塞加锁。锁忙立即 WRITE_BUSY。锁内复核意图、取消、current 和摘要，保存不可变版本，最后以 fsync 临时指针 + os.replace 切换 current。已生效后的日志/响应失败不撤销事实；锁中不运行 Office、模型或等待用户。Windows 无标准库目录 fsync 分支会如实返回不支持该刷新，不以此声称断电持久性。真实平台覆盖以验证报告为准；没有网络/同步盘承诺。
+
+`recover` payload 只有 target_request_id；沿 current 和摘要绑定的 base_version_id 历史链核实，返回 applied/draft/cancelled/incompatible、applied_version、preserved_paths、diagnostics_ref。损坏诊断进入公共信封，diagnostics_ref 无独立文件时为 null；查询不会写源数据或激活孤立版本。已成功请求返回原 applied_version 与当前 current_version，后续串行版本不会被旧请求倒回。取消只能通过已观察到的本地 `cancel_request` 记录执行边界，不承诺收到任意宿主 UI 的取消事件。
+
+`storage_package` 及 `_commit_version` 单测只验证文件事务；其 sow.xlsx 特意不是 Office 工作簿，不能经公共 apply 绕过核验。I1.3 实际包接入和交付回归完成前，不关闭 I1，也不把存储测试称为 Excel 交付通过。

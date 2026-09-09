@@ -90,6 +90,84 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "ingest"
+          },
+          "payload": {
+            "required": [
+              "entrypoint"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ingest_payload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "inspect"
+          },
+          "payload": {
+            "minProperties": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/inspect_payload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "apply"
+          },
+          "payload": {
+            "minProperties": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/apply_payload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "recover"
+          },
+          "payload": {
+            "minProperties": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/recover_payload"
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -197,6 +275,660 @@
           "additionalProperties": false
         }
       ]
+    },
+    "ingest_payload": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "sources"
+            },
+            "entrypoint": {
+              "enum": [
+                "generate",
+                "clarify"
+              ]
+            },
+            "project_type": {
+              "enum": [
+                "new",
+                "existing"
+              ]
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "source_path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "input_id": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "minLength": 36,
+                        "maxLength": 36
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "material_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "uses": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "use_regions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "material_type": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        },
+                        "use": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        },
+                        "locators": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "evidence.schema.json#/$defs/locator"
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "required": [
+                        "material_type",
+                        "use",
+                        "locators"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 0
+                  }
+                },
+                "required": [
+                  "source_path",
+                  "input_id",
+                  "material_types",
+                  "uses",
+                  "use_regions"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "kind",
+            "entrypoint",
+            "project_type",
+            "sources"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "analysis"
+            },
+            "entrypoint": {
+              "enum": [
+                "generate",
+                "clarify"
+              ]
+            },
+            "analysis_path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+            }
+          },
+          "required": [
+            "kind",
+            "entrypoint",
+            "analysis_path"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "inspect_payload": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "enum": [
+            "inputs",
+            "regions",
+            "topics",
+            "current",
+            "request",
+            "objects",
+            "standards",
+            "telemetry"
+          ]
+        },
+        "selector": {
+          "type": "object"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "view",
+        "selector"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "view": {
+                "const": "inputs"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "input_version_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "minLength": 36,
+                          "maxLength": 36
+                        },
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "input_version_ids"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "input_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "minLength": 36,
+                          "maxLength": 36
+                        },
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "input_ids"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view": {
+                "const": "topics"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "topic_version_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "minLength": 36,
+                          "maxLength": 36
+                        },
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "topic_version_ids"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "topic_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "minLength": 36,
+                          "maxLength": 36
+                        },
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "topic_ids"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view": {
+                "const": "regions"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "input_version_id": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "minLength": 36,
+                    "maxLength": 36
+                  },
+                  "locator": {
+                    "$ref": "evidence.schema.json#/$defs/locator"
+                  }
+                },
+                "required": [
+                  "input_version_id",
+                  "locator"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view": {
+                "const": "current"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view": {
+                "const": "request"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "minLength": 36,
+                    "maxLength": 36
+                  }
+                },
+                "required": [
+                  "request_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view": {
+                "const": "objects"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "collection": {
+                        "enum": [
+                          "epics",
+                          "features",
+                          "stories",
+                          "acs",
+                          "tasks",
+                          "dependencies",
+                          "pending_items",
+                          "decisions"
+                        ]
+                      },
+                      "version_id": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "minLength": 36,
+                        "maxLength": 36
+                      },
+                      "object_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "minLength": 36,
+                          "maxLength": 36
+                        },
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "collection",
+                      "object_ids"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "collection": {
+                        "enum": [
+                          "epics",
+                          "features",
+                          "stories",
+                          "acs",
+                          "tasks",
+                          "dependencies",
+                          "pending_items",
+                          "decisions"
+                        ]
+                      },
+                      "version_id": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "minLength": 36,
+                        "maxLength": 36
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "collection",
+                      "title"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "collection": {
+                        "const": "pending_items"
+                      },
+                      "version_id": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "minLength": 36,
+                        "maxLength": 36
+                      },
+                      "status": {
+                        "enum": [
+                          "open",
+                          "resolved",
+                          "superseded"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "collection",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "collection": {
+                        "const": "dependencies"
+                      },
+                      "version_id": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "minLength": 36,
+                        "maxLength": 36
+                      },
+                      "relation": {
+                        "type": "object",
+                        "properties": {
+                          "object_id": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                            "minLength": 36,
+                            "maxLength": 36
+                          },
+                          "direction": {
+                            "enum": [
+                              "incoming",
+                              "outgoing",
+                              "both"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "object_id",
+                          "direction"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "collection",
+                      "relation"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view": {
+                "const": "standards"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "work_type_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "work_type_ids"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "work_type_names": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "work_type_names"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "recover_payload": {
+      "type": "object",
+      "properties": {
+        "target_request_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "minLength": 36,
+          "maxLength": 36
+        }
+      },
+      "required": [
+        "target_request_id"
+      ],
+      "additionalProperties": false
+    },
+    "apply_payload": {
+      "type": "object",
+      "properties": {
+        "entrypoint": {
+          "enum": [
+            "generate",
+            "clarify"
+          ]
+        },
+        "prepared_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "expected_current": {
+          "anyOf": [
+            {
+              "$ref": "artifacts.schema.json#/$defs/current"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_path": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "entrypoint",
+        "prepared_path",
+        "expected_current",
+        "plan_path"
+      ],
+      "additionalProperties": false
     }
   }
 }
