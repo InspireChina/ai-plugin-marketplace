@@ -1,0 +1,28 @@
+{
+  "case_id": "three-scope",
+  "required": [
+    "业务查询范围、公共技术义务与迁移/发布准备均有来源。",
+    "公共查询客户端建设及独立验证仅计一次；页面保留消费适配。",
+    "迁移资产包括字段和记录核验；AC引用真实原文。"
+  ],
+  "forbidden": [
+    "重复计迁移内含核验或公共实现。",
+    "把平台前提或客户生产执行作为本期建设。",
+    "因条数缺失反复调查或把迁移复杂度留空。"
+  ],
+  "allowed_variations": [
+    "合理的标题、层级组织、Story 和 Task 分片差异。"
+  ],
+  "pending": [
+    "迁移使用默认 M，复杂度问题保持 open。"
+  ],
+  "source_refs": [
+    "inputs/prd.md#p-b1",
+    "inputs/prd.md#p-n1",
+    "inputs/prd.md#p-d1",
+    "inputs/hld.md#h-n1",
+    "inputs/hld.md#h-d1",
+    "inputs/hld.md#h-d2",
+    "answers.md#a1"
+  ]
+}

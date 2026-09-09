@@ -38,6 +38,18 @@ function Invoke-Native {
 function Test-UvVersion([string]$VersionText) {
     return $VersionText -match ("^uv " + [regex]::Escape($UvVersion) + "(?:\s|$)")
 }
+# Check only owned write roots, including dangling links/junctions, before any writes.
+# Managed version aliases below python remain valid.
+foreach ($RuntimeRoot in @(".venv", ".ai-sow-tools", ".ai-sow-tools/bin", ".ai-sow-tools/cache", ".ai-sow-tools/python")) {
+    try {
+        $Attributes = [IO.File]::GetAttributes((Join-Path $PluginRoot $RuntimeRoot))
+    } catch [IO.FileNotFoundException] { continue }
+      catch [IO.DirectoryNotFoundException] { continue }
+      catch { Stop-Bootstrap "BOOTSTRAP_PATH_UNSAFE" "无法安全检查插件运行时根目录 $RuntimeRoot。" }
+    if (($Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Stop-Bootstrap "BOOTSTRAP_PATH_UNSAFE" "插件运行时根目录 $RuntimeRoot 不能是链接或重解析点；请使用本副本的真实目录。"
+    }
+}
 try {
     New-Item -ItemType Directory -Force -Path $ToolsBin, $env:UV_CACHE_DIR | Out-Null
 } catch { Stop-Bootstrap "BOOTSTRAP_DIRECTORY_FAILED" "无法创建插件隔离环境目录。" }
@@ -67,17 +79,35 @@ if ($null -eq $UvBin) {
 $Probe = Invoke-Native $UvBin @("--version")
 if ($Probe.ExitCode -ne 0) { Stop-Bootstrap "UV_CHECK_FAILED" "uv 版本检查失败。" }
 if (-not (Test-UvVersion $Probe.Text)) { Stop-Bootstrap "UV_VERSION_INVALID" "uv 不是锁定版本。" }
-if ((Invoke-Native $UvBin @("python", "find", "3.12")).ExitCode -ne 0) {
-    if ((Invoke-Native $UvBin @("python", "install", "3.12")).ExitCode -ne 0) {
-        Stop-Bootstrap "PYTHON_INSTALL_FAILED" "Python 3.12 自动安装失败。"
-    }
+# Reuse this copy's installation without registering user-bin/registry entries.
+if ((Invoke-Native $UvBin @("python", "install", "3.12", "--no-bin", "--no-registry")).ExitCode -ne 0) {
+    Stop-Bootstrap "PYTHON_INSTALL_FAILED" "Python 3.12 自动安装失败。"
 }
-if ((Invoke-Native $UvBin @("sync", "--project", $PluginRoot, "--locked", "--python", "3.12")).ExitCode -ne 0) {
-    Stop-Bootstrap "DEPENDENCY_SYNC_FAILED" "插件锁定依赖同步失败。"
+$Probe = Invoke-Native $UvBin @("python", "find", "3.12", "--managed-python", "--no-project", "--system", "--resolve-links")
+if ($Probe.ExitCode -ne 0) { Stop-Bootstrap "PYTHON_CHECK_FAILED" "无法定位本插件的 managed Python。" }
+$ManagedPython = $Probe.Text
+$OwnRootCheck = "import pathlib,sys; sys.exit(not pathlib.Path(sys.executable).resolve().is_relative_to(pathlib.Path(sys.argv[1]).resolve() / '.ai-sow-tools' / 'python'))"
+if ((Invoke-Native $ManagedPython @("-c", $OwnRootCheck, $PluginRoot)).ExitCode -ne 0) {
+    Stop-Bootstrap "PYTHON_CHECK_FAILED" "managed Python 不属于本插件副本。"
 }
 $PythonBin = Join-Path $PluginRoot ".venv/Scripts/python.exe"
 if ([IO.Path]::DirectorySeparatorChar -eq '/') { $PythonBin = Join-Path $PluginRoot ".venv/bin/python" }
+$BaseProbe = "import os,sys; print(os.path.realpath(sys._base_executable))"
+# Explicit --python alone does not replace a same-version foreign venv.
+if (Test-Path -LiteralPath $env:UV_PROJECT_ENVIRONMENT -PathType Container) {
+    $Probe = Invoke-Native $PythonBin @("-c", $BaseProbe)
+    if ($Probe.ExitCode -ne 0 -or $Probe.Text -cne $ManagedPython) {
+        if ((Invoke-Native $UvBin @("venv", "--no-project", "--clear", "--no-python-downloads", "--python", $ManagedPython, $env:UV_PROJECT_ENVIRONMENT)).ExitCode -ne 0) {
+            Stop-Bootstrap "VENV_MISSING" "无法重建本插件隔离环境。"
+        }
+    }
+}
+if ((Invoke-Native $UvBin @("sync", "--project", $PluginRoot, "--locked", "--no-python-downloads", "--python", $ManagedPython)).ExitCode -ne 0) {
+    Stop-Bootstrap "DEPENDENCY_SYNC_FAILED" "插件锁定依赖同步失败。"
+}
 if (-not (Test-Path -LiteralPath $PythonBin -PathType Leaf)) { Stop-Bootstrap "VENV_MISSING" "插件隔离环境未创建。" }
+$Probe = Invoke-Native $PythonBin @("-c", $BaseProbe)
+if ($Probe.ExitCode -ne 0 -or $Probe.Text -cne $ManagedPython) { Stop-Bootstrap "PYTHON_CHECK_FAILED" "隔离 Python 不属于本插件副本。" }
 $Probe = Invoke-Native $PythonBin @("--version")
 if ($Probe.ExitCode -ne 0) { Stop-Bootstrap "PYTHON_CHECK_FAILED" "隔离 Python 无法执行。" }
 if (-not $Probe.Text.StartsWith("Python 3.12.")) { Stop-Bootstrap "PYTHON_VERSION_INVALID" "隔离 Python 不是 3.12。" }

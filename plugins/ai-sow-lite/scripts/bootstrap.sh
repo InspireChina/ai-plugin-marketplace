@@ -15,6 +15,12 @@ blocked() {
 uv_version_matches() {
   case "$1" in "uv $UV_VERSION"|"uv $UV_VERSION "*) return 0 ;; *) return 1 ;; esac
 }
+# Check only owned write roots before mkdir/install/clear/sync; version aliases below python are valid.
+for RUNTIME_ROOT in .venv .ai-sow-tools .ai-sow-tools/bin .ai-sow-tools/cache .ai-sow-tools/python; do
+  if [ -L "$PLUGIN_ROOT/$RUNTIME_ROOT" ]; then
+    blocked "BOOTSTRAP_PATH_UNSAFE" "插件运行时根目录 $RUNTIME_ROOT 不能是链接；请使用本副本的真实目录。"
+  fi
+done
 mkdir -p "$TOOLS_BIN" "$TOOLS_ROOT/cache" || blocked "BOOTSTRAP_DIRECTORY_FAILED" "无法创建插件隔离环境目录。"
 export UV_CACHE_DIR="$TOOLS_ROOT/cache"
 export UV_PYTHON_INSTALL_DIR="$TOOLS_ROOT/python"
@@ -46,12 +52,22 @@ if [ -z "$UV_BIN" ]; then
 fi
 UV_VERSION_TEXT=$("$UV_BIN" --version 2>/dev/null) || blocked "UV_CHECK_FAILED" "uv 版本检查失败。"
 uv_version_matches "$UV_VERSION_TEXT" || blocked "UV_VERSION_INVALID" "uv 不是锁定版本。"
-if ! "$UV_BIN" python find 3.12 >/dev/null 2>&1; then
-  "$UV_BIN" python install 3.12 >/dev/null 2>&1 || blocked "PYTHON_INSTALL_FAILED" "Python 3.12 自动安装失败。"
-fi
-"$UV_BIN" sync --project "$PLUGIN_ROOT" --locked --python 3.12 >/dev/null 2>&1 || blocked "DEPENDENCY_SYNC_FAILED" "插件锁定依赖同步失败。"
+# Installation is idempotent within this copy; never register a user-bin/registry entry.
+"$UV_BIN" python install 3.12 --no-bin --no-registry >/dev/null 2>&1 || blocked "PYTHON_INSTALL_FAILED" "Python 3.12 自动安装失败。"
+MANAGED_PYTHON=$("$UV_BIN" python find 3.12 --managed-python --no-project --system --resolve-links 2>/dev/null) || blocked "PYTHON_CHECK_FAILED" "无法定位本插件的 managed Python。"
+case "$MANAGED_PYTHON" in "$TOOLS_ROOT/python/"*) ;; *) blocked "PYTHON_CHECK_FAILED" "managed Python 不属于本插件副本。" ;; esac
 PYTHON_BIN="$PLUGIN_ROOT/.venv/bin/python"
+# uv sync can retain a same-version venv backed by another copy, even with --python.
+if [ -d "$UV_PROJECT_ENVIRONMENT" ]; then
+  VENV_BASE=$("$PYTHON_BIN" -c 'import os,sys; print(os.path.realpath(sys._base_executable))' 2>/dev/null) || VENV_BASE=
+  if [ "$VENV_BASE" != "$MANAGED_PYTHON" ]; then
+    "$UV_BIN" venv --no-project --clear --no-python-downloads --python "$MANAGED_PYTHON" "$UV_PROJECT_ENVIRONMENT" >/dev/null 2>&1 || blocked "VENV_MISSING" "无法重建本插件隔离环境。"
+  fi
+fi
+"$UV_BIN" sync --project "$PLUGIN_ROOT" --locked --no-python-downloads --python "$MANAGED_PYTHON" >/dev/null 2>&1 || blocked "DEPENDENCY_SYNC_FAILED" "插件锁定依赖同步失败。"
 [ -x "$PYTHON_BIN" ] || blocked "VENV_MISSING" "插件隔离环境未创建。"
+VENV_BASE=$("$PYTHON_BIN" -c 'import os,sys; print(os.path.realpath(sys._base_executable))' 2>/dev/null) || blocked "PYTHON_CHECK_FAILED" "隔离 Python 无法执行。"
+[ "$VENV_BASE" = "$MANAGED_PYTHON" ] || blocked "PYTHON_CHECK_FAILED" "隔离 Python 不属于本插件副本。"
 PYTHON_VERSION=$("$PYTHON_BIN" --version 2>/dev/null) || blocked "PYTHON_CHECK_FAILED" "隔离 Python 无法执行。"
 case "$PYTHON_VERSION" in "Python 3.12."*) ;; *) blocked "PYTHON_VERSION_INVALID" "隔离 Python 不是 3.12。" ;; esac
 "$PYTHON_BIN" -c 'import jsonschema, openpyxl' >/dev/null 2>&1 || blocked "DEPENDENCY_IMPORT_FAILED" "隔离依赖复核失败。"

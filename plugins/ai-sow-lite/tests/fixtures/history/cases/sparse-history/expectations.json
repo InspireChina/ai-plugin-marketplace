@@ -1,0 +1,27 @@
+{
+  "case_id": "sparse-history",
+  "required": [
+    "从历史/附注保留查询和状态事件候选与限定。",
+    "实例未定但本期目标明确时按新建出稿，分别保留具体候选待确认。",
+    "归档查询保持不同范围，不整体并入当前订单实例。"
+  ],
+  "forbidden": [
+    "把标准目录/未来对账/已取消退货当成已交付能力。",
+    "因旧项目而一律调整或反复要求完整历史 AC/接口规格。",
+    "新增CRM接收端/平台通道/生产部署/历史补发工作。"
+  ],
+  "allowed_variations": [
+    "合理的层级、标题和Task类型匹配；复杂度依据不足可M。"
+  ],
+  "pending": [
+    "查询与事件的历史实例适用性。"
+  ],
+  "source_refs": [
+    "inputs/prd.md#p-query",
+    "inputs/prd.md#p-event",
+    "inputs/hld.md#h-query",
+    "inputs/hld.md#h-event",
+    "inputs/history.xlsx:历史范围",
+    "inputs/history.xlsx:附注"
+  ]
+}

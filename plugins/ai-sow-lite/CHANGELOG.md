@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 实现 I2.2 generate 入口、按需专业参考和双宿主开发 manifest；从原始材料实际生成三类范围及历史变体，验证有限问答、默认 M、文件续接和重复调用。修复 XLSX 来源标签、自举解释器隔离、链接目录清理风险及两项实际来源边界问题，保留首次失败和定向复验；原模板与计算规则未改。结果见 [I2 验证](docs/validation/I2-generate.md)，取舍见 [自主决策](docs/validation/implementation-decisions.md)。
+
 - 实现 I2.1 文本/XLSX 目录、指定区域和类型化读取、稀疏历史导航及来源核对；保留公式缓存有无、隐藏附注和真实读取身份，新增用途/来源使旧查询失效。补旧 BOM 兼容、注音、合并范围与返回预算反例，定点复审通过；原模板与估算规则未改。证据见 [I2 验证](docs/validation/I2-generate.md)。
 
 - 实现 I1.5 独立副本交付验收：通过真实材料登记、Office 重算、应用及恢复验证完整包；补五个生效点的进程中断和14项依赖损坏检查。成功清理自己的临时目录，说明 Python 读取审计的实际边界；运行时与模板未改。阶段结果见 [I1.5 记录](docs/validation/I1-delivery.md)，连续开发取舍见 [自主决策](docs/validation/implementation-decisions.md)。

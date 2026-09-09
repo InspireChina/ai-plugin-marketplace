@@ -1,0 +1,18 @@
+{
+  "name": "ai-sow-lite",
+  "version": "0.1.0-alpha.1",
+  "description": "根据 PRD、HLD 与往期范围生成可追溯的本期首版 SOW 工作簿。",
+  "author": {"name": "Inspire"},
+  "license": "Apache-2.0",
+  "keywords": ["sow", "requirements", "estimation"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AI SOW Lite",
+    "shortDescription": "从输入资料生成本期首版 SOW",
+    "longDescription": "单主会话分析本期范围与历史依据，生成首版 SOW Excel、摘要和待确认事项。当前为仅含 generate 入口的开发插件。",
+    "developerName": "Inspire",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": ["请根据给定 PRD 和 HLD 生成本期首版 SOW，并附待确认事项。"]
+  }
+}

@@ -162,6 +162,8 @@ def test_public_packet_real_render_apply_recover_and_no_repeat_office(tmp_path,m
     from .support.excel import prepare_case
     from ai_sow_lite import cli,office
     from ai_sow_lite.contracts import schema_validator
+    from ai_sow_lite.contracts import semantic_digest
+    from .support.fixtures import write_json
     case,payload,result=prepare_case(tmp_path/'project')
     assert result['ok'],result
     output=result['result']
@@ -174,6 +176,12 @@ def test_public_packet_real_render_apply_recover_and_no_repeat_office(tmp_path,m
     assert projection['workbook_hash']==output['workbook_ref']['sha256']
     assert output['pending_count']==1 and output['details_ref'] is not None
     assert not (case.project/'.ai-sow-lite/current.json').exists()
+    # A genuine successful v1 packet must still be verified/reused without Office.
+    attempt=read_json(case.file('render-attempt.json'))
+    attempt['signature']=semantic_digest(dict(check=read_json(case.project/payload['check_path']),payload=payload,
+        projector_version='lite-projection-v1',engine=office.selection_fingerprint()))
+    attempt.pop('implementation_version',None)
+    write_json(case.file('render-attempt.json'),attempt)
     def forbidden(*args,**kwargs): pytest.fail('Prepared reuse/apply must not invoke Office')
     monkeypatch.setattr(office,'recalculate',forbidden)
     def invoke(op,p):
@@ -283,6 +291,89 @@ def test_loop_budget_rejects_identical_failure_and_allows_one_changed_retry(tmp_
     assert len(calls)==2
     checkpoint=read_json(case.file('checkpoint.json'))
     assert checkpoint['repair_batches']==1 and checkpoint['operation_retries']['render']==1
+
+
+def test_registered_xlsx_and_judgment_sources_render_before_office(tmp_path,monkeypatch):
+    from .test_xlsx_inputs import xlsx_analysis_case
+    from .support.fixtures import write_json
+    from .support.cli import run_request
+    from ai_sow_lite import office
+    case,registered,_=xlsx_analysis_case(tmp_path)
+    assert registered['ok'],registered
+    analysis=read_json(case.file('analysis.json'))
+    xlsx=analysis['evidence'][0]
+    text=next(e for e in analysis['evidence'] if e['source_refs'] and e['source_refs'][0]['locator']['kind']=='text_lines')
+    judgment=dict(id=str(uuid4()),kind='judgment',text='综合已登记依据。',source_refs=[],
+                  basis_refs=[xlsx['id'],text['id']],limitations='')
+    analysis['evidence'].append(judgment)
+    for topic in analysis['topics']: topic['topic_version_id']=str(uuid4())
+    analysis['topics'][0]['evidence_refs'].append(judgment['id'])
+    write_json(case.file('label-analysis.json'),analysis)
+    registered=run_request(case.project,case.request_id,'ingest',dict(kind='analysis',entrypoint='generate',
+        analysis_path=case.file('label-analysis.json').relative_to(case.project).as_posix()))
+    assert registered['ok'],registered
+    candidate=read_json(case.candidate_path)
+    candidate.update(evidence_ids=registered['result']['evidence_ids'],topic_version_ids=registered['result']['topic_version_ids'])
+    write_json(case.candidate_path,candidate)
+    pending=read_json(case.file('pending-items.json'))
+    pending['items'][0]['evidence_refs']=[xlsx['id'],text['id'],judgment['id']]
+    write_json(case.file('pending-items.json'),pending)
+    checked=run_request(case.project,case.request_id,'check',dict(candidate_path=case.candidate_path.relative_to(case.project).as_posix(),scope='full',plan_path=None))
+    assert checked['ok'] and checked['result']['valid_for_render'],checked
+    before={case.file(n):case.file(n).read_bytes() for n in ('candidate.json','model.json','pending-items.json','decisions.json')}
+    class OfficeBoundaryReached(Exception): pass
+    def stop(source,destination):
+        note=source.with_name('pending-items.md').read_text()
+        expected_xlsx=f'sparse-history.xlsx；历史范围!A1:C4；依据 {xlsx["id"]}\n'
+        ref=text['source_refs'][0]; loc=ref['locator']
+        index=read_json(case.project/'.ai-sow-lite/inputs/index.json')
+        filename=next(Path(i['relative_path']).name for i in index['items'] if i['input_version_id']==ref['input_version_id'])
+        expected_text=f'{filename}；第 {loc["start_line"]}—{loc["end_line"]} 行；依据 {text["id"]}\n'
+        assert f'依据：{xlsx["id"]}\n'+expected_xlsx in note
+        assert f'依据：{text["id"]}\n'+expected_text in note
+        assert f'依据：{judgment["id"]}\n'+expected_xlsx+expected_text in note
+        book=openpyxl.load_workbook(source); assert book['01-需求故事']['C5'].value; book.close()
+        for name in ('model.json','pending-items.json','decisions.json'):
+            assert source.with_name(name).read_bytes()==before[case.file(name)]
+        raise OfficeBoundaryReached
+    monkeypatch.setattr(office,'recalculate',stop)
+    with pytest.raises(OfficeBoundaryReached):
+        module().render_candidate(case.project,case.request_id,dict(candidate_path=case.candidate_path.relative_to(case.project).as_posix(),
+            check_path=checked['result']['check_ref']['path'],expected_current=None))
+    assert all(p.read_bytes()==raw for p,raw in before.items())
+    assert not (case.project/'.ai-sow-lite/current.json').exists()
+
+
+def test_renderer_implementation_fix_retries_legacy_failure_without_reset(tmp_path,monkeypatch):
+    from .support.excel import prepare_case
+    from .support.fixtures import write_json
+    from ai_sow_lite import office
+    from ai_sow_lite.contracts import semantic_digest
+    from ai_sow_lite.project import StorageError
+    case,payload,_=prepare_case(tmp_path/'project',render=False)
+    check=read_json(case.project/payload['check_path'])
+    # Actual pre-fix signature shape; no implementation revision was recorded.
+    legacy=semantic_digest(dict(check=check,payload=payload,projector_version='lite-projection-v1',engine=office.selection_fingerprint()))
+    attempt=case.file('render-attempt.json');write_json(attempt,dict(signature=legacy,prepared_ref=None))
+    checkpoint=read_json(case.file('checkpoint.json'));checkpoint['repair_batches']=1
+    write_json(case.file('checkpoint.json'),checkpoint)
+    preserved=case.file('render-previous-failure');preserved.mkdir()
+    for name in ('model.json','pending-items.json','decisions.json'):
+        (preserved/name).write_bytes(case.file(name).read_bytes())
+    before={p:p.read_bytes() for p in preserved.iterdir()}
+    class OfficeBoundaryReached(Exception): pass
+    def stop(source,destination):
+        assert source.exists()
+        raise OfficeBoundaryReached
+    monkeypatch.setattr(office,'recalculate',stop)
+    with pytest.raises(OfficeBoundaryReached): module().render_candidate(case.project,case.request_id,payload)
+    assert read_json(attempt)['signature']!=legacy
+    checkpoint=read_json(case.file('checkpoint.json'))
+    assert checkpoint['repair_batches']==2 and checkpoint['operation_retries']['render']==1
+    with pytest.raises(StorageError) as caught: module().render_candidate(case.project,case.request_id,payload)
+    assert caught.value.diagnostics[0]['code']=='LOOP_LIMIT_REACHED'
+    assert all(p.read_bytes()==raw for p,raw in before.items())
+    assert not (case.project/'.ai-sow-lite/current.json').exists()
 
 
 def test_long_crlf_keeps_original_once_and_has_reachable_full_text(tmp_path):

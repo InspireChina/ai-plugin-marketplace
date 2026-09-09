@@ -21,6 +21,8 @@ from .project import StorageError, atomic_bytes
 
 TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
 PROJECTOR_VERSION = 'lite-projection-v1'
+# Render retry identity is separate from the unchanged projection data contract.
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v2'
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
 # Display policy, not model limits or calculation rules.
@@ -644,7 +646,13 @@ def _evidence_labels(project,candidate):
             visited.add(current); record=records[current]
             for ref in record['source_refs']:
                 loc=ref['locator']
-                lines.append(f'{sources[ref["input_version_id"]]}；第 {loc["start_line"]}—{loc["end_line"]} 行；依据 {current}')
+                if loc['kind']=='text_lines':
+                    position=f'第 {loc["start_line"]}—{loc["end_line"]} 行'
+                elif loc['kind']=='xlsx_range':
+                    position=f'{loc["sheet"]}!{loc["range"]}'
+                else:
+                    raise StorageError('OPERATION_UNSUPPORTED','来源定位尚不支持工作簿显示。')
+                lines.append(f'{sources[ref["input_version_id"]]}；{position}；依据 {current}')
             if record['limitations']: lines.append('限制：'+record['limitations'])
             stack.extend(reversed(record['basis_refs']))
         labels[identity]='\n'.join(lines)+'\n'
@@ -801,10 +809,13 @@ def render_candidate(project: Path,request_id: str,payload):
         raise StorageError('BASE_STALE','首版 Generate 要求当前和预期版本均为 null。')
     checkpoint=ensure_request(project,request_id,'generate'); _check_cancelled(project,request_id,'generate')
     attempt_path=safe_path(project,area+'/render-attempt.json')
-    signature=semantic_digest(dict(check=report,payload=payload,projector_version=PROJECTOR_VERSION,
-                                  engine=office.selection_fingerprint()))
+    signature_inputs=dict(check=report,payload=payload,projector_version=PROJECTOR_VERSION,
+                          engine=office.selection_fingerprint())
+    legacy_signature=semantic_digest(signature_inputs)
+    signature=semantic_digest(dict(signature_inputs,implementation_version=RENDER_IMPLEMENTATION_VERSION))
     previous=load_json(attempt_path) if attempt_path.exists() else None
-    if previous and previous['signature']==signature and previous.get('prepared_ref'):
+    # Pre-fix successful text packages remain reusable only after full verification.
+    if previous and previous['signature'] in (signature,legacy_signature) and previous.get('prepared_ref'):
         prepared_path=safe_path(project,previous['prepared_ref']['path'],area)
         if file_ref(project,prepared_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
         prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)
@@ -820,7 +831,7 @@ def render_candidate(project: Path,request_id: str,payload):
         checkpoint['repair_batches']+=1;checkpoint['operation_retries']['render']=1
         save_checkpoint(project,checkpoint)
     version=str(uuid4()); directory=safe_path(project,area+'/render-'+version);directory.mkdir()
-    attempt=dict(signature=signature,prepared_ref=None)
+    attempt=dict(signature=signature,prepared_ref=None,implementation_version=RENDER_IMPLEMENTATION_VERSION)
     write_json(project,area+'/render-attempt.json',attempt)
     try:
         bundle=[]

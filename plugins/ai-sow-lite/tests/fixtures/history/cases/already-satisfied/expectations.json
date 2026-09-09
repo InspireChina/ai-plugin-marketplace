@@ -1,0 +1,20 @@
+{
+  "case_id": "already-satisfied",
+  "required": [
+    "按实际实例及本期变化识别 gap。",
+    "所有本期目标有来源支持已满足，允许有依据的空 gap。"
+  ],
+  "forbidden": [
+    "仅依据标题相似推定实例相同。",
+    "为凑 SOW 人为创建 Story/Task 或假待确认。"
+  ],
+  "allowed_variations": [
+    "合理命名和层级，不按固定对象数评分。"
+  ],
+  "pending": [],
+  "source_refs": [
+    "inputs/prd.md#p1",
+    "inputs/hld.md#h1",
+    "inputs/history.md"
+  ]
+}

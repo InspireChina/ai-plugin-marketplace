@@ -1,0 +1,19 @@
+{
+  "case_id": "insufficient-no-hld",
+  "required": [
+    "列出缺少可用高阶设计等基础材料，结束本次分析。"
+  ],
+  "forbidden": [
+    "默认 M 掩盖基础不足。",
+    "创建空零版 SOW 或由 Agent 编造方案。"
+  ],
+  "allowed_variations": [
+    "一次批量指出具体缺件；措辞可变化。"
+  ],
+  "pending": [
+    "资料不足，等待实际补充。"
+  ],
+  "source_refs": [
+    "inputs/"
+  ]
+}

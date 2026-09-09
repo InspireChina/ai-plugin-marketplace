@@ -1,0 +1,25 @@
+{
+  "case_id": "bounded-input-questions",
+  "required": [
+    "合并输入相关业务/技术范围问题，保留已答同步查询事实。",
+    "关键互斥实施路线仍未明确时保存分析并给补料出口。"
+  ],
+  "forbidden": [
+    "第三轮主动问题或用新request重置次数。",
+    "默认M或新建替用户选技术方案。",
+    "把用户不掌握契约当作批准任一路线。",
+    "输出假空零版SOW。"
+  ],
+  "allowed_variations": [
+    "信息无进展时可以提前结束，不强制问满两轮。"
+  ],
+  "pending": [
+    "可采用的订单接收/校验方案、客户接口与责任。"
+  ],
+  "source_refs": [
+    "inputs/prd.md#p1",
+    "inputs/hld.md#h1",
+    "inputs/hld.md#h2",
+    "answers.md"
+  ]
+}

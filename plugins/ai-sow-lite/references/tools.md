@@ -1,5 +1,7 @@
 # Lite 工具合同
 
+Generate 首次编写可按活动读取 [命令与候选编写](generate-authoring.md)，遇到具体字段/诊断再查本页相应定义；无需预加载全部 Schema。
+
 当前提供真实文本/XLSX `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 方案/确认应用、`check/edits` 和带 `plan_path` 的检查仍返回 `OPERATION_UNSUPPORTED`。运行时不依赖旧插件，不生成模拟观察或交付。
 
 ```text
@@ -145,7 +147,9 @@ verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏�
 
 ### 复用、变动与测试入口
 
-render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。实现修订 `implementation_version=lite-render-v2` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。修复前成功 prepared 的旧签名只有在相同检查/指针/引擎且完整复核通过时才可复用。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+
+待确认正文的来源标签按真实 locator 显示：文本保留文件名和起止行，XLSX 使用文件名、Sheet 和 range；judgment 沿 basis_refs 回溯相同来源标签，不猜文本行号。此显示修复不改候选、模板、标准或公式。
 
 测试命令：
 

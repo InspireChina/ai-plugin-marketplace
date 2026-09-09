@@ -1,0 +1,22 @@
+{
+  "case_id": "multiple-query-instances",
+  "required": [
+    "相同业务对象和工作类型的两个独立 API 各自形成合法标准工作单元。",
+    "AC 保留各自输入、返回、只读、无结果和分页差异。"
+  ],
+  "forbidden": [
+    "仅因同类型/同订单对象合成一项涵盖两个独立接口的Task。",
+    "把每条AC机械转成独立实现或重复公共建设。",
+    "新增页面、写入、独立测试或发布资产。"
+  ],
+  "allowed_variations": [
+    "同Story或不同Story均可，只要义务/独立工作边界保留。"
+  ],
+  "pending": [],
+  "source_refs": [
+    "inputs/prd.md#p-detail",
+    "inputs/prd.md#p-list",
+    "inputs/hld.md#h-detail",
+    "inputs/hld.md#h-list"
+  ]
+}

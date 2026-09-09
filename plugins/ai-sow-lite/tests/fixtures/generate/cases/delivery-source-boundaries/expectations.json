@@ -1,0 +1,22 @@
+{
+  "case_id": "delivery-source-boundaries",
+  "required": [
+    "迁移和发布资产及责任有据，迁移核验内含。",
+    "AC 保留沿用既定六步骤、回滚和 Go/No-Go 的抽象，不补齐未提供的步骤内容。",
+    "验证数据来源、责任和许可保持未知并随版精确待确认。",
+    "记录数未知使用 M，并保留复杂度问题。"
+  ],
+  "forbidden": [
+    "把标准通用就绪、提交、风险清单扩充为项目 AC。",
+    "假设客户提供脱敏数据或非生产环境，或代选自行造样本方案。",
+    "新增页面、API、平台、生产执行、独立测试资产或 Spike。"
+  ],
+  "allowed_variations": ["合理命名、分片、Story 组织和同源问题合并。"],
+  "pending": ["迁移复杂度。", "验证数据来源、提供和许可。"],
+  "source_refs": [
+    "inputs/prd.md#p-delivery",
+    "inputs/hld.md#h-migration",
+    "inputs/hld.md#h-release",
+    "inputs/hld.md#h-responsibility"
+  ]
+}

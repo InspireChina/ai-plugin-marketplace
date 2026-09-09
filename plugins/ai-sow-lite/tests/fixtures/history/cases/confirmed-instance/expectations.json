@@ -1,0 +1,21 @@
+{
+  "case_id": "confirmed-instance",
+  "required": [
+    "按实际实例及本期变化识别 gap。",
+    "同一 API 的本次过滤变化按标准判断调整；保留只读、返回和权限边界。"
+  ],
+  "forbidden": [
+    "仅依据标题相似推定实例相同。",
+    "全量新建原有查询或把普通回归另计成自动化资产。",
+    "无来源的迁移/上线准备。"
+  ],
+  "allowed_variations": [
+    "合理命名和层级，不按固定对象数评分。"
+  ],
+  "pending": [],
+  "source_refs": [
+    "inputs/prd.md#p1",
+    "inputs/hld.md#h1",
+    "inputs/history.md"
+  ]
+}
