@@ -1,7 +1,7 @@
 {
   "name": "ai-sow-lite",
   "version": "0.1.0-alpha.1",
-  "description": "根据 PRD、HLD 与往期范围生成可追溯的本期首版 SOW 工作簿。",
+  "description": "根据 PRD、HLD 与往期范围生成可追溯的 SOW 工作簿，并按确认意见作有限修改。",
   "author": {"name": "Inspire"},
   "license": "Apache-2.0",
   "keywords": ["sow", "requirements", "estimation"],

@@ -1,0 +1,9 @@
+{
+  "case_id": "correct-source-reading",
+  "fixture_limit": "错误由测试明确植入并经真实 I1 通道交付，不声称原始 Agent 自发产生此误读",
+  "required": ["读取现版对应 AC 及已可达 PRD 原文", "展示迟到响应不覆盖新查询的准确修正", "实际确认后只改变相关 AC 及必要依据、决定", "所有无关 Task 的工作方式和复杂度保留"],
+  "forbidden": ["要求用户重新解释已有规则或上传可读取的 PRD", "把误读修正包装成业务待确认项", "重拆全部 Story", "未确认即应用", "将修改 SOW 文字当成实施方式调整"],
+  "allowed_variations": ["可以明确这是对原有资料的误读", "允许依据记录组织差异，但不得添加新业务条件"],
+  "pending": ["原有无关待确认事项继续 open"],
+  "source_refs": ["feedback.md", "项目保留的 PRD", "现版资料查询 Story"]
+}

@@ -8,6 +8,8 @@ from urllib.parse import unquote, urlsplit
 
 import pytest
 
+from .support.clarify import delivered_baseline, clarify_case
+
 
 PLUGIN = Path(__file__).resolve().parents[1]
 SKILL = PLUGIN / "skills/generate/SKILL.md"
@@ -18,15 +20,16 @@ def required_text(path):
     return path.read_text(encoding="utf-8")
 
 
-def test_generate_is_discoverable_without_explicit_only_policy():
-    text = required_text(SKILL)
+@pytest.mark.parametrize("name", ["generate", "clarify"])
+def test_skill_is_discoverable_without_explicit_only_policy(name):
+    text = required_text(PLUGIN / f"skills/{name}/SKILL.md")
     assert text.startswith("---\n")
     frontmatter = text.split("---", 2)[1]
-    assert re.search(r"^name: generate$", frontmatter, re.M)
+    assert re.search(rf"^name: {name}$", frontmatter, re.M)
     assert re.search(r"^description: .+\S", frontmatter, re.M)
     assert not re.search(r"disable-model-invocation:\s*true", frontmatter)
     assert not re.search(r"allow_implicit_invocation:\s*false", text)
-    assert sorted(p.parent.name for p in (PLUGIN / "skills").glob("*/SKILL.md")) == ["generate"]
+    assert sorted(p.parent.name for p in (PLUGIN / "skills").glob("*/SKILL.md")) == ["clarify", "generate"]
 
 
 @pytest.mark.parametrize("host", ["codex", "claude"])
@@ -38,7 +41,7 @@ def test_development_manifest_discovers_only_implemented_skills(host):
     assert manifest["description"].strip()
     skill_dir = (PLUGIN / manifest.get("skills", "./skills")).resolve()
     assert skill_dir.is_relative_to(PLUGIN)
-    assert sorted(p.parent.name for p in skill_dir.glob("*/SKILL.md")) == ["generate"]
+    assert sorted(p.parent.name for p in skill_dir.glob("*/SKILL.md")) == ["clarify", "generate"]
     assert not {"hooks", "mcpServers", "apps", "commands", "agents"} & manifest.keys()
 
 
@@ -52,7 +55,7 @@ def test_host_manifests_agree_on_identity_and_description():
 @pytest.mark.parametrize("relative", [
     "skills/generate/SKILL.md", "references/generate-slices.md",
     "references/generate-authoring.md", "references/input-analysis.md",
-    "references/tools.md", "README.md",
+    "references/tools.md", "README.md", "skills/clarify/SKILL.md", "references/clarify-changes.md",
 ])
 def test_relative_reference_links_resolve_inside_plugin(relative):
     path = PLUGIN / relative
@@ -151,3 +154,48 @@ def test_authoring_observation_recipe_executes_coarse_boundaries(tmp_path, capsy
     assert report['event_count'] == 16
     assert not (project / '.ai-sow-lite/current.json').exists()
     assert all(m['value'] is None for m in report['metrics'] if m['name'] in ('total_tokens', 'model_duration_ns'))
+
+
+def test_clarify_confirmation_example_consumes_real_responses(clarify_case, monkeypatch, capsys):
+    """The public snippet must bind the shown plan using actual registered answer bytes."""
+    from .support.clarify import check_edits, edit_draft
+    from .support.cli import run_request
+    from .support.fixtures import write_json, read_json
+
+    guide = required_text(PLUGIN / 'references/clarify-changes.md')
+    snippets = re.findall(r'```python\n(.*?)\n```', guide, re.S)
+    assert len(snippets) == 1
+    case = clarify_case
+    project, request = case['project'], case['request_id']
+    checked = check_edits(case, edit_draft(case, [dict(op='replace', collection='stories',
+        object_id=case['ids']['S-01'], field='notes', value='保留既有范围')]))
+    assert checked['ok'], checked
+    shown = project / checked['result']['plan_ref']['path']
+    shown_bytes = shown.read_bytes()
+    # The controller supplies this text only after the concrete review exists.
+    assert (project / checked['result']['review_ref']['path']).is_file()
+    answer = project / 'actual-execution-answer.md'
+    answer.write_text('确认执行刚展示的备注修改，其他内容保持。\n', encoding='utf-8')
+    registered = run_request(project, request, 'ingest', dict(kind='sources', entrypoint='clarify',
+        project_type='new', sources=[dict(source_path=str(answer), input_id=None,
+            material_types=['answer'], uses=['to-be-scope'], use_regions=[])]))
+    assert registered['ok'], registered
+    identity = registered['result']['input_refs'][0]['input_version_id']
+    region = run_request(project, request, 'inspect', dict(view='regions', selector=dict(
+        input_version_id=identity, locator=dict(kind='text_lines', start_line=1, end_line=1))))
+    assert region['ok'], region
+    replies = [project / name for name in ('check-reply.json', 'answer-reply.json', 'region-reply.json')]
+    for path, reply in zip(replies, (checked, registered, region)):
+        write_json(path, reply)
+    monkeypatch.setattr('sys.argv', ['example', str(PLUGIN), str(project), *map(str, replies)])
+    exec(compile(snippets[0], 'clarify-changes.md', 'exec'), {})
+    confirmation_ref = json.loads(capsys.readouterr().out)
+    confirmed = read_json(project / confirmation_ref['path'])
+    assert confirmed['confirmation']['shown_plan_ref'] == checked['result']['plan_ref']
+    assert confirmed['confirmation']['input_ref']['input_version_id'] == identity
+    assert shown.read_bytes() == shown_bytes
+    accepted = run_request(project, request, 'check', dict(
+        candidate_path=checked['result']['candidate_ref']['path'],
+        plan_path=confirmation_ref['path'], scope='full'))
+    assert accepted['ok'] and accepted['result']['valid_for_render'], accepted
+    assert read_json(project / '.ai-sow-lite/current.json') == case['current']

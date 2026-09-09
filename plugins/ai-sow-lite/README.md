@@ -2,7 +2,7 @@
 
 AI SOW Lite 根据 PRD、HLD 和旧项目的往期 SOW，生成本期首版 SOW Excel、摘要与待确认事项。专业分析和联合拆解由一个主 session 完成，插件工具负责可追溯读取、机械检查、模板投影、真实 Office 核验和版本保存。
 
-当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），仅提供 [generate](skills/generate/SKILL.md) 入口。两宿主 manifest 共用该 Skill，供独立副本开发验证；尚未注册到仓库 marketplace，不表示已经公开发布。当前范围与实际证据见 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
+当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），提供 [generate](skills/generate/SKILL.md) 和 [clarify](skills/clarify/SKILL.md) 两个入口。两宿主 manifest 共用这些 Skill，供独立副本开发验证；尚未注册到仓库 marketplace，不表示已经公开发布。当前范围与实际证据见 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
 
 ## 使用
 
@@ -16,7 +16,9 @@ AI SOW Lite 根据 PRD、HLD 和旧项目的往期 SOW，生成本期首版 SOW 
 
 提供实际 PRD/HLD 路径；旧项目另外提供往期 SOW。材料已齐时直接分析，只有输入事实、冲突或责任影响推进时才合批提问。基础充分后的局部未知随初稿交付，复杂度不明立即用 M 并附待确认；基础材料不足则给具体补料清单。生成初稿不要求审批。
 
-当前可读取 UTF-8 `.md/.markdown/.txt` 和 `.xlsx`，保留物理定位、附注和未读范围；不支持 PDF/DOCX/OCR。原型可选，其观察与附件校验仍未实现，不宣称已验证。Clarify 的有限编辑、具体确认和修改应用已接通工具层，Skill 入口与真实讨论留待 I3.2；当前验证边界见 [I3 修改验证](docs/validation/I3-clarify.md)。重复 generate 恢复已有结果，不覆盖有效版本。
+当前可读取 UTF-8 `.md/.markdown/.txt` 和 `.xlsx`，保留物理定位、附注和未读范围；不支持 PDF/DOCX/OCR。原型可选，其观察与附件校验仍未实现，不宣称已验证。Clarify 基于共享项目文件讨论具体修改，只更新已确认的有限范围；当前验证边界见 [I3 修改验证](docs/validation/I3-clarify.md)。重复 generate 恢复已有结果，不覆盖有效版本。
+
+查看 Excel 后，可以使用 clarify 回答某条待确认事项，或提出自己的修改意见，例如：“资料迁移复杂度按 S，先展示具体调整方案。”无需原生成聊天，也没有定稿环节。首次接受默认 M 会记录决定并处理对应问题；已经采用的重复答复直接返回现有文件。讨论时默认展示内容变化，只有明确要求候选 Excel 才提前生成预览。
 
 运行时、锁文件和模板均在插件目录内。首次调用按 [命令与编写参考](references/generate-authoring.md) 使用本副本 bootstrap，准备隔离 uv/Python/依赖，后续复用 `.venv`；不需要安装旧 AI SOW 插件。Excel 投影使用已有 LibreOffice 引擎，缺少引擎时保留候选并返回诊断，不伪造计算结果。平台实测范围以宿主支持记录为准。
 

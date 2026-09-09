@@ -83,7 +83,7 @@ work_type_name = standard_row["工作类型"]
 | --- | --- |
 | evidence item | `id, kind, text, source_refs, basis_refs, limitations`；kind 为 statement/observation/judgment。当前直接材料用 statement，source_refs 非空；专业推断用 judgment，basis_refs 非空并最终回到真实来源 |
 | source_ref | `input_version_id, locator, excerpt_hash`，按上例从真实区域响应取得；文本 start_line/end_line 为含端点的 1 起始行，XLSX 用返回区域 read_id，不能用目录 read_id 代替 |
-| topic | `topic_id, topic_version_id, title, input_version_ids, uses, covered_regions, uncovered_regions, evidence_refs, related_object_ids, external_responsibilities, limitations, conclusion, historical_items` |
+| topic | `topic_id, topic_version_id, title, input_version_ids, uses, covered_regions, uncovered_regions, evidence_refs, related_object_ids, external_responsibilities, limitations, conclusion, historical_items`；related_object_ids 只放业务模型中的 Epic/Feature/Story/AC/Task 及 dependency ID，不放待确认项、决定或依据 ID。答复待确认项时关联其 targets 指向的实际业务对象；问题处理通过 pending_items/decisions 的原有关系记录 |
 | topic 区域 | covered_regions 是 source_ref 数组；uncovered_regions 每项为 `input_version_id, locator, reason`。只声明真实覆盖，conclusion 保存 Agent 的分析结论 |
 | historical_item | 必需 `id, label, description, evidence_refs`；仅已有时加 level/parent_id/type_hint/instance_facts，instance_facts 项为 `text, evidence_refs` |
 
@@ -159,4 +159,4 @@ request/end记录发生在最终答复用量到达之前，报告可为partial�
 
 full check 通过后采用返回 check_ref；候选或依赖字节改变则旧检查失效。render 负责真实计算和复读，成功后把返回 prepared_ref.path 传给 apply，首版两者 expected_current 都是 null。apply 保存的 `.ai-sow-lite/versions/<version_id>/` 包含同版 sow.xlsx、summary.md、pending-items.md 及业务/投影 JSON，必要时有 details.md；以 apply 返回为准链接这些文件，不能把 work 中预览冒充已生效版本。
 
-current 已有版本或同一请求结果不明时先用 inspect/recover 核实。已有结果可直接返回；首版入口不执行版本修改，不能删除 current 或换 request_id 重生成。尚未实现的 Clarify 请求如实说明当前支持边界并保留文件。
+current 已有版本或同一请求结果不明时先用 inspect/recover 核实。已有结果可直接返回；首版入口不执行版本修改，不能删除 current 或换 request_id 重生成。对现版的解释和有限修改交给 [Clarify](../skills/clarify/SKILL.md)。

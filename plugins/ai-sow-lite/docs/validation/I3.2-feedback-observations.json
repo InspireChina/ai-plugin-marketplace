@@ -1,0 +1,484 @@
+{
+  "schema_version": "1.0",
+  "kind": "development_observations",
+  "stage": "I3.2",
+  "cases": [
+    {
+      "case_id": "answer-complexity-M",
+      "state": "verified",
+      "fixture": "../../tests/fixtures/clarify/cases/answer-complexity-M",
+      "proposal_revision": 1,
+      "current": {
+        "manifest_hash": "4b8fae787fef963eabe37a398fa26bb2033ac6fcf589e607cc48141a9f2fc002",
+        "version_id": "218b88b6-6105-4e5e-a9da-b28075fa9b03"
+      },
+      "workbook_sha256": "53b6630283de84e5211b1ffd8e9671c1c978e7cdffbd710750980e4f5c81d275",
+      "manifest_sha256": "4b8fae787fef963eabe37a398fa26bb2033ac6fcf589e607cc48141a9f2fc002",
+      "confirmation_sha256": "08fe6a9cfbe21478e2cf56e731a61ce6ee862d1395e9dc3db90712adda0d06be",
+      "model_changes": {
+        "epics": [],
+        "features": [],
+        "stories": [],
+        "tasks": [
+          {
+            "id": "00000000-0000-4000-8000-000000000036",
+            "fields": [
+              "notes",
+              "evidence_refs",
+              "classification_basis"
+            ]
+          }
+        ],
+        "dependencies": [],
+        "lineage": []
+      },
+      "previous_version_unchanged": true,
+      "plugin_source_unchanged": true,
+      "initial_mechanical_failure": null,
+      "response_observation": {
+        "producer_version": "0.153.4",
+        "model_contexts": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh"
+          }
+        ],
+        "source_sha256": "38801dc46d315bcf55a80aa24efc83e1d65356834ab4dd3125c8fd84f8149af8",
+        "source_bytes": 1271724,
+        "turns": [
+          {
+            "phase": "proposal",
+            "responses": 18,
+            "native_duration_ms": 457518,
+            "counts": {
+              "input_tokens": 1093285,
+              "output_tokens": 12943,
+              "total_tokens": 1106228,
+              "cached_input_tokens": 1026432,
+              "reasoning_output_tokens": 3209,
+              "cache_write_input_tokens": 0
+            }
+          },
+          {
+            "phase": "confirmation_to_delivery",
+            "responses": 9,
+            "native_duration_ms": 161488,
+            "counts": {
+              "input_tokens": 867924,
+              "output_tokens": 4387,
+              "total_tokens": 872311,
+              "cached_input_tokens": 852096,
+              "reasoning_output_tokens": 767,
+              "cache_write_input_tokens": 0
+            }
+          },
+          {
+            "phase": "repeat_answer",
+            "responses": 2,
+            "native_duration_ms": 26045,
+            "counts": {
+              "input_tokens": 209574,
+              "output_tokens": 656,
+              "total_tokens": 210230,
+              "cached_input_tokens": 205440,
+              "reasoning_output_tokens": 0,
+              "cache_write_input_tokens": 0
+            }
+          }
+        ]
+      },
+      "tool_counts": {
+        "inspect": 26,
+        "ingest": 3,
+        "check": 2,
+        "apply": 1,
+        "render": 1
+      },
+      "tool_duration_ns": {
+        "inspect": 258662334,
+        "ingest": 44010083,
+        "check": 300378459,
+        "apply": 1321220167,
+        "render": 5621720541
+      },
+      "actual_marks": [
+        {
+          "name": "design_discussion",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "design_discussion",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "export",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "export",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "input_analysis",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "input_analysis",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "request",
+          "phase": "end",
+          "count": 3
+        },
+        {
+          "name": "request",
+          "phase": "start",
+          "count": 3
+        },
+        {
+          "name": "usable_file",
+          "phase": "milestone",
+          "count": 1
+        },
+        {
+          "name": "useful_feedback",
+          "phase": "milestone",
+          "count": 1
+        },
+        {
+          "name": "user_wait",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "user_wait",
+          "phase": "start",
+          "count": 1
+        }
+      ],
+      "remaining_open_items": 0,
+      "repeat_result": {
+        "all_version_bytes_unchanged": true,
+        "current_unchanged": true,
+        "native_turn_count": 3
+      }
+    },
+    {
+      "case_id": "answer-complexity-S",
+      "state": "verified",
+      "fixture": "../../tests/fixtures/clarify/cases/answer-complexity-S",
+      "proposal_revision": 2,
+      "current": {
+        "manifest_hash": "78a306232cce548d22083d8a7f2f83a00a5193a55f0484cb3bd58844b73bd252",
+        "version_id": "0bc76770-a40c-474d-ac1a-e3184d73c2a7"
+      },
+      "workbook_sha256": "cd3c0f9d03b12cefed32d2c6ba3e0263d2f0db0601093933f72c67ae6d674ad6",
+      "manifest_sha256": "78a306232cce548d22083d8a7f2f83a00a5193a55f0484cb3bd58844b73bd252",
+      "confirmation_sha256": "c49292c35bdb31019984dcc3feb743bde7cebca3bbb72d2b25d4ca7303276d65",
+      "model_changes": {
+        "epics": [],
+        "features": [],
+        "stories": [],
+        "tasks": [
+          {
+            "id": "00000000-0000-4000-8000-000000000036",
+            "fields": [
+              "complexity",
+              "notes",
+              "evidence_refs",
+              "classification_basis"
+            ]
+          }
+        ],
+        "dependencies": [],
+        "lineage": []
+      },
+      "previous_version_unchanged": true,
+      "plugin_source_unchanged": true,
+      "initial_mechanical_failure": {
+        "cause": "pending ID in topic.related_object_ids",
+        "initial_code": "CANDIDATE_INVALID",
+        "professional_proposal_changed": false
+      },
+      "response_observation": {
+        "producer_version": "0.153.4",
+        "model_contexts": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh"
+          }
+        ],
+        "source_sha256": "6aaacfbcca3943fb30b14c76ba7a0af6810ec3bb69eae7e8aa9b17483d2ad787",
+        "source_bytes": 1274433,
+        "turns": [
+          {
+            "phase": "proposal",
+            "responses": 21,
+            "native_duration_ms": 546867,
+            "counts": {
+              "input_tokens": 1284752,
+              "output_tokens": 14777,
+              "total_tokens": 1299529,
+              "cached_input_tokens": 1213696,
+              "reasoning_output_tokens": 3157,
+              "cache_write_input_tokens": 0
+            }
+          },
+          {
+            "phase": "confirmation_to_delivery",
+            "responses": 10,
+            "native_duration_ms": 206873,
+            "counts": {
+              "input_tokens": 998053,
+              "output_tokens": 5713,
+              "total_tokens": 1003766,
+              "cached_input_tokens": 982912,
+              "reasoning_output_tokens": 448,
+              "cache_write_input_tokens": 0
+            }
+          }
+        ]
+      },
+      "tool_counts": {
+        "inspect": 21,
+        "ingest": 4,
+        "apply": 1,
+        "check": 3,
+        "render": 1
+      },
+      "tool_duration_ns": {
+        "inspect": 213422665,
+        "ingest": 64859708,
+        "apply": 1304206417,
+        "check": 502705666,
+        "render": 5697627875
+      },
+      "actual_marks": [
+        {
+          "name": "design_discussion",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "design_discussion",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "export",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "export",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "input_analysis",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "input_analysis",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "request",
+          "phase": "end",
+          "count": 2
+        },
+        {
+          "name": "request",
+          "phase": "start",
+          "count": 2
+        },
+        {
+          "name": "usable_file",
+          "phase": "milestone",
+          "count": 1
+        },
+        {
+          "name": "useful_feedback",
+          "phase": "milestone",
+          "count": 1
+        },
+        {
+          "name": "user_wait",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "user_wait",
+          "phase": "start",
+          "count": 1
+        }
+      ],
+      "remaining_open_items": 0
+    },
+    {
+      "case_id": "correct-source-reading",
+      "state": "verified",
+      "fixture": "../../tests/fixtures/clarify/cases/correct-source-reading",
+      "proposal_revision": 1,
+      "current": {
+        "manifest_hash": "8d32349388361284510f688e29dede9802b082eccac735105bf6e02047b6eb92",
+        "version_id": "e63bcb30-6eff-4eaf-80fb-970fc27cdbea"
+      },
+      "workbook_sha256": "83cdb74cabb69352031bd253d400c51f574faff30193ca9ade04a83a4a919085",
+      "manifest_sha256": "8d32349388361284510f688e29dede9802b082eccac735105bf6e02047b6eb92",
+      "confirmation_sha256": "34a012a93ce845534adf9ee7c8bcdd3c70839803149266c3fbbc6fd6d3771f76",
+      "model_changes": {
+        "epics": [],
+        "features": [],
+        "stories": [
+          {
+            "id": "00000000-0000-4000-8000-000000000019",
+            "fields": [
+              "acs"
+            ]
+          }
+        ],
+        "tasks": [],
+        "dependencies": [],
+        "lineage": []
+      },
+      "previous_version_unchanged": true,
+      "plugin_source_unchanged": true,
+      "initial_mechanical_failure": null,
+      "response_observation": {
+        "producer_version": "0.153.4",
+        "model_contexts": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh"
+          }
+        ],
+        "source_sha256": "2fd782e1e5d15e84edfdd64d9a2e4492848150e06cd5d3e991ed6e3b4f785c6a",
+        "source_bytes": 1431706,
+        "turns": [
+          {
+            "phase": "proposal",
+            "responses": 21,
+            "native_duration_ms": 518436,
+            "counts": {
+              "input_tokens": 1421325,
+              "output_tokens": 14495,
+              "total_tokens": 1435820,
+              "cached_input_tokens": 1340416,
+              "reasoning_output_tokens": 4140,
+              "cache_write_input_tokens": 0
+            }
+          },
+          {
+            "phase": "confirmation_to_delivery",
+            "responses": 10,
+            "native_duration_ms": 203187,
+            "counts": {
+              "input_tokens": 1103608,
+              "output_tokens": 5606,
+              "total_tokens": 1109214,
+              "cached_input_tokens": 1087104,
+              "reasoning_output_tokens": 1068,
+              "cache_write_input_tokens": 0
+            }
+          }
+        ]
+      },
+      "tool_counts": {
+        "check": 2,
+        "ingest": 2,
+        "inspect": 24,
+        "apply": 1,
+        "render": 1
+      },
+      "tool_duration_ns": {
+        "check": 213526708,
+        "ingest": 29465833,
+        "inspect": 230500959,
+        "apply": 1261391917,
+        "render": 5451445166
+      },
+      "actual_marks": [
+        {
+          "name": "design_discussion",
+          "phase": "end",
+          "count": 2
+        },
+        {
+          "name": "design_discussion",
+          "phase": "start",
+          "count": 2
+        },
+        {
+          "name": "export",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "export",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "input_analysis",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "input_analysis",
+          "phase": "start",
+          "count": 1
+        },
+        {
+          "name": "request",
+          "phase": "end",
+          "count": 2
+        },
+        {
+          "name": "request",
+          "phase": "start",
+          "count": 2
+        },
+        {
+          "name": "usable_file",
+          "phase": "milestone",
+          "count": 1
+        },
+        {
+          "name": "useful_feedback",
+          "phase": "milestone",
+          "count": 1
+        },
+        {
+          "name": "user_wait",
+          "phase": "end",
+          "count": 1
+        },
+        {
+          "name": "user_wait",
+          "phase": "start",
+          "count": 1
+        }
+      ],
+      "remaining_open_items": 1
+    }
+  ],
+  "limits": [
+    "Synthetic controlled initial business baselines delivered through real I1; fresh actors receive only project files, plugin runtime surface and raw feedback.",
+    "Controller reads actual concrete proposal before sending execution confirmation; no preset candidate supplied to actors.",
+    "Source-misreading AC was intentionally injected into a mechanically valid real baseline.",
+    "Response sums include host context and tools, not exclusive project input; cached input is included, not added.",
+    "Native duration includes tools and host time, not pure model time; model-to-activity attribution and physical call count remain unknown.",
+    "One non-paired baseline per case does not prove optimization or a performance target.",
+    "A later one-line authoring hint clarifies pending IDs versus related business IDs; the recorded original actor traces predate that hint."
+  ]
+}
