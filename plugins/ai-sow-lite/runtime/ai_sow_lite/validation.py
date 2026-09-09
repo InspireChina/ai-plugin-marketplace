@@ -54,6 +54,8 @@ class _Check:
         self.project = project.resolve()
         self.diagnostics = []
         self.dependencies = {}
+        self.plan_binding = {}
+        self.historical_topic_objects = {}
 
     def relative(self, path):
         try:
@@ -114,7 +116,7 @@ class _Check:
         return dict(schema_version="1.0", validator_version=VALIDATOR_VERSION, scope=scope,
                     candidate_ref=reference, candidate_digest=digest,
                     dependencies=list(self.dependencies.values()), valid_for_render=scope == "full" and not self.diagnostics,
-                    unknowns_count=unknowns, diagnostics=self.diagnostics)
+                    unknowns_count=unknowns, diagnostics=self.diagnostics, **self.plan_binding)
 
 
 def _standards(ctx, template_hash):
@@ -256,6 +258,8 @@ def _history(ctx, model, base_version_id, current_objects):
                 ctx.add('from_ids', '旧对象未出现在精确历史版本中。', object_id=identity)
             else:
                 history[(source_version, identity)] = obj
+                for topic_version in manifests[source_version]['topic_version_ids']:
+                    ctx.historical_topic_objects.setdefault(topic_version, set()).add(identity)
         occurrences = [(ranks[v], saved) for v in versions for saved in snapshots[v]['lineage']
                        if _lineage_key(saved) == key]
         if any(saved != record for _, saved in occurrences):
@@ -517,7 +521,9 @@ def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, an
         if not set(topic['input_version_ids']) <= set(candidate['input_version_ids']):
             ctx.add('input_version_ids', '主题采用了候选之外的来源。', object_id=topic['topic_id'])
         for identity in topic['related_object_ids']:
-            if model_valid and identity not in objects:
+            historical = (candidate.get('entrypoint') == 'clarify' and identity in
+                          ctx.historical_topic_objects.get(topic['topic_version_id'], set()))
+            if model_valid and identity not in objects and not historical:
                 ctx.add('related_object_ids', '分析仍引用候选中不存在的业务对象。', object_id=identity)
         references(topic['evidence_refs'], 'evidence_refs', topic['topic_id'])
         for source in topic['covered_regions']:
@@ -598,9 +604,6 @@ def check_candidate(project: Path, candidate_path: Path, scope: str, plan_path: 
     if scope not in ('slice', 'full'):
         ctx.add('scope', 'scope 必须为 slice 或 full。')
         return ctx.report('full')
-    if plan_path is not None:
-        ctx.add('plan_path', '带计划的检查尚未实现。', code='OPERATION_UNSUPPORTED')
-        return ctx.report(scope)
     try:
         path = project_file(Path(project), candidate_path, '.ai-sow-lite/work')
     except (ValueError, OSError, RuntimeError):
@@ -625,8 +628,10 @@ def check_candidate(project: Path, candidate_path: Path, scope: str, plan_path: 
         ctx.add('template_hash', '候选模板身份与项目固定模板不同。')
     if candidate['entrypoint'] == 'generate' and candidate['base_version_id'] is not None:
         ctx.add('base_version_id', '首版 generate 的基线必须为 null。')
-    if candidate['entrypoint'] == 'clarify':
-        ctx.add('entrypoint', 'Clarify 基线和方案检查将在 I3 实现。', code='OPERATION_UNSUPPORTED')
+    if candidate['entrypoint'] == 'clarify' and plan_path is None:
+        ctx.add('plan_path', 'Clarify 必须绑定具体方案。')
+    if candidate['entrypoint'] == 'generate' and plan_path is not None:
+        ctx.add('plan_path', 'Generate 不接受 Clarify 方案。')
     model = ctx.json(candidate['model_path'], work_area, 'model', field='model_path')
     pending = ctx.json(candidate['pending_items_path'], work_area, 'pending-items', field='pending_items_path')
     decisions = ctx.json(candidate['decisions_path'], work_area, 'decisions', field='decisions_path')
@@ -642,6 +647,9 @@ def check_candidate(project: Path, candidate_path: Path, scope: str, plan_path: 
                 lineage_graph.setdefault(old, []).extend(record['to_ids'])
         _acyclic(ctx, lineage_graph, 'lineage')
     evidence, topics = _sources_and_evidence(ctx, candidate, model, pending, decisions, objects)
+    if candidate['entrypoint'] == 'clarify' and plan_path is not None:
+        from .changes import check_plan
+        check_plan(ctx, candidate, path, model, pending, decisions, plan_path)
     unknowns = sum(item['status'] == 'open' for item in pending['items']) if pending is not None else 0
     if model is None or pending is None or decisions is None:
         return ctx.report(scope, path, unknowns=unknowns)
@@ -649,3 +657,19 @@ def check_candidate(project: Path, candidate_path: Path, scope: str, plan_path: 
                                   decisions=decisions, topics=topics,
                                   evidence=[evidence[i] for i in candidate['evidence_ids'] if i in evidence]))
     return ctx.report(scope, path, digest, unknowns)
+
+
+def prepare_edit(project, request_id, edit_path):
+    from .changes import prepare_edit as construct
+    return construct(project, request_id, edit_path)
+
+
+def diff_bundle(before, after):
+    from .changes import diff_bundle as compare
+    return compare(before, after)
+
+
+def verify_plan(project, plan_path, candidate_path):
+    plan_path = plan_path.as_posix() if isinstance(plan_path, Path) and not plan_path.is_absolute() else plan_path
+    candidate_path = candidate_path.as_posix() if isinstance(candidate_path, Path) and not candidate_path.is_absolute() else candidate_path
+    return check_candidate(project, candidate_path, 'full', plan_path)

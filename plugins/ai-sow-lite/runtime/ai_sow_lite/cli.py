@@ -63,9 +63,15 @@ def _execute(request):
             result = recover_request(project, payload['target_request_id'])
         diagnostics = result.pop('diagnostics', [])
         return _response(request, result=result, diagnostics=diagnostics, ok=not diagnostics)
-    if operation != 'check' or 'edit_path' in payload or payload.get('plan_path') is not None:
+    if operation != 'check':
         return _failure(request, 'OPERATION_UNSUPPORTED', '尚未实现此操作，或没有提供受支持的 payload 形式。', 'operation')
     project = Path(request['project_path']).resolve()
+    constructed = {}
+    if 'edit_path' in payload:
+        from .validation import prepare_edit
+        constructed = prepare_edit(project, request['request_id'], payload['edit_path'])
+        payload = dict(candidate_path=constructed['candidate_ref']['path'], scope='full',
+                       plan_path=constructed['plan_ref']['path'])
     try:
         path = project_file(project, payload['candidate_path'], f".ai-sow-lite/work")
         parts = path.relative_to(project).parts
@@ -73,7 +79,7 @@ def _execute(request):
             raise ValueError('request ownership')
     except (ValueError, OSError, RuntimeError):
         return _failure(request, 'CANDIDATE_INVALID', '候选必须属于本项目、本请求的 work 目录。', 'candidate_path')
-    report = check_candidate(project, path, payload['scope'], None)
+    report = check_candidate(project, path, payload['scope'], payload.get('plan_path'))
     content = canonical_json_bytes(report)
     digest = hashlib.sha256(content).hexdigest()
     area = '/'.join(parts[:4])
@@ -86,10 +92,17 @@ def _execute(request):
     except FileExistsError:
         if destination.read_bytes() != content:
             return _failure(request, 'IO_FAILED', '已有报告字节不一致，未覆盖文件。')
+    if report['valid_for_render'] and report.get('plan_ref'):
+        from .changes import seal_confirmation
+        plan = load_json(project_file(project, report['plan_ref']['path'], area))
+        if plan['confirmation'] is not None:
+            seal_confirmation(project, report['plan_ref']['path'], path)
     result = dict(check_ref=dict(path=destination.relative_to(project).as_posix(), sha256=digest),
-                  candidate_ref=report['candidate_ref'], plan_ref=None, review_ref=None,
+                  candidate_ref=report['candidate_ref'], plan_ref=report.get('plan_ref'), review_ref=constructed.get('review_ref'),
                   candidate_digest=report['candidate_digest'], valid_for_render=report['valid_for_render'],
                   unknowns_count=report['unknowns_count'])
+    if constructed:
+        result.update(no_change=constructed['no_change'], current_version=constructed['current_version'])
     return _response(request, ok=not report['diagnostics'], result=result, diagnostics=report['diagnostics'])
 
 

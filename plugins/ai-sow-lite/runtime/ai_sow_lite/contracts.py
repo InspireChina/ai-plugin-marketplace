@@ -13,7 +13,7 @@ from referencing import Registry, Resource
 JsonValue: TypeAlias = None | bool | int | str | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject: TypeAlias = dict[str, JsonValue]
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_NAMES = ("model", "pending-items", "decisions", "evidence", "protocol", "artifacts")
+SCHEMA_NAMES = ("model", "pending-items", "decisions", "evidence", "protocol", "artifacts", "change-plan")
 
 
 def _validate_json(value: object) -> None:

@@ -242,12 +242,18 @@ def test_check_cli_returns_file_reference_and_no_fake_delivery(contract_case):
 
 
 @pytest.mark.parametrize("operation,payload", [("ingest", {"kind": "sources"}), ("inspect", {}),
-                                               ("render", {}), ("apply", {}), ("recover", {}),
-                                               ("check", {"edit_path": ".ai-sow-lite/work/edits.json", "scope": "full"})])
+                                               ("render", {}), ("apply", {}), ("recover", {})])
 def test_unimplemented_operations_are_explicitly_unsupported(contract_case, operation, payload):
     result = run_request(contract_case.project, contract_case.request_id, operation, payload)
     assert result["ok"] is False
     assert result["diagnostics"][0]["code"] == "OPERATION_UNSUPPORTED"
+
+
+def test_edits_path_must_belong_to_the_clarify_request(contract_case):
+    result = run_request(contract_case.project, contract_case.request_id, 'check', dict(
+        edit_path='.ai-sow-lite/work/edits.json', scope='full'))
+    assert not result['ok']
+    assert result['diagnostics'][0]['code'] == 'PATH_UNSAFE'
 
 
 def test_unknown_protocol_and_payload_fields_are_rejected(contract_case):
@@ -274,7 +280,7 @@ def test_template_identity_and_candidate_bytes_are_bound(contract_case):
 def test_all_schemas_compile_and_generate_fixture_ids_are_uuid4():
     from ai_sow_lite.contracts import schema_validator
     from uuid import UUID
-    for name in ["model", "pending-items", "decisions", "evidence", "protocol", "artifacts"]:
+    for name in ["model", "pending-items", "decisions", "evidence", "protocol", "artifacts", "change-plan"]:
         schema_validator(name).check_schema(schema_validator(name).schema)
     assert all(UUID(value).version == 4 for value in read_json(FIXTURES / "generate/ids.json").values())
 
@@ -459,7 +465,7 @@ def test_schema_error_does_not_hide_independent_source_diagnostics(contract_case
     assert {'complexity', 'source_refs'} <= fields
 
 
-@pytest.mark.parametrize('schema_name', ['model', 'pending-items', 'decisions', 'evidence', 'protocol', 'artifacts'])
+@pytest.mark.parametrize('schema_name', ['model', 'pending-items', 'decisions', 'evidence', 'protocol', 'artifacts', 'change-plan'])
 def test_review_s5_uuid_and_digest_tokens_reject_trailing_lf(schema_name):
     from ai_sow_lite.contracts import schema_validator
     from jsonschema import Draft202012Validator

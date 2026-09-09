@@ -4,7 +4,7 @@
 
 连续实施中的取舍及理由见 [自主决策记录](../../validation/implementation-decisions.md)。用户已授权按本计划持续完成开发，每个 I1.4 这样的实施任务验证/审查完成后提交一次，中间无需等待用户确认；推送、安装及发布不在本次开发范围。
 
-状态：I1.1—I2.3 已完成，回归与独立审查通过；接续 I3.1 的有限编辑和具体确认绑定。I2.3 已取得真实基线，但 G12 的逐活动用量等缺口仍保留。实际能力与限制见 [I1 机械能力](../../validation/I1-reliable-delivery.md)、[I1.5 独立交付](../../validation/I1-delivery.md) 和 [I2 输入与 Generate 验证](../../validation/I2-generate.md)。尚未实现的入口不视为已完成；Q1/Q2 已定边界见 [13](../13-self-review-and-decisions.md)。
+状态：I1.1—I3.1 已完成，回归与独立审查通过；接续 I3.2 的 clarify Skill 和文件独立讨论。I2.3 已取得真实基线，但 G12 的逐活动用量等缺口仍保留。实际能力与限制见 [I1 机械能力](../../validation/I1-reliable-delivery.md)、[I1.5 独立交付](../../validation/I1-delivery.md)、[I2 输入与 Generate 验证](../../validation/I2-generate.md) 和 [I3 有限修改验证](../../validation/I3-clarify.md)。尚未实现的入口不视为已完成；Q1/Q2 已定边界见 [13](../13-self-review-and-decisions.md)。
 
 ## 1. 阅读与实施顺序
 

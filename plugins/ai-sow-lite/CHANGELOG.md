@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 实现 I3.1 有限编辑构造、稳定地址差异、具体方案与确认绑定，接通原模板修改交付；同值 M 的首次采用更新决定与问题，已无变化不生成空版本。确认后可复用不变预览，版本保留实际确认与展示方案；反例和真实 S/M 交付记录见 [I3 验证](docs/validation/I3-clarify.md)，取舍见 [AD16](docs/validation/implementation-decisions.md)。Clarify Skill 与完整使用周期尚属后续阶段。
+
 - 实现 I2.3 版本绑定的原生 usage 采集、响应去重、有限增量复读及取消传播；补大活动埋点指引，保留不兼容、迟到和归属未知的观测出口。首次实际 Generate 的 token、工具时长、读取与输出量分别记录，不把响应当物理调用或宣称性能已达标；宿主发现与实际执行能力分开列示。见 [宿主观测](docs/validation/host-support.md)、[首次基线](docs/validation/I2-generate.md) 和 [AD14—AD15](docs/validation/implementation-decisions.md)。
 
 - 实现 I2.2 generate 入口、按需专业参考和双宿主开发 manifest；从原始材料实际生成三类范围及历史变体，验证有限问答、默认 M、文件续接和重复调用。修复 XLSX 来源标签、自举解释器隔离、链接目录清理风险及两项实际来源边界问题，保留首次失败和定向复验；原模板与计算规则未改。结果见 [I2 验证](docs/validation/I2-generate.md)，取舍见 [自主决策](docs/validation/implementation-decisions.md)。

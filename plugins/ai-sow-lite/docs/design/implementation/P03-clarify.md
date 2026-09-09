@@ -27,11 +27,11 @@
 
 **Interfaces:** 消费 P00 prepare_edit/diff_bundle/verify_plan 与 check/edits，派生 changes/read_set/write_set、具体 review 和确认摘要；Agent 提供专业编辑及 read_boundary。analysis 先通过 ingest 登记，新引用纳入实际计划写集合，复用 I1 prepared。
 
-- [ ] 建立三种最小基线与反馈：默认 M→S；确认默认 M 不变；仅修 AC/备注。基线由真实 I1 交付生成，旧版本可查；反馈作为实际最少文本输入登记，不凭空创建“用户已确认”的决定。
-- [ ] 实现 P00 的 edit-draft 和 prepare_edit：check/edits 只接有限新值/增删、明确问题和决定处理、依赖选择与边界；从当前基线复制文件到 work，机械构造候选、plan 和 review。返回文件引用，不回显全量模型；不自动关闭问题、补分类或增加语义依赖。未知 ID、重复矛盾编辑、隐式级联和过期基线合批诊断。
-- [ ] 在包含数百个 Task 的受控基线仅提交一个 Task 分类及对应依据/问题/决定的有限编辑，断言所有未涉及对象与顺序不变，派生 before/after/write_set 与实际差异一致。记录模型侧输入/输出及文件写入量；不能把完整文件复制称为 Agent 已重生成。嵌入 AC 的替换/跨 Story 迁移按 P00 明确父数组编辑测试。
-- [ ] 实现按 ID/字段的 diff，保留模型展示顺序，新增/删除比较完整内容。覆盖 AC ID 与父 Story.acs、问题 revision/resolution、classification_basis、决定、关系、lineage 和候选采用依据；不将 Excel 行位移混入业务 diff。替换后的具体值也必须一致，不只看字段在白名单。
-- [ ] check full + plan 同时验证：候选实际差异等于 changes；变化均落派生 write_set；read_set 所读版本和已登记来源可解析；current 仍是原基线；待确认状态和义务去向闭合。义务范围/含义由 Agent 核对，不为串行用法实现字段/关系级冲突合并摘要。
+- [x] 建立三种最小基线与反馈：默认 M→S；确认默认 M 不变；仅修 AC/备注。基线由真实 I1 交付生成，旧版本可查；反馈作为实际最少文本输入登记，不凭空创建“用户已确认”的决定。
+- [x] 实现 P00 的 edit-draft 和 prepare_edit：check/edits 只接有限新值/增删、明确问题和决定处理、依赖选择与边界；从当前基线复制文件到 work，机械构造候选、plan 和 review。返回文件引用，不回显全量模型；不自动关闭问题、补分类或增加语义依赖。未知 ID、重复矛盾编辑、隐式级联和过期基线合批诊断。
+- [x] 在包含数百个 Task 的受控基线仅提交一个 Task 分类及对应依据/问题/决定的有限编辑，断言所有未涉及对象与顺序不变，派生 before/after/write_set 与实际差异一致。记录模型侧输入/输出及文件写入量；不能把完整文件复制称为 Agent 已重生成。嵌入 AC 的替换/跨 Story 迁移按 P00 明确父数组编辑测试。
+- [x] 实现按 ID/字段的 diff，保留模型展示顺序，新增/删除比较完整内容。覆盖 AC ID 与父 Story.acs、问题 revision/resolution、classification_basis、决定、关系、lineage 和候选采用依据；不将 Excel 行位移混入业务 diff。替换后的具体值也必须一致，不只看字段在白名单。
+- [x] check full + plan 同时验证：候选实际差异等于 changes；变化均落派生 write_set；read_set 所读版本和已登记来源可解析；current 仍是原基线；待确认状态和义务去向闭合。义务范围/含义由 Agent 核对，不为串行用法实现字段/关系级冲突合并摘要。
 
 ```python
 def test_same_field_different_value_is_not_confirmed():
@@ -49,9 +49,9 @@ def test_same_field_different_value_is_not_confirmed():
 
 diff_bundle 按传入集合计算结构差异，此小例不冒充完整模型。对应完整夹具展示并确认 M→S，候选却为 L 时，verify_plan/apply 必须 SCOPE_EXCEEDED；候选不能通过“字段是 complexity”获准。
 
-- [ ] 实现 P00 确认绑定，hash 排除 confirmation 自身/文件路径，包含具体内容和关键条件。用户原确认输入与被展示方案可达；没有实际执行意思保持 work。程序校验绑定不等于独立认证用户身份。
-- [ ] 测 field 相同值不同、超范围改备注、漏记 question.revision、删除未拆明工作问题但义务仍在、lineage 错版本、open 指向退出对象、检查后改候选字节。错误合批返回；默认 M 不因 issue open 被非法拒绝。
-- [ ] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_clarify.py plugins/ai-sow-lite/tests/test_contracts.py -q`。这些测试通过后再接实际交互，避免只在 Skill 中口头限定范围。
+- [x] 实现 P00 确认绑定，hash 排除 confirmation 自身/文件路径，包含具体内容和关键条件。用户原确认输入与被展示方案可达；没有实际执行意思保持 work。程序校验绑定不等于独立认证用户身份。
+- [x] 测 field 相同值不同、超范围改备注、漏记 question.revision、删除未拆明工作问题但义务仍在、lineage 错版本、open 指向退出对象、检查后改候选字节。错误合批返回；默认 M 不因 issue open 被非法拒绝。
+- [x] 执行 `uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_clarify.py plugins/ai-sow-lite/tests/test_contracts.py -q`。这些测试通过后再接实际交互，避免只在 Skill 中口头限定范围。
 
 ## I3.2 · 文件独立的讨论、有限方案与应用
 

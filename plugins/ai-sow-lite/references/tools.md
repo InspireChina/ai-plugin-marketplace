@@ -2,15 +2,15 @@
 
 Generate 首次编写可按活动读取 [命令与候选编写](generate-authoring.md)，遇到具体字段/诊断再查本页相应定义；无需预加载全部 Schema。
 
-当前提供真实文本/XLSX `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 方案/确认应用、`check/edits` 和带 `plan_path` 的检查仍返回 `OPERATION_UNSUPPORTED`。运行时不依赖旧插件，不生成模拟观察或交付。
+当前提供真实文本/XLSX `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 支持有限 `check/edits`、带 `plan_path` 的检查及具体确认后的应用；专业变化由 Agent 提供。运行时不依赖旧插件，不生成模拟观察或交付。
 
 ```text
 <Lite 隔离 Python> <Lite 安装目录>/scripts/lite.py --request <UTF-8 请求文件>
 ```
 
-请求固定字段为 `protocol_version="1.0"`、UUID4 `request_id`、显式 `project_path`、`operation`、`payload`。`check/candidate` 的 payload 为 `candidate_path`、`scope="full"/"slice"`、`plan_path=null`。项目路径相对调用 cwd 解析一次；其余引用使用项目相对 POSIX 路径。候选及其三份业务 JSON 限定在本请求 `.ai-sow-lite/work/<entrypoint>/<request_id>/`，不得通过 `..` 或符号链接逃逸。
+请求固定字段为 `protocol_version="1.0"`、UUID4 `request_id`、显式 `project_path`、`operation`、`payload`。`check/candidate` 的 payload 为 `candidate_path`、`scope="full"/"slice"`、`plan_path`（Generate 为 null，Clarify 为同请求的具体计划路径）。项目路径相对调用 cwd 解析一次；其余引用使用项目相对 POSIX 路径。候选及其三份业务 JSON 限定在本请求 `.ai-sow-lite/work/<entrypoint>/<request_id>/`，不得通过 `..` 或符号链接逃逸。
 
-## 六份 Schema 与实际文件位置
+## 七份 Schema 与实际文件位置
 
 - [model.schema.json](../contracts/model.schema.json)：D02 的 Epic/Feature/Story/内嵌 AC/Task/Dependency/Lineage。
 - [pending-items.schema.json](../contracts/pending-items.schema.json)：`schema_version/items`；target 为 `{object_id, field}`。resolved 精确为 `{decision_id, request_id, summary}`；superseded 为 `{replacement_item_ids, lineage_refs, request_id, reason}`，其中 lineage 引用 `{from_version_id, from_ids}`。
@@ -18,6 +18,8 @@ Generate 首次编写可按活动读取 [命令与候选编写](generate-authori
 - [evidence.schema.json](../contracts/evidence.schema.json)：`schema_version/items`；analysis 的 `evidence[]` 使用其 `$defs/item`。来源定位为 `text_lines`、`xlsx_range`、`observation`。
 - [protocol.schema.json](../contracts/protocol.schema.json)：请求及 `$defs/response`。支持的 payload 和 inspect 选择器采用封闭结构；不接受任意路径、脚本或绕过开关。I1.1 的空占位调用仍明确返回未支持。
 - [artifacts.schema.json](../contracts/artifacts.schema.json)：首次消费者的工件结构，按 `$defs` 校验。增加 prepared、request、intent、analysis_index；checkpoint 保存业务续接信息，manifest/current 由公共核验后的存储内核写入。projection 与 verification 由 I1.3 实际消费者核对完整交付。
+
+- [change-plan.schema.json](../contracts/change-plan.schema.json)：具体计划；`$defs/edit_draft` 定义有限编辑稿，`$defs/confirmation` 定义内容与实际执行输入的绑定。
 
 以下路径由真实登记/检查操作消费。既有 I1.1 `contract_case` 与 seed history 保持独立合成单测含义；新增 `build_ingested_case` 使用真实 CLI ingest→inspect→analysis→check，保留真实返回的身份和定位。
 
@@ -57,6 +59,59 @@ Lineage 仅检查 current 到显式 from_version_id 所需的已绑定历史区�
 
 Bash/PowerShell 自举迁入来源为 D00 的 `2fc8588`，只适配身份、路径与单请求 CLI。脚本固定 uv 0.11.7、Python 3.12 和锁定依赖；缓存/下载安装放在 Lite 副本 `.ai-sow-tools/`。没有沿用旧 Windows 97 字符支持声明；本轮平台验证范围以任务报告为准。
 
+
+## I3.1 有限编辑、具体计划与确认
+
+`check` 的 edits payload 固定为 `{"edit_path":"<本请求编辑稿路径>","scope":"full"}`，与 candidate_path/plan_path 互斥。
+编辑稿放在本请求 `work/clarify/<request-id>/`，字段为 schema_version/plan_id/revision/base_version_id/
+edits/read_selectors/read_boundary/conditions/unresolved_items/change_summary/additional_refs。
+revision 首次为1，同请求沿同一 plan_id 最多修订到2；每份方案从原完整基线构造。
+
+每项 edit 为 `{op,collection,object_id,field,value}`；op 为 add/replace/remove，remove 不带 value。
+field=null 只允许完整对象的 add/remove，值须含同一稳定身份；字段增删须符合原字段存在性。
+collection 为 epics/features/stories/acs/tasks/dependencies/lineage/pending_items/decisions/
+input_refs/topic_refs/evidence_refs。AC 通过明确替换父 Story.acs 编辑；跨 Story 迁移须同时提供两个父数组。
+lineage 地址是 `[from_version_id,有序from_ids]` 的规范 JSON 字符串，其他业务地址使用对象 UUID4。
+不接受数组下标、隐式级联、重叠写入或既有对象重排；新对象接在同父对象的既有成员之后。
+
+新增引用仅通过 additional_refs 的 input_version_ids/topic_version_ids/evidence_ids 三个列表提供，
+输入与分析先经既有 ingest 登记；基线引用完整继承。新引用也列入 changes/write_set。
+read_selectors 每项精确为 `{view,selector}`，复用 inputs/regions/topics/current/objects/standards 的选择器，
+不含 limit/cursor。运行时解析实际 observed_version，不猜专业依赖；AC 变化同时记录父 Story.acs 容器。
+read_boundary 为 `{input_version_ids,topic_version_ids,object_ids,depth}`，depth 为 current/topic/source；
+conditions 为关键条件文字列表，unresolved_items 只能引用候选中仍 open 的问题 ID。
+
+`validation.prepare_edit` 委托有限 changes 模块复制原三份业务文件、保留未涉及 JSON 字节和展示顺序，
+在 `plans/<plan-id>/r<revision>/` 保存 candidate.json、plan.json、review.md、原编辑稿、input-index.json
+及 construction.json。construction 使用 artifacts.edit_construction，绑定构造时完整 current 与实际文件 hash。
+check/edits 返回 candidate_ref/plan_ref/review_ref/check_ref、candidate_digest、valid_for_render、unknowns_count，
+另有 no_change/current_version；真正无变化仅指回现版，不 render 或创建版本。M 保持 M 但采用新依据/决定或
+处理问题仍是实际变化。`diff_bundle` 比较实际前后值；`verify_plan` 返回完整检查报告，不写文件。
+
+计划固定含 schema_version/plan_id/revision/base_version_id/changes/read_set/write_set/read_boundary/
+conditions/unresolved_items/change_summary/confirmation。changes 为实际 `{op,collection,object_id,field,before,after}`，
+read_set 为 `{selector,observed_version}`，write_set 为稳定地址。hash 使用现有 json-v1，覆盖 plan_id/revision/
+base_version_id/changes/read_set/write_set/read_boundary/conditions/unresolved_items/change_summary，
+排除 confirmation 自身和导出路径。候选原字节及完整 current 的 version_id、manifest_hash 均须保持一致。
+
+confirmation=null 可检查和预览。Agent 识别实际执行意思后，把最少真实答复作为 answer 输入登记，
+按真实 inspect 摘录形成 confirmation：`digest`、`input_ref`（source_ref）、`shown_plan_ref`（file_ref）、
+`selected_changes`（该具体候选的完整 changes）。另存确认版计划，复用原 candidate；不改已展示计划。
+检查报告附 plan_ref/plan_digest/input_index_snapshot_ref。第一次有效 CLI 检查或 apply 以同请求
+`confirmations/<内容摘要>.json`（file_ref）封存确认版原字节；随后改路径或字节均拒绝。
+这不增加用户确认轮次，也不认证人类身份；任意 confirmed 布尔值不能代替来源与内容绑定。
+
+确认登记可向原输入索引追加新项，必须保留快照的全部既有项、字节语义和顺序，重新校验 Schema/唯一 ID；
+所选读取结果及采用的不可变原件、reading、analysis、registration、模板、历史依赖仍逐项复查。
+仅 inputs/index.json 在这个已验证追加条件下可改变记录 hash，不忽略其他依赖变化。
+显式读取整个 inputs 集合时新增成员仍使读取失效；定向读取必须保持选中登记项不变。
+
+确认后新 check 引用不强制重算：候选精确字节、计划内容摘要、模板和完整基线一致，且原 prepared
+通过实际文件复核时，render 复用原准备包。apply 再读候选和采用来源，沿既有短锁原子生效。
+版本目录保留 plan.json、shown-plan.json、candidate.json、prepared.json 的原字节，以及
+artifacts.clarify_confirmation 的 confirmation.json；后者用版本内可达引用绑定展示/执行计划、
+实际 input_record/source_ref/digest/selected_changes。原来源进入 manifest 依赖，确认输入不自动成为业务采用依据。
+同请求同意图重复 apply 返回原结果；current 变化不能自动换基线或复用跨版本确认。
 
 ## I1.2 登记与查询
 
@@ -105,9 +160,9 @@ cursor 绑定查询、实际来源/索引/所读版本和续读位置。绑定�
 
 公共 apply payload 固定 entrypoint、prepared_path、expected_current、plan_path。当前拒绝条件：
 
-- Clarify 或非 null plan_path：OPERATION_UNSUPPORTED；I3 的真实方案/确认校验尚未提供，JSON confirmed 标志不授予权威。
-- Generate 的准备/候选/检查/文件结构或实际摘要不一致：协议、候选或依据诊断；已有非预期 current：BASE_STALE。
-- 其余 Generate 准备包：`workbook.verify_prepared` 复核实际投影、Office 记录、原始产物和最终工作簿；不符返回 WORKBOOK_INVALID，target.field=verification_ref。自填 `valid=true` 无效；没有 skip/force/failpoint 等生产绕过参数。
+- Clarify 缺具体确认计划，或 Generate 带 plan_path：SCOPE_EXCEEDED。Clarify 依上节重新核验方案内容、实际执行输入和候选字节，保留具体越界诊断。
+- 准备/候选/检查/文件结构或实际摘要不一致：协议、候选或依据诊断；已有非预期 current：BASE_STALE。
+- 其余准备包：`workbook.verify_prepared` 复核实际投影、Office 记录、原始产物和最终工作簿；不符返回 WORKBOOK_INVALID，target.field=verification_ref。自填 `valid=true` 无效；没有 skip/force/failpoint 等生产绕过参数。
 
 I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，另可有 details.md；verification_ref 独立指向核验记录。
 

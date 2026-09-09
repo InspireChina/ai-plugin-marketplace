@@ -721,6 +721,7 @@ def verify_prepared(project,prepared):
     from .contracts import canonical_json_bytes,file_sha256,load_json,schema_validator
     from .project import safe_path,checked_json,_verify_refs
     from .validation import check_candidate
+    from .changes import checks_match
     expected=None
     try:
         project=Path(project).resolve()
@@ -728,8 +729,9 @@ def verify_prepared(project,prepared):
         _verify_refs(project,[prepared['candidate_ref'],prepared['check_ref'],prepared['verification_ref'],*prepared['files']])
         candidate=checked_json(project,prepared['candidate_ref']['path'],'candidate')
         checked=checked_json(project,prepared['check_ref']['path'],'check')
-        current_check=check_candidate(project,safe_path(project,prepared['candidate_ref']['path']),'full',None)
-        if not current_check['valid_for_render'] or current_check!=checked: _fail('候选或依赖在准备后变化。')
+        current_check=check_candidate(project,safe_path(project,prepared['candidate_ref']['path']),'full',
+                                      (checked.get('plan_ref') or {}).get('path'))
+        if not current_check['valid_for_render'] or not checks_match(project,checked,current_check): _fail('候选或依赖在准备后变化。')
         files={Path(r['path']).name:r for r in prepared['files']}
         names={'model.json','pending-items.json','decisions.json','projection.json','sow.xlsx','summary.md','pending-items.md'}
         if len(files)!=len(prepared['files']) or set(files) not in (names,names|{'details.md'}): _fail('交付文件集合不完整或有意外文件。')
@@ -792,30 +794,45 @@ def render_candidate(project: Path,request_id: str,payload):
     from .project import (safe_path,checked_json,file_ref,write_json,request_area,ensure_request,
                           read_current,_check_cancelled,save_checkpoint)
     from .validation import check_candidate
+    from .changes import checks_match
     project=Path(project).resolve()
     if list(schema_validator('protocol','render_payload').iter_errors(payload)):
         raise StorageError('PROTOCOL_INVALID','导出字段不符合合同。')
-    area=request_area(request_id,'generate')
+    candidate=checked_json(project,payload['candidate_path'],'candidate','.ai-sow-lite/work')
+    entrypoint=candidate['entrypoint']
+    area=request_area(request_id,entrypoint)
     candidate_path=safe_path(project,payload['candidate_path'],area)
-    candidate=checked_json(project,payload['candidate_path'],'candidate',area)
-    if candidate['entrypoint']!='generate' or candidate['base_version_id'] is not None:
-        raise StorageError('OPERATION_UNSUPPORTED','Clarify 方案与确认将在 I3 实现。')
     check_path=safe_path(project,payload['check_path'],area)
     checked=checked_json(project,payload['check_path'],'check',area)
-    report=check_candidate(project,candidate_path,'full',None)
-    if not report['valid_for_render'] or report!=checked:
+    plan_path=(checked.get('plan_ref') or {}).get('path')
+    report=check_candidate(project,candidate_path,'full',plan_path)
+    if not report['valid_for_render'] or not checks_match(project,checked,report):
         raise StorageError('CANDIDATE_INVALID','候选或依赖与实际完整检查记录不一致。')
-    if read_current(project)[0]!=payload['expected_current'] or payload['expected_current'] is not None:
-        raise StorageError('BASE_STALE','首版 Generate 要求当前和预期版本均为 null。')
-    checkpoint=ensure_request(project,request_id,'generate'); _check_cancelled(project,request_id,'generate')
+    expected=payload['expected_current']
+    if (read_current(project)[0]!=expected or candidate['base_version_id']!=(expected['version_id'] if expected else None)
+        or (entrypoint=='generate')!=(expected is None)):
+        raise StorageError('BASE_STALE','当前完整指针、候选基线和调用期望不同。')
+    if plan_path and not load_json(safe_path(project,plan_path,area))['changes']:
+        raise StorageError('CANDIDATE_INVALID','没有实际变化；使用当前交付文件，无需再次导出。')
+    checkpoint=ensure_request(project,request_id,entrypoint); _check_cancelled(project,request_id,entrypoint)
     attempt_path=safe_path(project,area+'/render-attempt.json')
-    signature_inputs=dict(check=report,payload=payload,projector_version=PROJECTOR_VERSION,
+    signature_inputs=dict(check=checked,payload=payload,projector_version=PROJECTOR_VERSION,
                           engine=office.selection_fingerprint())
     legacy_signature=semantic_digest(signature_inputs)
     signature=semantic_digest(dict(signature_inputs,implementation_version=RENDER_IMPLEMENTATION_VERSION))
     previous=load_json(attempt_path) if attempt_path.exists() else None
+    reusable=False
+    if entrypoint=='clarify' and previous and previous.get('prepared_ref'):
+        old_path=safe_path(project,previous['prepared_ref']['path'],area)
+        if file_ref(project,old_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
+        old_prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)
+        old_check=checked_json(project,old_prepared['check_ref']['path'],'check',area)
+        reusable=(old_prepared['candidate_ref']==file_ref(project,candidate_path)
+                  and old_prepared['expected_current']==expected
+                  and old_prepared['template_hash']==candidate['template_hash']
+                  and old_check.get('plan_digest')==report.get('plan_digest'))
     # Pre-fix successful text packages remain reusable only after full verification.
-    if previous and previous['signature'] in (signature,legacy_signature) and previous.get('prepared_ref'):
+    if previous and (previous['signature'] in (signature,legacy_signature) or reusable) and previous.get('prepared_ref'):
         prepared_path=safe_path(project,previous['prepared_ref']['path'],area)
         if file_ref(project,prepared_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
         prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)
@@ -845,9 +862,9 @@ def render_candidate(project: Path,request_id: str,payload):
         audit_workbook(directory/'projected.xlsx',directory/'projected.xlsx',caches=False)
         receipt=office.recalculate(directory/'projected.xlsx',directory/'sow.xlsx')
         # A change during Office invalidates all caches; no second internal calculation.
-        if check_candidate(project,candidate_path,'full',None)!=report:
+        if not checks_match(project,report,check_candidate(project,candidate_path,'full',plan_path)):
             raise StorageError('CANDIDATE_INVALID','Office 处理期间候选或来源变化，准备记录失效。')
-        _check_cancelled(project,request_id,'generate')
+        _check_cancelled(project,request_id,entrypoint)
         if read_current(project)[0]!=payload['expected_current']: raise StorageError('BASE_STALE','导出期间当前版本变化。')
         projection.update(model_hash=file_sha256(directory/'model.json'),pending_items_hash=file_sha256(directory/'pending-items.json'),
                           decisions_hash=file_sha256(directory/'decisions.json'),workbook_hash=file_sha256(directory/'sow.xlsx'))

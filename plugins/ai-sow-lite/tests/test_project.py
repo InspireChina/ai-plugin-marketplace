@@ -256,7 +256,7 @@ def test_public_clarify_cannot_accept_fabricated_confirmation(tmp_path):
     response = run_request(tmp_path, request, 'apply', dict(entrypoint='clarify', prepared_path='fake.json',
                            expected_current=None, plan_path='fake-plan.json'))
     assert not response['ok']
-    assert response['diagnostics'][0]['code'] == 'OPERATION_UNSUPPORTED'
+    assert response['diagnostics'][0]['code'] == 'PATH_UNSAFE'
     assert not (tmp_path / '.ai-sow-lite/current.json').exists()
 
 

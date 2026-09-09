@@ -1152,6 +1152,18 @@
             "additionalProperties": false
           },
           "minItems": 0
+        },
+        "plan_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "plan_digest": {
+          "type": "string",
+          "pattern": "^json-v1:[0-9a-f]{64}$",
+          "minLength": 72,
+          "maxLength": 72
+        },
+        "input_index_snapshot_ref": {
+          "$ref": "#/$defs/file_ref"
         }
       },
       "required": [
@@ -1165,7 +1177,24 @@
         "unknowns_count",
         "diagnostics"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "dependentRequired": {
+        "plan_ref": [
+          "plan_ref",
+          "plan_digest",
+          "input_index_snapshot_ref"
+        ],
+        "plan_digest": [
+          "plan_ref",
+          "plan_digest",
+          "input_index_snapshot_ref"
+        ],
+        "input_index_snapshot_ref": [
+          "plan_ref",
+          "plan_digest",
+          "input_index_snapshot_ref"
+        ]
+      }
     },
     "checkpoint": {
       "type": "object",
@@ -3842,6 +3871,85 @@
         "line_sha256",
         "timestamp",
         "duration_ms"
+      ],
+      "additionalProperties": false
+    },
+    "edit_construction": {
+      "type": "object",
+      "properties": {
+        "expected_current": {
+          "$ref": "#/$defs/current"
+        },
+        "draft_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "candidate_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "plan_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "input_index_snapshot_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "business_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/file_ref"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "expected_current",
+        "draft_ref",
+        "candidate_ref",
+        "plan_ref",
+        "input_index_snapshot_ref",
+        "business_refs"
+      ],
+      "additionalProperties": false
+    },
+    "clarify_confirmation": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^json-v1:[0-9a-f]{64}$",
+          "minLength": 72,
+          "maxLength": 72
+        },
+        "plan_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "shown_plan_ref": {
+          "$ref": "#/$defs/file_ref"
+        },
+        "input_record": {
+          "$ref": "#/$defs/input"
+        },
+        "source_ref": {
+          "$ref": "evidence.schema.json#/$defs/source_ref"
+        },
+        "selected_changes": {
+          "type": "array",
+          "items": {
+            "$ref": "change-plan.schema.json#/$defs/change"
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "digest",
+        "plan_ref",
+        "shown_plan_ref",
+        "input_record",
+        "source_ref",
+        "selected_changes"
       ],
       "additionalProperties": false
     }

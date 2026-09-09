@@ -516,10 +516,12 @@ def apply_prepared(project: Path, request_id: str, payload):
     """Public apply: full candidate recheck, real I1.3 verifier, then common storage."""
     from .validation import check_candidate
     from .contracts import semantic_digest
+    from .changes import checks_match, seal_confirmation, confirmation_files
     if list(schema_validator('protocol', 'apply_payload').iter_errors(payload)):
         raise StorageError('PROTOCOL_INVALID', '应用字段不符合合同。')
-    if payload['entrypoint'] != 'generate' or payload['plan_path'] is not None:
-        raise StorageError('OPERATION_UNSUPPORTED', 'I3 具体方案/确认核验尚未实现，不能应用 Clarify。')
+    entrypoint = payload['entrypoint']
+    if (entrypoint == 'generate') != (payload['plan_path'] is None):
+        raise StorageError('SCOPE_EXCEEDED', 'Clarify 需要具体确认方案；Generate 不接受 Clarify 方案。')
     project = Path(project).resolve()
     area = request_area(request_id, payload['entrypoint'])
     current, applied = _find_applied(project, request_id)
@@ -538,20 +540,36 @@ def apply_prepared(project: Path, request_id: str, payload):
         _verify_refs(project, [ref])
     candidate_path = safe_path(project, prepared['candidate_ref']['path'], area)
     candidate = checked_json(project, prepared['candidate_ref']['path'], 'candidate', area)
-    if candidate['entrypoint'] != 'generate' or candidate['base_version_id'] is not None:
-        raise StorageError('CANDIDATE_INVALID', 'Generate 只允许首版候选。')
-    report = check_candidate(project, candidate_path, 'full', None)
+    if candidate['entrypoint'] != entrypoint or candidate['base_version_id'] != (payload['expected_current']['version_id'] if payload['expected_current'] else None):
+        raise StorageError('CANDIDATE_INVALID', '候选入口或基线与应用调用不同。')
+    if applied is not None and entrypoint == 'clarify':
+        if not application_path.exists() or load_json(application_path) != payload or prepared['version_id'] != applied['version_id']:
+            raise StorageError('REQUEST_ID_CONFLICT', '已应用请求不能改用不同方案或准备包。')
+        archived = {Path(r['path']).name: r for r in applied['files']}
+        for name, relative in [('plan.json', payload['plan_path']), ('prepared.json', payload['prepared_path']),
+                               ('candidate.json', prepared['candidate_ref']['path'])]:
+            if file_sha256(safe_path(project, relative, area)) != archived[name]['sha256']:
+                raise StorageError('REQUEST_ID_CONFLICT', '已应用意图对应的文件字节已变化。')
+        return _applied_result(project, applied, current, True)
     saved_check = checked_json(project, prepared['check_ref']['path'], 'check', area)
-    if not report['valid_for_render'] or saved_check != report:
-        raise StorageError('CANDIDATE_INVALID', '候选或实际依赖与完整检查记录不一致。')
-    digest = semantic_digest(dict(entrypoint='generate', candidate_digest=report['candidate_digest']))
+    report = check_candidate(project, candidate_path, 'full', (saved_check.get('plan_ref') or {}).get('path'))
+    if not report['valid_for_render'] or not checks_match(project, saved_check, report):
+        error = StorageError('CANDIDATE_INVALID', '候选或实际依赖与完整检查记录不一致。')
+        if entrypoint == 'clarify' and report['diagnostics']:
+            error.diagnostics = report['diagnostics']
+        raise error
+    confirmation = seal_confirmation(project, payload['plan_path'], candidate_path) if entrypoint == 'clarify' else None
+    intent = dict(entrypoint=entrypoint, candidate_digest=report['candidate_digest'])
+    if confirmation:
+        intent.update(plan_digest=confirmation['digest'], base_version_id=candidate['base_version_id'])
+    digest = semantic_digest(intent)
     if applied is not None:
         _same_intent(applied, dict(intent_digest=digest))
         return _applied_result(project, applied, current, True)
-    if current != payload['expected_current'] or current is not None:
-        raise StorageError('BASE_STALE', '首次 Generate 要求 expected_current=null 且 current 不存在。')
-    ensure_request(project, request_id, 'generate')
-    _check_cancelled(project, request_id, 'generate')
+    if current != payload['expected_current'] or (entrypoint == 'generate') != (current is None):
+        raise StorageError('BASE_STALE', '当前完整版本与应用基线不同。')
+    ensure_request(project, request_id, entrypoint)
+    _check_cancelled(project, request_id, entrypoint)
     if prepared['template_hash'] != candidate['template_hash']:
         raise StorageError('EVIDENCE_MISSING', '准备包与候选模板身份不同。')
     files = {Path(ref['path']).name: ref for ref in prepared['files']}
@@ -563,6 +581,8 @@ def apply_prepared(project: Path, request_id: str, payload):
     _verify_delivery(project, prepared)
     # Recheck original bytes after the external verifier, before snapshotting.
     _verify_refs(project, [prepared['candidate_ref'], prepared['check_ref'], *report['dependencies']])
+    if confirmation:
+        _verify_refs(project, [confirmation['plan_ref'], confirmation['shown_plan_ref'], *confirmation['dependencies']])
     # Snapshot exact validated bytes before taking the lock. Do not bind mutable indexes/work.
     version = prepared['version_id']
     directory = safe_path(project, area + '/.delivery-' + str(uuid4()))
@@ -579,8 +599,15 @@ def apply_prepared(project: Path, request_id: str, payload):
     raw = canonical_json_bytes(dict(schema_version='1.0', items=adopted_inputs))
     atomic_bytes(directory / 'input-records.json', raw, immutable=True)
     final_files.append(dict(path=f'.ai-sow-lite/versions/{version}/input-records.json', sha256=hashlib.sha256(raw).hexdigest()))
+    if confirmation:
+        for name, raw in confirmation_files(project, confirmation, prepared['candidate_ref']['path'],
+                                             payload['prepared_path'], version).items():
+            atomic_bytes(directory / name, raw, immutable=True)
+            final_files.append(dict(path=f'.ai-sow-lite/versions/{version}/{name}', sha256=hashlib.sha256(raw).hexdigest()))
     dependencies = [ref for ref in report['dependencies'] if not ref['path'].startswith('.ai-sow-lite/work/')
-                    and ref['path'] != '.ai-sow-lite/inputs/index.json']
+                    and ref['path'] not in ('.ai-sow-lite/inputs/index.json', '.ai-sow-lite/current.json')]
+    if confirmation:
+        dependencies.extend(confirmation['dependencies'])
     for entry in adopted_inputs:
         relative = str(Path(entry['relative_path']).parent / 'reading-ref.json')
         if safe_path(project, relative).exists():
@@ -592,11 +619,11 @@ def apply_prepared(project: Path, request_id: str, payload):
         relative = f'.ai-sow-lite/analysis/topics/{topic}/registration-ref.json'
         if safe_path(project, relative).exists():
             dependencies.append(checked_json(project, relative, 'file_ref'))
-    manifest = dict(schema_version='1.0', version_id=version, request_id=request_id, base_version_id=None,
+    manifest = dict(schema_version='1.0', version_id=version, request_id=request_id, base_version_id=candidate['base_version_id'],
                     intent_digest=digest, candidate_digest=report['candidate_digest'], files=final_files,
                     input_version_ids=candidate['input_version_ids'], topic_version_ids=candidate['topic_version_ids'],
                     evidence_ids=candidate['evidence_ids'], dependencies=list({r['path']: r for r in dependencies}.values()),
                     template_hash=prepared['template_hash'], projection_version=prepared['projection_version'],
                     office_identity=prepared['office_identity'], verification_ref=next(r for r in final_files if r['path'].endswith('/verification.json')))
     write_json(project, area + '/application.json', payload, immutable=True)
-    return _commit_version(project, request_id, 'generate', directory, manifest, payload['expected_current'])
+    return _commit_version(project, request_id, entrypoint, directory, manifest, payload['expected_current'])
