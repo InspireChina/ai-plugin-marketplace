@@ -6,7 +6,7 @@
 
 ## 1. 文件和协议版本
 
-- 首个 `protocol_version`、交付/方案/工件 `schema_version` 均使用字符串 `"1.0"`；摘要格式为 `json-v1`，投影适配为 `lite-projection-v1`。插件包版本另由交付元数据维护，不与这些版本号混用。
+- 首个 `protocol_version`、交付/方案/工件 `schema_version` 均使用字符串 `"1.0"`；摘要格式为 `json-v1`，投影适配为 `lite-projection-v1`。I6.1 保留这些数据字段及 Markdown path/anchor，只将渲染实现修订为 `lite-render-v5`，两张可见说明表按 D06 生成。插件包版本另由交付元数据维护，不与这些版本号混用。
 - JSON Schema 使用 Draft 2020-12；未知协议/Schema/投影版本拒绝，未知业务字段拒绝。观测信息缺失可降级，非法业务字段不能按观测异常忽略。
 - 稳定 ID 使用本地 UUID4；设计例中的 T-06 等只作可读映射。单个逻辑请求持续复用 request_id；工具生成 execution/operation/attempt/version ID，不能以换 ID 重置次数。
 - `contracts/model.schema.json`、`pending-items.schema.json`、`decisions.schema.json`、`evidence.schema.json` 分别落实 D02。`protocol.schema.json` 管调用；`artifacts.schema.json` 用 `$defs` 管 project、candidate、manifest、reading、analysis、checkpoint、检查/投影报告；I3 的 `change-plan.schema.json` 管方案。不要为每个内部字典再建一份 Schema。
@@ -164,7 +164,7 @@ I1 创建 `tests/__init__.py`、`tests/conftest.py` 与 `tests/support/fixtures.
 | 夹具目录 | 真实文件/变体 | 独立判定依据 |
 |---|---|---|
 | `tests/fixtures/generate/` | EX01 的 prd.md、hld.md、answers.md；candidate JSON；新增三类义务 expectations.json | 三类责任、公共单计、来源 AC、默认 M；期待义务不是固定生成措辞 |
-| `tests/fixtures/excel/` | EX04/EX07 的候选变体描述、长文本、同名/通配符、未知分类、未拆明工作、无 gap | 既有模板填值/公式/结构保留、独立问题与长文本文件、Office 正常往返；不增加估算完整性断言 |
+| `tests/fixtures/excel/` | EX04/EX07 的候选变体描述、长文本、同名/通配符、未知分类、未拆明工作、无 gap | 原四表填值/公式/结构保留、两张可见说明表及空态、逐字续行/内部链接、实际采用答复、Office 正常往返；旧 prepared 不绕过新核验；不增加估算完整性断言 |
 | `tests/fixtures/history/` | 合成 XLSX：无 AC/无 Task、API/事件候选、明确实例、不同用途区域 | 稀疏 as-is 可用，类型不等于实例，零匹配可受新来源影响 |
 | `tests/fixtures/clarify/` | EX05 反馈、方案及独立预期 diff；真实基线由 I1 构建 | 具体确认、有限影响、历史去向、无关数据保留 |
 | `tests/fixtures/telemetry/` | EX06 的增量/累计、跨活动、重复/迟到、时钟重启/损坏事件 | 不重计、不伪造粒度，未知与零不同 |

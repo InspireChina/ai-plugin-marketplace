@@ -1416,9 +1416,11 @@
         "docs/validation/I1-delivery.md",
         "docs/validation/I4-inputs-and-changes.md",
         "tests/test_workbook.py",
-        "tests/test_workbook_sources.py"
+        "tests/test_workbook_sources.py",
+        "docs/validation/I6-self-contained.md",
+        "tests/test_workbook_self_contained.py"
       ],
-      "limitation": "I1长原文出口与中等列表经真实Office/Excel查看；I4来源标签及附件区域进入待确认说明。未穷尽所有字体/显示器/长文布局。",
+      "limitation": "I6工作簿自包含投影的最终检查见增量记录：长AC/备注/任务列表在05完整说明中有序续行；主表内部链接。历史I1/I4证据仍只代表其原范围，未穷尽字体、显示器或任意长文布局。",
       "mechanism_refs": [
         {
           "id": "M06-projection",
@@ -1437,9 +1439,11 @@
         "docs/validation/I3.2-feedback-observations.json",
         "docs/validation/I4-inputs-and-changes.md",
         "docs/validation/I4.2-change-observations.json",
-        "tests/test_workbook.py"
+        "tests/test_workbook.py",
+        "docs/validation/I6-self-contained.md",
+        "tests/test_workbook_self_contained.py"
       ],
-      "limitation": "同版pending与Excel映射及篡改prepared拒绝已验，I3/I4真实新旧版摘要独立核对；不新增问题Sheet。",
+      "limitation": "I6新增04待确认事项，保存同版问题、处理、目标与实际答复；内部链接和正文复读见增量记录。旧I1/I3/I4证据不替代新范围；Excel独立阅读不等于单文件可回导clarify。",
       "mechanism_refs": [
         {
           "id": "M06-projection",

@@ -8,7 +8,7 @@
 
 共享的核心是：输入及版本、as-is/to-be/gap 与匹配范围的可定位分析依据、当前交付模型、待确认项、已应用决定、模板版本和当前 Excel。两入口的过程草案与埋点各自记录；共享工具负责相同格式和可靠文件操作，不负责通用业务编排。
 
-本章定义内部文件的职责。最小字段和未知编码见 [D02](detailed/D02-shared-data-and-evidence.md)，接口和一致生效协议见 [D07](detailed/D07-tools-storage-and-recovery.md)，Excel 投影及独立问题/长内容定位见 [D06](detailed/D06-excel-projection-and-delivery.md)；这些合同仍待实现验证。当前基础工作簿只承载手工可见内容；不将内部 ID、来源、版本或生成状态塞进隐藏列，也不要求手工用户维护内部文件。
+本章定义内部文件的职责。最小字段和未知编码见 [D02](detailed/D02-shared-data-and-evidence.md)，接口和一致生效协议见 [D07](detailed/D07-tools-storage-and-recovery.md)，Excel 投影及工作簿内问题/长内容定位见 [D06](detailed/D06-excel-projection-and-delivery.md)；这些合同仍待实现验证。当前基础工作簿只承载手工可见内容；不将内部 ID、来源、版本或生成状态塞进隐藏列，也不要求手工用户维护内部文件。
 
 下面是候选逻辑布局，用于说明边界，尚不是已实现或定版的磁盘 Schema：
 
@@ -53,9 +53,9 @@
 | analysis / observations | 实际原型观察的版本、前置、动作/结果、限制和必要附件 | 按 D03 保留最少可回查证据，多主题共用；不默认保存完整浏览器日志 |
 | template | 来自插件内复制资产的 Task 标准、参数和公式版本 | 有效结果指向其实际使用版本 |
 | model | 层级、来源 AC、Task 六项专业内容、关系与证据引用、字段留空原因 | 稳定对象身份和关系可校验 |
-| pending-items | 当前问题、现行处理、影响与应用关系 | 生成同版 pending-items.md 和 Excel 既有备注引用，不在工作簿新增问题 Sheet |
+| pending-items | 当前问题、现行处理、影响与应用关系 | 生成工作簿内完整待确认表与备注内部链接，同版 pending-items.md 保留兼容归档 |
 | decisions | 已应用事实与决定、来源及适用范围 | 讨论草案不提前写成生效决定 |
-| sow / summary / pending-items.md / details.md | 用户可带走的 Excel、待确认和按需完整文本 | 与模型及待确认项属于同一版本 |
+| sow / summary / pending-items.md / details.md | 可独立阅读的 Excel，以及同版摘要和 Markdown 归档 | 与模型及待确认项属于同一版本 |
 | projection | 对象 ID 与同版 Excel 的行、表、实际显示名映射 | 工具派生，用于反馈定位和关联核验，不承载第二份业务模型或计算权威 |
 | manifest / current | 完整版本的身份及当前选择 | 只有完整且通过必要检查的版本可以成为 current |
 | work | generate 的骨架、覆盖索引和各片候选；clarify 的讨论方案、修改候选与确认记录；各自的恢复信息 | 不作为当前业务事实；允许放弃和恢复 |

@@ -19,7 +19,7 @@
 | [EX03 As-is/to-be 与 gap](examples/EX03-as-is-to-be-gap.md) | 稀疏历史、API/事件候选、实例适用、有值待确认及有限修改的合成走读，待实际验证 |
 | [D04B 批量处理与环路退出](D04B-bounded-loops.md) | 统一有限目标、共享追加/返修上限、无进展退出和恢复计数；默认参数待实测校准 |
 | [D05 Clarify 与修改边界](D05-clarify-and-change-scope.md) | R3 详细设计稿；有限定位/候选/确认、部分答复与子集、拆合与历史引用、串行基线、有限编辑构造、原模板预览及退出；[EX05](examples/EX05-clarify-changes.md) 为合成走读，待运行验证 |
-| [D06 Excel 投影与交付](D06-excel-projection-and-delivery.md) | R2 详细设计稿；逐列映射、安全别名、独立问题/全文、必要扩行及原模板重算；[EX04](examples/EX04-excel-projection.md) 为合成走读；I1.3 已实现投影并有真实引擎与原生检查证据 |
+| [D06 Excel 投影与交付](D06-excel-projection-and-delivery.md) | R2 详细设计稿；逐列映射、安全别名、工作簿内问题/全文、必要扩行及原模板重算；[EX04](examples/EX04-excel-projection.md) 为合成走读；I1.3 证据保留原范围；I6.1 工作簿独立可读的实际检查见 [增量记录](../../validation/I6-self-contained.md) |
 | [D07 工具、存储与恢复](D07-tools-storage-and-recovery.md) | 有限读写、确认、版本生效、幂等及取消边界已细化；I1.2 已有文本/本地存储接口及故障证据，I1.3 已接真实包；Clarify 确认仍待 I3 |
 | [D08 观测与性能](D08-telemetry-and-performance.md) | R4 设计稿；实际时钟/usage 来源、去重/共享/未知、独立报告及性能实验；[EX06](examples/EX06-telemetry-accounting.md) 记录有限只读探针与合成账例；I1.4 已实现工具计时与规范化事件报告，真实宿主 usage 接入/性能实测待 I2.3/I4 |
 | [D09 设计收口与实现增量](D09-validation-and-implementation.md) | 设计衔接已收口；163 个场景明确主责/最早增量，I1—I4 列出文件职责、验收与限制，并接 P01—P04 具体任务；[EX07](examples/EX07-design-consistency.md) 为合同反例，实际实现状态见 I1 记录 |

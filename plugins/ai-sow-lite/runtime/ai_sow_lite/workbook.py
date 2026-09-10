@@ -22,9 +22,11 @@ from .project import StorageError, atomic_bytes
 TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
 PROJECTOR_VERSION = 'lite-projection-v1'
 # Render retry identity is separate from the unchanged projection data contract.
-RENDER_IMPLEMENTATION_VERSION = 'lite-render-v4'
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v5'
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
+PENDING_SHEET, DETAILS_SHEET = '04-待确认事项', '05-完整说明'
+OUTPUT_SHEETS = (*SHEETS, PENDING_SHEET, DETAILS_SHEET)
 # Display policy, not model limits or calculation rules.
 TEXT_LIMIT = 800
 PREVIEW_LIMIT = 180
@@ -144,6 +146,37 @@ def _block(text):
     return f'{fence}text\n{text}\n{fence}\n'
 
 
+def _text_sheets(book):
+    """Visible, formula-free reading space; original template sheets stay intact."""
+    for name in (PENDING_SHEET, DETAILS_SHEET):
+        ws = book.create_sheet(name)
+        for row in (1, 4):
+            for col in range(1, 5):
+                ws.cell(row, col)._style = copy(book[STORY_SHEET].cell(row, col)._style)
+        write_literal(ws['A1'], name[3:])
+        for col, title in enumerate(('关联位置 / 事项', '内容', '分段', '完整正文'), 1):
+            write_literal(ws.cell(4, col), title)
+        for col, width in zip('ABCD', (28, 18, 8, 100)):
+            ws.column_dimensions[col].width = width
+        ws.row_dimensions[1].height = 30
+        ws.row_dimensions[4].height = 30
+        ws.freeze_panes = 'D5'
+        ws.print_title_rows = '1:4'
+
+
+def _reading_chunks(raw):
+    # Excel displays CR/LF as a line break. Archive bytes retain original endings.
+    text = raw.replace('\r\n', '\n').replace('\r', '\n')
+    if XML_BAD.search(text):
+        _fail('完整正文含无法保存的 XML 字符。')
+    while text:
+        end = min(len(text), 800)
+        while _required_height(text[:end], 100) > 280:
+            end = max(1, end // 2)
+        yield text[:end]
+        text = text[end:]
+
+
 def _projection(model, pending, decisions, version_id, evidence=None, previous=None, *, layout):
     stories = [s for e in model['epics'] for f in model['features'] if f['epic_id'] == e['id']
                for s in model['stories'] if s['feature_id'] == f['id']]
@@ -153,28 +186,66 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
     sn = allocate_aliases(stories, 'title', 'S', (previous or {}).get('stories'))
     tn = allocate_aliases(tasks, 'name', 'T', (previous or {}).get('tasks'))
     objects, details, inputs, detail_text = [], {}, {}, {}
+    cell_links = {}
+    def connect(cells, location):
+        if location:
+            for cell in cells:
+                cell_links.setdefault((cell['sheet'], cell['cell']), location)
+    _text_sheets(layout)
+    next_rows = {PENDING_SHEET: 5, DETAILS_SHEET: 5}
+    def reading(sheet, label, field, raw, back=None, forward=None):
+        start = next_rows[sheet]
+        for part, text in enumerate(_reading_chunks(raw or '（无）'), 1):
+            row = next_rows[sheet]
+            if row > 1048576:
+                _fail('完整正文超出工作表容量。')
+            for col, value in zip('ABCD', (label, field, str(part), text)):
+                cell = layout[sheet][f'{col}{row}']
+                cell._style = copy(layout[STORY_SHEET]['D5']._style)
+                inputs[(sheet, cell.coordinate)] = value
+            if back:
+                connect([_cell(sheet, f'A{row}')], back)
+            next_rows[sheet] += 1
+        connect([_cell(sheet, f'D{start}')], forward)
+        return f"'{sheet}'!D{start}"
+    labels = dict(title='名称', text='验收条件', acs='全部验收条件', notes='备注',
+                  references='相关说明', task_list='完整任务列表')
+    detail_locations = {}
     story_rows = {s['id']: 5 + i for i, s in enumerate(stories)}
-    def detail(identity, field, raw, cells):
+    def detail(identity, field, raw, cells, forward=None):
         key = (identity, field)
         anchor = f'detail-{identity}-{field}'
         if key not in details:
             details[key] = dict(object_id=identity, field=field, path='details.md', anchor=anchor, cells=[])
             detail_text[key] = raw
+            first = cells[0] if cells else None
+            back = f"'{first['sheet']}'!{first['cell']}" if first else None
+            detail_locations[key] = reading(DETAILS_SHEET,
+                f"{first['sheet']}!{first['cell']}" if first else '范围说明', labels.get(field, field), raw, back, forward)
         elif detail_text[key] != raw:
             raise StorageError('WORKBOOK_INVALID', '同一全文锚点出现不同原文。')
         for cell in cells:
             if cell not in details[key]['cells']:
                 details[key]['cells'].append(cell)
-        return f'details.md#{anchor}'
-    def display(identity, field, raw, cells):
+        connect(cells, detail_locations[key])
+        return detail_locations[key]
+    def display(identity, field, raw, cells, forward=None):
         if XML_BAD.search(raw):
             error = StorageError('WORKBOOK_INVALID', '业务字段含无法保存的 XML 字符。')
             error.diagnostics[0]['target'].update(object_id=identity, field=field)
             raise error
         width=min((_column_width(layout[c['sheet']],c['cell']) for c in cells),default=30)
         if len(raw.encode('utf-16-le')) // 2 <= TEXT_LIMIT and _required_height(raw,width)<=300 and '\r' not in raw:
+            connect(cells, forward)
             return raw
-        link = detail(identity, field, raw, cells)
+        link = detail(identity, field, raw, cells, forward)
+        # Folding a generated reference hides its inner address from the main
+        # cell. Follow the visible outer section; retain an earlier notes link.
+        if forward:
+            for cell in cells:
+                key = (cell['sheet'], cell['cell'])
+                if cell_links.get(key) == forward:
+                    cell_links[key] = link
         preview = ''.join(raw[:80].splitlines(keepends=True)[:2]) if '\r' not in raw else raw.split('\r',1)[0][:80]
         return f'{preview}\n〔原文片段；全文见 {link}〕'
     def put(sheet, row, column, value):
@@ -198,16 +269,15 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
         ac_lines = []
         for index, ac in enumerate(s['acs'], 1):
             cells = [_cell(STORY_SHEET, f'D{row}', index)]
-            value = display(ac['id'], 'text', ac['text'], cells)
-            ac_lines.append(f'{index}. {value}')
+            if XML_BAD.search(ac['text']):
+                _fail('验收条件含无法保存的 XML 字符。')
+            ac_lines.append(f'{index}. {ac["text"]}')
             obj_record(ac, 'ac', STORY_SHEET, 'SOWStoryTable', [row], None, [dict(field='text',cells=cells)])
         ac_text = '\n'.join(ac_lines)
-        if len(ac_text.encode('utf-16-le')) // 2 > TEXT_LIMIT or _required_height(ac_text,_column_width(layout[STORY_SHEET],f'D{row}'))>409:
-            # The ordered AC list preserves identities and uses existing full-text
-            # links for long individual ACs; it does not duplicate those fields.
-            full = '\n'.join(f'{ac["id"]}\n{line}' for ac,line in zip(s['acs'], ac_lines))
-            link = detail(s['id'], 'acs', full, [_cell(STORY_SHEET,f'D{row}')])
-            ac_text = f'{ac_text[:80]}\n〔原文片段；全部 AC 见 {link}〕'
+        if len(ac_text.encode('utf-16-le')) // 2 > TEXT_LIMIT or '\r' in ac_text or _required_height(ac_text,_column_width(layout[STORY_SHEET],f'D{row}'))>409:
+            link = detail(s['id'], 'acs', ac_text, [_cell(STORY_SHEET,f'D{row}')])
+            preview = ''.join(ac_text.replace('\r\n', '\n').replace('\r', '\n').splitlines(keepends=True)[:2])[:80]
+            ac_text = f'{preview}\n〔原文片段；全部 AC 见 {link}〕'
         put(STORY_SHEET,row,'C',sn[s['id']]); put(STORY_SHEET,row,'D',ac_text)
         fields = [dict(field=f,cells=[_cell(STORY_SHEET,f'{c}{row}')]) for f,c in [('title','C'),('acs','D'),('notes','E')]]
         obj_record(s,'story',STORY_SHEET,'SOWStoryTable',[row],sn[s['id']],fields)
@@ -219,8 +289,18 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
         obj_record(t,'task',TASK_SHEET,'TaskTable',[row],tn[t['id']],
                    [dict(field=f,cells=[_cell(TASK_SHEET,f'{c}{row}')]) for f,c in columns])
     by_id = {o['object_id']:o for o in objects}
+    target_names = {obj['id']: f'{label}：{obj[field]}'
+                    for collection, field, label in [('epics','title','需求'), ('features','title','子需求'),
+                                                     ('stories','title','故事'), ('tasks','name','任务')]
+                    for obj in model[collection]}
+    for story in stories:
+        for entry, ac in enumerate(story['acs'], 1):
+            target_names[ac['id']] = f'故事：{story["title"]} / 第 {entry} 条 AC'
     mappings = []
-    for item in sorted(pending['items'],key=lambda p:({'open':0,'resolved':1,'superseded':2}[p['status']],p['id'])):
+    pending_locations = {}
+    ordered_pending = sorted(pending['items'],key=lambda p:({'open':0,'resolved':1,'superseded':2}[p['status']],p['id']))
+    pending_labels = {item['id']:f'事项 {i}' for i,item in enumerate(ordered_pending,1)}
+    for item in ordered_pending:
         targets=[]
         for target in item['targets']:
             obj=by_id.get(target['object_id'])
@@ -230,13 +310,46 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
                 cells=[c for f in obj['fields'] for c in f['cells']]
             targets.append(dict(target,cells=cells))
         mappings.append(dict(pending_item_id=item['id'],path='pending-items.md',anchor=f'pending-{item["id"]}',targets=targets))
+        label = pending_labels[item['id']]
+        state = {'open':'待确认','resolved':'已解决','superseded':'已替代'}[item['status']]
+        pending_locations[item['id']] = reading(PENDING_SHEET,label,'状态',state)
+        reading(PENDING_SHEET,label,'问题',item['question'])
+        reading(PENDING_SHEET,label,'当前处理',item['current_handling'])
+        for target in targets:
+            positions = '、'.join(f"{c['sheet']}!{c['cell']}" for c in target['cells']) or '本期范围（无对应数据行）'
+            name = target_names.get(target['object_id'], f'历史对象：{target["object_id"]}')
+            field = '整个对象' if target['field'] is None else f'字段：{target["field"]}'
+            reading(PENDING_SHEET,label,'关联位置',f'{name}；{field}；{positions}')
+        if item['unestimated_work']:
+            reading(PENDING_SHEET,label,'未拆明工作','有尚未拆明的业务工作，范围与处理见本事项。')
+        for identity in item['evidence_refs']:
+            if (evidence or {}).get(identity):
+                reading(PENDING_SHEET,label,'依据',(evidence or {})[identity])
+        adopted = None
+        if item['resolution']:
+            resolution = item['resolution']
+            reading(PENDING_SHEET,label,'处理记录',resolution.get('summary') or resolution.get('reason') or '')
+            replacements = [pending_labels[i] for i in resolution.get('replacement_item_ids',[]) if i in pending_labels]
+            if replacements:
+                reading(PENDING_SHEET,label,'后续事项','、'.join(replacements))
+            for decision in decisions['items']:
+                if resolution.get('decision_id') == decision['id']:
+                    adopted = decision
+                    reading(PENDING_SHEET,label,'已采用答复',decision['text'])
+                    for identity in decision['evidence_refs']:
+                        if (evidence or {}).get(identity):
+                            reading(PENDING_SHEET,label,'答复依据',evidence[identity])
+        if adopted is None:
+            reading(PENDING_SHEET,label,'已采用答复','尚无已采用答复')
     for collection, sheet, note_col, names, name_field in [(stories,STORY_SHEET,'E',sn,'title'),(tasks,TASK_SHEET,'G',tn,'name')]:
         for obj in collection:
             row=by_id[obj['id']]['rows'][0]; cells=[_cell(sheet,f'{note_col}{row}')]
             original=display(obj['id'],'notes',obj.get('notes',''),cells)
             additions=[]
+            reference_link = None
             if names[obj['id']] != obj[name_field]:
                 additions.append('原名：'+display(obj['id'],name_field,obj[name_field],cells))
+                reference_link = detail_locations.get((obj['id'], name_field))
             if sheet == STORY_SHEET:
                 for dep in model['dependencies']:
                     if dep['from_story_id']==obj['id']:
@@ -244,16 +357,18 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
                         additions.append(f'{label} {sn[dep["to_story_id"]]}；{dep.get("notes", "")}')
             for item in pending['items']:
                 if any(t['object_id']==obj['id'] or (sheet==STORY_SHEET and any(ac['id']==t['object_id'] for ac in obj['acs'])) for t in item['targets']):
-                    additions.append(f'待确认 {item["id"]}，见 pending-items.md#pending-{item["id"]}；当前处理：{item["current_handling"]}')
+                    state = {'open':'待确认','resolved':'已解决','superseded':'已替代'}[item['status']]
+                    additions.append(f'{state}（{pending_labels[item["id"]]}），见 {pending_locations[item["id"]]}；当前处理：{item["current_handling"]}')
+                    reference_link = reference_link or pending_locations[item['id']]
             # Keep original notes and every generated reference. If the reference
             # section is long, its complete contents have their own single anchor.
             if additions:
-                section=display(obj['id'],'references','\n'.join(additions),cells)
+                section=display(obj['id'],'references','\n'.join(additions),cells,reference_link)
                 original += ('\n' if original else '') + '——相关引用——\n' + section
             list_link=''
             if sheet == STORY_SHEET:
                 children=[t for t in tasks if t['story_id']==obj['id']]
-                task_list='\n'.join(f'{t["id"]} {t["name"]}' for t in children)
+                task_list='\n'.join(f'{i}. {t["name"]}' for i,t in enumerate(children,1))
                 # Bound the visible list using names plus classification text and
                 # an ID-sized margin. This is layout, not formula evaluation.
                 list_bound='\n'.join(' '.join([t['id'],tn[t['id']],*(t[f] or '' for f in
@@ -271,11 +386,20 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
             if _required_height(original,_column_width(layout[sheet],f'{note_col}{row}'))>409:
                 note_link=detail(obj['id'],'notes',obj.get('notes',''),cells)
                 original='原备注全文见 '+note_link
+                cell_links[(sheet, f'{note_col}{row}')] = note_link
                 if additions:
-                    ref_link=detail(obj['id'],'references','\n'.join(additions),cells)
+                    ref_link=detail(obj['id'],'references','\n'.join(additions),cells,reference_link)
                     original+='\n问题、原名和相关引用见 '+ref_link
                 if list_link: original+='\n'+list_link
             put(sheet,row,note_col,original)
+    for sheet, message in ((PENDING_SHEET,'无待确认事项'), (DETAILS_SHEET,'完整内容已在主表直接展示，无需续页。')):
+        if next_rows[sheet] == 5:
+            reading(sheet,'说明','内容',message)
+    # Destinations come only from rendered sections, never from business text.
+    # Each cell has one primary jump; other generated addresses remain readable.
+    from openpyxl.worksheet.hyperlink import Hyperlink
+    for (sheet, coordinate), location in cell_links.items():
+        layout[sheet][coordinate].hyperlink = Hyperlink(ref=coordinate, location=location)
     pending_lines=[f'# 待确认事项\n\nversion_id: {version_id}\n']
     item_by_id={p['id']:p for p in pending['items']}
     for mapping in mappings:
@@ -468,7 +592,7 @@ def audit_workbook(path, expected, *, allow_omissions=False, caches=True):
         _,xml_sheets=_xml_package(path)
         actual=load_workbook(path,data_only=False)
         cached=load_workbook(path,data_only=True) if caches else None
-        if tuple(actual.sheetnames)!=SHEETS or actual.sheetnames!=source.sheetnames: _fail('Sheet 集合或顺序变化。')
+        if tuple(actual.sheetnames) not in (SHEETS,OUTPUT_SHEETS) or actual.sheetnames!=source.sheetnames: _fail('Sheet 集合或顺序变化。')
         changes=[]; formulas=[]
         for original in source:
             ws=actual[original.title]; raw=xml_sheets[original.title][1]
@@ -530,6 +654,24 @@ def audit_workbook(path, expected, *, allow_omissions=False, caches=True):
                 for cell in row:
                     if cell.__class__.__name__=='MergedCell': continue
                     other=ws[cell.coordinate]
+                    def link(value):
+                        return (value.target,value.location,value.tooltip) if value else None
+                    if link(cell.hyperlink)!=link(other.hyperlink):
+                        _fail(f'工作簿内跳转变化：{ws.title}!{cell.coordinate}。')
+                    if other.hyperlink:
+                        match = re.fullmatch(r"'([^']+)'!([A-Z]+[1-9][0-9]*)", other.hyperlink.location or '')
+                        if other.hyperlink.target is not None or not match or match[1] not in actual.sheetnames:
+                            _fail(f'工作簿内跳转目标无效：{ws.title}!{cell.coordinate}。')
+                        target = actual[match[1]]
+                        from openpyxl.utils.cell import coordinate_to_tuple
+                        target_row, target_column = coordinate_to_tuple(match[2])
+                        if target_row > target.max_row or target_column > target.max_column:
+                            _fail(f'工作簿内跳转目标不存在：{ws.title}!{cell.coordinate}。')
+                        value = target[match[2]].value
+                        # Literal blank lines/spaces can be the first continuation
+                        # of complete source text; only an unwritten cell is absent.
+                        if value is None:
+                            _fail(f'工作簿内跳转目标为空：{ws.title}!{cell.coordinate}。')
                     if cell.data_type=='f':
                         if other.data_type!='f' or comparable_formula(other.value)!=comparable_formula(cell.value):
                             _fail(f'公式变化：{ws.title}!{cell.coordinate}。')

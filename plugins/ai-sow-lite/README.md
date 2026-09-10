@@ -30,6 +30,10 @@ Python 安装不写用户 bin 或注册表，只使用本插件副本的 managed
 
 交付保存在项目 `.ai-sow-lite/versions/<version_id>/`，含 `sow.xlsx`、`summary.md`、`pending-items.md` 和同版 JSON；必要时另有 `details.md`。`.ai-sow-lite/work/` 保留未完成分析和可恢复候选。输入、工作文件和工作簿可能含客户衍生资料，共享或提交前按项目隐私要求检查；不要把它们复制进插件包。
 
+当前 Excel 交付要求为单文件可读：保留原模板四张表的结构、公式和计算规则，生成结果另加可见的 `04-待确认事项`、`05-完整说明`，即使为空也保留。问题表展示实际问题、当前处理、状态、目标、已有来源定位及实际已采用答复；短字段直接填写，长标题、AC、备注和任务列表按原顺序完整续行，主表提供工作簿内部位置及可点击链接。阅读、评审和分享 Excel 无需附带 Markdown 文件，不能用外部路径或 UUID 问题标签代替正文。
+
+Markdown、JSON 和既有 projection 路径/锚点仍用于兼容、机器处理及项目归档。后续 clarify 需保留原项目目录，Excel 独立可读不代表支持无损回导。投影数据合同仍为 `lite-projection-v1`，渲染实现修订为 `lite-render-v5`；旧已应用版本保持原样，旧准备包不能绕过新核验。本增量的实现与检查见 [I6.1 验证](docs/validation/I6-self-contained.md)，规则见 [Excel 投影合同](docs/design/detailed/D06-excel-projection-and-delivery.md)。
+
 工具耗时和大活动标记保存在项目的独立资源报告中。原生 token 采集只接已验证版本、明确选定且属于本次请求的来源；无法确定的调用次数或活动归属保留未知，不按文件大小估算 token，也不设置 token 预算门禁。观测失败不重做业务交付，迟到用量只更新资源报告。当前真实粒度与性能基线见 [宿主观测](docs/validation/host-support.md) 和 [性能记录](docs/validation/performance.md)。
 
 ## 当前交付范围

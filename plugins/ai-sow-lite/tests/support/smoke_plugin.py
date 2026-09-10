@@ -186,13 +186,17 @@ def verify_delivery(case, prepared, applied, *, confirmation_path=None, previous
     workbook = openpyxl.load_workbook(files['sow.xlsx'])
     cached = openpyxl.load_workbook(files['sow.xlsx'], data_only=True)
     try:
-        assert workbook.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准']
+        assert workbook.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准', '04-待确认事项', '05-完整说明']
         assert workbook['01-需求故事']['C5'].value == '资料查询'
         assert workbook['02-任务清单']['E10'].value == 'M'
         assert workbook['02-任务清单']['F5'].value is None
         assert workbook['02-任务清单']['J5'].data_type == 'f'
         assert cached['02-任务清单']['J5'].value is not None
-        assert all(sheet.protection.sheet for sheet in workbook)
+        assert all(workbook[name].protection.sheet for name in workbook.sheetnames[:4])
+        for name in workbook.sheetnames[4:]:
+            assert workbook[name].sheet_state == 'visible'
+            assert not workbook[name].protection.sheet
+            assert all(cell.data_type != 'f' for row in workbook[name] for cell in row)
         assert sum(len(sheet.tables) for sheet in workbook) == 5
     finally:
         workbook.close()

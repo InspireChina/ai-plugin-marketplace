@@ -58,7 +58,7 @@ def test_representative_exact_columns_pending_and_unchanged_template(tmp_path):
         '1. 依约定条件查询并显示结果、空结果或失败。\n2. 本页失败提示一致，支持手动重试，迟到响应不覆盖新查询。']
     assert [t.cell(5, c).value for c in range(1, 7)] == ['资料查询', '资料查询页及公共客户端接入', '信息展示与查询页面', '新建', 'M', None]
     assert t['E10'].value == 'M'
-    assert 'pending-items.md#pending-00000000-0000-4000-8000-000000000042' in t['G10'].value
+    assert "'04-待确认事项'!D5" in t['G10'].value
     assert '使用 公共查询客户端' in s['E5'].value
     assert '交付前提 资料承接' in s['E5'].value
     assert isinstance(s['H5'].value, ArrayFormula) and s['H5'].value.ref == 'H5'
@@ -66,13 +66,13 @@ def test_representative_exact_columns_pending_and_unchanged_template(tmp_path):
     assert book['90-估算标准']['Q4'].value == 'SIT适用'
     assert book['90-估算标准']['R4'].value == 'UAT适用'
     assert book['03-工作量汇总']['B5'].value == '=SUM(TaskTable[任务人天])'
-    assert book.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准']
+    assert book.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准', '04-待确认事项', '05-完整说明']
     # Short-input rows may need full task lists even in the small fixture.
     details=(tmp_path/'details.md').read_text()
     assert result['details'] and all(d['field']=='task_list' for d in result['details'])
     for d in result['details']:
         assert d['anchor'] in details
-        assert f'details.md#{d["anchor"]}' in s[d['cells'][0]['cell']].value
+        assert "'05-完整说明'!D" in s[d['cells'][0]['cell']].value
     assert result['objects'][0]['kind'] == 'epic'
     ac = next(o for o in result['objects'] if o['object_id'].endswith('000024'))
     assert ac['fields'] == [{'field': 'text', 'cells': [{'sheet': '01-需求故事', 'cell': 'D5', 'entry': 1}]}]
@@ -138,8 +138,9 @@ def test_long_text_has_one_complete_anchor_and_literal_notes(tmp_path):
     assert t['G5'].value=='=SUM(A1:A9)' and t['G5'].data_type=='s'
     details=(tmp_path/'details.md').read_text()
     assert details.count(original)==1
-    detail=next(x for x in result['details'] if x['object_id']==m['stories'][0]['acs'][0]['id'])
-    assert f'details.md#{detail["anchor"]}' in s['D5'].value
+    detail=next(x for x in result['details'] if x['object_id']==m['stories'][0]['id'] and x['field']=='acs')
+    assert detail['anchor'] in details
+    assert "'05-完整说明'!D" in s['D5'].value
     assert len(s['D5'].value)<32767
     assert w['01-需求故事']['H5'].data_type=='f'
 
@@ -390,7 +391,7 @@ def test_long_crlf_keeps_original_once_and_has_reachable_full_text(tmp_path):
     model['tasks'][0]['notes']=original
     project(tmp_path,model,pending,decisions)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
-    assert 'details.md#' in w['02-任务清单']['G5'].value
+    assert "'05-完整说明'!D" in w['02-任务清单']['G5'].value
     assert original.encode() in (tmp_path/'details.md').read_bytes()
 
 
@@ -518,7 +519,7 @@ def test_layout_overflow_uses_details_instead_of_clamping_hidden_full_text(tmp_p
     project(tmp_path,model,pending,decisions)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
     cell=w['01-需求故事']['E5']
-    assert 'details.md#' in cell.value
+    assert "'05-完整说明'!D" in cell.value
     assert '甲'*700 in (tmp_path/'details.md').read_text()
     assert len(cell.value)<700 and w['01-需求故事'].row_dimensions[5].height<=409
 
@@ -527,7 +528,7 @@ def test_narrow_parent_title_preview_remains_readable_with_full_text_anchor(tmp_
     m,p,d=bundle();m['epics'][0]['title']='窄列完整标题'*600
     project(tmp_path,m,p,d)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
-    assert 'details.md#' in w['01-需求故事']['A5'].value
+    assert "'05-完整说明'!D" in w['01-需求故事']['A5'].value
     assert m['epics'][0]['title'] in (tmp_path/'details.md').read_text()
     assert w['01-需求故事'].row_dimensions[5].height<=409
 
@@ -549,7 +550,7 @@ def test_medium_task_list_has_readable_row_or_complete_details_after_office(tmp_
     # Actual cached text needs 244pt under the existing conservative estimator;
     # the old row was 63.75pt, with neither note nor full-text artifact.
     if ws.row_dimensions[5].height<244:
-        assert 'details.md#' in (ws['E5'].value or '')
+        assert "'05-完整说明'!D" in (ws['E5'].value or '')
         details=(case.project/output['details_ref']['path']).read_text()
         assert all(name in details for name in names)
     assert ws.row_dimensions[5].height<=409
@@ -565,7 +566,8 @@ def test_medium_list_anchor_survives_notes_and_pending_reference_overflow(tmp_pa
     result=project(tmp_path,model,pending,decisions)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx');notes=w['01-需求故事']['E5'].value
     mapping=next(d for d in result['details'] if d['field']=='task_list')
-    assert f'details.md#{mapping["anchor"]}' in notes
+    assert "'05-完整说明'!D" in notes
+    assert mapping['anchor'] in (tmp_path/'details.md').read_text()
     details=(tmp_path/'details.md').read_text()
     assert story['notes'] in details and item['current_handling'] in details
     assert all(t['name'] in details for t in model['tasks'])
