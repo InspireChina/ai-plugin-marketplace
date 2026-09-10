@@ -131,7 +131,7 @@ I1.4 报告单次读取最多256个文件、10,000行和8 MiB，目录枚举最�
 
 宿主未提供的原生身份/版本保持 null；适配器自己的版本与观察到的格式特征另记，不能冒充宿主 schema 版本。epoch 仅在验证过的计数连续范围内成立，宿主重启本身不证明计数从零开始。
 
-I2.3 的 response_absolute 保存一个原生响应的绝对观察，按已绑定来源、thread/turn/response 去重，同响应同值重放不加总，冲突与失败后缀保留未知；turn/thread 累计只作交叉核对。该分支不跨 epoch 相减，允许原生 epoch=null；既有累计差值仍需要可信起点和 epoch，不放宽其合同。响应身份和来源文件 EOF 均不能单独证明物理调用或整个 Skill 请求完整。
+I2.3 的 response_absolute 保存一个原生响应的绝对观察，按已绑定来源、thread/turn/response 去重，同响应同值重放不加总，冲突与失败后缀保留未知；turn/thread 累计只作交叉核对。该分支不跨 epoch 相减，允许原生 epoch=null；既有累计差值仍需要可信起点和 epoch，不放宽其合同。响应身份和来源文件 EOF 均不能单独证明物理调用或整个 Skill 请求完整。 I5.1 将无活动绑定的原生指标明确输出为 response scope，使用原生 response_id 与 basis.event_ids 回链，并显示 USAGE_BOUNDARY_UNKNOWN；归属仍为 unassigned，不按时间分摊。
 
 原生线程、turn、调用和 Lite 请求是不同范围。只有调用 ID 确实存在时，才能按物理调用去重；没有调用 ID 的累计快照必须按原生 scope、epoch 和顺序处理，不能每条回调造一个调用。会话混入其他请求或并行任务时，未能隔离的用量保留宿主范围，不能全部归本项目。
 

@@ -1,0 +1,209 @@
+{
+  "schema_version": "1.0",
+  "case": "explicit-default-M",
+  "base_commit": "4d05060",
+  "template_sha256": "6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332",
+  "feedback_sha256": "ae5ac88ba32a46cd24c6433b62070f47b5bb682efc6d579e87af1971b72a44a0",
+  "changed_files_in_experiment": [
+    "runtime/ai_sow_lite/authoring.py",
+    "references/python-client.md",
+    "references/generate-authoring.md",
+    "references/clarify-changes.md"
+  ],
+  "native_producer": "Codex Desktop 0.153.4",
+  "model_override": null,
+  "observations": {
+    "control": {
+      "turns": [
+        {
+          "turn_number": 1,
+          "counts": {
+            "input_tokens": 924036,
+            "cached_input_tokens": 858752,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 13235,
+            "reasoning_output_tokens": 2671,
+            "total_tokens": 937271
+          },
+          "responses": 16,
+          "duration_ms": 456946,
+          "tool_calls": 15,
+          "tool_code_utf8_bytes": 30784,
+          "client_call_source_hits": 0
+        },
+        {
+          "turn_number": 2,
+          "counts": {
+            "input_tokens": 932490,
+            "cached_input_tokens": 914176,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 8133,
+            "reasoning_output_tokens": 1436,
+            "total_tokens": 940623
+          },
+          "responses": 10,
+          "duration_ms": 282273,
+          "tool_calls": 9,
+          "tool_code_utf8_bytes": 22937,
+          "client_call_source_hits": 0
+        }
+      ],
+      "native_source_sha256": "a3d6351c8ecd50fbaa240a53c16b845b34b25997a84d0243160a8263d6cd7dfd",
+      "native_source_bytes": 1185115,
+      "native_source_lines": 195,
+      "recorded_operations": {
+        "check": 2,
+        "inspect": 11,
+        "render": 1,
+        "ingest": 4,
+        "apply": 1
+      },
+      "failed_operations": {
+        "ingest": 1
+      },
+      "tool_duration_ns": 7192865460,
+      "office_elapsed_ms": 3683,
+      "first_useful_feedback_ns": 351461199000,
+      "first_usable_file_ns": 671767092000,
+      "user_wait_ns": 126165534000,
+      "response_groups": 26,
+      "known_tokens": 1877894,
+      "all_response_groups_unassigned": true,
+      "output_and_dependency_refs_verified": 47,
+      "business_files_unchanged_during_collection": 143,
+      "collection": {
+        "bytes_read": 1185115,
+        "lines_read": 195,
+        "start_offset": 22528,
+        "end_offset": 1185115,
+        "eof": true
+      },
+      "collector_duration_ns": 80264875,
+      "collection_gaps": [
+        "CLOCK_UNALIGNED"
+      ],
+      "observed_failures": [
+        "Feedback source path unavailable; same-request repair.",
+        "Confirmation path /var versus /private/var alias mismatch; same-plan repair.",
+        "Optional post-delivery metadata summary failed; applied output remained valid."
+      ],
+      "experiment_file_hashes": {
+        "references/generate-authoring.md": "1aae5ac4bed3a6b3292c87626fa538b4483ddb8cc691ce3bab4f90096a6d3c73",
+        "references/clarify-changes.md": "9d7167cc8f802e41c2d595cb028d77ed3250e5bb8326edb46a90fe227757b35b"
+      },
+      "eof_replay": {
+        "collector_duration_ns": 28006334,
+        "read": {
+          "bytes_read": 23736,
+          "lines_read": 2,
+          "start_offset": 1185115,
+          "end_offset": 1185115,
+          "eof": true
+        },
+        "unchanged_event_count": 101,
+        "report_source_digest": "af82ed9f727bea0a6376679876e9ed9280fa011f2b7f249e8c5a468e073147db"
+      }
+    },
+    "client": {
+      "turns": [
+        {
+          "turn_number": 1,
+          "counts": {
+            "input_tokens": 844276,
+            "cached_input_tokens": 781568,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 12658,
+            "reasoning_output_tokens": 1993,
+            "total_tokens": 856934
+          },
+          "responses": 14,
+          "duration_ms": 437128,
+          "tool_calls": 13,
+          "tool_code_utf8_bytes": 31723,
+          "client_call_source_hits": 7
+        },
+        {
+          "turn_number": 2,
+          "counts": {
+            "input_tokens": 450521,
+            "cached_input_tokens": 438784,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 3965,
+            "reasoning_output_tokens": 870,
+            "total_tokens": 454486
+          },
+          "responses": 5,
+          "duration_ms": 143286,
+          "tool_calls": 4,
+          "tool_code_utf8_bytes": 9485,
+          "client_call_source_hits": 3
+        }
+      ],
+      "native_source_sha256": "0d0ea8330057e110ebfc930ba4bfa4eacde61b5612b6c9f530e7c7b020120e62",
+      "native_source_bytes": 1186576,
+      "native_source_lines": 153,
+      "recorded_operations": {
+        "inspect": 15,
+        "ingest": 4,
+        "check": 2,
+        "render": 1,
+        "apply": 1
+      },
+      "failed_operations": {
+        "ingest": 1
+      },
+      "tool_duration_ns": 7108159792,
+      "office_elapsed_ms": 3597,
+      "first_useful_feedback_ns": 339371930000,
+      "first_usable_file_ns": 695503385000,
+      "user_wait_ns": 269625829000,
+      "response_groups": 19,
+      "known_tokens": 1311420,
+      "all_response_groups_unassigned": true,
+      "output_and_dependency_refs_verified": 47,
+      "business_files_unchanged_during_collection": 164,
+      "collection": {
+        "bytes_read": 1186576,
+        "lines_read": 153,
+        "start_offset": 22528,
+        "end_offset": 1186576,
+        "eof": true
+      },
+      "collector_duration_ns": 61308208,
+      "collection_gaps": [
+        "CLOCK_UNALIGNED"
+      ],
+      "observed_failures": [
+        "Analysis evidence.limitations, topic.external_responsibilities and topic.limitations incorrectly supplied as arrays; one same-content string-field repair."
+      ],
+      "experiment_file_hashes": {
+        "references/generate-authoring.md": "ef92f2a218ba4c91777a6eb7cb01668083d09e3fc860fe71156a82906447603c",
+        "references/python-client.md": "ba3f1057e9f4788d563a228ab386648647048158533379e95ba2754693dd79fa",
+        "references/clarify-changes.md": "fa69e324d540417380b4488712f7f1d2c9004420784245c3d80848144e09954e",
+        "runtime/ai_sow_lite/authoring.py": "2f7c5e50a609ed185df22701a4657d362f2e326a97c164a4b44ae3b16fa64d62"
+      },
+      "eof_replay": {
+        "collector_duration_ns": 28079042,
+        "read": {
+          "bytes_read": 23848,
+          "lines_read": 2,
+          "start_offset": 1186576,
+          "end_offset": 1186576,
+          "eof": true
+        },
+        "unchanged_event_count": 106,
+        "report_source_digest": "701d2d6df67c8d7cbed7300c12cd6a0a31fe90be48de006b7dcac779459288c7"
+      }
+    }
+  },
+  "limits": [
+    "One fresh default-model actor per variant; exploratory pair, not a causal percentage or SLA.",
+    "Input totals include repeated context; cached input is already included, not added again.",
+    "Turn duration includes model, tools and host overhead; not pure model time.",
+    "Tool-source bytes are not tokens; response identity is not a physical model-call count.",
+    "Activity token attribution, pure model time and peak context remain unknown.",
+    "Actors used frozen business runtime; final telemetry rebuilt reports afterward without changing business files.",
+    "Final Python-client guide removes the new-project current query after independent review; existing-project Clarify experiment bytes retained.",
+    "client_call_source_hits counts string matches in tool source, not executed operations."
+  ]
+}

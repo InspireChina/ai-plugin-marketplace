@@ -5,6 +5,8 @@
 
 ## 只读取这份方案所依赖的内容
 
+连续调用优先用 [Python 调用助手](python-client.md)，保存实际返回引用；无需每次重写信封、子进程和完整响应输出。
+
 复用 [启动与请求身份](generate-authoring.md#启动与请求身份) 的命令；插件根从本次加载的 Clarify Skill 解析，入口改为 `clarify`。同一请求沿用 request_id，project_type 取既有项目记录。先 `inspect current`，续接时 `inspect request`；保存完整 current `{version_id,manifest_hash}`。首次反馈登记创建本请求 work/checkpoint，不能先手工建出缺检查点的请求目录。
 
 对象用 `inspect objects` 的 collection 加 title/object_ids 定向定位；问题比较 ID、revision、目标和处理状态。有关 Story 关系用 dependencies 的 relation 选择器查询。仅按实际反馈读取父项、直接有关消费者/前提和主题。行号先绑定文件版本与 Sheet，再用同版 projection 找对象；手改附件只是本次意见来源，不能把旧坐标直接套在 current。
@@ -81,44 +83,19 @@ import sys
 from pathlib import Path
 
 plugin, project, check_reply, answer_reply, region_reply = map(Path, sys.argv[1:])
-plugin, project = plugin.resolve(), project.resolve()
-sys.path.insert(0, str(plugin / "runtime"))
+sys.path.insert(0, str(plugin.resolve() / "runtime"))
+from ai_sow_lite.authoring import Client, source_ref
 from ai_sow_lite.contracts import load_json
-from ai_sow_lite.project import safe_path, file_ref, write_json
 
 checked, registered, region = map(load_json, (check_reply, answer_reply, region_reply))
 assert checked["ok"] and registered["ok"] and region["ok"]
 request_id = checked["request_id"]
 assert registered["request_id"] == region["request_id"] == request_id
-area = f".ai-sow-lite/work/clarify/{request_id}"
-check_ref = checked["result"]["check_ref"]
-check_path = safe_path(project, check_ref["path"], area)
-assert file_ref(project, check_path) == check_ref
-report = load_json(check_path)
-assert report["valid_for_render"]
-shown_ref = report["plan_ref"]
-shown_path = safe_path(project, shown_ref["path"], area)
-assert file_ref(project, shown_path) == shown_ref
-plan = load_json(shown_path)
-assert plan["confirmation"] is None
-
 inputs = registered["result"]["input_refs"]
-assert len(inputs) == 1
-coverage = region["result"]["coverage"]
-selector = coverage["selector"]
-assert selector["input_version_id"] == inputs[0]["input_version_id"]
-assert selector["locator"]["kind"] == "text_lines"
-plan["confirmation"] = {
-    "digest": report["plan_digest"],
-    "input_ref": {"input_version_id": selector["input_version_id"],
-                  "locator": selector["locator"],
-                  "excerpt_hash": coverage["excerpt_hash"]},
-    "shown_plan_ref": plan.get("subset_of", shown_ref),
-    "selected_changes": plan["changes"],
-}
-relative = shown_path.with_name("confirmed-plan.json").relative_to(project).as_posix()
-confirmation_ref = write_json(project, relative, plan, immutable=True)
-print(json.dumps(confirmation_ref, ensure_ascii=False))
+answer_ref = source_ref(region["result"])
+assert len(inputs) == 1 and answer_ref["input_version_id"] == inputs[0]["input_version_id"]
+client = Client(project, request_id, "clarify")
+print(json.dumps(client.bind_confirmation(checked["result"]["check_ref"], answer_ref), ensure_ascii=False))
 ```
 
 原 candidate 和展示计划不变。确认版第一次有效 CLI check 或 apply 会封存精确文件引用；此后改字节/路径也会拒绝。内容摘要绑定具体变化及条件，不证明谁作出确认。

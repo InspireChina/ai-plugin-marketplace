@@ -4,8 +4,10 @@
 
 连续实施中的取舍及理由见 [自主决策记录](../../validation/implementation-decisions.md)。用户已授权按本计划持续完成开发，每个 I1.4 这样的实施任务验证/审查完成后提交一次，中间无需等待用户确认；推送、安装及发布不在本次开发范围。
 
-状态：I1.1—I4.3计划内开发已完成，按阶段提交。最终Lite全量701通过、12条件跳过，独立副本Generate→Clarify及原生Excel代表性检查通过；整分支两轴审查的发现和定点追加均已修复关闭。当前能力和已知限制见[I1机械能力](../../validation/I1-reliable-delivery.md)、[I1.5独立交付](../../validation/I1-delivery.md)、[I2生成](../../validation/I2-generate.md)、[I3修改](../../validation/I3-clarify.md)、[I4输入与修改](../../validation/I4-inputs-and-changes.md)及[I4交付汇总](../../validation/I4-delivery.md)。[性能记录](../../validation/performance.md)保留实际分钟级成本与G12缺口；[场景清单](../../validation/scenario-coverage.json)区分直接实证与机制复用，不据编号完整宣称语义全部正确。Q1/Q2边界见[13](../13-self-review-and-decisions.md)。
+状态：I1.1—I4.3计划内开发已完成，按阶段提交。I4.3当时Lite全量701通过、12条件跳过，独立副本Generate→Clarify及原生Excel代表性检查通过；整分支两轴审查的发现和定点追加均已修复关闭。当前能力和已知限制见[I1机械能力](../../validation/I1-reliable-delivery.md)、[I1.5独立交付](../../validation/I1-delivery.md)、[I2生成](../../validation/I2-generate.md)、[I3修改](../../validation/I3-clarify.md)、[I4输入与修改](../../validation/I4-inputs-and-changes.md)及[I4交付汇总](../../validation/I4-delivery.md)。[性能记录](../../validation/performance.md)保留实际分钟级成本与G12缺口；[场景清单](../../validation/scenario-coverage.json)区分直接实证与机制复用，不据编号完整宣称语义全部正确。Q1/Q2边界见[13](../13-self-review-and-decisions.md)。
 
+
+后续 I5.1 已按用户追加要求完成 [机械编写与响应成本](../../validation/I5-performance.md)：薄调用助手、同基线实际改稿配对、原生响应可追溯性。I5.1完整Lite715通过、12条件跳过，独立审查发现已处理，保留同基线实际配对及原生响应证据。I1—I4 的历史完成记录保持；速度及逐活动 token 不因基础开发完成而标为达标。
 ## 1. 阅读与实施顺序
 
 | 文档 | 解决的问题 | 进入条件 | 交付结果 |
@@ -62,4 +64,4 @@ I3.3 → I4.1 原型/draft、I4.2 复杂修改 → I4.3 支持/性能/交付准�
 | 错误归因与有限改动 | I3.1/I3.2，clarify-changes.md | 误读修正、档位答复和候选引用故障，具体差异及未改对象证据 |
 | 原型、跨类型成果与实际性能 | I4.1/I4.2/I4.3，沿用上述参考文件 | 实际观察/未观察区分，独立成果与内含工作边界，同语义范围的时间/usage 对照 |
 
-本次仍为14项任务，原有依赖和 D04B 退出机制保持不变。真实运行时不加载本设计包或旧 prompts；专业规则单份维护、按需读取，复杂案例留在开发验证侧。各任务只在实际验证与审查通过后关闭，当前进度统一见本页顶部。
+I1—I4 原计划为14项任务，原有依赖和 D04B 退出机制保持不变；用户追加的 I5.1 性能切片见本页后续状态。真实运行时不加载本设计包或旧 prompts；专业规则单份维护、按需读取，复杂案例留在开发验证侧。各任务只在实际验证与审查通过后关闭，当前进度统一见本页顶部。

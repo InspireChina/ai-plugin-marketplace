@@ -124,6 +124,8 @@ def test_authoring_example_maps_real_region_and_standard_response_fields(tmp_pat
     exec(compile(snippets[0], "generate-authoring.md", "exec"), context)
     assert context["source_ref"] == dict(
         input_version_id=entry["input_version_id"], locator=locator, excerpt_hash=excerpt_hash)
+    from ai_sow_lite.authoring import source_ref
+    assert source_ref(response["result"]) == context["source_ref"]
     assert context["standard_id"] == row["工作类型 ID"]
     assert context["work_type_name"] == row["工作类型"]
 
@@ -239,3 +241,21 @@ def test_clarify_confirmation_example_consumes_real_responses(clarify_case, monk
         plan_path=confirmation_ref['path'], scope='full'))
     assert accepted['ok'] and accepted['result']['valid_for_render'], accepted
     assert read_json(project / '.ai-sow-lite/current.json') == case['current']
+
+
+def test_python_client_setup_example_works_before_first_generate_ingest(tmp_path):
+    from uuid import uuid4
+
+    guide = required_text(PLUGIN / 'references/python-client.md')
+    setup = re.findall(r'```python\n(.*?)\n```', guide, re.S)[0]
+    project = tmp_path / 'new project'
+    context = dict(plugin=PLUGIN, project=project, request_id=str(uuid4()),
+                   entrypoint='generate', observation_context=None)
+    exec(compile(setup, 'python-client.md', 'exec'), context)
+    assert not project.exists()
+    source = tmp_path / 'prd.md'
+    source.write_text('本期交付资料查询。', encoding='utf-8')
+    result = context['client'].call('ingest', dict(kind='sources', entrypoint='generate',
+        project_type='new', sources=[dict(source_path=str(source), input_id=None,
+            material_types=['PRD'], uses=['to-be'], use_regions=[])]))
+    assert len(result['input_refs']) == 1

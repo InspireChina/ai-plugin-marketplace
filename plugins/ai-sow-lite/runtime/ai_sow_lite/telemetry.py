@@ -186,8 +186,9 @@ def build_report(project: Path, request_id: str) -> dict:
     for m in metrics:
         scope = json.dumps(m['scope'], ensure_ascii=False, sort_keys=True)
         basis = json.dumps(m['basis'], ensure_ascii=False, sort_keys=True)
+        diagnostics = '；缺口：' + '、'.join(m['diagnostics']) if m['diagnostics'] else ''
         body += (f"- {m['name']}: {m['value'] if m['value'] is not None else '未知'} {m['unit']}"
-                 f"；覆盖：{m['coverage']}；范围：{scope}；归属：{m['attribution']}；依据：{basis}\n")
+                 f"；覆盖：{m['coverage']}；范围：{scope}；归属：{m['attribution']}；依据：{basis}{diagnostics}\n")
     body+='\n\n缺口：'+('、'.join(result['diagnostics']) or '无已检测到的读取缺口')+'\n'
     atomic_bytes(_path(project, request_id, 'report.md'), body.encode('utf-8'))
     return result
@@ -419,10 +420,16 @@ def _usage_metrics(events, request_id, gaps):
     for s in segments:
         e=s['event'];activities=s['activities']
         scope=dict(kind='activity_group' if s['exclusive'] else 'host',id=e['event_id'],activity_ids=activities)
+        basis=s['basis'];diagnostics=[]
+        if basis['kind']=='response_absolute' and not activities:
+            scope.update(kind='response',id=e['data']['native']['response_id'])
+            basis=dict(basis,event_ids=[e['event_id']])
+            diagnostics=['USAGE_BOUNDARY_UNKNOWN']
         for field,value in s['counts'].items():
             m=_metric(field,value,request_id,scope=scope,coverage='complete' if e['data']['coverage']['complete'] else 'partial',
-                attribution='unassigned' if not activities or not s['exclusive'] else 'shared' if len(activities)>1 else 'exclusive')
-            m['basis']=s['basis'];metrics.append(m)
+                attribution='unassigned' if not activities or not s['exclusive'] else 'shared' if len(activities)>1 else 'exclusive',
+                diagnostics=diagnostics)
+            m['basis']=basis;metrics.append(m)
     if not usages:
         gaps.append('USAGE_UNAVAILABLE')
     return metrics,list(sources.values())

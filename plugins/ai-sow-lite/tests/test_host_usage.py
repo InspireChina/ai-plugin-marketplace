@@ -147,6 +147,75 @@ def test_response_absolute_counts_once_without_physical_call_or_activity_claim(t
     assert rebuilt['source_digest'] == report['source_digest']
 
 
+def test_unbound_native_response_report_links_usage_without_inferring_activity(tmp_path, capsys):
+    project = tmp_path / 'project'
+    source = tmp_path / 'native.jsonl'
+    selection = binding(str(uuid4()))
+    records = two_responses()
+    records[3]['timestamp'] = '2026-09-10T00:00:02.000Z'
+    duplicate = copy.deepcopy(records[2])
+    duplicate['ordinal'] = 4
+    records.insert(4, duplicate)
+    records[-1].update(ordinal=5, timestamp='2026-09-10T00:00:04.000Z')
+    write_native(source, records)
+
+    # Usage timestamps fall inside distinct marked activities, but no native
+    # response boundary or tool-call identity binds either response to them.
+    activity_a, activity_b = str(uuid4()), str(uuid4())
+    for activity, phase, second in [(activity_a, 'start', '00.500000'),
+                                     (activity_a, 'end', '01.400000'),
+                                     (activity_b, 'start', '01.500000'),
+                                     (activity_b, 'end', '03.000000')]:
+        telemetry.append_event(project, dict(schema_version='1.0', event_id=str(uuid4()),
+            event_type='lifecycle', request_id=selection['request_id'],
+            execution_id=selection['execution_id'], producer_id=str(uuid4()), sequence=0,
+            observed_at=f'2026-09-10T00:00:{second}Z', activity_ids=[activity], slice_ids=[],
+            data=dict(name='input_analysis' if activity == activity_a else 'design_discussion',
+                phase=phase, span_id=str(uuid4()), parent_span_id=None,
+                clock_domain=None, monotonic_ns=None, status=None, operation_id=None,
+                attempt_id=None, host_call_id=None, timing='utc_marker')))
+
+    code, outcome = collect_cli(project, source, selection, capsys)
+    assert code == 0 and outcome['recording'] == 'recorded', outcome
+    report = telemetry.build_report(project, selection['request_id'])
+    assert metric(report, 'total_tokens')['value'] == 35
+    assert metric(report, 'known_tokens')['value'] == 35
+    assert metric(report, 'total_tokens')['diagnostics'] == []
+    groups = [m for m in report['metrics'] if m['unit'] == 'tokens' and m['scope']['kind'] != 'request']
+    assert {(m['scope']['kind'], m['scope']['id']) for m in groups} == {
+        ('response', 'response-1'), ('response', 'response-2')}
+
+    area = project / '.ai-sow-lite/telemetry' / selection['request_id']
+    # Resolve the public report's links against its durable event artifacts.
+    events = {e['event_id']: e for p in (area / 'events').glob('*/*.jsonl')
+              for line in p.read_bytes().splitlines() if (e := json.loads(line))['event_type'] == 'usage'}
+    for response_id, expected in [('response-1', dict(input_tokens=10, output_tokens=2, total_tokens=12,
+            cached_input_tokens=4, reasoning_output_tokens=1, cache_write_input_tokens=0)),
+            ('response-2', dict(input_tokens=20, output_tokens=3, total_tokens=23,
+            cached_input_tokens=4, reasoning_output_tokens=1, cache_write_input_tokens=0))]:
+        items = [m for m in groups if m['scope']['id'] == response_id]
+        assert len(items) == 6 and {m['name']: m['value'] for m in items} == expected
+        for m in items:
+            assert m['attribution'] == 'unassigned' and m['scope']['activity_ids'] == []
+            assert m['coverage'] == 'partial'
+            assert m['diagnostics'] == ['USAGE_BOUNDARY_UNKNOWN']
+            assert m['basis']['kind'] == 'response_absolute'
+            assert m['basis']['source_id'] == selection['source_id']
+            assert len(m['basis']['event_ids']) == 1
+            linked = events[m['basis']['event_ids'][0]]
+            assert linked['data']['native']['response_id'] == response_id
+            assert linked['data']['counts'][m['name']] == m['value']
+
+    markdown = (area / 'report.md').read_text()
+    assert 'response-1' in markdown and 'response-2' in markdown
+    assert 'USAGE_BOUNDARY_UNKNOWN' in markdown
+    _, replay = collect_cli(project, source, selection, capsys)
+    rebuilt = telemetry.build_report(project, selection['request_id'])
+    assert replay['recording'] == 'recorded'
+    assert rebuilt['metrics'] == report['metrics']
+    assert rebuilt['source_digest'] == report['source_digest']
+
+
 @pytest.mark.parametrize('mutation,gap', [
     ('response_conflict', 'NATIVE_RESPONSE_CONFLICT'),
     ('turn_counter', 'NATIVE_COUNTER_MISMATCH'),
@@ -395,6 +464,12 @@ def test_native_activity_annotation_remains_one_shared_group(tmp_path):
     groups=[m for m in report['metrics'] if m['name']=='total_tokens' and m['scope']['kind']=='activity_group']
     assert len(groups)==1 and groups[0]['value']==12 and groups[0]['attribution']=='shared'
     assert len(groups[0]['scope']['activity_ids'])==2
+    assert groups[0]['scope']['id']==native['event_id']
+    assert groups[0]['basis']==dict(kind='response_absolute',source_id=selection['source_id'])
+    assert groups[0]['diagnostics']==[]
+    assert not any(m['scope']['kind']=='response' for m in report['metrics'])
+    assert metric(report,'total_tokens')['value']==12
+    assert metric(report,'known_tokens')['value']==12
 
 
 def test_native_event_write_failure_does_not_acknowledge_unrecorded_usage(tmp_path,monkeypatch):

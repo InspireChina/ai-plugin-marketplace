@@ -22,7 +22,7 @@ AI SOW Lite 根据 PRD、HLD 和旧项目的往期 SOW，生成本期首版 SOW 
 
 同一个人按现版串行修改，历史版本保留。中断后先查询实际结果；已经成功的旧请求返回其原成功事实，同时保留最新current。旧草稿遇到基线变化会停止应用，确认原件和已采用来源随版本校验。完整使用周期及可观察取消边界见 [I3验证](docs/validation/I3-clarify.md)。
 
-运行时、锁文件和模板均在插件目录内。首次调用按 [命令与编写参考](references/generate-authoring.md) 使用本副本 bootstrap，准备隔离 uv/Python/依赖，后续复用 `.venv`；不需要安装旧 AI SOW 插件。Excel 投影使用已有 LibreOffice 引擎，缺少引擎时保留候选并返回诊断，不伪造计算结果。平台实测范围以宿主支持记录为准。
+运行时、锁文件和模板均在插件目录内。首次调用按 [命令与编写参考](references/generate-authoring.md) 使用本副本 bootstrap，准备隔离 uv/Python/依赖，后续复用 `.venv`，可用 [Python 调用助手](references/python-client.md) 连续执行 Agent 已选择的机械操作；不需要安装旧 AI SOW 插件。Excel 投影使用已有 LibreOffice 引擎，缺少引擎时保留候选并返回诊断，不伪造计算结果。平台实测范围以宿主支持记录为准。
 
 Python 安装不写用户 bin 或注册表，只使用本插件副本的 managed Python。已有 `.venv` 的基础解释器指向其他副本或已失效时，bootstrap 会重建本插件的 `.venv` 并同步锁定依赖；正常环境直接复用。
 

@@ -57,3 +57,5 @@ I4.3把单原生帧上限从I2历史的256KiB调到512KiB，原因是实际长�
 当前指引修正request根标记的活动集合，两次实际改稿均有四个根标记和可计算的标记区间；既有时钟/活动缺口原样保留。response计数与token可用于比较反复读取、候选编写等开销线索；它们不是物理调用数、纯模型时间或峰值上下文。所有观测失败都只影响资源报告。
 
 更多验证范围见[I4输入/修改](I4-inputs-and-changes.md)、[交付汇总](I4-delivery.md)与[163场景证据](scenario-coverage.json)。conditional委派场景没有启用；开发阶段新会话验收不能替代产品的并发验证。
+
+I5.1进一步复核原生字段：当前来源缺response↔tool↔activity身份链。报告按真实response_id定位整响应成本并回链事件，显示边界缺失；精确逐活动token保持未知，见[I5性能切片](I5-performance.md)。没有变更宿主设置或启用产品subagent。
