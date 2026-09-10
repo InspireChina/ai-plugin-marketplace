@@ -16,4 +16,4 @@
 
 `independent-sync/prd.md`和`hld.md`先用于真实Generate；`feedback.md`只在首版交付后提供给Clarify。初版执行者不提前读取后续意见；现版实时集成与新增独立周期同步分别判断。
 
-实际专业结果、失败和未覆盖面见包内docs/validation/I4-inputs-and-changes.md；这些输入的存在不证明语义通过。
+实际专业结果、失败和未覆盖面见包内docs/archive/validation/I4-inputs-and-changes.md；这些输入的存在不证明语义通过。

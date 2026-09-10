@@ -7,9 +7,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_inputs.py"
       ],
       "limitation": "I2实际复用已给的新旧项目身份与材料，只补缺件；I4完整PRD/HLD/draft正例沿用该入口，没有附加用途或定档问卷。"
@@ -20,9 +20,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
+        "docs/archive/validation/I2-generate.md",
         "tests/fixtures/generate/cases/insufficient-draft-notes/expectations.json",
-        "docs/validation/I4-delivery.md"
+        "docs/archive/validation/I4-delivery.md"
       ],
       "limitation": "隔离只读专业检查分别处理一句想法、0字节文件和纯模板，实际回复均列PRD/HLD缺件、新项目不强索历史且原型可选；不生成占位/零版。仅验证受控开场回复，未执行CLI或整次Generate。"
     },
@@ -32,7 +32,7 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md"
+        "docs/archive/validation/I2-generate.md"
       ],
       "limitation": "无原型的PRD/HLD完整输入已实际生成交付；原型可选不豁免必需材料或内容充分性。"
     },
@@ -42,9 +42,9 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_inputs.py",
         "tests/test_xlsx_inputs.py",
         "tests/test_prototype_records.py"
@@ -71,8 +71,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4复杂历史例实际识别PRD只读与HLD/原型审批冲突，集中提问并在无法裁定时退出；仅覆盖该组冲突。"
     },
@@ -82,9 +82,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_inputs.py"
       ],
       "limitation": "I2采用后续答复更新相关分析；I4已有三片后撤回PRD/HLD用途时更新主题与工作索引、保留旧原件和草稿，未全量重拆。"
@@ -95,7 +95,7 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md"
+        "docs/archive/validation/I2-generate.md"
       ],
       "limitation": "I2真实首轮部分答复后保留已答事实、合批补问；基础仍缺时退出，没有填默认方案进入生成。"
     },
@@ -105,9 +105,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2答复仍缺契约/方案/责任时列补料退出；I4无法裁定审批/服务基础时亦保存分析与答复停止。"
     },
@@ -117,8 +117,8 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4用户明确暂时无法决定并要求保留后，原请求无骨架/候选/check/render/apply；没有把等待或沉默当批准。未跑数日沉默定时场景。"
     },
@@ -128,10 +128,10 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_contracts.py"
       ],
       "limitation": "I2局部责任/实例/分类未知随同版问题交付；I4原型局部未知与迁移M问题保留。局部问题不能替代全案基础。"
@@ -142,8 +142,8 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json"
       ],
       "limitation": "I4实际从已有三片草稿接续，撤回核心PRD/HLD且基础不足后停止，current/versions为空，原件/草稿及已耗额度保留。"
     },
@@ -153,10 +153,10 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/I1-delivery.md"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I1-delivery.md"
       ],
       "limitation": "I2初版Excel与问题文件可独立使用，I3后续会话从文件修改；请求没有必要后台定稿。首轮S1语义失败保留，不算成功。"
     },
@@ -166,7 +166,7 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md"
+        "docs/archive/validation/I2-generate.md"
       ],
       "limitation": "I2旧项目缺历史的实际开场要求补件；新项目无历史的真实正例交付。draft/原型不能替代旧项目历史。"
     },
@@ -176,7 +176,7 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
+        "docs/archive/validation/I2-generate.md",
         "tests/test_project.py"
       ],
       "limitation": "I2真实两轮合批提问后基础仍不足，后续文件续接没有第三轮；只复核相关答复。"
@@ -187,9 +187,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json"
       ],
       "limitation": "I2仅draft/tech note不足退出；I4完整PRD/HLD配套BA草稿时保留两个Feature并主动补HLD义务。未从标题编造AC。"
     },
@@ -199,9 +199,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2具体历史实例逐Task判模式，新项目无历史可空as-is；I4增补/跨系统历史按适用范围判断。新项目主动提供历史的所有组合未逐例实跑。"
     },
@@ -211,8 +211,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_prototype_records.py",
         "tests/test_xlsx_inputs.py"
       ],
@@ -230,11 +230,11 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2输入问题只问事实/责任，复杂度未知直接M；I4原型生成与复杂历史基础问答保持此边界。Clarify的具体执行确认独立保留。"
     },
@@ -244,7 +244,7 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_inputs.py",
         "tests/test_prototype_records.py",
         "tests/test_xlsx_inputs.py"
@@ -267,7 +267,7 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
+        "docs/archive/validation/I2-generate.md",
         "tests/test_inputs.py"
       ],
       "limitation": "I2给出不支持的PDF HLD后实际要求可读材料；其他不支持格式有拒绝测试。PDF/DOCX/扫描件解析与OCR明确不支持，格式拒绝不等于解析成功。"
@@ -278,9 +278,9 @@
       "earliest_increment": "I1 工具 / I2 活动",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_project.py"
       ],
       "limitation": "I2实际两轮后文件续接仍退出；I4晚期撤回未新开问卷，已耗计数保持。未把用户有回复当作延长主动问答额度。"
@@ -291,8 +291,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json"
       ],
       "limitation": "I4实际模拟成功只更新本地页面，生成结果没有据此宣称后台可复用；静态源码、动态观察与实现事实分别记录。"
     },
@@ -302,8 +302,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_prototype_records.py"
       ],
       "limitation": "实际自主观察覆盖同名按钮的不同路由和输入后状态；未单列未预登记菜单不断出现的精确触发，不能从既定目标完成推断。",
@@ -324,9 +324,9 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_prototype_records.py"
       ],
       "limitation": "I4不可达分支和不可读资源保持静态/未读限制，复杂历史例只读源码且未伪造动态观察；完整包无法运行或JS/CSS加载失败未逐种宿主演练。",
@@ -343,7 +343,7 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
+        "docs/archive/validation/I2-generate.md",
         "tests/test_xlsx_inputs.py"
       ],
       "limitation": "I2稀疏历史的隐藏附注实际采用；XLSX合并区域/缓存/未读对象有精确读取测试。转置历史的所有排布未逐一语义验证。"
@@ -354,8 +354,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4实际将明确取消的A API排除为复用依据，增补只替换指定Story；保留其余历史，未增加逐条历史交付审计。"
     },
@@ -365,10 +365,10 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_contracts.py"
       ],
       "limitation": "I2/I4缺复杂度事实立即M+问题，合法未知与非法分类有反例；I4同步按实际S标准判断，未知的非分档记录量不强制M。已知X的专业处理未单独实演。"
@@ -379,9 +379,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2公共库只计一次、消费者接入保留，迁移内含核验；I4公共参数/PoC/部署责任按实际边界计量。全部公共测试组合未逐个实演。"
     },
@@ -391,7 +391,7 @@
       "earliest_increment": "I1 合同 / I2 语义",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_change_combinations.py"
       ],
       "limitation": "I4受控完整候选实测Story拆分/合并，未变AC/Task身份与内容、父归属及确切版本lineage均核对；这是文件级变体，非自主宿主拆合正确率。"
@@ -402,9 +402,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2按原始义务/来源而非固定措辞或Task数评估；I4一次自写review名称期待误判被识别为机械核验问题，未为迎合标签改专业值。"
     },
@@ -414,11 +414,11 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
         "tests/test_inputs.py",
         "tests/test_xlsx_inputs.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "固定长材料的后段义务已有实际核对；未观察到自然压缩，也没有超过上下文后摘要漏反例的完整实验。",
       "mechanism_refs": [
@@ -434,12 +434,12 @@
       "earliest_increment": "I2",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/performance.md",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I2三个串行片及长例覆盖有记录；大Feature拆片或强关联跨Feature如何选片未作为独立触发实演。",
       "mechanism_refs": [
@@ -455,11 +455,11 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
         "docs/design/detailed/D04A-single-session-panorama.md",
-        "docs/validation/I4.3-performance-observations.json",
-        "docs/validation/I4-delivery.md"
+        "docs/archive/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I4-delivery.md"
       ],
       "limitation": "保留七片原文件，只在评估侧合并草案删除网点Feature/Story/两个Task及两条关系；隔离专业检查据原文、骨架和片索引准确发现遗漏，提出有限恢复并保留六片/迁移M及问题。人为注入的只读负例，本次未重演各片机械检查或执行修复/导出，不代表自然遗漏率。"
     },
@@ -469,9 +469,9 @@
       "earliest_increment": "I2",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -493,9 +493,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json"
       ],
       "limitation": "I2 S1把通用标准补成AC的真实语义失败保留，原始输入定点修订后通过；I3受控误读AC再由实际Clarify按PRD修正，不把植入错误称自发错误。"
     },
@@ -505,10 +505,10 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2迁移记录量未知直接M+问题；I4原型和迁移延续该做法。I4独立同步的记录量并非该行分档维度，按已知标准S判断，不编数量也不泛化M规则。"
     },
@@ -518,8 +518,8 @@
       "earliest_increment": "I1 合同 / I2 语义",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_change_combinations.py"
       ],
       "limitation": "I2一个查询成果覆盖多条来源AC且同一AC可涉及页面/API；I4拆合文件变体保持全部AC/Task身份。属于所验成果边界，不保证任意多对多拆解。"
@@ -530,8 +530,8 @@
       "earliest_increment": "I1 合同 / I2 语义",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4原始意见明确购买离线AbortSignal PoC，实际单列Story/Task、S定档并交付；正常/取消后迟到、结论与限制均保留。其他专题设计变体未逐个实演。"
     },
@@ -541,9 +541,9 @@
       "earliest_increment": "I1 合同 / I2 语义",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2同订单对象的列表和详情作为不同查询事务交付；I4跨系统同名API不覆盖A历史。同名与同类型不能代替工作边界判断。"
     },
@@ -553,9 +553,9 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
         "tests/test_inputs.py",
         "tests/test_xlsx_inputs.py"
       ],
@@ -573,9 +573,9 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_inputs.py",
         "tests/test_xlsx_inputs.py"
       ],
@@ -597,9 +597,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json"
       ],
       "limitation": "I2无现成技术标题时主动形成公共技术层级；I4从HLD补BA草稿未列的两个独立查询API及运行部署说明。没有以技术标题存在代替实际义务。"
     },
@@ -609,9 +609,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2公共库一次建设、两个业务消费者接入与依赖完整；I4公共参数变动仅资料使用方适配，公告不重拆。"
     },
@@ -621,7 +621,7 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md"
+        "docs/archive/validation/I2-generate.md"
       ],
       "limitation": "I2局部NFR未默认扩成公共服务，历史已满足目标的无gap例零Task；技术层级为空本身不判遗漏。"
     },
@@ -631,9 +631,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2迁移/核验/发布和外部责任经原始材料定点复验；I4生产部署执行另列，生产资料迁移/演练/正式验收仍客户负责。"
     },
@@ -643,9 +643,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2交付AC按来源及答复保留未知；I4生产执行、PoC标准和责任按原意见形成。没有套通用性能阈值或补造验收条件。"
     },
@@ -655,8 +655,8 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4审批/审计UI线索未被解释为可用后台或目标方案，关键缺口合批提问并停止；仅静态读取，没有动态后端证明。"
     },
@@ -667,7 +667,7 @@
       "state": "conditional",
       "evidence_refs": [
         "docs/design/detailed/D09-validation-and-implementation.md",
-        "docs/design/implementation/P04-scope-and-performance.md"
+        "docs/archive/implementation/P04-scope-and-performance.md"
       ],
       "limitation": "首版产品在单一专业session串行执行，不启用subagent或并发委派；隔离/继承成本与并发写集合只留作另行条件实验，开发中的委派不是产品验证。"
     },
@@ -678,7 +678,7 @@
       "state": "conditional",
       "evidence_refs": [
         "docs/design/detailed/D09-validation-and-implementation.md",
-        "docs/design/implementation/P04-scope-and-performance.md"
+        "docs/archive/implementation/P04-scope-and-performance.md"
       ],
       "limitation": "首版产品在单一专业session串行执行，不启用subagent或并发委派；隔离/继承成本与并发写集合只留作另行条件实验，开发中的委派不是产品验证。"
     },
@@ -688,12 +688,12 @@
       "earliest_increment": "I2",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/performance.md",
         "tests/test_project.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I2文件续接和I4三片后基础撤回已有实际证据；固定长例未出现显式自然压缩记录，不能宣称多片自然压缩后的新旧事实整合已验证。",
       "mechanism_refs": [
@@ -713,7 +713,7 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
+        "docs/archive/validation/I2-generate.md",
         "tests/test_xlsx_inputs.py"
       ],
       "limitation": "I2隐藏历史附注已实际采用；公式缓存有无、隐藏/合并区域及嵌入对象未读面有物理测试，摘录绑定原件与读取身份。嵌入对象正文不解析。"
@@ -724,8 +724,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_prototype_records.py"
       ],
       "limitation": "I4同值设置后状态完全相同、取消勾选才增计数，另有同名异路由/模拟/不可达观察；附件变化被消费者拒绝。未强制逆序响应，清除再刷新不证明非空备注丢失。"
@@ -736,8 +736,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_xlsx_inputs.py",
         "tests/test_change_combinations.py"
       ],
@@ -749,9 +749,9 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_xlsx_inputs.py"
       ],
       "limitation": "I2缺历史实际补料、实例未知保留具体候选；I4审批/服务基础不足时不借新建或M继续。损坏历史后的专业完整退出仍未单列。"
@@ -762,9 +762,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2/I4区分本期公共建设与消费者工作，候选不充当已实现历史；I4公共参数修改后计划Task仍新建。新页面调用旧组件的所有组合未逐一实跑。"
     },
@@ -774,9 +774,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I2目标全部由as-is满足时空gap/零Task实际交付；I4增补只改查询Story、保留未提及的其他历史，没有按较新文件全量取代。"
     },
@@ -786,8 +786,8 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4真实区分A/B系统及R1/R2发布事件，历史同名不抵扣本期交付；迁移源目标全部排列未逐个演练。"
     },
@@ -797,8 +797,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4增补只替换指定Story、其余历史保留，较新跨系统同名材料未取代A，关键冲突进入有限问答退出。任意历史组合的正确率未证明。"
     },
@@ -808,7 +808,7 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
+        "docs/archive/validation/I2-generate.md",
         "tests/test_xlsx_inputs.py"
       ],
       "limitation": "I2稀疏历史缺AC/类型仍保留可识别层级、说明、隐藏附注及排除范围，没有重建完整历史规格或逐条交付核验。"
@@ -819,7 +819,7 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md"
+        "docs/archive/validation/I2-generate.md"
       ],
       "limitation": "I2相关API实例适用未知时保留具体复用候选，本期有据工作按新建且带问题；明确实例按实际变化判断，没有将无关API扩成问卷。"
     },
@@ -829,7 +829,7 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md"
+        "docs/archive/validation/I2-generate.md"
       ],
       "limitation": "I2出站事件实例未知保留具体候选并新建；明确发送/接收/触发契约的变体按适用性处理，不仅凭事件类型减工作。"
     },
@@ -839,8 +839,8 @@
       "earliest_increment": "I1 工具 / I2 活动",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_project.py",
         "tests/test_prototype_records.py"
       ],
@@ -862,11 +862,11 @@
       "earliest_increment": "I1 工具 / I2 活动",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
         "tests/test_inputs.py",
         "tests/test_xlsx_inputs.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "有限分页和重复游标无进展拒绝已测，I2串行片及固定长材料的有限集合完成有记录；不把两轮问答上限当首次完整读取页数上限。"
     },
@@ -876,9 +876,9 @@
       "earliest_increment": "I1 工具 / I2 活动",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_project.py"
       ],
       "limitation": "I2实际问题合批至两轮停止，I4多个原型主题复用观察、局部未知不逐Task追问；每主题乘额度及任意一问多目标组合不由单例全数证明。"
@@ -889,9 +889,9 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json"
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json"
       ],
       "limitation": "I3三个独立会话只获交付项目文件、插件及原始反馈，没有Generate聊天，均形成方案并经实际确认交付；I3.3再由新会话串行改备注。"
     },
@@ -901,7 +901,7 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_inputs.py",
         "tests/test_project.py",
         "tests/test_clarify.py"
@@ -924,8 +924,8 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json"
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json"
       ],
       "limitation": "I3.3在前次M问题已解决后接受自由备注意见，定位一条Story形成并确认应用；Task、问题、决定不变。"
     },
@@ -935,11 +935,11 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_inputs.py",
         "tests/test_clarify.py",
-        "docs/validation/I4-delivery.md"
+        "docs/archive/validation/I4-delivery.md"
       ],
       "limitation": "隔离专业检查从真实有效版文件识别“把查询任务改成S”的多个可能对象，列两页面/两API/公共库的现档和改法，并明确问实际选择；项目字节保持。仅到待答讨论，不冒称已形成正式计划或用户已经选定，后续确认/应用由I3证据覆盖。"
     },
@@ -949,7 +949,7 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_clarify.py"
       ],
       "limitation": "I3受控备注方案先经一次真实Office预览，再登记实际确认并复用同prepared应用，当前在确认前不变；不是多套业务方案均已自主比较。"
@@ -960,8 +960,8 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
         "tests/test_clarify.py"
       ],
       "limitation": "I3 M/S答复先进入实际专业方案，控制器读到展示方案后才确认；确认前原模型/问题不变，确认后才采用决定。"
@@ -972,8 +972,8 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_change_combinations.py"
       ],
       "limitation": "I4完整候选机械变体验证多目标问题只采用迁移M、未答发布说明仍open并修订问题；A/C实际选择保留B不采用。前者是受控部分答复，非独立宿主多目标问答实跑。"
@@ -984,9 +984,9 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify_lifecycle.py"
       ],
       "limitation": "I3真实方案等待时未应用；I4独立同步只到方案，未获执行确认且未改变current。已观察取消的真实prepared反例另证保护；未做把沉默当答复的定时机制。"
@@ -997,11 +997,11 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify.py"
       ],
       "limitation": "I3 M/S/AC及串行备注均在实际方案确认后交付；I4 A/C用原选择消息确认严格子集，没有重复索要同一确认。"
@@ -1012,7 +1012,7 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_clarify.py",
         "tests/test_clarify_lifecycle.py"
       ],
@@ -1024,7 +1024,7 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_clarify.py",
         "tests/test_clarify_lifecycle.py"
       ],
@@ -1036,9 +1036,9 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -1060,8 +1060,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_contracts.py",
         "tests/test_clarify.py"
       ],
@@ -1083,8 +1083,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -1096,8 +1096,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -1119,9 +1119,9 @@
       "earliest_increment": "I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json"
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json"
       ],
       "limitation": "I3首次采用M保持档位与未知条数，仅更新依据/决定/问题；I3.3备注修改保持全部Task、问题和决定。都在实际确认后同步交付，真正重复答复不建空版本。"
     },
@@ -1131,9 +1131,9 @@
       "earliest_increment": "I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json"
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json"
       ],
       "limitation": "I3实际新Excel、同版剩余问题和变化说明已交付，离线打开/查看后可接下一次Clarify；无再定稿或必需后台步骤。"
     },
@@ -1143,8 +1143,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -1162,8 +1162,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4公共库增加可选参数，仅资料消费者实际适配，公告默认映射及两个API保留；A/C子集真实交付，公共建设单计。独立同步补例仅到专业方案。"
     },
@@ -1173,8 +1173,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4实际方案区分迁移内含核验与独立每日核验，A/C子集交付新增生产执行且保留客户迁移/演练边界；B每日核验未采用、无Office交付。"
     },
@@ -1184,8 +1184,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_xlsx_inputs.py",
         "tests/test_change_combinations.py"
       ],
@@ -1207,9 +1207,9 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -1231,8 +1231,8 @@
       "earliest_increment": "I3；复杂组合 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
         "tests/test_clarify.py"
       ],
       "limitation": "I3首次采用M和M→S均实际确认交付，M保值仍有新决定并解决问题；重复已采用答复仅返回现版。条数未知保持，不冒充S数量标准已满足；L用户变体未另跑宿主。"
@@ -1243,9 +1243,9 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_workbook.py",
         "tests/test_contracts.py",
         "tests/test_change_combinations.py"
@@ -1268,8 +1268,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -1281,8 +1281,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_change_combinations.py"
       ],
       "limitation": "I4实际完整方案60项diff，经“采用A和C，B暂不采用”得到49项严格子集，check/一次Office/apply成功；B对象/问题未进入新版，原shown-plan按字节归档。非闭合/改值/改前提有反例。"
@@ -1293,8 +1293,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_contracts.py",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
@@ -1307,8 +1307,8 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -1320,11 +1320,11 @@
       "earliest_increment": "I3 基础 / I4 复杂修改",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I3 M/S/AC与后续备注改稿均保持实施方式；I4公共能力及生产责任修改后尚未实施的计划Task仍新建，不因Clarify改稿变成调整或历史as-is。"
     },
@@ -1334,10 +1334,10 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_contracts.py"
       ],
       "limitation": "I2实例未明的新建+问题、合法未知字段及基础不足退出均有实际例；I4审批基础缺失不借默认值继续。非空字段不等于问题已解决。"
@@ -1348,9 +1348,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4PRD/HLD目标冲突且用户无法决定时实际停止，未选主方案或条件估算；后期局部多套既有方案未逐种实演。"
     },
@@ -1360,13 +1360,13 @@
       "earliest_increment": "I1",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_workbook.py",
         "tests/test_contracts.py",
-        "docs/validation/I6-inline-acceptance.md",
+        "docs/archive/validation/I6-inline-acceptance.md",
         "tests/test_workbook_inline.py",
         "tests/test_template_pending.py"
       ],
@@ -1378,8 +1378,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_office.py",
         "tests/test_workbook.py"
       ],
@@ -1401,8 +1401,8 @@
       "earliest_increment": "I1",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_workbook_sources.py",
         "tests/test_office.py",
         "tests/test_workbook.py"
@@ -1415,14 +1415,14 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_workbook.py",
         "tests/test_workbook_sources.py",
-        "docs/validation/I6-self-contained.md",
+        "docs/archive/validation/I6-self-contained.md",
         "tests/test_workbook_self_contained.py",
-        "docs/validation/I6-inline-acceptance.md",
+        "docs/archive/validation/I6-inline-acceptance.md",
         "tests/test_workbook_inline.py",
         "tests/test_template_pending.py"
       ],
@@ -1440,18 +1440,18 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_workbook.py",
-        "docs/validation/I6-self-contained.md",
+        "docs/archive/validation/I6-self-contained.md",
         "tests/test_workbook_self_contained.py",
-        "docs/validation/I6-inline-acceptance.md",
+        "docs/archive/validation/I6-inline-acceptance.md",
         "tests/test_workbook_inline.py",
         "tests/test_template_pending.py",
-        "docs/validation/I6-task-note-reasons.md",
+        "docs/archive/validation/I6-task-note-reasons.md",
         "tests/test_task_note_reasons.py"
       ],
       "limitation": "I6.2 open问题及当前处理直接填目标行备注，校验公式显示待确认；已关闭问题仅保留项目历史。未拆明父项在原表范围行展示，不伪造Story。Excel独立阅读不等于单文件可回导clarify。 I6.3 从分类依据投影非新建/非M原因，只有原因不标待确认；真实Office验证同备注共存及状态，专业原因本身未新增语义评测。",
@@ -1472,7 +1472,7 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
         "tests/test_workbook.py"
       ],
       "limitation": "以公式前缀开头的普通文本按字符串写入并经真实Office保存，保留原文；没有把文本转成可执行公式。",
@@ -1489,9 +1489,9 @@
       "earliest_increment": "I2；原型 I4",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_prototype_records.py",
         "tests/test_xlsx_inputs.py"
       ],
@@ -1513,9 +1513,9 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_contracts.py",
         "tests/test_workbook.py"
       ],
@@ -1537,7 +1537,7 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
         "tests/test_workbook.py",
         "tests/test_template_uat.py"
       ],
@@ -1555,7 +1555,7 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
         "tests/test_workbook.py"
       ],
       "limitation": "合法空人天及SUM仍有值的模板结果按原样保存，已有输入和问题分别核对；未添加缺值公式保护或部分金额汇总。",
@@ -1576,8 +1576,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_contracts.py",
         "tests/test_workbook.py"
       ],
@@ -1599,7 +1599,7 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
         "tests/test_contracts.py",
         "tests/test_workbook.py"
       ],
@@ -1621,10 +1621,10 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_workbook.py"
       ],
       "limitation": "Story公式列及Table扩行原型保护已有测试，I4实际查看AC/备注后的SIT/UAT；没有手填Story UAT。",
@@ -1641,8 +1641,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py",
         "tests/test_workbook.py"
@@ -1669,8 +1669,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
         "tests/test_workbook.py"
       ],
       "limitation": "大小写/Unicode/通配符/长名与新增同名别名分配已有受控反例及原生样本；没有为criteria名称修改模板公式。",
@@ -1687,8 +1687,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
         "tests/test_workbook.py"
       ],
       "limitation": "0/1/容量边界及61 Story/201 Task真实包保留Table、公式原型、样式和保护，原生打开已记录；空公式行不是业务工作。",
@@ -1709,9 +1709,9 @@
       "earliest_increment": "I1",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_template_uat.py",
         "tests/test_workbook.py"
       ],
@@ -1723,9 +1723,9 @@
       "earliest_increment": "I1",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
         "tests/test_workbook.py"
       ],
       "limitation": "I2新建且有具体历史候选的问题仍open并进入同版备注/说明；I3首次M采用与重复答复证明非空字段不自动关闭问题。"
@@ -1736,8 +1736,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
         "tests/test_workbook.py"
       ],
       "limitation": "近同名/长名/后续新增同名的稳定别名、父键和原文出口有测试；不是对任意名称的原生布局保证。",
@@ -1754,8 +1754,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
         "tests/test_workbook.py",
         "tests/test_template_uat.py"
       ],
@@ -1773,9 +1773,9 @@
       "earliest_increment": "I1",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_workbook.py"
       ],
       "limitation": "I2充分依据的无gap/零Task和局部未知分别实际交付；I4基础撤回则停在草案，不把空版本或0金额当成功。预留行不计工作有测试。"
@@ -1786,9 +1786,9 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_workbook.py",
         "tests/test_workbook_sources.py",
         "tests/test_clarify.py"
@@ -1807,11 +1807,11 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_template_uat.py"
       ],
       "limitation": "原Q=SIT/R=UAT及Story F/G在原生Excel实看，模板原字节未变；无三态/缺值保护/公式转换。",
@@ -1828,8 +1828,8 @@
       "earliest_increment": "I1",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_contracts.py",
         "tests/test_workbook.py",
         "tests/test_clarify.py",
@@ -1843,8 +1843,8 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_contracts.py",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
@@ -1857,9 +1857,9 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_project.py",
         "tests/test_change_combinations.py"
       ],
@@ -1871,8 +1871,8 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_project.py",
         "tests/test_clarify_lifecycle.py"
       ],
@@ -1894,8 +1894,8 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_delivery.py",
         "tests/test_clarify_lifecycle.py"
       ],
@@ -1907,8 +1907,8 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
         "tests/test_clarify_lifecycle.py"
       ],
       "limitation": "I3真实Clarify提交完成但响应前kill，recover返回已应用且原意图重试不再重算/应用；实际重复M答复也未生成空版本。"
@@ -1919,7 +1919,7 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_project.py",
         "tests/test_clarify.py",
         "tests/test_clarify_lifecycle.py"
@@ -1932,7 +1932,7 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_clarify_lifecycle.py",
         "tests/test_telemetry.py"
       ],
@@ -1954,8 +1954,8 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify_lifecycle.py",
         "tests/test_delivery.py",
         "tests/test_prototype_records.py",
@@ -1969,8 +1969,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4实际静态识别原型中的生产POST且未启动或调用；受控资料没有真实可写后台，只证明该输入下的授权判断，非实际生产防护测试。"
     },
@@ -1980,8 +1980,8 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json"
       ],
       "limitation": "I4材料夹带导出全文及假批准语句未被作为操作授权，哨兵文件未产生；单组合输入反例不代表普遍注入防御正确率。"
     },
@@ -1991,12 +1991,12 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/performance.md",
         "tests/test_project.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I2按文件续接失败/问答状态，I4从三片草稿接续撤回用途并保留旧片；任意半片后恢复生成并完成全案、自然压缩仍未直接演练。",
       "mechanism_refs": [
@@ -2020,9 +2020,9 @@
       "earliest_increment": "I1",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_delivery.py",
         "tests/test_smoke_audit.py",
         "tests/test_bootstrap.py",
@@ -2037,7 +2037,7 @@
       "state": "conditional",
       "evidence_refs": [
         "docs/design/detailed/D09-validation-and-implementation.md",
-        "docs/design/implementation/P04-scope-and-performance.md"
+        "docs/archive/implementation/P04-scope-and-performance.md"
       ],
       "limitation": "首版产品不启用worker/并发委派；旧尝试晚到、提供方变化和并行写集只保留条件实验。开发子agent及普通串行BASE_STALE反例不能代替此产品实验。"
     },
@@ -2047,10 +2047,10 @@
       "earliest_increment": "I2；原型 I4",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_contracts.py",
         "tests/test_change_combinations.py"
       ],
@@ -2062,9 +2062,9 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_project.py",
         "tests/test_change_combinations.py",
         "tests/test_clarify_lifecycle.py"
@@ -2077,9 +2077,9 @@
       "earliest_increment": "I1 工具 / I2 活动",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_change_combinations.py"
       ],
       "limitation": "I2同根因/额度耗尽后停止，I4候选一次、请求两批和根因一次分别测试；实际A/C方案耗两次机械返修仍保持专业revision=1，没有重开请求。"
@@ -2090,9 +2090,9 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_inputs.py",
         "tests/test_project.py"
       ],
@@ -2104,8 +2104,8 @@
       "earliest_increment": "I1；确认应用 I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_project.py",
         "tests/test_clarify_lifecycle.py"
       ],
@@ -2117,10 +2117,10 @@
       "earliest_increment": "I1 事件 / I2 宿主",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py"
       ],
@@ -2132,9 +2132,9 @@
       "earliest_increment": "I1 事件 / I2 宿主",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py"
       ],
@@ -2146,9 +2146,9 @@
       "earliest_increment": "I1 事件 / I2 宿主",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py"
       ],
@@ -2160,9 +2160,9 @@
       "earliest_increment": "I1 事件 / I2 宿主",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_telemetry.py"
       ],
       "limitation": "父子/并行时长重叠的合成测试已运行；长例/配对CLOCK_UNALIGNED仍保留，不把不同进程时钟拼成纯处理时长。",
@@ -2179,10 +2179,10 @@
       "earliest_increment": "I1 事件 / I2 宿主",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I3实际Generate→离线Excel查看→新会话Clarify分别记录；长例协调轮次/等待亦单列。离线查看由评估者执行，未等待真实客户数日，不能外推客户行为。"
     },
@@ -2192,11 +2192,11 @@
       "earliest_increment": "I1 事件 / I2 宿主",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I3与I4分别给出方案阶段、可观察用户等待和确认到新文件；配对两侧方案/确认都真实交付，等待差异不用于判断速度。I3.3旧request_wall=null保留，不回填未记录讨论/放弃区间。"
     },
@@ -2206,9 +2206,9 @@
       "earliest_increment": "I2 基线 / I4 固定长例与对照",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
-        "docs/validation/I2-generate.md"
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I2-generate.md"
       ],
       "limitation": "已补53619字节固定长材料，后段网点三分支逐项核对；同基线M采用配对减少不必要标准/原件回读，必要完整检查保留。没有发生显式自然压缩，首次规则读取并未被本次优化消除。"
     },
@@ -2218,8 +2218,8 @@
       "earliest_increment": "I2 基线 / I4 固定长例与对照",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "实际配对先核对同质量义务及全部旧版、新版候选字节，再比较完整方案/确认用量；两侧各一次Office。单次探索性配对缓存/调度不可控，不宣称因果节省百分比或SLA。"
     },
@@ -2229,12 +2229,12 @@
       "earliest_increment": "I1 事件 / I2 宿主",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/performance.md",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "shared/unassigned合成算例及实际原生归属缺口保留，一条response可能跨多个活动；没有按片数分摊token或把父级累计再加一次，精确逐片用量仍未知。"
     },
@@ -2244,9 +2244,9 @@
       "earliest_increment": "I2 基线 / I4 固定长例与对照",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I2三类义务与首次语义失败保留，I4长例公共库/四消费者/迁移发布及一AC改稿逐项核对；旧ai-sow缺同粒度历史账，没有Lite对旧版的速度比较或节省声明。"
     },
@@ -2257,9 +2257,9 @@
       "state": "conditional",
       "evidence_refs": [
         "docs/design/detailed/D09-validation-and-implementation.md",
-        "docs/design/implementation/P04-scope-and-performance.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/implementation/P04-scope-and-performance.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "首版产品单session串行，未启动分session/子上下文/并发产品性能实验；当前配对是两个独立串行请求比较指引，不证明委派或并发更省时/token。"
     },
@@ -2269,9 +2269,9 @@
       "earliest_increment": "I2 基线 / I4 固定长例与对照",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "已补小型842字节空gap/24响应/418.938秒、典型和53619字节长例，以及局部Clarify配对。累计输入、缓存明细、CLI信封、最终文件大小分开；无峰值上下文或全部中间写入量。长例无显式compaction，不把落盘当清空历史。"
     },
@@ -2281,11 +2281,11 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I4实际原型首批加一次追加及复杂修改两批返修均保留；长例Generate 40次CLI、Clarify 22次，配对完整24/17次，响应/字节/时间另列。有限批数不是硬性时间或token上限，协调和失败成本不删除。"
     },
@@ -2295,9 +2295,9 @@
       "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py"
       ],
@@ -2309,12 +2309,12 @@
       "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/performance.md",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py",
         "tests/test_clarify_lifecycle.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "缺end/跨时钟/负区间等合成反例、collector真实SIGINT及Clarify实际提交前后kill已有证据；宿主重启/墙钟实际跳变和模型中断未逐种实演。",
       "mechanism_refs": [
@@ -2334,8 +2334,8 @@
       "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py"
       ],
@@ -2347,9 +2347,9 @@
       "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_clarify_lifecycle.py",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py"
@@ -2362,9 +2362,9 @@
       "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/host-support.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/host-support.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_host_usage.py",
         "tests/test_bootstrap.py"
       ],
@@ -2376,10 +2376,10 @@
       "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py",
         "tests/test_skill_contracts.py"
@@ -2392,8 +2392,8 @@
       "earliest_increment": "I1",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_workbook.py",
         "tests/test_change_combinations.py"
       ],
@@ -2415,9 +2415,9 @@
       "earliest_increment": "I3",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -2439,9 +2439,9 @@
       "earliest_increment": "I3",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
       ],
@@ -2467,8 +2467,8 @@
       "earliest_increment": "I3",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_clarify.py",
         "tests/test_clarify_lifecycle.py",
         "tests/test_change_combinations.py"
@@ -2491,9 +2491,9 @@
       "earliest_increment": "I3",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json",
         "tests/test_clarify_lifecycle.py"
       ],
       "limitation": "I3真实Clarify提交后响应前kill，recover并原调用重试返回同版；实际M重复答复无render/apply、新备注意见另开具体方案交付。故障切点与两次语义会话分开记录。"
@@ -2504,12 +2504,12 @@
       "earliest_increment": "I3",
       "state": "covered_by_mechanism",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/performance.md",
         "tests/test_clarify_lifecycle.py",
         "tests/test_host_usage.py",
         "tests/test_telemetry.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I3实际Office期间取消及提交切点、原生collectorSIGINT、迟到/重复usage分别有证据；产品worker未启用，未声称完整宿主模型取消+worker迟到整组实验。",
       "mechanism_refs": [
@@ -2533,9 +2533,9 @@
       "earliest_increment": "I2",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "I2三类义务及S1/S2原始输入复验保留；I4长例四业务域、公共库一次/四接入、迁移和发布以及未知M问题实际交付。局部Clarify只改一AC，旧义务/问题/版本字节保持。"
     }
@@ -2545,9 +2545,9 @@
       "id": "M01-contract",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_contracts.py",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py"
@@ -2558,9 +2558,9 @@
       "id": "M02-input",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_inputs.py",
         "tests/test_xlsx_inputs.py"
       ],
@@ -2570,9 +2570,9 @@
       "id": "M03-xlsx",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_xlsx_inputs.py",
         "tests/test_prototype_records.py"
       ],
@@ -2582,10 +2582,10 @@
       "id": "M04-storage",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_project.py",
         "tests/test_clarify_lifecycle.py",
         "tests/test_change_combinations.py"
@@ -2596,11 +2596,11 @@
       "id": "M05-bounded-loops",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_project.py",
         "tests/test_change_combinations.py"
       ],
@@ -2610,10 +2610,10 @@
       "id": "M06-projection",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_workbook.py",
         "tests/test_workbook_sources.py"
       ],
@@ -2623,10 +2623,10 @@
       "id": "M07-office",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_office.py",
         "tests/test_clarify_lifecycle.py"
       ],
@@ -2636,9 +2636,9 @@
       "id": "M08-prepared",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_workbook.py",
         "tests/test_clarify.py",
         "tests/test_workbook_sources.py"
@@ -2649,10 +2649,10 @@
       "id": "M09-copy",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_delivery.py",
         "tests/test_smoke_audit.py",
         "tests/test_clarify_lifecycle.py",
@@ -2664,10 +2664,10 @@
       "id": "M10-telemetry",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json",
         "tests/test_telemetry.py"
       ],
       "limitation": "合成去重/修订/epoch/范围重叠/时钟/缺end/迟到算例及真实工具记录、观察收尾失败降级已验。合成调用身份不提升宿主能力；已知累计、区间、等待和未知项分别报告。"
@@ -2676,11 +2676,11 @@
       "id": "M11-native",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/I3-clarify.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/I3-clarify.md",
         "tests/test_host_usage.py",
-        "docs/validation/performance.md",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/performance.md",
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "版本绑定的真实响应和有界游标/重放已验。单帧上限512 KiB已用边界反例及实际长源通过，8 MiB总读量和10,000行限制仍在；此前256 KiB截断缺口保留。G12精确活动token、纯模型时间、物理调用数、峰值上下文和自动宿主来源发现仍未证明，scope/epoch不猜填。"
     },
@@ -2688,8 +2688,8 @@
       "id": "M12-bootstrap",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I2-generate.md",
-        "docs/validation/host-support.md",
+        "docs/archive/validation/I2-generate.md",
+        "docs/archive/validation/host-support.md",
         "tests/test_bootstrap.py"
       ],
       "limitation": "独立副本解释器、双副本/外来venv和链接写根反例有执行证据。PowerShell分支未实跑；manifest发现、开发副本执行、安装验收分别判断，不据包存在承诺跨宿主支持。"
@@ -2698,12 +2698,12 @@
       "id": "M13-marks",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/performance.md",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/performance.md",
         "tests/test_skill_contracts.py",
         "tests/test_telemetry.py",
-        "docs/validation/I4.3-performance-observations.json"
+        "docs/archive/validation/I4.3-performance-observations.json"
       ],
       "limitation": "request根标记统一后两名实际配对执行者都产生非空request_wall_ns；大活动、反馈/文件里程碑及等待有实际记录。I3.3旧标记不配对的null与LIFECYCLE_INCOMPLETE原样保留；UTC观察区间不是纯模型时间，也不保证未来每请求完整。"
     },
@@ -2711,9 +2711,9 @@
       "id": "M14-template",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I1-reliable-delivery.md",
-        "docs/validation/I1-delivery.md",
-        "docs/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I1-reliable-delivery.md",
+        "docs/archive/validation/I1-delivery.md",
+        "docs/archive/validation/I4-inputs-and-changes.md",
         "tests/test_template_uat.py",
         "tests/test_workbook.py"
       ],
@@ -2723,8 +2723,8 @@
       "id": "M15-prototype",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.1-input-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.1-input-observations.json",
         "tests/test_prototype_records.py",
         "tests/test_prototype_boundary.py",
         "tests/test_workbook_sources.py"
@@ -2735,16 +2735,16 @@
       "id": "M16-finite-changes",
       "state": "verified",
       "evidence_refs": [
-        "docs/validation/I3-clarify.md",
-        "docs/validation/I3.2-feedback-observations.json",
-        "docs/validation/I3.3-serial-observations.json",
-        "docs/validation/I4-inputs-and-changes.md",
-        "docs/validation/I4.2-change-observations.json",
+        "docs/archive/validation/I3-clarify.md",
+        "docs/archive/validation/I3.2-feedback-observations.json",
+        "docs/archive/validation/I3.3-serial-observations.json",
+        "docs/archive/validation/I4-inputs-and-changes.md",
+        "docs/archive/validation/I4.2-change-observations.json",
         "tests/test_clarify.py",
         "tests/test_change_combinations.py",
         "tests/test_clarify_lifecycle.py",
         "tests/test_clarify_observations.py",
-        "docs/validation/I4-delivery.md"
+        "docs/archive/validation/I4-delivery.md"
       ],
       "limitation": "有限编辑派生精确diff，确认绑定具体值/前提/读集合；I3真实局部交付及I4公共能力A/C严格子集已有完整交付，拆合/问题revision/零匹配新历史失效有机械变体。专业依赖闭合仍由Agent判断；B周期核验与独立同步仅到方案，AN13自然Generate后片补骨架全链未跑。 最终审查补真实登记的新原型观察→Clarify check正例及登记/附件损坏反例；此定点检查不冒称新的原型Clarify Excel全链演练。"
     }

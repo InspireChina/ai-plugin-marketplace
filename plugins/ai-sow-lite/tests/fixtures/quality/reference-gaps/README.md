@@ -1,10 +1,10 @@
 # I10 隐式规范引用的历史验证
 
-本页保留 I10 当时的期待，已不作为现行验收标准。用户在 [I11](../../../../docs/validation/I11-estimation-relevance.md) 明确只记录影响工作量评估的待确认；当前用例见 [估算相关性案例](estimation-cases.md)。不得按本页要求继续补齐不影响估算的规则明细。
+本页保留 I10 当时的期待，已不作为现行验收标准。用户在 [I11](../../../../docs/archive/validation/I11-estimation-relevance.md) 明确只记录影响工作量评估的待确认；当前用例见 [估算相关性案例](estimation-cases.md)。不得按本页要求继续补齐不影响估算的规则明细。
 
-执行前冻结。RED 使用 [I9](../../../../docs/validation/I9-release-smoke.md) 实际首次生成的 I9-F01，不重跑已知失败。被测 Agent 只得到实际材料和按时提供的答复，不得到本文件或预期结果。
+执行前冻结。RED 使用 [I9](../../../../docs/archive/validation/I9-release-smoke.md) 实际首次生成的 I9-F01，不重跑已知失败。被测 Agent 只得到实际材料和按时提供的答复，不得到本文件或预期结果。
 
-首次 I10 执行在 Clarify 开始前更正了“补发布规范即整行通过”的预期，保留原版与修正记录；以全部实际未决目标推导行状态。详情见 [验证边界](../../../../docs/validation/I10-reference-gaps-and-skills.md#clarify-验证边界)。
+首次 I10 执行在 Clarify 开始前更正了“补发布规范即整行通过”的预期，保留原版与修正记录；以全部实际未决目标推导行状态。详情见 [验证边界](../../../../docs/archive/validation/I10-reference-gaps-and-skills.md#clarify-验证边界)。
 
 ## Generate
 

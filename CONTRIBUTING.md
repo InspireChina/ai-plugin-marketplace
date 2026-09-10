@@ -25,7 +25,7 @@ uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml
 uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
 ```
 
-修改Lite时，还需运行其完整检查（包含真实Office独立副本消费者）：
+修改 Lite 时，还需运行其完整检查（包含真实 Office 独立副本消费者）；文档归属与维护入口见 [Lite 开发维护](plugins/ai-sow-lite/docs/development.md)：
 
 ```text
 uv sync --project plugins/ai-sow-lite --locked

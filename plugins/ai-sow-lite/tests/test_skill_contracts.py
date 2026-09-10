@@ -95,7 +95,7 @@ def test_runtime_instructions_route_to_their_own_executable_files():
 def test_readme_links_to_actual_validation_record():
     text = required_text(PLUGIN / "README.md")
     links = re.findall(r"\[[^\]]+\]\(([^)]+)\)", text)
-    assert "docs/validation/I2-generate.md" in links
+    assert "docs/validation/README.md" in links
 
 
 @pytest.mark.parametrize("file_format", ["text", "xlsx"])

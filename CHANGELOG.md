@@ -4,9 +4,10 @@
 
 ## AI SOW Lite 0.1.0-alpha.1 - 未发布
 
-- 新增独立的`ai-sow-lite`预发布插件及双marketplace条目，提供generate/clarify两入口，运行时、锁定依赖、模板、许可和验证记录随包。
-- 原始文本/XLSX及可选原型由Agent分析，程序完成来源/版本校验、模板投影与真实Office交付；修改绑定具体方案和实际确认，按有限范围应用。
-- 本次仅准备交付包，没有安装或公开发布；性能与平台限制见[Lite交付记录](plugins/ai-sow-lite/docs/validation/I4-delivery.md)。旧AI SOW条目与版本保持。
+- 新增独立 Lite 插件：从 PRD/HLD、往期 SOW 和可选原型生成四表 SOW Excel，通过 clarify 讨论并应用有限修改。
+- 覆盖业务、技术及交付范围；简明 AC 与影响估算的待确认直接写入对应行，计算使用模板。
+- 已完成本地 Codex 安装、生成与改稿验证；首版仍未公开发布，支持范围以 macOS 本地目录及可用 LibreOffice 为基础。
+- [Lite 版本说明](plugins/ai-sow-lite/CHANGELOG.md)汇总能力，[支持说明](plugins/ai-sow-lite/docs/support.md)记录限制；阶段记录归档，发布入口不再混入开发日记。
 
 ## 0.1.0-beta.1 - 未发布
 

@@ -11,7 +11,7 @@
 | [AI SOW Lite](plugins/ai-sow-lite/README.md) | 0.1.0-alpha.1（预发布） | 从 PRD、HLD 与往期 SOW 生成本期首版 Excel、摘要和待确认事项，再按确认意见作有限修改。 |
 
 Lite 提供 `generate`、`clarify` 两个入口，使用独立的 `.ai-sow-lite/` 项目数据，
-不需要安装 AI SOW。当前目录项用于预发布包准备，不代表安装验收或公开发布已经完成。
+不需要安装 AI SOW。当前为首个试用版的发布准备，尚未公开发布；安装与使用见 [Lite README](plugins/ai-sow-lite/README.md)。
 
 ## 支持平台
 
@@ -19,12 +19,10 @@ AI SOW 的既有支持范围为 macOS、Linux 和 Windows 11 x64。三个平台�
 只有 `setup` 的环境自举脚本按平台区分（macOS/Linux 用 `bootstrap.sh`，Windows 用
 `bootstrap.ps1`）。Windows 上项目路径需短于 97 个字符，或已启用长路径支持。
 
-AI SOW Lite 的证据范围包括 macOS 普通本地目录的交付与恢复，以及 Codex 桌面随附
-CLI 0.153.4 经本地 marketplace 安装后的入口发现、generate 与 clarify 执行。
-安装证据见[联合验证](plugins/ai-sow-lite/docs/validation/I9-release-smoke.md)，当前待确认按[估算相关性](plugins/ai-sow-lite/docs/validation/I11-estimation-relevance.md)取舍，尚未发布。Windows、Linux、同步盘和网络盘没有对应
-实跑保证；Claude Code 有 manifest 校验和入口发现证据，业务执行因认证失败未完成。
-详见 [Lite 交付验证](plugins/ai-sow-lite/docs/validation/I1-delivery.md) 和
-[宿主支持记录](plugins/ai-sow-lite/docs/validation/host-support.md)。
+AI SOW Lite 已验证 macOS 普通本地目录中的 Codex 安装、生成与改稿流程，Excel 导出需要
+已安装的 LibreOffice。Claude Code 的完整业务执行、Windows/Linux、同步盘和网络盘暂未验证。
+完整边界见 [Lite 支持与限制](plugins/ai-sow-lite/docs/support.md)，证据见
+[验证摘要](plugins/ai-sow-lite/docs/validation/README.md)。
 
 ## 安装
 
@@ -68,28 +66,24 @@ git clone https://github.com/InspireChina/ai-plugin-marketplace.git
 
 AI SOW 安装后八个 Skill 以 `ai-sow:<skill>` 命名空间出现，可直接用自然语言调用，无需记忆命令名。
 
-### AI SOW Lite 预发布入口
+### AI SOW Lite 试用入口
 
-使用包含 Lite 条目的本地 checkout 注册 marketplace 后，可按需选择 Lite；远端安装是否
-可用取决于所选 marketplace 快照是否已经包含该条目。以下命令供后续安装验收使用：
+Lite 当前尚未公开发布。从包含该条目的本地 checkout 注册 marketplace 后，可选择安装：
 
 ```text
 codex plugin marketplace add /absolute/path/to/ai-plugin-marketplace
 codex plugin add ai-sow-lite@ai-plugin-marketplace
 ```
 
-Claude Code 的对应目录入口为：
+Claude Code 的目录中也有同名条目，但完整业务执行暂未验证：
 
 ```text
 /plugin marketplace add /absolute/path/to/ai-plugin-marketplace
 /plugin install ai-sow-lite@ai-plugin-marketplace
 ```
 
-Lite 首次从已加载的 `generate` 或 `clarify` Skill 定位本插件，调用包内 bootstrap 准备
-隔离 uv/Python/锁定依赖；没有 `setup` 入口。当前输入支持 UTF-8 Markdown、文本和 XLSX，
-不支持 PDF/DOCX/OCR。Excel 交付需要可用的外部 LibreOffice；缺少引擎时保留候选并返回
-诊断。详细使用和限制见 [Lite README](plugins/ai-sow-lite/README.md)，两宿主目录共存
-不等于两宿主业务执行均已验证。
+Lite 没有 setup 入口，首次 generate/clarify 自动准备插件内隔离依赖。输入要求、Excel 阅读和
+局部修改见 [Lite 使用说明](plugins/ai-sow-lite/README.md)。
 
 ## 更新
 
@@ -170,7 +164,7 @@ uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml
 上面的 pytest 命令针对 AI SOW。仅检查两个插件的 root 目录与发布元数据时，可运行
 `python -m unittest discover -s tests -p 'test_repository*.py' -v` 和
 `python scripts/validate_repository.py`；Lite 的独立开发验证命令见
-[Lite README](plugins/ai-sow-lite/README.md)。root 检查不替代各插件的业务、Office 或安装验收。
+[Lite 开发维护](plugins/ai-sow-lite/docs/development.md)。root 检查不替代各插件的业务、Office 或安装验收。
 
 ## 添加其他插件
 

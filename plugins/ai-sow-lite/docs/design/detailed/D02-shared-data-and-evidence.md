@@ -2,9 +2,9 @@
 
 [详细设计目录](README.md) · [共享文件概要](../09-shared-files.md) · [EX01](examples/EX01-generate-clarify.md)
 
-状态：R1 最小合同设计稿，已随 R2 的 D03 补充多用途区域、来源定位、观察和输入问题移交边界。已覆盖初版生成和一次补值修改；格式适配、复杂拆合和 Excel 映射仍需实际验证。下列字段已由 I1.1 实现首批 Schema 和单文件来源/候选校验；稳定保存、格式读取及修改仍待后续增量。实际范围见 [I1 验证](../../validation/I1-reliable-delivery.md)，不据此承诺完整运行时或兼容范围。
+状态：R1 最小合同设计稿，已随 R2 的 D03 补充多用途区域、来源定位、观察和输入问题移交边界。已覆盖初版生成和一次补值修改；格式适配、复杂拆合和 Excel 映射仍需实际验证。下列字段已由 I1.1 实现首批 Schema 和单文件来源/候选校验；稳定保存、格式读取及修改仍待后续增量。实际范围见 [I1 验证](../../archive/validation/I1-reliable-delivery.md)，不据此承诺完整运行时或兼容范围。
 
-具体 Schema/协议版本、resolution 编码、摘要与跨任务接口由 [P00](../implementation/P00-contracts-and-fixtures.md) 和 [I1.1](../implementation/P01-reliable-delivery.md#i11--最小环境合同与可执行夹具) 落实；本文件保持业务语义权威，新增修改分支由 P03 验证。
+具体 Schema/协议版本、resolution 编码、摘要与跨任务接口由 [P00](../../archive/implementation/P00-contracts-and-fixtures.md) 和 [I1.1](../../archive/implementation/P01-reliable-delivery.md#i11--最小环境合同与可执行夹具) 落实；本文件保持业务语义权威，新增修改分支由 P03 验证。
 
 ## 1. 数据边界与消费者
 

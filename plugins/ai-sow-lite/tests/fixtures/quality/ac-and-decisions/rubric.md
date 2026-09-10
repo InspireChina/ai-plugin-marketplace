@@ -1,13 +1,13 @@
 # I7.1 独立语义评审 rubric
 
-**历史评测口径。** 用户在I7完成后重新明确了简明SOW验收定义，当前写法以 [generate-slices](../../../../references/generate-slices.md#目标与验收属于谁) 为准。本文件保留以解释旧评审，不再要求新AC逐项展开其中的字段、状态码、参数及前态矩阵；旧结果不回写为新口径已通过。范围及表达对照见 [I8](../../../../docs/validation/I8-sow-acceptance.md)。
+**历史评测口径。** 用户在I7完成后重新明确了简明SOW验收定义，当前写法以 [generate-slices](../../../../references/generate-slices.md#目标与验收属于谁) 为准。本文件保留以解释旧评审，不再要求新AC逐项展开其中的字段、状态码、参数及前态矩阵；旧结果不回写为新口径已通过。范围及表达对照见 [I8](../../../../docs/archive/validation/I8-sow-acceptance.md)。
 
 仅供开发评审者与测试控制器。执行者不读取本文件、旧 RED 评审或冻结 oracle；
 只接收选定原始资料、实际反馈及产品专业指引。本 rubric 不提供标准 Story、
 目标 AC 文案、固定拆分、标准 Task 清单或预先改好的模型。
 
-权威依据为[修复方案](../../../../docs/design/14-e2e-remediation-and-optimization.md)
-第 2、3、5 节及[P05 I7.1](../../../../docs/design/implementation/P05-quality-and-performance.md)。
+权威依据为[修复方案](../../../../docs/archive/planning/14-e2e-remediation-and-optimization.md)
+第 2、3、5 节及[P05 I7.1](../../../../docs/archive/implementation/P05-quality-and-performance.md)。
 [案例输入](cases.md)与本文件分离。冻结材料与 oracle 只读，新增结论不能回填旧结果。
 
 ## 评审单位与判定

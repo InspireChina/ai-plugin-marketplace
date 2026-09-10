@@ -2,7 +2,7 @@
 
 [返回总览](README.md)
 
-详细活动合同见 [D06](detailed/D06-excel-projection-and-delivery.md)，字段走读见 [EX04](detailed/examples/EX04-excel-projection.md)。当前只输出原四表：D 保留完整 AC，open 问题与 current_handling 写入实际目标行备注，校验列优先显示待确认；无必要说明时备注留空，历史问题仅项目归档。长文留原列，物理限额按 D06 定向诊断。 [I6.1](../validation/I6-self-contained.md) 是旧 v5 说明表方案的实测记录，不证明本次变更。
+详细活动合同见 [D06](detailed/D06-excel-projection-and-delivery.md)，字段走读见 [EX04](detailed/examples/EX04-excel-projection.md)。当前只输出原四表：D 保留完整 AC，open 问题与 current_handling 写入实际目标行备注，校验列优先显示待确认；无必要说明时备注留空，历史问题仅项目归档。长文留原列，物理限额按 D06 定向诊断。 [I6.1](../archive/validation/I6-self-contained.md) 是旧 v5 说明表方案的实测记录，不证明本次变更。
 
 ## 1. 可独立手工填写的基础模板
 

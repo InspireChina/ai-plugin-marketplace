@@ -2,9 +2,9 @@
 
 [详细设计目录](README.md) · [观测目的](../06-observability-and-validation.md) · [单 session 全景](D04A-single-session-panorama.md) · [EX06 计量走读与探针](examples/EX06-telemetry-accounting.md)
 
-状态：I1.4 的本地工具观测和 I2.3 的版本绑定原生响应采集已完成，实际 Generate 接入、重放、回归和独立审查通过。实现状态见 [I1](../../validation/I1-reliable-delivery.md) 与 [I2 验证](../../validation/I2-generate.md)，字段编码见工具合同。逐活动 token 和完整宿主能力仍有缺口，不能把本设计的目标当作全部已实测。
+状态：I1.4 的本地工具观测和 I2.3 的版本绑定原生响应采集已完成，实际 Generate 接入、重放、回归和独立审查通过。实现状态见 [I1](../../archive/validation/I1-reliable-delivery.md) 与 [I2 验证](../../archive/validation/I2-generate.md)，字段编码见工具合同。逐活动 token 和完整宿主能力仍有缺口，不能把本设计的目标当作全部已实测。
 
-I1.1 的两轮探针补充了 EX06 最初的 `token_count` 观察；I2.2 又取得完整 Generate 的 `token_usage_record`、实际工具和文件记录。I2.3 复用这些精确来源，响应加总与 turn/thread 累计核对一致。当前生产者版本、实测计数和未验证项以 [宿主验证](../../validation/host-support.md) 为准；精确活动归属和宿主模型中断仍未验证，G12 保持开放。
+I1.1 的两轮探针补充了 EX06 最初的 `token_count` 观察；I2.2 又取得完整 Generate 的 `token_usage_record`、实际工具和文件记录。I2.3 复用这些精确来源，响应加总与 turn/thread 累计核对一致。当前生产者版本、实测计数和未验证项以 [宿主验证](../../archive/validation/host-support.md) 为准；精确活动归属和宿主模型中断仍未验证，G12 保持开放。
 
 ## 1. 目标和首版边界
 
@@ -111,7 +111,7 @@ I1.4 用 `result.observation` 返回 recorded/degraded、简短 gaps 和报告�
 
 宿主适配器和报告器是内部辅助能力，不新增“获取下一任务”接口。`inspect` 可返回已生成报告定位和简短完整度。常规收尾只做一次有界增量读取/汇总；未到的 usage 留缺口，不为等最终计数忙等，不在业务完成后自动开启后台会话。
 
-内部大活动标记入口与调用编码见 [P00](../implementation/P00-contracts-and-fixtures.md#纯语义活动怎样埋点)，由 I1.4 实现、I2.3 接实际宿主验证；没有原生事件时才使用，观测时刻不冒充精确模型耗时。它不新增专业流程动作或改变业务状态。
+内部大活动标记入口与调用编码见 [P00](../../archive/implementation/P00-contracts-and-fixtures.md#纯语义活动怎样埋点)，由 I1.4 实现、I2.3 接实际宿主验证；没有原生事件时才使用，观测时刻不冒充精确模型耗时。它不新增专业流程动作或改变业务状态。
 
 大活动 start 放在首次实际读取/构造工具调用前，跨工具和 Agent 编写沿同一 activity，成果形成后才 end；不能只包保存函数，也不回填开场或已发生的分析时间。
 
@@ -250,4 +250,4 @@ D07 接纳非业务观测上下文与独立文件目录；D04A/D05 提供专业�
 
 D09 已归并尚未验证的宿主能力、Excel 差异和文件协议，并安排 I1—I4：从 I1 开始工具计时/事件夹具，I2 起接真实宿主 usage，I4 作有质量对照的性能实验，不继续扩充独立概念层。每步 token 的宿主归因缺口保留为显式技术事项，不能在设计稿里宣告解决。
 
-I5.2将原mark-file记录分支提取为Python `record_mark`，Client.mark可与现有业务调用合批记录；两条入口共用原信封校验和实际时刻，观测失败降级、业务状态及token归属边界保持。见[实施验证](../../validation/I5.2-proposal.md)。
+I5.2将原mark-file记录分支提取为Python `record_mark`，Client.mark可与现有业务调用合批记录；两条入口共用原信封校验和实际时刻，观测失败降级、业务状态及token归属边界保持。见[实施验证](../../archive/validation/I5.2-proposal.md)。

@@ -2,7 +2,7 @@
 
 [详细设计目录](README.md) · [模板概要](../05-excel-and-delivery.md) · [数据 D02](D02-shared-data-and-evidence.md) · [保存 D07](D07-tools-storage-and-recovery.md)
 
-状态：当前活动合同按 I6.1 后的用户反馈收口为原四表原列投影，渲染实现为 `lite-render-v9`。 [I6.1](../../validation/I6-self-contained.md) 记录当时 v5 两张说明表的实现与实测，历史值不改，也不证明本次提示有效；[EX04](examples/EX04-excel-projection.md) 仍是设计走读。模板仅窄改校验列公式与 A2 说明，新模板 SHA-256 为 `28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e`（模板概要见 [05](../05-excel-and-delivery.md)）；已知旧模板兼容边界见第 5 节。
+状态：当前活动合同按 I6.1 后的用户反馈收口为原四表原列投影，渲染实现为 `lite-render-v9`。 [I6.1](../../archive/validation/I6-self-contained.md) 记录当时 v5 两张说明表的实现与实测，历史值不改，也不证明本次提示有效；[EX04](examples/EX04-excel-projection.md) 仍是设计走读。模板仅窄改校验列公式与 A2 说明，新模板 SHA-256 为 `28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e`（模板概要见 [05](../05-excel-and-delivery.md)）；已知旧模板兼容边界见第 5 节。
 
 ## 1. 责任与一次导出的输入输出
 
@@ -241,4 +241,4 @@ flowchart TD
 
 用时记录映射/写入、Office、复读、apply；同一物理调用不重复计数，不按行数估 token。正常路径不逐 Sheet 截图注入主 session；布局回归或具体异常才做必要视觉检查。
 
-跨文件合同见 [D02](D02-shared-data-and-evidence.md)、[D05](D05-clarify-and-change-scope.md)、[D07](D07-tools-storage-and-recovery.md)、[P00](../implementation/P00-contracts-and-fixtures.md)、[P01](../implementation/P01-reliable-delivery.md) 和 [D09](D09-validation-and-implementation.md)。自主取舍见 [AD33](../13-self-review-and-decisions.md#ad33--四表原列与验收成果)。实现实测由主 Agent 在 validation 单独记录；原样例修订不等于 fresh generate 评测。
+跨文件合同见 [D02](D02-shared-data-and-evidence.md)、[D05](D05-clarify-and-change-scope.md)、[D07](D07-tools-storage-and-recovery.md)、[P00](../../archive/implementation/P00-contracts-and-fixtures.md)、[P01](../../archive/implementation/P01-reliable-delivery.md) 和 [D09](D09-validation-and-implementation.md)。自主取舍见 [AD33](../13-self-review-and-decisions.md#ad33--四表原列与验收成果)。实现实测由主 Agent 在 validation 单独记录；原样例修订不等于 fresh generate 评测。

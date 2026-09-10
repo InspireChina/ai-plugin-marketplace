@@ -53,13 +53,13 @@ G03（UAT 适用规则）已关闭：可见标准列和直接汇总 Task 类型�
 
 [D06](detailed/D06-excel-projection-and-delivery.md)/[EX04](detailed/examples/EX04-excel-projection.md) 已细化 G05/G06/G09：模板事实已读取，输出合同已设计，适配及真实工作簿验证尚未完成。这三项不因文档写完而关闭；D05/EX05 已补有限修改、旧反馈与历史引用设计，G08/G11/G17 仍需真实验证；D08/EX06 已补 G12 的计量合同、性能实验与有限宿主只读证据，G12 尚未关闭；D09 已收口设计衔接并安排 I1—I4：I1 先验证原模板填值/文件完整性/保存，I2 接真实 generate，I3 接独立 clarify，I4 扩展复杂场景与性能；各缺口以对应实际证据关闭。
 
-上述缺口已在 [11 详细设计路线图](11-detailed-design-roadmap.md#9-现有缺口如何归入路线图) 中分配到具体专题和设计轮次。它们是后续设计与验证工作，不是额外的用户开场问卷；路线图形成不代表缺口已关闭。
+上述缺口已在 [11 详细设计路线图](../archive/planning/11-detailed-design-roadmap.md#9-现有缺口如何归入路线图) 中分配到具体专题和设计轮次。它们是后续设计与验证工作，不是额外的用户开场问卷；路线图形成不代表缺口已关闭。
 
 详细设计已推进 G02/G14 的交互分界、G04/G09/G13 的数据与依据、G08/G11 的保存和修改接口，见 [D01](detailed/D01-interaction-and-outcomes.md)、[D02](detailed/D02-shared-data-and-evidence.md)、[D07](detailed/D07-tools-storage-and-recovery.md)。[D03](detailed/D03-input-analysis-and-exploration.md)/[EX02](detailed/examples/EX02-input-analysis-and-exploration.md) 补充 G01/G10/G13/G14/G17 的用途区域、读取覆盖、原型探索与输入问题移交；[EX01](detailed/examples/EX01-generate-clarify.md) 走读三类范围和一次补值，D04/D04A 分析单 session，D09 分配验证归属。这些是设计证据，相关缺口仍需格式、Excel、复杂修改和实际运行验证，尚未统一关闭。
 
 ## 3. 剩余事项的实施消费者
 
-共用机械编码已在 [P00](implementation/P00-contracts-and-fixtures.md) 固定，以下是每项最早能补实际证据的任务；设计明确不等于验证事项关闭。
+共用机械编码已在 [P00](../archive/implementation/P00-contracts-and-fixtures.md) 固定，以下是每项最早能补实际证据的任务；设计明确不等于验证事项关闭。
 
 | 事项 | 首个实施任务与必要扩展 |
 |---|---|
@@ -75,7 +75,7 @@ G03（UAT 适用规则）已关闭：可见标准列和直接汇总 Task 类型�
 | G16 | I1.1/I1.3/I1.5 迁入与差异；I4.3 支持矩阵 |
 | G17 | I2.2 三类义务；I4.2 公共/交付修改 |
 
-具体任务见 [实施目录](implementation/README.md)，当前没有新的业务选择阻塞编码准备。
+具体任务见 [实施目录](../archive/implementation/README.md)，当前没有新的业务选择阻塞编码准备。
 
 ## 4. 首个贯穿样例
 

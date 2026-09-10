@@ -1,6 +1,6 @@
 # D00 · 技术栈与运行形态
 
-[返回详细设计目录](README.md) · [返回路线图](../11-detailed-design-roadmap.md)
+[返回详细设计目录](README.md) · [返回路线图](../../archive/planning/11-detailed-design-roadmap.md)
 
 ## 1. 状态与技术基线
 
@@ -68,7 +68,7 @@ ai-sow 已提供 LibreOffice 无界面重算、独立运行环境和公式/缓�
 
 剩余工作集中在 Lite 删除辅助列后的映射、既有 UAT 公式保存、超过预留行数的扩展、合法空值与工作簿内待确认说明、版本保存后的结果复读。复用适用案例，只对这些差异补测；未改部分不另做基础可行性探针。冷启动与连续导出作为性能基线记录，依赖准备复用既有安装方法并核对 Lite 路径。
 
-I1.3 的差异复现已确认 LibreOffice 会省略 Table 计算列元数据并裁剪整列数据验证范围。采用 [D06 §8](D06-excel-projection-and-delivery.md#8-office-复读失败与恢复) 的两项有限兼容处理，保留原模板与单元格公式/缓存；不迁入旧版整张 Table 或保护设置的无条件恢复。真实交付及原生复核结果按 [I1 验证](../../validation/I1-reliable-delivery.md) 记录。
+I1.3 的差异复现已确认 LibreOffice 会省略 Table 计算列元数据并裁剪整列数据验证范围。采用 [D06 §8](D06-excel-projection-and-delivery.md#8-office-复读失败与恢复) 的两项有限兼容处理，保留原模板与单元格公式/缓存；不迁入旧版整张 Table 或保护设置的无条件恢复。真实交付及原生复核结果按 [I1 验证](../../archive/validation/I1-reliable-delivery.md) 记录。
 
 如果候选计算器只能算部分公式、覆盖了公式或破坏文件，不能以“用户打开 Excel 后会重算”作为自动交付的默认补救。应更换适配方式或明确支持边界，也不能以 Python 重新实现估算公式来绕过问题。
 

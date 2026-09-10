@@ -2,9 +2,9 @@
 
 [D08 观测设计](../D08-telemetry-and-performance.md) · [D09 验证交接](../D09-validation-and-implementation.md)
 
-第 1 节是本轮真实只读探针；其余均为**合成事件与预期结果**，不含真实项目用量，不能证明真实宿主采集或性能改善。I1.4 已将这些算法边界落实为规范化事件测试；实际验证状态见 [I1 记录](../../../validation/I1-reliable-delivery.md)。
+第 1 节是本轮真实只读探针；其余均为**合成事件与预期结果**，不含真实项目用量，不能证明真实宿主采集或性能改善。I1.4 已将这些算法边界落实为规范化事件测试；实际验证状态见 [I1 记录](../../../archive/validation/I1-reliable-delivery.md)。
 
-以下第 1 节保留设计期初次探针记录。后续 I1.1 已完成两轮真实 Agent/宿主实验，补充 response 身份、实际用时与累计核对，最新证据见 [宿主验证](../../../validation/host-support.md)；完整 generate 和逐活动归属仍未验证。
+以下第 1 节保留设计期初次探针记录。后续 I1.1 已完成两轮真实 Agent/宿主实验，补充 response 身份、实际用时与累计核对，最新证据见 [宿主验证](../../../archive/validation/host-support.md)；完整 generate 和逐活动归属仍未验证。
 
 ## 1. 真实只读探针与限制
 

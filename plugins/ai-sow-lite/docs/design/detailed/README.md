@@ -1,25 +1,32 @@
-# AI SOW Lite 详细设计
+# 详细设计
 
-[返回概要](../README.md) · [设计路线图](../11-detailed-design-roadmap.md)
+[返回设计目录](../README.md) · [当前验证摘要](../../validation/README.md)
 
-详细设计按专题维护：交互与贯穿样例、最小共享数据、输入分析/探索、骨架与单 session 分片、有限环路、Excel 投影、Clarify、观测与验证。设计衔接由 D09 收口，[P00—P04](../implementation/README.md) 将四个增量细化为14项实施任务。当前开发进度与证据入口只在实施目录及对应阶段验证记录维护；本目录描述各专题职责，不把设计稿或合成走读当作运行结果。
+按问题查阅下列专题。表格描述设计职责，不重复维护开发进度；合成样例用于理解合同，不作为真实运行结果。
 
-领域词义见 [CONTEXT](../CONTEXT.md)，历史条目、交付物类型、具体实例、复用候选和当前新建口径分别表达。
-
-建议先读 [EX01 三类需求生成与新会话补值](examples/EX01-generate-clarify.md)，再看 D01 的用户边界、D02 的数据和 D07 的保存方式。样例覆盖公共建设单计、页面接入、迁移上线、复杂度默认 M 待确认及一次只改相关字段的 clarify，未实际生成 Excel 或测量性能。
-
-| 专题 | 状态 |
+| 专题 | 内容 |
 |---|---|
-| [D00 技术栈与运行形态](D00-technology-stack.md) | 已采用既有基础组合，完成源码/测试来源核对；I1.1 环境迁入已验证，其余差异与新能力仍按任务验证 |
-| [D01 交互与结果](D01-interaction-and-outcomes.md) | R0 设计完成；问答/退出决策、正常异常时序与 EX01 走读，待宿主执行验证 |
-| [D02 共享数据与依据](D02-shared-data-and-evidence.md) | R1 最小合同稿；身份、来源、分类依据、空值、问题和应用决定，待更多输入/拆合实例验证 |
-| [D03 输入分析与探索](D03-input-analysis-and-exploration.md) | R2 首稿；文本/XLSX 边界、as-is/to-be/gap、匹配依据、读取与覆盖、来源定位、原型自主探索、充分性与输入问题移交；[EX02](examples/EX02-input-analysis-and-exploration.md) 为合成走读，待适配/宿主验证 |
-| [D04 Generate 与上下文](D04-generate-and-context.md) | R2 设计稿；骨架来源与语义分片；隔离/并发为待评估选项 |
-| [D04A 单 session 输入输出全景](D04A-single-session-panorama.md) | D04 的分析基线；无 subagent 的逐步输入输出、历史累积、异常与优化顺序，待真实执行观测 |
-| [EX03 As-is/to-be 与 gap](examples/EX03-as-is-to-be-gap.md) | 稀疏历史、API/事件候选、实例适用、有值待确认及有限修改的合成走读，待实际验证 |
-| [D04B 批量处理与环路退出](D04B-bounded-loops.md) | 统一有限目标、共享追加/返修上限、无进展退出和恢复计数；默认参数待实测校准 |
-| [D05 Clarify 与修改边界](D05-clarify-and-change-scope.md) | R3 详细设计稿；有限定位/候选/确认、部分答复与子集、拆合与历史引用、串行基线、有限编辑构造、原模板预览及退出；[EX05](examples/EX05-clarify-changes.md) 为合成走读，待运行验证 |
-| [D06 Excel 投影与交付](D06-excel-projection-and-delivery.md) | R2 详细设计稿；逐列映射、安全别名、工作簿内问题/全文、必要扩行及原模板重算；[EX04](examples/EX04-excel-projection.md) 为合成走读；I1.3 证据保留原范围；I6.1 工作簿独立可读的实际检查见 [增量记录](../../validation/I6-self-contained.md) |
-| [D07 工具、存储与恢复](D07-tools-storage-and-recovery.md) | 有限读写、确认、版本生效、幂等及取消边界已细化；I1.2 已有文本/本地存储接口及故障证据，I1.3 已接真实包；Clarify 确认仍待 I3 |
-| [D08 观测与性能](D08-telemetry-and-performance.md) | R4 设计稿；实际时钟/usage 来源、去重/共享/未知、独立报告及性能实验；[EX06](examples/EX06-telemetry-accounting.md) 记录有限只读探针与合成账例；I1.4 已实现工具计时与规范化事件报告，真实宿主 usage 接入/性能实测待 I2.3/I4 |
-| [D09 设计收口与实现增量](D09-validation-and-implementation.md) | 设计衔接已收口；163 个场景明确主责/最早增量，I1—I4 列出文件职责、验收与限制，并接 P01—P04 具体任务；[EX07](examples/EX07-design-consistency.md) 为合同反例，实际实现状态见 I1 记录 |
+| [D00 技术栈](D00-technology-stack.md) | 插件、隔离 Python 与 Office 的运行边界 |
+| [D01 交互](D01-interaction-and-outcomes.md) | 输入问答、输出、确认和退出 |
+| [D02 数据与依据](D02-shared-data-and-evidence.md) | 身份、来源、问题、分类依据和决定 |
+| [D03 输入分析](D03-input-analysis-and-exploration.md) | 文本/XLSX/原型、as-is/to-be/gap 与充分性 |
+| [D04 生成与上下文](D04-generate-and-context.md) | 骨架、语义分片和合并 |
+| [D04A 单 session 全景](D04A-single-session-panorama.md) | 各步输入输出、上下文累积和优化顺序 |
+| [D04B 有限环路](D04B-bounded-loops.md) | 批量、追加/返修上限和无进展退出 |
+| [D05 局部修改](D05-clarify-and-change-scope.md) | 定位、计划、确认、部分答复及历史保护 |
+| [D06 Excel](D06-excel-projection-and-delivery.md) | 逐列映射、完整正文、模板重算与复读 |
+| [D07 工具与恢复](D07-tools-storage-and-recovery.md) | 有限接口、存储、版本、幂等与取消 |
+| [D08 资源观测](D08-telemetry-and-performance.md) | 时钟、原生 usage、独立报告和性能比较 |
+| [D09 场景与验证](D09-validation-and-implementation.md) | 163 个场景的主责及最早实现依赖 |
+
+## 合成走读
+
+- [EX01 生成与新会话修改](examples/EX01-generate-clarify.md)
+- [EX02 输入分析](examples/EX02-input-analysis-and-exploration.md)
+- [EX03 历史与本期 gap](examples/EX03-as-is-to-be-gap.md)
+- [EX04 Excel 投影](examples/EX04-excel-projection.md)
+- [EX05 有限修改](examples/EX05-clarify-changes.md)
+- [EX06 资源记账](examples/EX06-telemetry-accounting.md)
+- [EX07 合同反例](examples/EX07-design-consistency.md)
+
+详细设计路线图、实现前审阅和 P00—P05 计划保留在 [历史档案](../../archive/README.md)。
