@@ -57,10 +57,10 @@ Q-AC07 文字整理不自动改Task模式/复杂度，实质拆合保留义务�
 
 **Interfaces:** 原 `pending.items[].targets/status/revision/current_handling/resolution` 和 `decisions.items[]`；不用新状态或默认 M 自动关闭规则。
 
-- [ ] 固定真实 G2 失败：仅复杂度目标，用户明确采用 M、数量未知；旧 Agent 结果应在新评估中失败。
-- [ ] 固定对照：M 尚未采用；问题含复杂度+生产责任且只采用 M；接口组部分采纳；再次回复已采用 M。实际答复只在展示方案后发送。
-- [ ] 在专业指引中给出目标级处理表：仅定档问题 resolved；剩余责任按已有 revision 规则保留；原未知事实不补成数值。
-- [ ] 真实 clarify 得到草稿后才检查、确认、应用。对应测试断言：
+- [x] 固定真实 G2 失败：仅复杂度目标，用户明确采用 M、数量未知；旧 Agent 结果应在新评估中失败。
+- [x] 固定对照：M 尚未采用；问题含复杂度+生产责任且只采用 M；接口组部分采纳；再次回复已采用 M。实际答复只在展示方案后发送。
+- [x] 在专业指引中给出目标级处理表：仅定档问题 resolved；剩余责任按已有 revision 规则保留；原未知事实不补成数值。
+- [x] 真实 clarify 得到草稿后才检查、确认、应用。对应测试断言：
 
 ```python
 # actual_* 来自本次真实产物；绝不先把输入伪造成 resolved。
@@ -71,7 +71,7 @@ assert actual_estimate_question['resolution']['decision_id'] in adopted_decision
 # 含未答责任的独立对照仍为 open；重复答复不新增版本或 render。
 ```
 
-- [ ] 机械回归复用现有 `test_registered_complexity_choice_changes_only_explicit_basis_issue_and_decision`，新增对照只验证当前实际缺口；完成专业评估、相关全量检查后提交。
+- [x] 机械回归复用现有 `test_registered_complexity_choice_changes_only_explicit_basis_issue_and_decision`，新增对照只验证当前实际缺口；完成专业评估、相关全量检查后提交。
 
 ## I7.3 · 原列 AC 可读性（P0）
 

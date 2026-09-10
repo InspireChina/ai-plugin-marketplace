@@ -115,5 +115,72 @@
       "counter_errors": [],
       "activity_token_attribution": "unknown"
     }
-  ]
+  ],
+  "clarify_adopt_m_baseline": {
+    "response_count": 21,
+    "counts": {
+      "total_tokens": 1592350,
+      "input_tokens": 1575466,
+      "output_tokens": 16884,
+      "cached_input_tokens": 1495040,
+      "reasoning_output_tokens": 3030,
+      "cache_write_input_tokens": 0
+    },
+    "source_sha256": "33eac8c7a43768ed5390c59126bec151b970813611180c1cc3376c700199b9fe",
+    "turns": [
+      {
+        "stage": "proposal",
+        "counts": {
+          "total_tokens": 739910,
+          "input_tokens": 730260,
+          "output_tokens": 9650,
+          "cached_input_tokens": 665856,
+          "reasoning_output_tokens": 1899,
+          "cache_write_input_tokens": 0
+        },
+        "processing_ms": 323632,
+        "settings": {
+          "model": "gpt-6-astra",
+          "effort": "xhigh",
+          "service_tier": null
+        }
+      },
+      {
+        "stage": "confirmation_delivery",
+        "counts": {
+          "total_tokens": 552247,
+          "input_tokens": 547656,
+          "output_tokens": 4591,
+          "cached_input_tokens": 537344,
+          "reasoning_output_tokens": 809,
+          "cache_write_input_tokens": 0
+        },
+        "processing_ms": 162266,
+        "settings": {
+          "model": "gpt-6-astra",
+          "effort": "xhigh",
+          "service_tier": null
+        }
+      },
+      {
+        "stage": "duplicate_answer",
+        "counts": {
+          "total_tokens": 300193,
+          "input_tokens": 297550,
+          "output_tokens": 2643,
+          "cached_input_tokens": 291840,
+          "reasoning_output_tokens": 322,
+          "cache_write_input_tokens": 0
+        },
+        "processing_ms": 88410,
+        "settings": {
+          "model": "gpt-6-astra",
+          "effort": "xhigh",
+          "service_tier": null
+        }
+      }
+    ],
+    "counter_errors": [],
+    "activity_token_attribution": "unknown"
+  }
 }
