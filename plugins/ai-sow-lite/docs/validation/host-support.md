@@ -1,6 +1,6 @@
 # 宿主观测验证
 
-状态：已完成I1— I4的开发验证；以下保留各阶段历史观察，当前范围以本节及文末I4.3补充为准。原生usage仅接已知版本和显式来源，G12逐活动精确计量仍开放。性能证据见[性能记录](performance.md)。
+状态：已完成I1— I4的开发验证及[I9本地安装联合验证](I9-release-smoke.md)；以下保留各阶段历史观察，安装和入口发现的最新证据以文末I9为准。原生usage仅接已知版本和显式来源，G12逐活动精确计量仍开放。性能证据见[性能记录](performance.md)。
 
 ## 已取得的实际证据
 
@@ -59,3 +59,11 @@ I4.3把单原生帧上限从I2历史的256KiB调到512KiB，原因是实际长�
 更多验证范围见[I4输入/修改](I4-inputs-and-changes.md)、[交付汇总](I4-delivery.md)与[163场景证据](scenario-coverage.json)。conditional委派场景没有启用；开发阶段新会话验收不能替代产品的并发验证。
 
 I5.1进一步复核原生字段：当前来源缺response↔tool↔activity身份链。报告按真实response_id定位整响应成本并回链事件，显示边界缺失；精确逐活动token保持未知，见[I5性能切片](I5-performance.md)。没有变更宿主设置或启用产品subagent。
+
+## I9 本地安装后的双入口执行
+
+2026-09-11，通过临时本地 marketplace 别名安装 `a32611e` 的 Lite 包，304 个文件与提交相同。Codex 桌面随附 CLI `0.153.4` 以 `exec` / `resume` 执行，两个新会话分别原生发现安装后的 generate、clarify，完成首次自举、一次输入答复、首稿、具体修改方案及确认后交付。CLI 调用方式和原生记录的 `originator=Codex Desktop` 均如实保留，不据此宣称 UI 安装或远端更新已验证。
+
+系统 CLI `0.149.0` 因当前模型要求新版而 HTTP 400；使用已有随附版本后成功，没有更换模型或登录。Microsoft Excel 16.112.3 原生打开两版，LibreOffice 26.8.0.3 完成各一次重算。测试插件及临时 marketplace 注册已移除，用户原有注册和旧插件设置保持。
+
+安装与局部修改通过，但简明 AC 仍漏记隐式规范的适用内容/版本待确认；因此尚未完成发布前质量验收，也未发布。原生响应计量已核对，逐活动精确归属仍未知。详细边界、失败和成本见[I9报告](I9-release-smoke.md)及[观测数据](I9-release-smoke-metrics.json)。Windows/Linux、其他磁盘形态及 Claude Code 业务支持范围未扩展。

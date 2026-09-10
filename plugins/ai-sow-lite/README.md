@@ -2,7 +2,7 @@
 
 AI SOW Lite 根据 PRD、HLD 和旧项目的往期 SOW，生成本期首版 SOW Excel、摘要与待确认事项。专业分析和联合拆解由一个主 session 完成，插件工具负责可追溯读取、机械检查、模板投影、真实 Office 核验和版本保存。
 
-当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），提供 [generate](skills/generate/SKILL.md) 和 [clarify](skills/clarify/SKILL.md) 两个入口。两宿主 manifest 共用这些 Skill，仓库双 marketplace 已包含预发布条目；尚未公开发布或安装到日常宿主。当前范围与实际证据见[I4 交付汇总](docs/validation/I4-delivery.md)、 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
+当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），提供 [generate](skills/generate/SKILL.md) 和 [clarify](skills/clarify/SKILL.md) 两个入口。两宿主 manifest 共用这些 Skill，仓库双 marketplace 已包含预发布条目；尚未公开发布。本地 marketplace 安装、原生入口发现及 generate → clarify 已实际验证，测试注册已清理；新 AC 内容审查仍有一项规范引用缺口，见 [I9 联合验证](docs/validation/I9-release-smoke.md)。其他范围与历史证据见[I4 交付汇总](docs/validation/I4-delivery.md)、 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
 
 ## 使用
 

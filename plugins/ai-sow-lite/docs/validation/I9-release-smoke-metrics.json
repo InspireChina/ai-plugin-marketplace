@@ -1,0 +1,198 @@
+{
+  "tested_revision": "a32611edecc5cb8617c94fe3bea6e3e7afa38031",
+  "date": "2026-09-11",
+  "plugin_version": "0.1.0-alpha.1",
+  "platform": "macOS, local directory",
+  "host": {
+    "invocation": "Codex desktop bundled CLI exec/resume",
+    "cli_version": "0.153.4",
+    "native_originator": "Codex Desktop",
+    "model": "gpt-6-astra",
+    "effort": "xhigh",
+    "previous_cli_attempt": {
+      "version": "0.149.0",
+      "result": "HTTP 400: configured model requires newer Codex",
+      "usage": "unknown; not treated as zero or plugin failure"
+    }
+  },
+  "sample": {
+    "source": "tests/fixtures/generate/cases/three-scope/inputs",
+    "input_hashes": {
+      "prd.md": "65cea1f359ad275733f4c5d5d3d400c7f217af9e957246d57a4fffb012758b28",
+      "hld.md": "99f62232d2151412864784437f8598e8750418caa86507f959ff8f6546bb309c"
+    },
+    "stories": 5,
+    "tasks": 7,
+    "ac_counts": [
+      4,
+      3,
+      3,
+      3,
+      3
+    ],
+    "input_question_batches": 1,
+    "generate_slice_count": 4
+  },
+  "installation": {
+    "kind": "native local marketplace installation with temporary alias",
+    "alias": "ai-sow-lite-release-check",
+    "plugin_files_matched": 304,
+    "bootstrap_python": "3.12.13",
+    "isolated_runtime_verified": true,
+    "native_generate_discovery": true,
+    "native_clarify_discovery": true,
+    "cleanup": {
+      "old_marketplaces_preserved": true,
+      "old_plugins_preserved": true,
+      "test_marketplace_removed": true,
+      "test_plugin_entry": null
+    }
+  },
+  "stages": {
+    "G": {
+      "counts": {
+        "total_tokens": 1213373,
+        "input_tokens": 1197622,
+        "output_tokens": 15751,
+        "cached_input_tokens": 1127552,
+        "reasoning_output_tokens": 1664,
+        "cache_write_input_tokens": 0
+      },
+      "uncached_input_tokens": 70070,
+      "response_count": 23,
+      "native_processing_duration_ms": 551729,
+      "max_response_input_tokens": 78786,
+      "tool_operations": {
+        "inspect": {
+          "count": 23,
+          "duration_ms": 146.97562499999995,
+          "failed": 0
+        },
+        "check": {
+          "count": 5,
+          "duration_ms": 156.739541,
+          "failed": 0
+        },
+        "render": {
+          "count": 1,
+          "duration_ms": 6446.158875,
+          "failed": 0
+        },
+        "apply": {
+          "count": 1,
+          "duration_ms": 1153.602334,
+          "failed": 0
+        },
+        "ingest": {
+          "count": 4,
+          "duration_ms": 84.296168,
+          "failed": 0
+        }
+      },
+      "workbook_sha256": "d4f6286aa7607bbaa70c3ec84eb46637a48a4d78cf858857bf93f12ef9ade2d4",
+      "formula_count": 1304,
+      "native_record_sha256": "29aeea035bdf750ff8a4e7d2c9b750e0ce69db086cd10f856b5cc6438ffc269a",
+      "turn_durations_ms": [
+        177419,
+        374310
+      ],
+      "structural_failures": []
+    },
+    "C": {
+      "counts": {
+        "total_tokens": 892005,
+        "input_tokens": 882435,
+        "output_tokens": 9570,
+        "cached_input_tokens": 804352,
+        "reasoning_output_tokens": 1559,
+        "cache_write_input_tokens": 0
+      },
+      "uncached_input_tokens": 78083,
+      "response_count": 16,
+      "native_processing_duration_ms": 354713,
+      "max_response_input_tokens": 74485,
+      "tool_operations": {
+        "inspect": {
+          "count": 19,
+          "duration_ms": 95.354832,
+          "failed": 0
+        },
+        "apply": {
+          "count": 1,
+          "duration_ms": 1412.852416,
+          "failed": 0
+        },
+        "check": {
+          "count": 2,
+          "duration_ms": 221.2225,
+          "failed": 0
+        },
+        "ingest": {
+          "count": 3,
+          "duration_ms": 39.92783300000001,
+          "failed": 0
+        },
+        "render": {
+          "count": 1,
+          "duration_ms": 5738.10125,
+          "failed": 0
+        }
+      },
+      "workbook_sha256": "2c1ca187ea8c49e5dede90b3be8799c7fe48071c925507591013ab6dcd586225",
+      "formula_count": 1304,
+      "native_record_sha256": "ea0ed43ded5a906fec9223c84d3829c716a4943e69036ca904297b34d9ecf378",
+      "turn_durations_ms": [
+        258313,
+        96400
+      ],
+      "structural_failures": []
+    }
+  },
+  "clarify": {
+    "fresh_session": true,
+    "only_shared_project_files": true,
+    "actual_plan_confirmation": true,
+    "before_confirmation_version_unchanged": true,
+    "changed_excel_cells": [
+      "02-任务清单!G10",
+      "02-任务清单!L10"
+    ],
+    "all_story_ac_and_classification_values_preserved": true,
+    "all_formula_expressions_preserved": true,
+    "quantity_remains_unknown": true,
+    "target_pending_resolved": true,
+    "new_adoption_decisions": 1,
+    "old_version_bytes_preserved": true
+  },
+  "excel": {
+    "native_viewer": "Microsoft Excel 16.112.3",
+    "calculation_engine": "LibreOffice 26.8.0.3",
+    "repair_prompt_observed": false,
+    "native_story_review_zoom_percent": 100,
+    "native_task_review_zoom_percent": 75,
+    "formula_count_each": 1304,
+    "template_sha256": "28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e",
+    "version_artifact_files_checked_after_native_view": 25,
+    "native_view_changed_artifacts": false,
+    "nonartifact_changes": [
+      "Finder .DS_Store"
+    ]
+  },
+  "quality_review": {
+    "status": "partial",
+    "open_findings": [
+      "I9-F01"
+    ],
+    "source": "I9-release-smoke.md"
+  },
+  "resource_limits": [
+    "Selected consumer response records only; excludes controller review, UI and tests",
+    "Input counts accumulate across responses; cached input is a subset, not added again",
+    "Native processing duration includes host/tools and excludes between-turn user wait",
+    "Physical model call count, pure model time and exact activity token attribution remain unknown",
+    "No performance optimization or paired benchmark in this run"
+  ],
+  "release_ready": false,
+  "runtime_or_template_changed": false,
+  "published": false
+}
