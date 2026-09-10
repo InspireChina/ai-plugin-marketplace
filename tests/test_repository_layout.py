@@ -5,6 +5,7 @@ import hashlib
 import re
 import subprocess
 import sys
+import tomllib
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -99,6 +100,59 @@ def enum_arrays(value: object, path: str = "$") -> dict[str, list[object]]:
 
 
 class RepositoryLayoutTests(unittest.TestCase):
+    def test_ai_sow_lite_package_is_self_contained(self) -> None:
+        plugin_root = REPO_ROOT / "plugins/ai-sow-lite"
+        for relative in (
+            "LICENSE", "NOTICE", "README.md", "pyproject.toml", "uv.lock",
+            ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
+            "scripts/lite.py", "scripts/bootstrap.sh", "scripts/bootstrap.ps1",
+            "runtime/ai_sow_lite/cli.py", "assets/sow-template.xlsx",
+            "skills/generate/SKILL.md", "skills/clarify/SKILL.md",
+            "tests/support/smoke_plugin.py",
+        ):
+            with self.subTest(relative=relative):
+                path = plugin_root / relative
+                self.assertTrue(path.is_file(), relative)
+                self.assertTrue(path.resolve().is_relative_to(plugin_root.resolve()))
+        self.assertTrue((plugin_root / "LICENSE").is_file())
+        self.assertEqual(
+            (plugin_root / "LICENSE").read_bytes(), (REPO_ROOT / "LICENSE").read_bytes()
+        )
+
+    def test_ai_sow_lite_release_keeps_its_own_prerelease_version(self) -> None:
+        plugin_root = REPO_ROOT / "plugins/ai-sow-lite"
+        manifests = [json.loads((plugin_root / relative).read_text(encoding="utf-8"))
+                     for relative in (".codex-plugin/plugin.json", ".claude-plugin/plugin.json")]
+        for manifest in manifests:
+            self.assertEqual(manifest["name"], "ai-sow-lite")
+            self.assertEqual(manifest["version"], "0.1.0-alpha.1")
+            self.assertEqual(manifest["license"], "Apache-2.0")
+        for field in ("name", "version", "description", "author"):
+            self.assertEqual(manifests[0][field], manifests[1][field])
+        project = tomllib.loads((plugin_root / "pyproject.toml").read_text(encoding="utf-8"))
+        lock = tomllib.loads((plugin_root / "uv.lock").read_text(encoding="utf-8"))
+        self.assertEqual(project["project"]["name"], "ai-sow-lite-runtime")
+        self.assertEqual(project["project"]["version"], "0.1.0a1")
+        packages = [p for p in lock["package"] if p["name"] == "ai-sow-lite-runtime"]
+        self.assertEqual(len(packages), 1)
+        self.assertEqual(packages[0]["version"], "0.1.0a1")
+        self.assertEqual(packages[0]["source"], {"virtual": "."})
+
+    def test_marketplaces_append_ai_sow_lite_without_replacing_ai_sow(self) -> None:
+        for relative in (".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json"):
+            marketplace = json.loads((REPO_ROOT / relative).read_text(encoding="utf-8"))
+            with self.subTest(marketplace=relative):
+                self.assertEqual([entry["name"] for entry in marketplace["plugins"]],
+                                 ["ai-sow", "ai-sow-lite"])
+                for entry in marketplace["plugins"]:
+                    source = "./plugins/" + entry["name"]
+                    if relative.startswith(".agents/"):
+                        self.assertEqual(entry["source"], {"source": "local", "path": source})
+                        self.assertEqual(entry["policy"], {"installation": "AVAILABLE", "authentication": "ON_INSTALL"})
+                        self.assertEqual(entry["category"], "Productivity")
+                    else:
+                        self.assertEqual(entry["source"], source)
+
     def test_xlsx_formulas_only_reference_existing_table_columns(self) -> None:
         plugin_root = REPO_ROOT / "plugins/ai-sow"
         workbooks = [

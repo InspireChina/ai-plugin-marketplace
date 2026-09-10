@@ -22,7 +22,7 @@ from .project import StorageError, atomic_bytes
 TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
 PROJECTOR_VERSION = 'lite-projection-v1'
 # Render retry identity is separate from the unchanged projection data contract.
-RENDER_IMPLEMENTATION_VERSION = 'lite-render-v3'
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v4'
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
 # Display policy, not model limits or calculation rules.
@@ -666,12 +666,23 @@ def _evidence_labels(project,candidate):
     return labels
 
 
-def _summary(model,pending,version):
+def _summary(model,pending,version,plan=None):
     lines=[f'# 交付摘要\n\nversion_id: {version}\n',
            f'本版范围：{len(model["epics"])} Epic、{len(model["features"])} Feature、{len(model["stories"])} Story、{len(model["tasks"])} Task。\n',
-           '本次生成首版候选；生效事实以 current 指针为准。\n',
+           ('本次生成修改版候选；' if plan is not None else '本次生成首版候选；')+'生效事实以 current 指针为准。\n',
            f'待确认：{sum(p["status"]=="open" for p in pending["items"])} 项，见 [待确认事项](pending-items.md)。\n',
            '工作簿：[sow.xlsx](sow.xlsx)。公式由 Office 计算保存；输入、结构、公式、缓存和正文已机械复读。\n']
+    if plan is not None:
+        import json
+        lines.append(f'本次变化：方案 {plan["plan_id"]}，修订 {plan["revision"]}。\n')
+        # A subset inherits the full plan's prose; only its selected concrete
+        # changes describe this package. Never present deferred work as applied.
+        if 'subset_of' not in plan:
+            lines.append(_block(plan['change_summary']))
+        for change in plan['changes']:
+            lines.append(f'{change["op"]} / {change["collection"]} / {change["object_id"]} / {change["field"]}：\n'
+                         +_block(json.dumps(change['before'],ensure_ascii=False)+' → '
+                                 +json.dumps(change['after'],ensure_ascii=False)))
     for item in pending['items']:
         if item['status']=='open':
             label='未拆明业务工作' if item['unestimated_work'] else '当前处理'
@@ -679,9 +690,68 @@ def _summary(model,pending,version):
     return '\n'.join(lines)
 
 
-def _expected_book(template,model,pending,decisions,version,evidence):
+def _bound_plan(project,checked):
+    from .contracts import strict_json_loads
+    from .project import safe_path
+    ref=checked.get('plan_ref')
+    if ref is None:
+        return None
+    raw=safe_path(project,ref['path']).read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=ref['sha256']:
+        _fail('修改摘要的方案与完整检查绑定不同。')
+    return strict_json_loads(raw)
+
+
+def _legacy_prepared(project,prepared):
+    """Only an existing successful pre-v4 attempt can use the old summary text."""
+    from .contracts import load_json
+    from .project import safe_path,file_ref
+    area='/'.join(Path(prepared['candidate_ref']['path']).parts[:4])
+    path=safe_path(project,str(Path(prepared['candidate_ref']['path']).with_name('render-attempt.json')),area)
+    if not path.exists():
+        path=safe_path(project,area+'/render-attempt.json',area)
+    if not path.exists():
+        return False
+    attempt=load_json(path)
+    ref=attempt.get('prepared_ref')
+    if attempt.get('implementation_version') not in (None,'lite-render-v2','lite-render-v3') or not ref:
+        return False
+    saved=safe_path(project,ref['path'],area)
+    return file_ref(project,saved)==ref and load_json(saved)==prepared
+
+
+def _baseline_aliases(project,candidate,checked):
+    """Read original names and display names from the same checked baseline bytes."""
+    from .contracts import strict_json_loads
+    from .project import safe_path
+    if candidate['entrypoint']=='generate':
+        return None
+    refs={ref['path']:ref for ref in checked['dependencies']}
+    area=f'.ai-sow-lite/versions/{candidate["base_version_id"]}'
+    values=[]
+    for name in ('model.json','projection.json'):
+        ref=refs[area+'/'+name]
+        raw=safe_path(project,ref['path']).read_bytes()
+        if hashlib.sha256(raw).hexdigest()!=ref['sha256']:
+            _fail('基线显示名依赖与完整检查绑定不同。')
+        values.append(strict_json_loads(raw))
+    model,projection=values
+    if (projection['version_id']!=candidate['base_version_id']
+        or projection['model_hash']!=refs[area+'/model.json']['sha256']):
+        _fail('基线原名与显示名不是同一版模型。')
+    previous={}
+    for collection,kind,field in [('stories','story','title'),('tasks','task','name')]:
+        names={obj['object_id']:obj['display_name'] for obj in projection['objects'] if obj['kind']==kind}
+        if set(names)!={obj['id'] for obj in model[collection]}:
+            _fail('基线显示名与对象集合不同。')
+        previous[collection]={obj['id']:dict(original=obj[field],display_name=names[obj['id']])
+                              for obj in model[collection]}
+    return previous
+
+
+def _expected_book(template,model,pending,decisions,version,evidence,previous=None):
     book=_template(template)
-    projection,inputs,docs=_projection(model,pending,decisions,version,evidence,layout=book)
+    projection,inputs,docs=_projection(model,pending,decisions,version,evidence,previous,layout=book)
     _extend(book,STORY_SHEET,'SOWStoryTable',len(model['stories']))
     _extend(book,TASK_SHEET,'TaskTable',len(model['tasks']))
     _fill_inputs(book,inputs)
@@ -749,15 +819,21 @@ def verify_prepared(project,prepared):
         model,pending,decisions=bundles
         if prepared['projection_version']!=PROJECTOR_VERSION or prepared['template_hash']!=TEMPLATE_HASH: _fail('准备记录模板或投影器不匹配。')
         template=safe_path(project,f'.ai-sow-lite/template/{TEMPLATE_HASH}/sow-template.xlsx')
-        expected,projection,docs=_expected_book(template,model,pending,decisions,prepared['version_id'],_evidence_labels(project,candidate))
+        expected,projection,docs=_expected_book(template,model,pending,decisions,prepared['version_id'],
+            _evidence_labels(project,candidate),_baseline_aliases(project,candidate,checked))
         projection.update(model_hash=files['model.json']['sha256'],pending_items_hash=files['pending-items.json']['sha256'],
                           decisions_hash=files['decisions.json']['sha256'],workbook_hash=files['sow.xlsx']['sha256'])
         actual_projection=checked_json(project,files['projection.json']['path'],'projection')
         if projection!=actual_projection: _fail('投影身份、字段位置或摘要与实际候选不同。')
-        docs['summary.md']=_summary(model,pending,prepared['version_id'])
+        docs['summary.md']=_summary(model,pending,prepared['version_id'],_bound_plan(project,checked))
         if ('details.md' in docs)!=('details.md' in files): _fail('完整正文文件集合不同。')
         for name,text in docs.items():
-            if safe_path(project,files[name]['path']).read_bytes()!=text.encode('utf-8'): _fail(f'同版正文不完整：{name}。')
+            actual=safe_path(project,files[name]['path']).read_bytes()
+            if actual!=text.encode('utf-8'):
+                if (name=='summary.md' and _legacy_prepared(project,prepared)
+                    and actual==_summary(model,pending,prepared['version_id']).encode('utf-8')):
+                    continue
+                _fail(f'同版正文不完整：{name}。')
         verification=checked_json(project,prepared['verification_ref']['path'],'verification')
         receipt=verification['office']
         if (verification['version_id']!=prepared['version_id'] or verification['candidate_digest']!=checked['candidate_digest']
@@ -822,13 +898,30 @@ def render_candidate(project: Path,request_id: str,payload):
     if plan_path and not load_json(safe_path(project,plan_path,area))['changes']:
         raise StorageError('CANDIDATE_INVALID','没有实际变化；使用当前交付文件，无需再次导出。')
     checkpoint=ensure_request(project,request_id,entrypoint); _check_cancelled(project,request_id,entrypoint)
-    attempt_path=safe_path(project,area+'/render-attempt.json')
+    # Clarify construction owns a finite immutable r1/r2/repair/subset slot.
+    # Keep each successful preview there; changing slots is not a failed retry.
+    # Generate retains its original request-wide receipt and retry behavior.
+    attempt_path=(candidate_path.with_name('render-attempt.json') if entrypoint=='clarify'
+                  else safe_path(project,area+'/render-attempt.json'))
     signature_inputs=dict(check=checked,payload=payload,projector_version=PROJECTOR_VERSION,
                           engine=office.selection_fingerprint())
     legacy_signature=semantic_digest(signature_inputs)
     v2_signature=semantic_digest(dict(signature_inputs,implementation_version='lite-render-v2'))
+    v3_signature=semantic_digest(dict(signature_inputs,implementation_version='lite-render-v3'))
     signature=semantic_digest(dict(signature_inputs,implementation_version=RENDER_IMPLEMENTATION_VERSION))
     previous=load_json(attempt_path) if attempt_path.exists() else None
+    if entrypoint=='clarify' and previous is None:
+        legacy_path=safe_path(project,area+'/render-attempt.json')
+        if legacy_path.exists():
+            legacy=load_json(legacy_path)
+            # A failed legacy receipt has no candidate identity. A changed engine
+            # signature cannot prove an independent slot or erase its retry history.
+            applicable=True
+            if legacy.get('prepared_ref'):
+                saved=checked_json(project,legacy['prepared_ref']['path'],'prepared',area)
+                applicable=saved['candidate_ref']==file_ref(project,candidate_path)
+            if applicable:
+                previous=legacy
     reusable=False
     if entrypoint=='clarify' and previous and previous.get('prepared_ref'):
         old_path=safe_path(project,previous['prepared_ref']['path'],area)
@@ -840,7 +933,7 @@ def render_candidate(project: Path,request_id: str,payload):
                   and old_prepared['template_hash']==candidate['template_hash']
                   and old_check.get('plan_digest')==report.get('plan_digest'))
     # Pre-fix successful text packages remain reusable only after full verification.
-    if previous and (previous['signature'] in (signature,legacy_signature,v2_signature) or reusable) and previous.get('prepared_ref'):
+    if previous and (previous['signature'] in (signature,legacy_signature,v2_signature,v3_signature) or reusable) and previous.get('prepared_ref'):
         prepared_path=safe_path(project,previous['prepared_ref']['path'],area)
         if file_ref(project,prepared_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
         prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)
@@ -857,7 +950,7 @@ def render_candidate(project: Path,request_id: str,payload):
         save_checkpoint(project,checkpoint)
     version=str(uuid4()); directory=safe_path(project,area+'/render-'+version);directory.mkdir()
     attempt=dict(signature=signature,prepared_ref=None,implementation_version=RENDER_IMPLEMENTATION_VERSION)
-    write_json(project,area+'/render-attempt.json',attempt)
+    write_json(project,attempt_path.relative_to(project).as_posix(),attempt)
     try:
         bundle=[]
         for name,key in [('model.json','model_path'),('pending-items.json','pending_items_path'),('decisions.json','decisions_path')]:
@@ -866,7 +959,8 @@ def render_candidate(project: Path,request_id: str,payload):
             bundle.append(load_json(directory/name))
         model,pending,decisions=bundle
         template=safe_path(project,f'.ai-sow-lite/template/{TEMPLATE_HASH}/sow-template.xlsx')
-        projection=project_workbook(template,model,pending,decisions,version,directory,evidence=_evidence_labels(project,candidate))
+        projection=project_workbook(template,model,pending,decisions,version,directory,
+            evidence=_evidence_labels(project,candidate),previous=_baseline_aliases(project,candidate,checked))
         audit_workbook(directory/'projected.xlsx',directory/'projected.xlsx',caches=False)
         receipt=office.recalculate(directory/'projected.xlsx',directory/'sow.xlsx')
         # A change during Office invalidates all caches; no second internal calculation.
@@ -877,7 +971,7 @@ def render_candidate(project: Path,request_id: str,payload):
         projection.update(model_hash=file_sha256(directory/'model.json'),pending_items_hash=file_sha256(directory/'pending-items.json'),
                           decisions_hash=file_sha256(directory/'decisions.json'),workbook_hash=file_sha256(directory/'sow.xlsx'))
         atomic_bytes(directory/'projection.json',canonical_json_bytes(projection),immutable=True)
-        atomic_bytes(directory/'summary.md',_summary(model,pending,version).encode('utf-8'),immutable=True)
+        atomic_bytes(directory/'summary.md',_summary(model,pending,version,_bound_plan(project,checked)).encode('utf-8'),immutable=True)
         verification=dict(schema_version='1.0',version_id=version,candidate_digest=report['candidate_digest'],office=receipt)
         atomic_bytes(directory/'verification.json',canonical_json_bytes(verification),immutable=True)
         names=['model.json','pending-items.json','decisions.json','projection.json','sow.xlsx','summary.md','pending-items.md']
@@ -889,7 +983,7 @@ def render_candidate(project: Path,request_id: str,payload):
         if verified['diagnostics']:
             error=StorageError('WORKBOOK_INVALID','最终工作簿复读失败。');error.diagnostics=verified['diagnostics'];raise error
         path=directory/'prepared.json';atomic_bytes(path,canonical_json_bytes(prepared),immutable=True)
-        attempt['prepared_ref']=file_ref(project,path);write_json(project,area+'/render-attempt.json',attempt)
+        attempt['prepared_ref']=file_ref(project,path);write_json(project,attempt_path.relative_to(project).as_posix(),attempt)
         return _render_result(project,prepared,path,report['unknowns_count'])
     except StorageError as error:
         for d in error.diagnostics:

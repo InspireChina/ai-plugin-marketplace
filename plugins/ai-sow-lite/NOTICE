@@ -1,0 +1,11 @@
+AI SOW Lite
+Copyright 2026 Inspire
+
+本插件按随包 LICENSE 中的 Apache License 2.0 分发。
+
+包内包含项目原创 SOW 模板，以及从 AI SOW 专业资料改写的分析与交付指引。
+来源、适用边界和取舍记录见 docs/design/12-reference-absorption.md；相关资产
+与说明随本包独立分发，运行时不读取旧插件或 marketplace 根目录。
+
+运行时使用 jsonschema 和 openpyxl，开发使用 pytest。依赖按各自许可证
+单独解析，其源码不随本插件捆绑。LibreOffice 是外部计算引擎，不随本包分发。

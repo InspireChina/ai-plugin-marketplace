@@ -507,20 +507,20 @@ def _index_extension(project, snapshot_ref):
 
 
 def _registered_topics(ctx, versions):
+    # Use the same split-topic provenance check as normal evidence validation.
+    # Original registration may name work observations; stored topics use their
+    # immutable observation refs, so reconstructing observations=[] is invalid.
+    from ._prototype import topic_dependencies
     for version in versions:
         area = f'.ai-sow-lite/analysis/topics/{version}'
-        registration = ctx.json(area + '/registration-ref.json', area, 'artifacts', 'file_ref')
-        if registration is None:
-            continue
-        original = ctx.json(registration['path'], '.ai-sow-lite/analysis/registrations', 'artifacts', 'analysis')
         stored = ctx.json(area + '/analysis.json', area, 'artifacts', 'analysis')
-        if original is None or stored is None:
+        if stored is None:
             continue
-        expected = dict(schema_version='1.0', topics=[t for t in original['topics'] if t['topic_version_id'] == version],
-                        evidence=original['evidence'], observations=[])
-        if (ctx.dependencies[registration['path']] != registration or len(expected['topics']) != 1
-                or stored != expected):
-            ctx.add('topic_version_ids', '新采用主题与实际登记来源不一致。', code='EVIDENCE_MISSING')
+        try:
+            for ref in topic_dependencies(ctx.project, version, stored):
+                ctx.dependencies[ref['path']] = ref
+        except StorageError as error:
+            ctx.diagnostics.extend(error.diagnostics)
 
 
 def _reads_match(project, reads, snapshot):

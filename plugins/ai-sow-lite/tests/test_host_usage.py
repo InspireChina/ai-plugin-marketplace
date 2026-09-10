@@ -178,6 +178,93 @@ def collect(project, source, selection, **kwargs):
                                 binding=selection, **kwargs)
 
 
+def item_completed_frame(size):
+    record = dict(type='event_msg', ordinal=2,
+                  payload=dict(type='item_completed', turn_id=TURN, content='PRIVATE COMPLETED ITEM'))
+    record['payload']['content'] += 'X' * (size - len(canonical_json_bytes(record) + b'\n'))
+    assert len(canonical_json_bytes(record) + b'\n') == size
+    return record
+
+
+@pytest.mark.parametrize('size', [330176, 512 * 1024])
+def test_large_non_usage_frame_allows_following_native_usage(tmp_path, capsys, size):
+    records = native_records()
+    records.insert(2, item_completed_frame(size))
+    for ordinal, record in enumerate(records):
+        record['ordinal'] = ordinal
+    source = tmp_path / 'native.jsonl'
+    write_native(source, records)
+    before = source.read_bytes()
+    project = tmp_path / 'project'
+    selection = binding(str(uuid4()))
+
+    code, outcome = collect_cli(project, source, selection, capsys)
+
+    assert code == 0
+    assert outcome['recording'] == 'recorded', outcome
+    assert outcome['read']['eof']
+    assert outcome['read']['bytes_read'] == outcome['read']['end_offset'] == len(before)
+    events, _ = telemetry._events(project, selection['request_id'])
+    usage = [event for event in events if event['event_type'] == 'usage']
+    assert len(usage) == 1
+    assert usage[0]['data']['counts'] == counts()
+    report = telemetry.build_report(project, selection['request_id'])
+    assert metric(report, 'total_tokens')['value'] == 12
+    assert metric(report, 'total_tokens')['coverage'] == 'partial'
+    assert metric(report, 'model_call_count')['value'] is None
+    assert report['host_capabilities']['activity_attribution'] == 'unverified'
+    persisted = b''.join(p.read_bytes() for p in (project / '.ai-sow-lite/telemetry').rglob('*') if p.is_file())
+    assert b'PRIVATE' not in persisted and str(source).encode() not in persisted
+    assert source.read_bytes() == before
+
+
+def test_non_usage_frame_over_512_kib_stops_before_following_usage(tmp_path):
+    records = native_records()
+    records.insert(2, item_completed_frame(512 * 1024 + 1))
+    for ordinal, record in enumerate(records):
+        record['ordinal'] = ordinal
+    prefix_size = sum(len(canonical_json_bytes(record) + b'\n') for record in records[:2])
+    source = tmp_path / 'native.jsonl'
+    write_native(source, records)
+    project = tmp_path / 'project'
+    selection = binding(str(uuid4()))
+
+    outcome = collect(project, source, selection)
+
+    assert outcome['recording'] == 'degraded'
+    assert 'NATIVE_RECORD_LIMIT' in outcome['gaps']
+    assert outcome['read']['bytes_read'] <= prefix_size + 512 * 1024
+    assert outcome['read']['end_offset'] == prefix_size
+    assert not outcome['read']['eof']
+    events, _ = telemetry._events(project, selection['request_id'])
+    assert not any(event['event_type'] == 'usage' for event in events)
+    report = telemetry.build_report(project, selection['request_id'])
+    assert metric(report, 'total_tokens')['value'] is None
+
+
+def test_default_ten_thousand_line_cap_still_stops_before_usage(tmp_path):
+    records = native_records()
+    background = [dict(type='event_msg', payload=dict(type='item_completed')) for _ in range(9998)]
+    records = records[:2] + background + records[2:]
+    for ordinal, record in enumerate(records):
+        record['ordinal'] = ordinal
+    source = tmp_path / 'native.jsonl'
+    write_native(source, records)
+    project = tmp_path / 'project'
+    selection = binding(str(uuid4()))
+
+    outcome = collect(project, source, selection)
+
+    assert outcome['read']['lines_read'] == 10000
+    assert not outcome['read']['eof'] and 'NATIVE_READ_LIMIT' in outcome['gaps']
+    report = telemetry.build_report(project, selection['request_id'])
+    assert metric(report, 'total_tokens')['value'] is None
+    resumed = collect(project, source, selection)
+    assert resumed['read']['start_offset'] == outcome['read']['end_offset']
+    assert resumed['read']['eof']
+    assert metric(telemetry.build_report(project, selection['request_id']), 'total_tokens')['value'] == 12
+
+
 def test_native_cursor_resumes_after_durable_prefix_without_rereading_large_background(tmp_path):
     source = tmp_path / 'native.jsonl'
     records = two_responses()
@@ -239,7 +326,7 @@ def test_native_reader_stops_at_uncertain_boundary_and_preserves_diagnostic(tmp_
     suffix = b'{"unfinished":'
     limits = {}
     if problem == 'middle': suffix = b'not json\n' + canonical_json_bytes(records[-1]) + b'\n'
-    elif problem == 'record_limit': suffix = b'X' * (256 * 1024 + 1) + b'\n'
+    elif problem == 'record_limit': suffix = b'X' * (512 * 1024 + 1) + b'\n'
     elif problem == 'line_limit':
         suffix = canonical_json_bytes(records[-1]) + b'\n'; limits = {'max_lines':3}
     elif problem == 'identity':

@@ -438,7 +438,7 @@ raise SystemExit(cli.main(['--request', sys.argv[1]]))
     area = project / '.ai-sow-lite/work/clarify' / case['request_id']
     assert not list(area.rglob('.office-*'))
     assert not list(area.rglob('prepared.json'))
-    attempt = read_json(area / 'render-attempt.json')
+    attempt = read_json((project / checked['result']['candidate_ref']['path']).with_name('render-attempt.json'))
     assert attempt['prepared_ref'] is None
     recovered = recover_once(case)
     assert recovered['ok'] and recovered['result']['state'] == 'cancelled', recovered

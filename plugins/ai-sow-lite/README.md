@@ -2,7 +2,7 @@
 
 AI SOW Lite 根据 PRD、HLD 和旧项目的往期 SOW，生成本期首版 SOW Excel、摘要与待确认事项。专业分析和联合拆解由一个主 session 完成，插件工具负责可追溯读取、机械检查、模板投影、真实 Office 核验和版本保存。
 
-当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），提供 [generate](skills/generate/SKILL.md) 和 [clarify](skills/clarify/SKILL.md) 两个入口。两宿主 manifest 共用这些 Skill，供独立副本开发验证；尚未注册到仓库 marketplace，不表示已经公开发布。当前范围与实际证据见 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
+当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），提供 [generate](skills/generate/SKILL.md) 和 [clarify](skills/clarify/SKILL.md) 两个入口。两宿主 manifest 共用这些 Skill，仓库双 marketplace 已包含预发布条目；尚未公开发布或安装到日常宿主。当前范围与实际证据见[I4 交付汇总](docs/validation/I4-delivery.md)、 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
 
 ## 使用
 
@@ -30,7 +30,13 @@ Python 安装不写用户 bin 或注册表，只使用本插件副本的 managed
 
 交付保存在项目 `.ai-sow-lite/versions/<version_id>/`，含 `sow.xlsx`、`summary.md`、`pending-items.md` 和同版 JSON；必要时另有 `details.md`。`.ai-sow-lite/work/` 保留未完成分析和可恢复候选。输入、工作文件和工作簿可能含客户衍生资料，共享或提交前按项目隐私要求检查；不要把它们复制进插件包。
 
-工具耗时和大活动标记保存在项目的独立资源报告中。原生 token 采集只接已验证版本、明确选定且属于本次请求的来源；无法确定的调用次数或活动归属保留未知，不按文件大小估算 token，也不设置 token 预算门禁。观测失败不重做业务交付，迟到用量只更新资源报告。当前真实粒度与性能基线见 [宿主观测](docs/validation/host-support.md) 和 [I2 验证](docs/validation/I2-generate.md)。
+工具耗时和大活动标记保存在项目的独立资源报告中。原生 token 采集只接已验证版本、明确选定且属于本次请求的来源；无法确定的调用次数或活动归属保留未知，不按文件大小估算 token，也不设置 token 预算门禁。观测失败不重做业务交付，迟到用量只更新资源报告。当前真实粒度与性能基线见 [宿主观测](docs/validation/host-support.md) 和 [性能记录](docs/validation/performance.md)。
+
+## 当前交付范围
+
+完整生成与有限修改已有真实输入、Office及文件续接证据；性能仍是明确限制。当前典型/长例Generate约13分钟，局部改稿方案约5—9分钟，均为已记录宿主处理轮次，不含全部用户等待；没有速度SLA或相对旧版提速比例。逐活动token精确归属仍未解决。完整数据、口径及一次定向读取对照见[性能记录](docs/validation/performance.md)。
+
+声明范围以[宿主支持](docs/validation/host-support.md)为准：当前实际业务验证基于macOS本地目录及Codex桌面显式加载副本；Claude认证失败，Windows/Linux和同步/网络盘未验证。仓库双marketplace目录已准备预发布安装入口，本次未执行宿主安装。复制包本身不依赖仓库README或其他插件。
 
 ## 开发
 
@@ -39,6 +45,16 @@ Python 安装不写用户 bin 或注册表，只使用本插件副本的 managed
 ```sh
 uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_skill_contracts.py plugins/ai-sow-lite/tests/test_contracts.py -q
 ```
+
+完整开发检查：
+
+```sh
+uv sync --project plugins/ai-sow-lite --locked
+uv run --project plugins/ai-sow-lite --locked pytest -c plugins/ai-sow-lite/pyproject.toml plugins/ai-sow-lite/tests -q
+uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/check_scenario_coverage.py --ledger docs/validation/scenario-coverage.json
+```
+
+完整测试包含真实Office独立复制消费者；不可用引擎/平台的跳过不能当作平台验收。场景脚本检查163条编号、主责、引用和状态，不评判语义正确率。
 
 开发验证使用独立插件副本，不修改日常宿主的插件安装或设置。真实语义演练的运行副本排除 tests/fixtures 和设计答案，只提供选定原始输入；期待和按需答复留在评估侧。测试结果、平台限制和剩余工作记录在上述验证文档中。
 

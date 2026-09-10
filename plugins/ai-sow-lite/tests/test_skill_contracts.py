@@ -128,30 +128,70 @@ def test_authoring_example_maps_real_region_and_standard_response_fields(tmp_pat
     assert context["work_type_name"] == row["工作类型"]
 
 
-def test_authoring_observation_recipe_executes_coarse_boundaries(tmp_path, capsys):
-    """The published mark example and boundary table must work in the real recorder."""
+@pytest.mark.parametrize('reference, expected_activities, event_count', [
+    ('generate-authoring.md', ['input_analysis', 'outline', 'generation', 'merge', 'export', 'user_wait'], 16),
+    ('clarify-changes.md', ['input_analysis', 'design_discussion', 'user_wait', 'export'], 12),
+])
+def test_authoring_observation_recipe_executes_coarse_boundaries(tmp_path, capsys, reference,
+                                                               expected_activities, event_count):
+    """Changing detailed activities must not split the guide's root request interval."""
+    from datetime import datetime, timedelta
     from uuid import uuid4
     from ai_sow_lite import telemetry
 
-    guide = required_text(PLUGIN / 'references/generate-authoring.md')
-    example = re.search(r'<!-- observation-mark-example -->\s*```json\n(.*?)\n```', guide, re.S)
+    guide = required_text(PLUGIN / 'references' / reference)
+    # Clarify links to this shared recorder envelope; consume it for both recipes.
+    envelope = required_text(PLUGIN / 'references/generate-authoring.md')
+    example = re.search(r'<!-- observation-mark-example -->\s*```json\n(.*?)\n```', envelope, re.S)
     assert example, 'The required best-effort observation recipe needs a runnable mark envelope'
-    ids = {key: str(uuid4()) for key in ('request-id', 'execution-id', 'activity-id')}
-    raw = example[1]
-    for key, value in ids.items(): raw = raw.replace('<'+key+'>', value)
-    mark = json.loads(raw)
+    ids = {key: str(uuid4()) for key in ('request-id', 'execution-id')}
+    activities = {name: str(uuid4()) for name in expected_activities}
+    slices = [str(uuid4()), str(uuid4())]
     rows = re.findall(r'^\|[^\n|]+\| `(\w+)` \| `(start/end|milestone)` \|', guide, re.M)
-    assert dict(rows) == dict(request='start/end', input_analysis='start/end', outline='start/end',
-                             generation='start/end', merge='start/end', export='start/end',
-                             user_wait='start/end', useful_feedback='milestone', usable_file='milestone')
+    assert dict(rows) == dict(request='start/end', useful_feedback='milestone', usable_file='milestone',
+                             **{name: 'start/end' for name in expected_activities})
     project = tmp_path / 'project'; path = tmp_path / 'mark.json'
+
+    def record(name, phase, activity, slice_id):
+        raw = example[1]
+        for key, value in dict(ids, **{'activity-id': activity, 'slice-id': slice_id}).items():
+            raw = raw.replace('<'+key+'>', value)
+        mark = json.loads(raw)
+        mark.update(name=name, phase=phase)
+        if name != 'request':
+            mark.update(activity_ids=[activity], slice_ids=[slice_id])
+        path.write_text(json.dumps(mark), encoding='utf-8')
+        assert telemetry.main(['--project', str(project), '--mark-file', str(path)]) == 0
+        assert json.loads(capsys.readouterr().out)['recording'] == 'recorded'
+
+    # The current activity/slice changes between real recorder calls, as in a request.
+    record('request', 'start', activities['input_analysis'], slices[0])
     for name, phases in rows:
+        if name == 'request':
+            continue
         for phase in phases.split('/'):
-            path.write_text(json.dumps(dict(mark, name=name, phase=phase)))
-            assert telemetry.main(['--project', str(project), '--mark-file', str(path)]) == 0
-            assert json.loads(capsys.readouterr().out)['recording'] == 'recorded'
+            record(name, phase, activities.get(name, activities['export']), slices[0])
+    record('request', 'end', activities['export'], slices[1])
     report = telemetry.build_report(project, ids['request-id'])
-    assert report['event_count'] == 16
+    wall = next(m for m in report['metrics'] if m['name'] == 'request_wall_ns')
+    assert wall['value'] is not None, (wall, report['diagnostics'])
+    assert wall['value'] > 0 and wall['basis']['kind'] == 'utc_observed_interval'
+    assert 'LIFECYCLE_INCOMPLETE' not in report['diagnostics']
+    events = [json.loads(line) for file in (project / '.ai-sow-lite/telemetry' / ids['request-id']).glob(
+        'events/*/*.jsonl') for line in file.read_text(encoding='utf-8').splitlines()]
+    roots = {e['data']['phase']: e for e in events if e['data']['name'] == 'request'}
+    assert set(roots) == {'start', 'end'}
+    assert all(e['activity_ids'] == e['slice_ids'] == [] for e in roots.values())
+    assert {e['execution_id'] for e in events} == {ids['execution-id']}
+    elapsed = datetime.fromisoformat(roots['end']['observed_at']) - datetime.fromisoformat(roots['start']['observed_at'])
+    assert wall['value'] == (elapsed // timedelta(microseconds=1)) * 1000
+    spans = {m['scope']['id']: m for m in report['metrics'] if m['name'] == 'observed_wall_ns'}
+    for event in events:
+        name = event['data']['name']
+        if name in activities and event['data']['phase'] == 'start':
+            assert event['activity_ids'] == [activities[name]] and event['slice_ids'] == [slices[0]]
+            assert spans[event['data']['span_id']]['value'] is not None
+    assert report['event_count'] == event_count
     assert not (project / '.ai-sow-lite/current.json').exists()
     assert all(m['value'] is None for m in report['metrics'] if m['name'] in ('total_tokens', 'model_duration_ns'))
 

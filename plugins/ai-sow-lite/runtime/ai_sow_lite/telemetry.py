@@ -444,6 +444,7 @@ def _utc_ns(value):
 
 def _time_metrics(events, request_id, gaps):
     groups, intervals, metrics = {}, [], _native_time_metrics(events,request_id,gaps)
+    metrics.extend(_milestone_metrics(events,request_id,gaps))
     for e in events:
         if e['event_type'] != 'lifecycle' or e['data']['phase']=='milestone':
             continue
@@ -509,6 +510,74 @@ def _time_metrics(events, request_id, gaps):
         diagnostics=[] if aligned else ['CLOCK_UNALIGNED']
         gaps.extend(diagnostics)
         metrics.append(_metric('exclusive_duration_ns',value,request_id,unit='ns',basis='parent_minus_child_union',scope=dict(kind='span',id=parent['data']['span_id']),diagnostics=diagnostics))
+    return metrics
+
+
+def _milestone_metrics(events, request_id, gaps):
+    """Request-relative observed endpoints; never infer a start from tool/host time."""
+    lifecycle=[e for e in events if e['event_type']=='lifecycle']
+    starts=[e for e in lifecycle if e['data']['name']=='request' and e['data']['phase']=='start']
+    start=starts[0] if len(starts)==1 else None
+    if len(starts)>1:
+        # A resumed request has one complete UTC root per distinct execution.
+        roots={};segments=[]
+        for e in lifecycle:
+            if e['data']['name']=='request' and e['data']['phase'] in ('start','end'):
+                roots.setdefault(e['execution_id'],[]).append(e)
+        for items in roots.values():
+            begins=[e for e in items if e['data']['phase']=='start']
+            ends=[e for e in items if e['data']['phase']=='end']
+            if (len(begins)!=1 or len(ends)!=1
+                or any(e['data']['parent_span_id'] is not None or e['data'].get('timing')!='utc_marker' for e in items)):
+                break
+            a,b=begins[0],ends[0]
+            if any(a[k]!=b[k] for k in ('activity_ids','slice_ids')):
+                break
+            left,right=_utc_ns(a['observed_at']),_utc_ns(b['observed_at'])
+            if right<left:
+                break
+            segments.append((left,right,a))
+        else:
+            segments.sort(key=lambda item:item[0])
+            if all(a[0]<b[0] and a[1]<=b[0] for a,b in zip(segments,segments[1:])):
+                start=segments[0][2]
+    if start and start['data']['parent_span_id'] is not None:
+        start=None
+    metrics=[]
+    for name in ('useful_feedback','usable_file'):
+        milestones=[e for e in lifecycle if e['data']['name']==name and e['data']['phase']=='milestone']
+        diagnostic=[];candidates=[]
+        m=_metric('first_'+name+'_ns',None,request_id,unit='ns',basis='request_start_to_first_observed_milestone')
+        if start:
+            m['basis']['start']=start['event_id']
+        if start is None or not milestones:
+            diagnostic.append('LIFECYCLE_INCOMPLETE')
+        else:
+            for end in milestones:
+                a,b=start['data'],end['data']
+                if a.get('timing')==b.get('timing')=='utc_marker':
+                    elapsed=_utc_ns(end['observed_at'])-_utc_ns(start['observed_at'])
+                elif (a.get('timing') in (None,'monotonic') and b.get('timing') in (None,'monotonic')
+                      and start['execution_id']==end['execution_id'] and start['producer_id']==end['producer_id']
+                      and a['clock_domain'] is not None and a['clock_domain']==b['clock_domain']
+                      and a['monotonic_ns'] is not None and b['monotonic_ns'] is not None):
+                    elapsed=b['monotonic_ns']-a['monotonic_ns']
+                else:
+                    diagnostic.append('CLOCK_UNALIGNED');continue
+                if elapsed<0:
+                    diagnostic.append('CLOCK_REVERSED');continue
+                candidates.append((elapsed,end['event_id']))
+        if candidates and not diagnostic:
+            elapsed,end_id=min(candidates)
+            m.update(value=elapsed,coverage='partial')
+            clock='utc' if start['data'].get('timing')=='utc_marker' else 'same_process'
+            m['basis'].update(kind=clock+'_request_start_to_first_observed_milestone_including_wait',
+                              end=end_id,event_ids=[start['event_id'],end_id])
+        m['diagnostics']=sorted(set(diagnostic))
+        # Absent optional markers do not degrade otherwise successful native collection.
+        if starts or milestones:
+            gaps.extend(m['diagnostics'])
+        metrics.append(m)
     return metrics
 
 

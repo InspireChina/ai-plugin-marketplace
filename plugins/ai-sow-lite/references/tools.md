@@ -206,9 +206,11 @@ projection.json 使用 **projector_version**；prepared/manifest 继续使用既
 
 verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏的引擎名/版本、可执行文件 hash、平台、固定参数、退出码、实际单调时钟毫秒、Office 输入/raw/最终字节 hash，以及实际公式/缓存清单与兼容变换记录。office_identity 是引擎记录的稳定 sha256 字符串。它是本地执行记录，不是签名执行证明；不能抵御有权重写整个项目与全部收据的攻击者。程序仍从模板/候选重新构造预期映射并读取实际文件，不信任自填 valid 标志，不用 Python 验算金额。
 
+修改版投影从同次完整检查绑定的基线model/projection继承未改对象显示名；新同名对象不能夺用旧别名。summary.md使用绑定计划，说明本次具体变化；严格子集只列实际选中的变化，不沿用包含暂缓内容的整案摘要。旧成功准备包只有完整复核并匹配原成功记录时才保留历史正文。
+
 ### 复用、变动与测试入口
 
-render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。实现修订 `implementation_version=lite-render-v3` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。修复前成功 prepared 的旧签名只有在相同检查/指针/引擎且完整复核通过时才可复用。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。Generate沿用请求目录的记录；Clarify将记录放在既有不可变候选槽内，首次预览r1/r2/严格子集不算故障重试，返回旧槽复用已成功包。槽位仍由原有限构造约束控制；失败后有条件变化的重试继续消耗全请求共享额度。实现修订 `implementation_version=lite-render-v4` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2/v3 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。旧失败收据没有候选身份时保守继承其失败历史，改变引擎签名不能证明是独立新槽；原预算耗尽即退出。修复前成功 prepared 的旧签名只有在相同检查/指针/引擎且完整复核通过时才可复用。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
 
 待确认正文的来源标签按真实 locator 显示：文本保留文件名和起止行，XLSX 使用文件名、Sheet 和 range；judgment 沿 basis_refs 回溯相同来源标签，不猜文本行号。此显示修复不改候选、模板、标准或公式。
 
@@ -367,7 +369,7 @@ duration_ms，basis为native_reported_turn_duration；它与Python单调时钟�
 缺起点/终点为NATIVE_TURN_START_UNKNOWN/NATIVE_TURN_END_UNKNOWN。即使native EOF和成对turn均可见，
 本分支的请求usage仍为partial，不宣称完整Skill请求、首次有用反馈或等待边界；这些由实际大活动mark记录。
 
-一次native读取上限8 MiB、10,000行、单原生行256 KiB；header/游标锚点复读也计入该预算。与规范化报告的
+一次native读取上限8 MiB、10,000行、单原生行512 KiB；header/游标锚点复读也计入该预算。与规范化报告的
 8 MiB/64 KiB事件上限分别计算。可选内部limits仅能降低max_bytes/max_lines；没有业务token预算。
 超限/断尾/中间坏行分别为NATIVE_READ_LIMIT/NATIVE_RECORD_LIMIT/NATIVE_TAIL_INCOMPLETE/
 NATIVE_MIDDLE_CORRUPT，保持已接受前缀；没有进展时不得忙重试。返回read摘要含实际bytes_read/lines_read、
@@ -377,3 +379,6 @@ start_offset/end_offset/eof，collector_duration_ns仅描述该次采集，不�
 事件先fsync，随后原子推进native游标。游标落盘失败可按旧位置重放，并复用原event_id/producer_id/observed_at；
 不新增原生调用。替换、截短、锚点或关联变化产生NATIVE_CURSOR_INVALID。原始transcript、提示词、工具正文、
 本机路径均不复制。采集进程收到KeyboardInterrupt时记录INTERRUPTED并原样传播，不能据此声称宿主可中断模型。
+
+
+`inspect/telemetry`中的`first_useful_feedback_ns`和`first_usable_file_ns`按实际可对齐request起点计算，包含等待，coverage为partial。多个执行段须UTC根各自完整、标签配对且不重叠，才沿用最早观测起点；缺失、歧义、负间隔或时钟不兼容保留unknown及诊断。basis记录起点/终点事件和含等待口径，不能视为用户开场、纯模型耗时或精确逐步token。

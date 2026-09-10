@@ -342,7 +342,7 @@ def topic_observations(project, refs, topic):
 
 
 def topic_dependencies(project, version, analysis):
-    """Bind prototype topics to the original registration without retaining a mutable index."""
+    """Bind stored split topics to the original registration without retaining a mutable index."""
     area = f'.ai-sow-lite/analysis/topics/{version}'
     try:
         index = checked_json(project, '.ai-sow-lite/analysis/index.json', 'analysis_index')
@@ -361,4 +361,4 @@ def topic_dependencies(project, version, analysis):
             raise ValueError('split provenance')
         return [refs[0], registration, file_ref(project, safe_path(project, registration_path, area))]
     except (OSError, ValueError, KeyError):
-        raise StorageError('EVIDENCE_MISSING', '原型主题未登记、原字节变化或与原始分析来源不一致。', area + '/analysis.json') from None
+        raise StorageError('EVIDENCE_MISSING', '分析主题未登记、原字节变化或与原始分析来源不一致。', area + '/analysis.json') from None

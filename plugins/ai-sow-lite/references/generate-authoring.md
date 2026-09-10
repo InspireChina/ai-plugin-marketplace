@@ -126,7 +126,7 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
 
 | 实际边界 | name | phase | 记录时机 |
 | --- | --- | --- | --- |
-| 本请求执行 | `request` | `start/end` | 最早可记录点 / 交付或补料等本次处理退出前；恢复沿原 request_id，执行段可换 execution_id |
+| 本请求执行 | `request` | `start/end` | 最早可记录点 / 交付或补料等本次处理退出前；起止共用 execution_id，恢复沿原 request_id，新执行段可换 execution_id |
 | 输入理解 | `input_analysis` | `start/end` | 开始读取分析 / 本段输入判断形成 |
 | 骨架与分片 | `outline` | `start/end` | 开始组织义务 / 骨架与片索引形成 |
 | 联合生成 | `generation` | `start/end` | 当前片开始 / 本片候选形成；附当前 slice_ids |
@@ -138,7 +138,7 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
 
 使用同一隔离 Python、仅在本次进程设置上述 PYTHONPATH，执行 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。多个恰好同处的边界可与已有工具命令合在一次宿主调用中执行；标记不能移动到事后伪造起点。已有业务信封附 `observation_context={"execution_id":"<execution-id>","activity_ids":["<activity-id>"],"slice_ids":[]}`，保持当前活动/片标签。纯语义边界才补轻量mark，不逐思考或逐 Task 埋点。
 
-以下是请求起点mark；复制后按实际边界更换name/phase，活动ID沿当前大活动复用，片ID只填实际关联：
+以下是请求根标记：request/start 和 request/end 的 `activity_ids=[]`、`slice_ids=[]`，同一执行段的 request_id/execution_id 保持不变；结束时只把 phase 改为 end，不附当时的活动或片ID。大活动/片另用表中对应的 name/phase 标记，附真实 activity_ids/slice_ids，并在该活动起止间保持这些ID一致；业务 observation_context 仍填实际活动/片。
 
 <!-- observation-mark-example -->
 ```json
@@ -146,7 +146,7 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
   "schema_version": "1.0",
   "request_id": "<request-id>",
   "execution_id": "<execution-id>",
-  "activity_ids": ["<activity-id>"],
+  "activity_ids": [],
   "slice_ids": [],
   "name": "request",
   "phase": "start"

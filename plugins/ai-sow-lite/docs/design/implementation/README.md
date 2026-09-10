@@ -4,7 +4,7 @@
 
 连续实施中的取舍及理由见 [自主决策记录](../../validation/implementation-decisions.md)。用户已授权按本计划持续完成开发，每个 I1.4 这样的实施任务验证/审查完成后提交一次，中间无需等待用户确认；推送、安装及发布不在本次开发范围。
 
-状态：I1.1—I4.2 已完成，回归与独立审查通过；复杂历史、公共/交付变化、有限返修和实际子集交付已有证据，接续 I4.3 性能与交付准备。已取得典型、长材料及局部改稿实际成本，G12 的逐活动用量与支持范围在收尾如实记录。实际能力与限制见 [I1 机械能力](../../validation/I1-reliable-delivery.md)、[I1.5 独立交付](../../validation/I1-delivery.md)、[I2 输入与 Generate 验证](../../validation/I2-generate.md) 、[I3 有限修改验证](../../validation/I3-clarify.md) 和 [I4 输入与修改验证](../../validation/I4-inputs-and-changes.md)。尚未验证的扩展组合不视为已完成；Q1/Q2 已定边界见 [13](../13-self-review-and-decisions.md)。
+状态：I1.1—I4.3计划内开发已完成，按阶段提交。最终Lite全量701通过、12条件跳过，独立副本Generate→Clarify及原生Excel代表性检查通过；整分支两轴审查的发现和定点追加均已修复关闭。当前能力和已知限制见[I1机械能力](../../validation/I1-reliable-delivery.md)、[I1.5独立交付](../../validation/I1-delivery.md)、[I2生成](../../validation/I2-generate.md)、[I3修改](../../validation/I3-clarify.md)、[I4输入与修改](../../validation/I4-inputs-and-changes.md)及[I4交付汇总](../../validation/I4-delivery.md)。[性能记录](../../validation/performance.md)保留实际分钟级成本与G12缺口；[场景清单](../../validation/scenario-coverage.json)区分直接实证与机制复用，不据编号完整宣称语义全部正确。Q1/Q2边界见[13](../13-self-review-and-decisions.md)。
 
 ## 1. 阅读与实施顺序
 

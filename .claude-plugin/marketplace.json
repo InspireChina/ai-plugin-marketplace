@@ -17,6 +17,17 @@
         "estimation",
         "delivery"
       ]
+    },
+    {
+      "name": "ai-sow-lite",
+      "source": "./plugins/ai-sow-lite",
+      "description": "根据 PRD、HLD 与往期范围生成 SOW 工作簿，并按确认意见作有限修改（预发布）。",
+      "category": "productivity",
+      "keywords": [
+        "sow",
+        "requirements",
+        "estimation"
+      ]
     }
   ]
 }

@@ -1,0 +1,663 @@
+{
+  "schema_version": "1.0",
+  "observed_on": "2026-09-10",
+  "scope": "Synthetic local development cases, not customer runs or a speed SLA",
+  "template_sha256": "6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332",
+  "host": {
+    "producer_name": "codex-desktop",
+    "producer_version": "0.153.4",
+    "model": "gpt-6-astra",
+    "effort": "xhigh"
+  },
+  "long_material": {
+    "business_runtime_base": "f6121b1",
+    "input_utf8_bytes": 53619,
+    "input_hashes": {
+      "prd": "5f234eb88d6474a60190838d3e17096e837eb249d6237747deaf85ba39ab1e1c",
+      "hld": "b43e0ebd3bbe701c7458be8800c66e6656584a9743ea2f448bb26850e1cd6839"
+    },
+    "counts": {
+      "epics": 3,
+      "features": 7,
+      "stories": 7,
+      "tasks": 11,
+      "pending": 1
+    },
+    "native_phases": {
+      "generate": {
+        "responses": 30,
+        "native_duration_ms": 778688,
+        "counts": {
+          "input_tokens": 2577102,
+          "output_tokens": 22229,
+          "total_tokens": 2599331,
+          "cached_input_tokens": 2474752,
+          "reasoning_output_tokens": 2577,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "coordination_only": {
+        "responses": 1,
+        "native_duration_ms": 10685,
+        "counts": {
+          "input_tokens": 122395,
+          "output_tokens": 226,
+          "total_tokens": 122621,
+          "cached_input_tokens": 121600,
+          "reasoning_output_tokens": 136,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "clarify_proposal": {
+        "responses": 12,
+        "native_duration_ms": 284400,
+        "counts": {
+          "input_tokens": 1753377,
+          "output_tokens": 7954,
+          "total_tokens": 1761331,
+          "cached_input_tokens": 1699072,
+          "reasoning_output_tokens": 2401,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "clarify_confirmation": {
+        "responses": 8,
+        "native_duration_ms": 151425,
+        "counts": {
+          "input_tokens": 1446915,
+          "output_tokens": 4111,
+          "total_tokens": 1451026,
+          "cached_input_tokens": 1435520,
+          "reasoning_output_tokens": 592,
+          "cache_write_input_tokens": 0
+        }
+      }
+    },
+    "requests": {
+      "generate": {
+        "request_metrics": {
+          "total_tokens": 2599331,
+          "input_tokens": 2577102,
+          "output_tokens": 22229,
+          "cached_input_tokens": 2474752,
+          "reasoning_output_tokens": 2577,
+          "cache_write_input_tokens": 0,
+          "known_tokens": 2599331,
+          "model_call_count": null,
+          "input_bytes": 21100,
+          "output_bytes": 122117,
+          "tool_duration_ns": 7880264877,
+          "request_wall_ns": 609986937000,
+          "model_duration_ns": null,
+          "user_wait_ns": null,
+          "tool_union_ns": null,
+          "user_wait_union_ns": null,
+          "processing_ns": null
+        },
+        "milestone_ms_since_first_request_marker": {
+          "useful_feedback": 231649.282,
+          "usable_file": 1118821.359
+        },
+        "milestone_basis": "UTC observed markers, start occurs after Skill loading; usable_file includes inter-turn review/resource waiting. Not full request latency or pure model time.",
+        "office_elapsed_ms": 4043,
+        "office_engine": {
+          "arguments": [
+            "-env:UserInstallation=PROFILE_DIR",
+            "--headless",
+            "--convert-to",
+            "xlsx",
+            "--outdir",
+            "OUTPUT_DIR",
+            "INPUT_XLSX"
+          ],
+          "binary_sha256": "8bde0caf3c901ce87e9baa6df5ec6e79ede4b629423195f6e59c8c6a681efddb",
+          "name": "LibreOffice",
+          "platform": "Darwin",
+          "version": "LibreOffice 26.8.0.3 bce0998afefdbc355585ca324285661a2170ba77"
+        },
+        "final_file_bytes": {
+          "model.json": 75551,
+          "pending-items.json": 972,
+          "details.md": 25309,
+          "summary.md": 801,
+          "projection.json": 36520,
+          "decisions.json": 45,
+          "manifest.json": 6538,
+          "verification.json": 2383,
+          "sow.xlsx": 103552,
+          "input-records.json": 790,
+          "pending-items.md": 1059
+        },
+        "final_manifest_sha256": "28b35495a86e46f027bbf597fedae9a91242d0efda644a2593cee21254cf0de8",
+        "coverage": "partial",
+        "model_call_count": null,
+        "peak_context_tokens": null,
+        "native_collection": {
+          "collector_duration_ns": 54017250,
+          "gaps": [
+            "CLOCK_UNALIGNED",
+            "LIFECYCLE_INCOMPLETE",
+            "OBSERVATION_CONTEXT_INVALID"
+          ],
+          "read": {
+            "bytes_read": 23816,
+            "end_offset": 2500779,
+            "eof": true,
+            "lines_read": 2,
+            "start_offset": 2500779
+          },
+          "recording": "degraded"
+        },
+        "first_native_collection": {
+          "collector_duration_ns": 135898584,
+          "gaps": [
+            "CLOCK_UNALIGNED",
+            "LIFECYCLE_INCOMPLETE",
+            "OBSERVATION_CONTEXT_INVALID"
+          ],
+          "read": {
+            "bytes_read": 2500779,
+            "end_offset": 2500779,
+            "eof": true,
+            "lines_read": 375,
+            "start_offset": 22518
+          }
+        }
+      },
+      "clarify": {
+        "request_metrics": {
+          "total_tokens": 3212357,
+          "input_tokens": 3200292,
+          "output_tokens": 12065,
+          "cached_input_tokens": 3134592,
+          "reasoning_output_tokens": 2993,
+          "cache_write_input_tokens": 0,
+          "known_tokens": 3212357,
+          "model_call_count": null,
+          "input_bytes": 12378,
+          "output_bytes": 37089,
+          "tool_duration_ns": 7727160416,
+          "request_wall_ns": 317428202000,
+          "model_duration_ns": null,
+          "user_wait_ns": 830658650000,
+          "tool_union_ns": null,
+          "user_wait_union_ns": 830658650000,
+          "processing_ns": null
+        },
+        "milestone_ms_since_first_request_marker": {
+          "useful_feedback": 225170.268,
+          "usable_file": 1147909.232
+        },
+        "milestone_basis": "UTC observed markers, start occurs after Skill loading; usable_file includes inter-turn review/resource waiting. Not full request latency or pure model time.",
+        "office_elapsed_ms": 3657,
+        "office_engine": {
+          "arguments": [
+            "-env:UserInstallation=PROFILE_DIR",
+            "--headless",
+            "--convert-to",
+            "xlsx",
+            "--outdir",
+            "OUTPUT_DIR",
+            "INPUT_XLSX"
+          ],
+          "binary_sha256": "8bde0caf3c901ce87e9baa6df5ec6e79ede4b629423195f6e59c8c6a681efddb",
+          "name": "LibreOffice",
+          "platform": "Darwin",
+          "version": "LibreOffice 26.8.0.3 bce0998afefdbc355585ca324285661a2170ba77"
+        },
+        "final_file_bytes": {
+          "model.json": 75789,
+          "plan.json": 40269,
+          "pending-items.json": 972,
+          "prepared.json": 2817,
+          "details.md": 25447,
+          "summary.md": 801,
+          "candidate.json": 2081,
+          "projection.json": 36520,
+          "decisions.json": 45,
+          "shown-plan.json": 23055,
+          "manifest.json": 10296,
+          "verification.json": 2383,
+          "sow.xlsx": 103551,
+          "confirmation.json": 17781,
+          "input-records.json": 1184,
+          "pending-items.md": 1059
+        },
+        "final_manifest_sha256": "89a6af894e0fa23fda7910ffbea556fd3060a79d670781003a707b249b355291",
+        "coverage": "partial",
+        "model_call_count": null,
+        "peak_context_tokens": null,
+        "native_collection": {
+          "collector_duration_ns": 100595750,
+          "gaps": [
+            "CLOCK_UNALIGNED"
+          ],
+          "read": {
+            "bytes_read": 2500779,
+            "end_offset": 2500779,
+            "eof": true,
+            "lines_read": 375,
+            "start_offset": 22518
+          },
+          "recording": "degraded"
+        }
+      }
+    },
+    "compaction": {
+      "types": {
+        "session_meta": 1,
+        "event_msg": 165,
+        "response_item": 152,
+        "world_state": 1,
+        "turn_context": 5,
+        "token_usage_record": 51
+      },
+      "compaction_markers": {},
+      "limit": "Only explicit record types in one known synthetic session; hidden host behavior is not observable."
+    },
+    "semantic_review": "All four domains, shared library once, migration/release preserved; clarify only one branch AC text/evidence; 49 final refs and old bytes checked."
+  },
+  "paired_clarify": {
+    "business_runtime_base": "3b1680c",
+    "common_change": "request-root markers use empty activity_ids/slice_ids",
+    "single_instruction_variable": "Read target task/story/problem/existing classification basis and decisions first when explicitly accepting an existing band. Expand only for actual new facts, ambiguity or damaged references.",
+    "limitations": [
+      "One exploratory pair; initial task context equivalent but host cache and parallel service scheduling uncontrolled. No causal percentage.",
+      "Same 7-task baseline and raw feedback; two actual plans reviewed before execution confirmations, one Office per side.",
+      "Actor runtime cap256KiB; current512KiB collector used after actor exit, only telemetry changed."
+    ],
+    "records": [
+      {
+        "request_metrics": {
+          "total_tokens": 2459009,
+          "input_tokens": 2439634,
+          "output_tokens": 19375,
+          "cached_input_tokens": 2359296,
+          "reasoning_output_tokens": 5437,
+          "cache_write_input_tokens": 0,
+          "known_tokens": 2459009,
+          "model_call_count": null,
+          "input_bytes": 12745,
+          "output_bytes": 26987,
+          "tool_duration_ns": 8241323331,
+          "request_wall_ns": 535209408000,
+          "model_duration_ns": null,
+          "user_wait_ns": 198574922000,
+          "tool_union_ns": null,
+          "user_wait_union_ns": 198574922000,
+          "processing_ns": null
+        },
+        "milestone_ms_since_first_request_marker": {
+          "useful_feedback": 361148.167,
+          "usable_file": 733495.33
+        },
+        "milestone_basis": "UTC observed markers, start occurs after Skill loading; usable_file includes inter-turn review/resource waiting. Not full request latency or pure model time.",
+        "office_elapsed_ms": 4102,
+        "office_engine": {
+          "arguments": [
+            "-env:UserInstallation=PROFILE_DIR",
+            "--headless",
+            "--convert-to",
+            "xlsx",
+            "--outdir",
+            "OUTPUT_DIR",
+            "INPUT_XLSX"
+          ],
+          "binary_sha256": "8bde0caf3c901ce87e9baa6df5ec6e79ede4b629423195f6e59c8c6a681efddb",
+          "name": "LibreOffice",
+          "platform": "Darwin",
+          "version": "LibreOffice 26.8.0.3 bce0998afefdbc355585ca324285661a2170ba77"
+        },
+        "final_file_bytes": {
+          "model.json": 19475,
+          "plan.json": 19584,
+          "pending-items.json": 1155,
+          "prepared.json": 2817,
+          "details.md": 1963,
+          "summary.md": 383,
+          "candidate.json": 1418,
+          "projection.json": 12360,
+          "decisions.json": 1130,
+          "shown-plan.json": 13518,
+          "manifest.json": 9138,
+          "verification.json": 2383,
+          "sow.xlsx": 101653,
+          "confirmation.json": 6639,
+          "input-records.json": 1592,
+          "pending-items.md": 2182
+        },
+        "final_manifest_sha256": "510410c1a45c22e7fdb962c13592b3b582c7c17dee8dd2434dea68dcd425d710",
+        "coverage": "partial",
+        "model_call_count": null,
+        "peak_context_tokens": null,
+        "variant": "baseline",
+        "native_turns": [
+          {
+            "responses": 23,
+            "duration_ms": 481260,
+            "counts": {
+              "input_tokens": 1329905,
+              "output_tokens": 13632,
+              "total_tokens": 1343537,
+              "cached_input_tokens": 1265664,
+              "reasoning_output_tokens": 4226,
+              "cache_write_input_tokens": 0
+            }
+          },
+          {
+            "responses": 12,
+            "duration_ms": 217604,
+            "counts": {
+              "input_tokens": 1109729,
+              "output_tokens": 5743,
+              "total_tokens": 1115472,
+              "cached_input_tokens": 1093632,
+              "reasoning_output_tokens": 1211,
+              "cache_write_input_tokens": 0
+            }
+          }
+        ],
+        "tool_counts": {
+          "inspect": 17,
+          "render": 1,
+          "ingest": 3,
+          "check": 2,
+          "apply": 1
+        },
+        "proposal_inspect_count": 14,
+        "verified_refs": 46,
+        "old_files_preserved": true,
+        "candidate_bytes_delivered": true,
+        "source_sha256": "686a797be67267aeb35d620b763db9c8fccd4f31d3796b8527d958b4bc2afbba",
+        "request_root_markers": 4,
+        "native_collection": {
+          "collector_duration_ns": 43220792,
+          "gaps": [
+            "CLOCK_UNALIGNED"
+          ],
+          "read": {
+            "bytes_read": 23336,
+            "end_offset": 1289468,
+            "eof": true,
+            "lines_read": 2,
+            "start_offset": 1289468
+          },
+          "recording": "degraded"
+        },
+        "first_native_collection": {
+          "recording": "degraded",
+          "gaps": [
+            "CLOCK_UNALIGNED"
+          ],
+          "collector_duration_ns": 132874291,
+          "read": {
+            "bytes_read": 1289468,
+            "end_offset": 1289468,
+            "eof": true,
+            "lines_read": 280,
+            "start_offset": 22518
+          }
+        }
+      },
+      {
+        "request_metrics": {
+          "total_tokens": 1915691,
+          "input_tokens": 1897432,
+          "output_tokens": 18259,
+          "cached_input_tokens": 1823616,
+          "reasoning_output_tokens": 3598,
+          "cache_write_input_tokens": 0,
+          "known_tokens": 1915691,
+          "model_call_count": null,
+          "input_bytes": 9395,
+          "output_bytes": 17215,
+          "tool_duration_ns": 8015341124,
+          "request_wall_ns": 488300054000,
+          "model_duration_ns": null,
+          "user_wait_ns": 514633484000,
+          "tool_union_ns": null,
+          "user_wait_union_ns": 514633484000,
+          "processing_ns": null
+        },
+        "milestone_ms_since_first_request_marker": {
+          "useful_feedback": 310779.8,
+          "usable_file": 1002758.095
+        },
+        "milestone_basis": "UTC observed markers, start occurs after Skill loading; usable_file includes inter-turn review/resource waiting. Not full request latency or pure model time.",
+        "office_elapsed_ms": 4145,
+        "office_engine": {
+          "arguments": [
+            "-env:UserInstallation=PROFILE_DIR",
+            "--headless",
+            "--convert-to",
+            "xlsx",
+            "--outdir",
+            "OUTPUT_DIR",
+            "INPUT_XLSX"
+          ],
+          "binary_sha256": "8bde0caf3c901ce87e9baa6df5ec6e79ede4b629423195f6e59c8c6a681efddb",
+          "name": "LibreOffice",
+          "platform": "Darwin",
+          "version": "LibreOffice 26.8.0.3 bce0998afefdbc355585ca324285661a2170ba77"
+        },
+        "final_file_bytes": {
+          "model.json": 19230,
+          "plan.json": 15457,
+          "pending-items.json": 1088,
+          "prepared.json": 2817,
+          "details.md": 1005,
+          "summary.md": 383,
+          "candidate.json": 1379,
+          "projection.json": 11948,
+          "decisions.json": 1010,
+          "shown-plan.json": 9945,
+          "manifest.json": 9099,
+          "verification.json": 2383,
+          "sow.xlsx": 101809,
+          "confirmation.json": 6085,
+          "input-records.json": 1592,
+          "pending-items.md": 1770
+        },
+        "final_manifest_sha256": "081cdebc269493b8048bb1e1ecbf15d71b401f42a63b9f9f21434a5b49079c32",
+        "coverage": "partial",
+        "model_call_count": null,
+        "peak_context_tokens": null,
+        "variant": "focused",
+        "native_turns": [
+          {
+            "responses": 18,
+            "duration_ms": 439200,
+            "counts": {
+              "input_tokens": 1004829,
+              "output_tokens": 12348,
+              "total_tokens": 1017177,
+              "cached_input_tokens": 944256,
+              "reasoning_output_tokens": 2746,
+              "cache_write_input_tokens": 0
+            }
+          },
+          {
+            "responses": 10,
+            "duration_ms": 212435,
+            "counts": {
+              "input_tokens": 892603,
+              "output_tokens": 5911,
+              "total_tokens": 898514,
+              "cached_input_tokens": 879360,
+              "reasoning_output_tokens": 852,
+              "cache_write_input_tokens": 0
+            }
+          }
+        ],
+        "tool_counts": {
+          "ingest": 3,
+          "apply": 1,
+          "inspect": 10,
+          "render": 1,
+          "check": 2
+        },
+        "proposal_inspect_count": 7,
+        "verified_refs": 46,
+        "old_files_preserved": true,
+        "candidate_bytes_delivered": true,
+        "source_sha256": "d64479259c9174e8a2e506dfbce41fe230ef855f68877b05fef24e295ae07b79",
+        "request_root_markers": 4,
+        "native_collection": {
+          "collector_duration_ns": 93303125,
+          "gaps": [
+            "CLOCK_UNALIGNED"
+          ],
+          "read": {
+            "bytes_read": 1122945,
+            "end_offset": 1122945,
+            "eof": true,
+            "lines_read": 207,
+            "start_offset": 22520
+          },
+          "recording": "degraded"
+        }
+      }
+    ]
+  },
+  "measurement_limits": [
+    "Native response is not a physical model call.",
+    "Cumulative input is not peak context; cached input is part of input.",
+    "Token coverage partial, exact activity token assignment unknown.",
+    "No elapsed time backfill or rewrite of old observation gaps.",
+    "Final file byte sizes do not measure total intermediate writes.",
+    "Collector first read and replay costs are separate."
+  ],
+  "small_generate": {
+    "case": "I2 already-satisfied small Generate",
+    "source_revision": "I2.2 instruction revision2, original delivered bytes preserved",
+    "semantics": "One same API instance explicitly satisfies business/technical/delivery target; no artificial task. No semantic regeneration.",
+    "input_utf8_bytes": 842,
+    "input_sha256": {
+      "history.md": "32e188c51958f356f8c93d779614b5d9138c34745beb522fb4e974f9906a5ec6",
+      "hld.md": "99205e11ecf2e1f12154dcf74db363a935e529152d7b104dfe5f5daba5d56d33",
+      "prd.md": "ff6604ff9c467d8a010466e59d87aaef468ed1ca8dd62d27c2603f1f78b69f2c"
+    },
+    "response_count": 24,
+    "native_duration_ms": 418938,
+    "counts": {
+      "input_tokens": 1301498,
+      "cached_input_tokens": 1249280,
+      "output_tokens": 11715,
+      "reasoning_output_tokens": 1175,
+      "total_tokens": 1313213,
+      "cache_write_input_tokens": 0
+    },
+    "native_observer": {
+      "producer": "0.153.4",
+      "models": [
+        "gpt-6-astra"
+      ],
+      "bytes_read": 751983,
+      "truncated_or_partial": false,
+      "malformed_records": 0,
+      "duplicate_response_records": [],
+      "conflicting_response_records": [],
+      "invariant_failures": [],
+      "observer_elapsed_ms": 16.7
+    },
+    "request_metrics": {
+      "total_tokens": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "cached_input_tokens": null,
+      "reasoning_output_tokens": null,
+      "cache_write_input_tokens": null,
+      "known_tokens": null,
+      "model_call_count": null,
+      "input_bytes": 5638,
+      "output_bytes": 14021,
+      "tool_duration_ns": 6541395999,
+      "request_wall_ns": null,
+      "model_duration_ns": null,
+      "user_wait_ns": null,
+      "tool_union_ns": null,
+      "user_wait_union_ns": null,
+      "processing_ns": null
+    },
+    "first_useful_feedback_ms": null,
+    "first_usable_file_ms_since_opening": null,
+    "office_elapsed_ms": 3605,
+    "final_file_bytes": {
+      "model.json": 134,
+      "pending-items.json": 45,
+      "summary.md": 383,
+      "projection.json": 580,
+      "decisions.json": 45,
+      "manifest.json": 5220,
+      "verification.json": 2383,
+      "sow.xlsx": 99874,
+      "input-records.json": 1183,
+      "pending-items.md": 88
+    },
+    "final_manifest_sha256": "287ace36c86396b3a289216404ad563e51f8f844f870ee83d147c730d373ab3d",
+    "all_original_outputs_unchanged": true,
+    "limitations": [
+      "Selected known synthetic actor only, read-only diagnostic observer, not a new business run or current collector test.",
+      "Two turns separated by actual Office allocation wait. Opening/feedback markers unavailable; no historical backfill.",
+      "Small empty-gap case is not proof all small nonempty inputs take same time."
+    ]
+  },
+  "postreview_milestone_rebuild": {
+    "runtime": "I4.3 final telemetry correction",
+    "original_events_unchanged": true,
+    "business_files_unchanged": true,
+    "native_sources_reread": false,
+    "results": [
+      {
+        "variant": "baseline",
+        "event_count": 127,
+        "source_digest": "fecb926ca36921b8c3407e5163f1b84245b63c158e676dc3d68a9c19dd73c16b",
+        "business_files_preserved": 210,
+        "diagnostics": [
+          "CLOCK_UNALIGNED"
+        ],
+        "metrics": {
+          "first_useful_feedback_ns": {
+            "value": 361148167000,
+            "unit": "ns",
+            "coverage": "partial",
+            "diagnostics": [],
+            "basis": "utc_request_start_to_first_observed_milestone_including_wait"
+          },
+          "first_usable_file_ns": {
+            "value": 733495330000,
+            "unit": "ns",
+            "coverage": "partial",
+            "diagnostics": [],
+            "basis": "utc_request_start_to_first_observed_milestone_including_wait"
+          }
+        }
+      },
+      {
+        "variant": "focused",
+        "event_count": 97,
+        "source_digest": "0d94afd482c34c1cbff702d8cd0ea1ce54fc9b2dc56c9f713572586f496235ae",
+        "business_files_preserved": 193,
+        "diagnostics": [
+          "CLOCK_UNALIGNED"
+        ],
+        "metrics": {
+          "first_useful_feedback_ns": {
+            "value": 310779800000,
+            "unit": "ns",
+            "coverage": "partial",
+            "diagnostics": [],
+            "basis": "utc_request_start_to_first_observed_milestone_including_wait"
+          },
+          "first_usable_file_ns": {
+            "value": 1002758095000,
+            "unit": "ns",
+            "coverage": "partial",
+            "diagnostics": [],
+            "basis": "utc_request_start_to_first_observed_milestone_including_wait"
+          }
+        }
+      }
+    ]
+  }
+}

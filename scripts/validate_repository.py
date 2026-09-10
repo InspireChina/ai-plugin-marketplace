@@ -13,6 +13,8 @@ from pathlib import Path
 
 RELEASE_VERSION = "0.1.0-beta.1"
 PYTHON_RUNTIME_VERSION = "0.1.0b1"
+LITE_RELEASE_VERSION = "0.1.0-alpha.1"
+LITE_PYTHON_RUNTIME_VERSION = "0.1.0a1"
 SOW_STANDARD_VERSION = "1.3"
 MARKETPLACE_NAME = "ai-plugin-marketplace"
 PUBLISHER_NAME = "Inspire"
@@ -127,24 +129,25 @@ def validate_marketplace(repo_root: Path) -> list[str]:
                     f"{source_directory.name}"
                 )
 
-    ai_sow_entries = [
-        entry
-        for entry in plugins
-        if isinstance(entry, dict) and entry.get("name") == "ai-sow"
-    ]
-    if len(ai_sow_entries) != 1:
-        return [*errors, "marketplace must contain exactly one ai-sow entry"]
-    entry = ai_sow_entries[0]
-    expected_source = {"source": "local", "path": "./plugins/ai-sow"}
-    if entry.get("source") != expected_source:
-        errors.append("ai-sow source must be ./plugins/ai-sow")
-    if entry.get("policy") != {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL",
-    }:
-        errors.append("ai-sow marketplace policy is invalid")
-    if entry.get("category") != "Productivity":
-        errors.append("ai-sow category must be Productivity")
+    for name in ("ai-sow", "ai-sow-lite"):
+        entries = [
+            entry for entry in plugins
+            if isinstance(entry, dict) and entry.get("name") == name
+        ]
+        if len(entries) != 1:
+            errors.append(f"marketplace must contain exactly one {name} entry")
+            continue
+        entry = entries[0]
+        expected_source = {"source": "local", "path": f"./plugins/{name}"}
+        if entry.get("source") != expected_source:
+            errors.append(f"{name} source must be ./plugins/{name}")
+        if entry.get("policy") != {
+            "installation": "AVAILABLE",
+            "authentication": "ON_INSTALL",
+        }:
+            errors.append(f"{name} marketplace policy is invalid")
+        if entry.get("category") != "Productivity":
+            errors.append(f"{name} category must be Productivity")
     return errors
 
 
@@ -294,6 +297,8 @@ def validate_plugin_manifest(
                 continue
             if not _inside(plugin_path / relative, plugin_path):
                 errors.append(f"manifest {key} path escapes the plugin")
+            elif not (plugin_path / relative).exists():
+                errors.append(f"manifest {key} path does not exist: {relative}")
     return errors
 
 
@@ -422,6 +427,70 @@ def validate_ai_sow_release(repo_root: Path, plugin_root: Path) -> list[str]:
             )
         elif ai_sow_packages[0].get("version") != PYTHON_RUNTIME_VERSION:
             errors.append(f"uv.lock package version must be {PYTHON_RUNTIME_VERSION}")
+    return errors
+
+
+def validate_ai_sow_lite_release(repo_root: Path, plugin_root: Path) -> list[str]:
+    """Check Lite packaging without applying AI SOW's business contracts."""
+    errors: list[str] = []
+    for relative in (
+        CODEX_PLUGIN_MANIFEST, CLAUDE_PLUGIN_MANIFEST, "pyproject.toml", "uv.lock",
+        "LICENSE", "NOTICE", "README.md", "scripts/lite.py",
+        "scripts/bootstrap.sh", "scripts/bootstrap.ps1",
+        "runtime/ai_sow_lite/cli.py", "assets/sow-template.xlsx",
+        "skills/generate/SKILL.md", "skills/clarify/SKILL.md",
+        "tests/support/smoke_plugin.py",
+    ):
+        path = plugin_root / relative
+        label = path.relative_to(repo_root).as_posix()
+        if not _inside(path, plugin_root):
+            errors.append(f"release file escapes plugin: {label}")
+        elif not path.is_file():
+            errors.append(f"missing release file: {label}")
+
+    for relative in (CODEX_PLUGIN_MANIFEST, CLAUDE_PLUGIN_MANIFEST):
+        try:
+            manifest = load_json(plugin_root / relative)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            errors.append(f"invalid AI SOW Lite plugin manifest {relative}: {exc}")
+            continue
+        if not isinstance(manifest, dict):
+            errors.append(f"invalid AI SOW Lite plugin manifest {relative}: expected a JSON object")
+        elif manifest.get("version") != LITE_RELEASE_VERSION:
+            errors.append(f"AI SOW Lite plugin version in {relative} must be {LITE_RELEASE_VERSION}")
+
+    try:
+        pyproject = load_toml(plugin_root / "pyproject.toml")
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        errors.append(f"invalid AI SOW Lite pyproject: {exc}")
+    else:
+        project = pyproject.get("project")
+        if not isinstance(project, dict):
+            errors.append("invalid AI SOW Lite pyproject: missing [project] table")
+        else:
+            if project.get("name") != "ai-sow-lite-runtime":
+                errors.append("AI SOW Lite pyproject name must be ai-sow-lite-runtime")
+            if project.get("version") != LITE_PYTHON_RUNTIME_VERSION:
+                errors.append(f"AI SOW Lite pyproject version must be {LITE_PYTHON_RUNTIME_VERSION}")
+
+    try:
+        lockfile = load_toml(plugin_root / "uv.lock")
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        errors.append(f"invalid AI SOW Lite lock file: {exc}")
+    else:
+        packages = lockfile.get("package")
+        lite_packages = [
+            package for package in packages
+            if isinstance(package, dict) and package.get("name") == "ai-sow-lite-runtime"
+        ] if isinstance(packages, list) else []
+        if len(lite_packages) != 1:
+            errors.append("invalid AI SOW Lite lock file: expected one ai-sow-lite-runtime package")
+        else:
+            package = lite_packages[0]
+            if package.get("version") != LITE_PYTHON_RUNTIME_VERSION:
+                errors.append(f"AI SOW Lite uv.lock package version must be {LITE_PYTHON_RUNTIME_VERSION}")
+            if package.get("source") != {"virtual": "."}:
+                errors.append("AI SOW Lite uv.lock package source must be the plugin itself: virtual = '.'")
     return errors
 
 
@@ -582,6 +651,11 @@ def validate_repository(repo_root: Path) -> list[str]:
         errors.extend(
             f"{name}: {error}" for error in validate_plugin_manifest_parity(path)
         )
+        if name == "ai-sow-lite":
+            errors.extend(validate_ai_sow_lite_release(repo_root, path))
+            errors.extend(
+                f"{name}: {error}" for error in validate_publisher_identity(repo_root, path)
+            )
     errors.extend(validate_ai_sow_release(repo_root, plugin_root))
     errors.extend(validate_generator_contract_consistency(repo_root, plugin_root))
     errors.extend(validate_publisher_identity(repo_root, plugin_root))

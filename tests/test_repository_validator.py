@@ -29,6 +29,12 @@ AI_SOW_ENTRY = {
     "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
     "category": "Productivity",
 }
+AI_SOW_LITE_ENTRY = {
+    "name": "ai-sow-lite",
+    "source": {"source": "local", "path": "./plugins/ai-sow-lite"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "category": "Productivity",
+}
 
 
 def claude_entry(entry: dict[str, object]) -> dict[str, object]:
@@ -124,6 +130,28 @@ def write_valid_ai_sow_release(root: Path) -> Path:
     return plugin_root
 
 
+def write_valid_ai_sow_lite_release(root: Path) -> Path:
+    plugin_root = write_plugin(root, "ai-sow-lite", "0.1.0-alpha.1")
+    for relative in (
+        "LICENSE", "NOTICE", "README.md", "scripts/lite.py",
+        "scripts/bootstrap.sh", "scripts/bootstrap.ps1",
+        "runtime/ai_sow_lite/cli.py", "assets/sow-template.xlsx",
+        "skills/generate/SKILL.md", "skills/clarify/SKILL.md",
+        "tests/support/smoke_plugin.py",
+    ):
+        path = plugin_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("release fixture\n", encoding="utf-8")
+    (plugin_root / "pyproject.toml").write_text(
+        '[project]\nname = "ai-sow-lite-runtime"\nversion = "0.1.0a1"\n', encoding="utf-8"
+    )
+    (plugin_root / "uv.lock").write_text(
+        'version = 1\n[[package]]\nname = "ai-sow-lite-runtime"\n'
+        'version = "0.1.0a1"\nsource = { virtual = "." }\n', encoding="utf-8"
+    )
+    return plugin_root
+
+
 def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
     write_json(
         root / ".agents/plugins/marketplace.json",
@@ -146,6 +174,103 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 
 
 class RepositoryValidatorTests(unittest.TestCase):
+    def test_repository_validates_each_plugins_release_identity(self) -> None:
+        cases = (
+            (".codex-plugin/plugin.json", "0.1.0-alpha.1", "0.1.0", "AI SOW Lite plugin version"),
+            (".claude-plugin/plugin.json", "0.1.0-alpha.1", "0.1.0-beta.1", "AI SOW Lite plugin version"),
+            ("pyproject.toml", "0.1.0a1", "0.1.0b1", "AI SOW Lite pyproject version"),
+            ("pyproject.toml", "ai-sow-lite-runtime", "ai-sow-plugin-runtime", "AI SOW Lite pyproject name"),
+            ("uv.lock", "0.1.0a1", "0.1.0b1", "AI SOW Lite uv.lock package version"),
+            ("uv.lock", "ai-sow-lite-runtime", "ai-sow-plugin-runtime", "expected one ai-sow-lite-runtime package"),
+            ("uv.lock", 'virtual = "."', 'virtual = "../ai-sow"', "AI SOW Lite uv.lock package source"),
+        )
+        for relative, original, replacement, diagnostic in cases:
+            with self.subTest(relative=relative, replacement=replacement), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                write_valid_ai_sow_release(root)
+                lite = write_valid_ai_sow_lite_release(root)
+                initialize_repository(root, [AI_SOW_ENTRY, AI_SOW_LITE_ENTRY])
+                self.assertEqual(validate_repository(root), [])
+                target = lite / relative
+                target.write_text(target.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
+                errors = validate_repository(root)
+                self.assertTrue(any(diagnostic in error for error in errors), errors)
+                self.assertEqual(validate_ai_sow_release(root, root / "plugins/ai-sow"), [])
+
+    def test_repository_rejects_missing_lite_release_files(self) -> None:
+        for relative in ("LICENSE", "NOTICE", "skills/clarify/SKILL.md", "assets/sow-template.xlsx"):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                write_valid_ai_sow_release(root)
+                lite = write_valid_ai_sow_lite_release(root)
+                initialize_repository(root, [AI_SOW_ENTRY, AI_SOW_LITE_ENTRY])
+                (lite / relative).unlink()
+                self.assertIn(f"missing release file: plugins/ai-sow-lite/{relative}", validate_repository(root))
+
+    def test_repository_rejects_malformed_lite_release_metadata(self) -> None:
+        for relative, diagnostic in (("pyproject.toml", "invalid AI SOW Lite pyproject"),
+                                     ("uv.lock", "invalid AI SOW Lite lock file")):
+            for replacement in (None, b"\xff", b"[", b"", b"package = 1\n"):
+                with self.subTest(relative=relative, replacement=replacement), tempfile.TemporaryDirectory() as temp_dir:
+                    root = Path(temp_dir)
+                    write_valid_ai_sow_release(root)
+                    lite = write_valid_ai_sow_lite_release(root)
+                    initialize_repository(root, [AI_SOW_ENTRY, AI_SOW_LITE_ENTRY])
+                    target = lite / relative
+                    if replacement is None:
+                        target.unlink()
+                    else:
+                        target.write_bytes(replacement)
+                    errors = validate_repository(root)
+                    self.assertTrue(any(diagnostic in error for error in errors), errors)
+
+    def test_repository_rejects_lite_release_file_outside_package(self) -> None:
+        for relative in ("assets/sow-template.xlsx", ".codex-plugin/plugin.json",
+                         ".claude-plugin/plugin.json", "pyproject.toml", "uv.lock"):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                write_valid_ai_sow_release(root)
+                lite = write_valid_ai_sow_lite_release(root)
+                initialize_repository(root, [AI_SOW_ENTRY, AI_SOW_LITE_ENTRY])
+                target = lite / relative
+                shared = root / "shared-file"
+                target.rename(shared)
+                try:
+                    target.symlink_to(shared)
+                except OSError as exc:
+                    self.skipTest(f"symlinks unavailable: {exc}")
+                self.assertIn(f"release file escapes plugin: plugins/ai-sow-lite/{relative}", validate_repository(root))
+
+    def test_marketplace_requires_both_release_entries(self) -> None:
+        for missing in ("ai-sow", "ai-sow-lite"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                write_valid_ai_sow_release(root)
+                write_valid_ai_sow_lite_release(root)
+                initialize_repository(root, [entry for entry in (AI_SOW_ENTRY, AI_SOW_LITE_ENTRY) if entry["name"] != missing])
+                self.assertIn(f"marketplace must contain exactly one {missing} entry", validate_repository(root))
+
+    def test_marketplace_checks_lite_policy_and_source(self) -> None:
+        for field, replacement, diagnostic in (
+            ("policy", {}, "ai-sow-lite marketplace policy is invalid"),
+            ("category", "Other", "ai-sow-lite category must be Productivity"),
+            ("source", {"source": "local", "path": "./plugins/ai-sow"}, "ai-sow-lite source must be ./plugins/ai-sow-lite"),
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                write_valid_ai_sow_release(root)
+                write_valid_ai_sow_lite_release(root)
+                initialize_repository(root, [AI_SOW_ENTRY, {**AI_SOW_LITE_ENTRY, field: replacement}])
+                self.assertIn(diagnostic, validate_marketplace(root))
+
+    def test_manifest_declared_paths_must_exist_inside_each_plugin(self) -> None:
+        for name in ("ai-sow", "ai-sow-lite"):
+            with self.subTest(plugin=name), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                plugin = write_plugin(root, name, "0.1.0-alpha.1")
+                (plugin / "skills").rmdir()
+                self.assertIn("manifest skills path does not exist: ./skills", validate_plugin_manifest(root, plugin))
+
     def test_generator_fingerprint_matches_the_current_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -181,11 +306,13 @@ class RepositoryValidatorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write_valid_ai_sow_release(root)
+            write_valid_ai_sow_lite_release(root)
             write_plugin(root, "sample-plugin", "1.2.3")
             initialize_repository(
                 root,
                 [
                     AI_SOW_ENTRY,
+                    AI_SOW_LITE_ENTRY,
                     {
                         "name": "sample-plugin",
                         "source": {

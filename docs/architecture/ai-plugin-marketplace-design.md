@@ -19,7 +19,7 @@
 - 安装策略：`AVAILABLE`
 - 鉴权策略：`ON_INSTALL`
 
-插件名称、插件目录和 manifest 的 `name` 必须始终一致。Marketplace 的 `source.path` 固定为 `./plugins/ai-sow`。
+插件名称、插件目录和 manifest 的 `name` 必须始终一致。AI SOW 条目的 `source.path` 为 `./plugins/ai-sow`；独立预发布条目 AI SOW Lite 使用 `./plugins/ai-sow-lite`，名称为 `ai-sow-lite`、版本为 `0.1.0-alpha.1`。两宿主目录分别核对每个插件，不能以一个插件的版本覆盖另一个。
 
 ## 选择的架构
 
@@ -217,3 +217,9 @@ codex plugin add ai-sow@ai-plugin-marketplace
 6. 本地 Codex 安装成功，已安装插件从空项目完成端到端冒烟测试。
 7. Excel 实际重算没有公式错误，SOW 结构与 SOW `1.3` 合同一致。
 8. 新仓库工作区干净，并提供安装、更新、卸载和贡献说明。
+
+## AI SOW Lite 预发布包
+
+Lite遵守相同自包含边界，拥有自己的runtime、Skill、contracts、assets、pyproject/uv.lock及LICENSE/NOTICE。其内部流程与旧AI SOW分别维护，不复用旧Owner门禁或跨插件运行文件。根目录只登记插件和执行仓库验证，不能成为插件业务依赖。
+
+当前只完成预发布目录与独立副本开发验证，未进行日常宿主安装或发布。具体支持范围、实际性能与限制以[Lite交付记录](../../plugins/ai-sow-lite/docs/validation/I4-delivery.md)为准。

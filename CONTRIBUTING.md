@@ -6,7 +6,7 @@
 
 ## 开发环境
 
-本节只适用于仓库贡献者。普通插件用户由 `setup` 自动准备隔离运行时，不需要执行这些命令。
+本节只适用于仓库贡献者。AI SOW 的普通插件用户由 `setup` 自动准备隔离运行时；Lite由generate/clarify入口调用包内bootstrap。普通用户不需要执行本节开发命令。
 贡献者安装 Git、Python 3.12 和 uv 0.11.7 后运行：
 
 ```text
@@ -24,6 +24,16 @@ uv run --project plugins/ai-sow --locked python scripts/validate_repository.py
 uv run --project plugins/ai-sow --locked pytest -c plugins/ai-sow/pyproject.toml plugins/ai-sow -q
 uv run --project plugins/ai-sow --locked python plugins/ai-sow/tests/support/smoke_plugin.py --copy-plugin
 ```
+
+修改Lite时，还需运行其完整检查（包含真实Office独立副本消费者）：
+
+```text
+uv sync --project plugins/ai-sow-lite --locked
+uv run --project plugins/ai-sow-lite --locked pytest -c plugins/ai-sow-lite/pyproject.toml plugins/ai-sow-lite/tests -q
+uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/check_scenario_coverage.py --ledger docs/validation/scenario-coverage.json
+```
+
+跳过的Office或平台检查须注明原因，不能当作支持证据。场景清单结构通过也不代表专业语义全部正确。
 
 提交 Pull Request 前请在本地运行全部检查。Pull Request 应说明问题、选定边界、用户可见
 行为、测试结果，以及任何隐私或兼容性影响。提交应保持小而聚焦。

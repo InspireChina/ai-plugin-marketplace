@@ -1,0 +1,2737 @@
+{
+  "schema_version": "1.0",
+  "scenarios": [
+    {
+      "id": "IN01",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_inputs.py"
+      ],
+      "limitation": "I2实际复用已给的新旧项目身份与材料，只补缺件；I4完整PRD/HLD/draft正例沿用该入口，没有附加用途或定档问卷。"
+    },
+    {
+      "id": "IN02",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "tests/fixtures/generate/cases/insufficient-draft-notes/expectations.json",
+        "docs/validation/I4-delivery.md"
+      ],
+      "limitation": "隔离只读专业检查分别处理一句想法、0字节文件和纯模板，实际回复均列PRD/HLD缺件、新项目不强索历史且原型可选；不生成占位/零版。仅验证受控开场回复，未执行CLI或整次Generate。"
+    },
+    {
+      "id": "IN03",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md"
+      ],
+      "limitation": "无原型的PRD/HLD完整输入已实际生成交付；原型可选不豁免必需材料或内容充分性。"
+    },
+    {
+      "id": "IN04",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_inputs.py",
+        "tests/test_xlsx_inputs.py",
+        "tests/test_prototype_records.py"
+      ],
+      "limitation": "有效原件与不可读输入分别保留，XLSX未读面及原型不可读资源均显式暴露；大量异构材料任意组合未全跑。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "同一登记批次的部分失败不删除成功原件；读取缺口随原件身份保留。"
+        },
+        {
+          "id": "M03-xlsx",
+          "applicability": "隐藏/嵌入对象与未读区域不会被空结果替代。"
+        },
+        {
+          "id": "M15-prototype",
+          "applicability": "原型资源的未读限制与真实观察分别保存，不能伪造文本行号。"
+        }
+      ]
+    },
+    {
+      "id": "IN05",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4复杂历史例实际识别PRD只读与HLD/原型审批冲突，集中提问并在无法裁定时退出；仅覆盖该组冲突。"
+    },
+    {
+      "id": "IN06",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_inputs.py"
+      ],
+      "limitation": "I2采用后续答复更新相关分析；I4已有三片后撤回PRD/HLD用途时更新主题与工作索引、保留旧原件和草稿，未全量重拆。"
+    },
+    {
+      "id": "IN07",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md"
+      ],
+      "limitation": "I2真实首轮部分答复后保留已答事实、合批补问；基础仍缺时退出，没有填默认方案进入生成。"
+    },
+    {
+      "id": "IN08",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2答复仍缺契约/方案/责任时列补料退出；I4无法裁定审批/服务基础时亦保存分析与答复停止。"
+    },
+    {
+      "id": "IN09",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4用户明确暂时无法决定并要求保留后，原请求无骨架/候选/check/render/apply；没有把等待或沉默当批准。未跑数日沉默定时场景。"
+    },
+    {
+      "id": "IN10",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_contracts.py"
+      ],
+      "limitation": "I2局部责任/实例/分类未知随同版问题交付；I4原型局部未知与迁移M问题保留。局部问题不能替代全案基础。"
+    },
+    {
+      "id": "IN11",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json"
+      ],
+      "limitation": "I4实际从已有三片草稿接续，撤回核心PRD/HLD且基础不足后停止，current/versions为空，原件/草稿及已耗额度保留。"
+    },
+    {
+      "id": "IN12",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/I1-delivery.md"
+      ],
+      "limitation": "I2初版Excel与问题文件可独立使用，I3后续会话从文件修改；请求没有必要后台定稿。首轮S1语义失败保留，不算成功。"
+    },
+    {
+      "id": "IN13",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md"
+      ],
+      "limitation": "I2旧项目缺历史的实际开场要求补件；新项目无历史的真实正例交付。draft/原型不能替代旧项目历史。"
+    },
+    {
+      "id": "IN14",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "tests/test_project.py"
+      ],
+      "limitation": "I2真实两轮合批提问后基础仍不足，后续文件续接没有第三轮；只复核相关答复。"
+    },
+    {
+      "id": "IN15",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json"
+      ],
+      "limitation": "I2仅draft/tech note不足退出；I4完整PRD/HLD配套BA草稿时保留两个Feature并主动补HLD义务。未从标题编造AC。"
+    },
+    {
+      "id": "IN16",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2具体历史实例逐Task判模式，新项目无历史可空as-is；I4增补/跨系统历史按适用范围判断。新项目主动提供历史的所有组合未逐例实跑。"
+    },
+    {
+      "id": "IN17",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_prototype_records.py",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "I4同一XLSX的history/draft不同真实区域通过完整分析消费者，原件一次登记；尚无这一混合工作簿的独立宿主语义全程。",
+      "mechanism_refs": [
+        {
+          "id": "M03-xlsx",
+          "applicability": "同原件的物理读取复用，两个用途各自采用相应区域并形成独立分析，不把历史自动转为本期。"
+        }
+      ]
+    },
+    {
+      "id": "IN18",
+      "owner": "D01",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2输入问题只问事实/责任，复杂度未知直接M；I4原型生成与复杂历史基础问答保持此边界。Clarify的具体执行确认独立保留。"
+    },
+    {
+      "id": "IN19",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_inputs.py",
+        "tests/test_prototype_records.py",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "同文件PRD/HLD及同工作簿history/draft均有区域/用途消费者测试；角色齐全并不机械证明内容充分，合并文件全部语义变体未演练。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "一个物理版本允许多个明确区域用途，避免按文件数重复索取材料。"
+        },
+        {
+          "id": "M03-xlsx",
+          "applicability": "历史/draft分别登记采用分析，读取复用不等于分析有效性可复用。"
+        }
+      ]
+    },
+    {
+      "id": "IN20",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "tests/test_inputs.py"
+      ],
+      "limitation": "I2给出不支持的PDF HLD后实际要求可读材料；其他不支持格式有拒绝测试。PDF/DOCX/扫描件解析与OCR明确不支持，格式拒绝不等于解析成功。"
+    },
+    {
+      "id": "IN21",
+      "owner": "D04B",
+      "earliest_increment": "I1 工具 / I2 活动",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_project.py"
+      ],
+      "limitation": "I2实际两轮后文件续接仍退出；I4晚期撤回未新开问卷，已耗计数保持。未把用户有回复当作延长主动问答额度。"
+    },
+    {
+      "id": "AN01",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json"
+      ],
+      "limitation": "I4实际模拟成功只更新本地页面，生成结果没有据此宣称后台可复用；静态源码、动态观察与实现事实分别记录。"
+    },
+    {
+      "id": "AN02",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_prototype_records.py"
+      ],
+      "limitation": "实际自主观察覆盖同名按钮的不同路由和输入后状态；未单列未预登记菜单不断出现的精确触发，不能从既定目标完成推断。",
+      "mechanism_refs": [
+        {
+          "id": "M15-prototype",
+          "applicability": "已有观察格式记录实际入口/前置/动作/结果，不依赖程序提供点击Action枚举；新入口仍须同资源身份及授权。"
+        },
+        {
+          "id": "M05-bounded-loops",
+          "applicability": "新发现目标继续受原请求共享追加额度约束。"
+        }
+      ]
+    },
+    {
+      "id": "AN03",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_prototype_records.py"
+      ],
+      "limitation": "I4不可达分支和不可读资源保持静态/未读限制，复杂历史例只读源码且未伪造动态观察；完整包无法运行或JS/CSS加载失败未逐种宿主演练。",
+      "mechanism_refs": [
+        {
+          "id": "M15-prototype",
+          "applicability": "源码定位和观察定位分别验证；只有真实保存的观察/附件能作为动态来源，资源缺口不被解释为行为不存在。"
+        }
+      ]
+    },
+    {
+      "id": "AN04",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "I2稀疏历史的隐藏附注实际采用；XLSX合并区域/缓存/未读对象有精确读取测试。转置历史的所有排布未逐一语义验证。"
+    },
+    {
+      "id": "AN05",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4实际将明确取消的A API排除为复用依据，增补只替换指定Story；保留其余历史，未增加逐条历史交付审计。"
+    },
+    {
+      "id": "AN06",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_contracts.py"
+      ],
+      "limitation": "I2/I4缺复杂度事实立即M+问题，合法未知与非法分类有反例；I4同步按实际S标准判断，未知的非分档记录量不强制M。已知X的专业处理未单独实演。"
+    },
+    {
+      "id": "AN07",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2公共库只计一次、消费者接入保留，迁移内含核验；I4公共参数/PoC/部署责任按实际边界计量。全部公共测试组合未逐个实演。"
+    },
+    {
+      "id": "AN08",
+      "owner": "D02",
+      "earliest_increment": "I1 合同 / I2 语义",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4受控完整候选实测Story拆分/合并，未变AC/Task身份与内容、父归属及确切版本lineage均核对；这是文件级变体，非自主宿主拆合正确率。"
+    },
+    {
+      "id": "AN09",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2按原始义务/来源而非固定措辞或Task数评估；I4一次自写review名称期待误判被识别为机械核验问题，未为迎合标签改专业值。"
+    },
+    {
+      "id": "AN10",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "tests/test_inputs.py",
+        "tests/test_xlsx_inputs.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "固定长材料的后段义务已有实际核对；未观察到自然压缩，也没有超过上下文后摘要漏反例的完整实验。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "主题/读取身份及精确原文位置允许必要补读，已采用事实可由文件回查；可复用这一读取机制，不宣称超上下文语义保持已验。"
+        }
+      ]
+    },
+    {
+      "id": "AN11",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/performance.md",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I2三个串行片及长例覆盖有记录；大Feature拆片或强关联跨Feature如何选片未作为独立触发实演。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "跨Story/Feature的显式编辑、公共依赖和未改对象保留有实际候选证据，可复用关联邻域；原Generate切片选择仍需专业判断。"
+        }
+      ]
+    },
+    {
+      "id": "AN12",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "docs/design/detailed/D04A-single-session-panorama.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "docs/validation/I4-delivery.md"
+      ],
+      "limitation": "保留七片原文件，只在评估侧合并草案删除网点Feature/Story/两个Task及两条关系；隔离专业检查据原文、骨架和片索引准确发现遗漏，提出有限恢复并保留六片/迁移M及问题。人为注入的只读负例，本次未重演各片机械检查或执行修复/导出，不代表自然遗漏率。"
+    },
+    {
+      "id": "AN13",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "没有自然发生的Generate后一片发现公共义务、反向补正骨架并完成全程交付的实跑。已判断可复用有限公共影响邻域、确切来源/身份和无关片保留机制；不把该机制覆盖写成精确触发已验。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "I4公共参数只触及公共库和实际资料消费者，公告/两个API保留；拆合检查保持未变AC/Task与lineage。可用于界定受影响骨架/片集合，但Generate自然晚片回查尚未直接验证。"
+        },
+        {
+          "id": "M05-bounded-loops",
+          "applicability": "I4从三片草稿接续后只更新受影响主题，保留旧片和已耗追加/返修次数；回查仍使用原请求有限额度。"
+        }
+      ]
+    },
+    {
+      "id": "AN14",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json"
+      ],
+      "limitation": "I2 S1把通用标准补成AC的真实语义失败保留，原始输入定点修订后通过；I3受控误读AC再由实际Clarify按PRD修正，不把植入错误称自发错误。"
+    },
+    {
+      "id": "AN15",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2迁移记录量未知直接M+问题；I4原型和迁移延续该做法。I4独立同步的记录量并非该行分档维度，按已知标准S判断，不编数量也不泛化M规则。"
+    },
+    {
+      "id": "AN16",
+      "owner": "D02",
+      "earliest_increment": "I1 合同 / I2 语义",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I2一个查询成果覆盖多条来源AC且同一AC可涉及页面/API；I4拆合文件变体保持全部AC/Task身份。属于所验成果边界，不保证任意多对多拆解。"
+    },
+    {
+      "id": "AN17",
+      "owner": "D02",
+      "earliest_increment": "I1 合同 / I2 语义",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4原始意见明确购买离线AbortSignal PoC，实际单列Story/Task、S定档并交付；正常/取消后迟到、结论与限制均保留。其他专题设计变体未逐个实演。"
+    },
+    {
+      "id": "AN18",
+      "owner": "D02",
+      "earliest_increment": "I1 合同 / I2 语义",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2同订单对象的列表和详情作为不同查询事务交付；I4跨系统同名API不覆盖A历史。同名与同类型不能代替工作边界判断。"
+    },
+    {
+      "id": "AN19",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "tests/test_inputs.py",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "区域/规则可定向补读，I3原文AC误读通过相关PRD修正；未单列“轻量提取漏掉本片规则”后专业补读的全程反例。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "保留原件、精确区域和读取身份，允许只补受影响章节并更新来源采用，而不重建全部输入。"
+        }
+      ]
+    },
+    {
+      "id": "AN20",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_inputs.py",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "原件版本/用途改变有独立读取与分析有效性检查；I4撤回PRD/HLD仅更新相关主题和工作索引。各种解析器升级未全部演练。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "同名不等同相同内容；变更创建新版本，物理读取与用途分析分开判断。"
+        },
+        {
+          "id": "M03-xlsx",
+          "applicability": "多用途共享原始读取但不沿用过期的采用分析，选择范围和读取身份均被核对。"
+        }
+      ]
+    },
+    {
+      "id": "AN21",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json"
+      ],
+      "limitation": "I2无现成技术标题时主动形成公共技术层级；I4从HLD补BA草稿未列的两个独立查询API及运行部署说明。没有以技术标题存在代替实际义务。"
+    },
+    {
+      "id": "AN22",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2公共库一次建设、两个业务消费者接入与依赖完整；I4公共参数变动仅资料使用方适配，公告不重拆。"
+    },
+    {
+      "id": "AN23",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md"
+      ],
+      "limitation": "I2局部NFR未默认扩成公共服务，历史已满足目标的无gap例零Task；技术层级为空本身不判遗漏。"
+    },
+    {
+      "id": "AN24",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2迁移/核验/发布和外部责任经原始材料定点复验；I4生产部署执行另列，生产资料迁移/演练/正式验收仍客户负责。"
+    },
+    {
+      "id": "AN25",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2交付AC按来源及答复保留未知；I4生产执行、PoC标准和责任按原意见形成。没有套通用性能阈值或补造验收条件。"
+    },
+    {
+      "id": "AN26",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4审批/审计UI线索未被解释为可用后台或目标方案，关键缺口合批提问并停止；仅静态读取，没有动态后端证明。"
+    },
+    {
+      "id": "AN27",
+      "owner": "D04",
+      "earliest_increment": "条件实验；首版不启用委派",
+      "state": "conditional",
+      "evidence_refs": [
+        "docs/design/detailed/D09-validation-and-implementation.md",
+        "docs/design/implementation/P04-scope-and-performance.md"
+      ],
+      "limitation": "首版产品在单一专业session串行执行，不启用subagent或并发委派；隔离/继承成本与并发写集合只留作另行条件实验，开发中的委派不是产品验证。"
+    },
+    {
+      "id": "AN28",
+      "owner": "D04",
+      "earliest_increment": "条件实验；首版不启用委派",
+      "state": "conditional",
+      "evidence_refs": [
+        "docs/design/detailed/D09-validation-and-implementation.md",
+        "docs/design/implementation/P04-scope-and-performance.md"
+      ],
+      "limitation": "首版产品在单一专业session串行执行，不启用subagent或并发委派；隔离/继承成本与并发写集合只留作另行条件实验，开发中的委派不是产品验证。"
+    },
+    {
+      "id": "AN29",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/performance.md",
+        "tests/test_project.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I2文件续接和I4三片后基础撤回已有实际证据；固定长例未出现显式自然压缩记录，不能宣称多片自然压缩后的新旧事实整合已验证。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "当前采用主题及原件身份由文件确定，撤回用途不会覆盖旧原件或把旧分析当有效输入。"
+        },
+        {
+          "id": "M05-bounded-loops",
+          "applicability": "新会话从工作文件恢复原计数，不因历史丢失或压缩重新给予问答/返修额度。"
+        }
+      ]
+    },
+    {
+      "id": "AN30",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "I2隐藏历史附注已实际采用；公式缓存有无、隐藏/合并区域及嵌入对象未读面有物理测试，摘录绑定原件与读取身份。嵌入对象正文不解析。"
+    },
+    {
+      "id": "AN31",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_prototype_records.py"
+      ],
+      "limitation": "I4同值设置后状态完全相同、取消勾选才增计数，另有同名异路由/模拟/不可达观察；附件变化被消费者拒绝。未强制逆序响应，清除再刷新不证明非空备注丢失。"
+    },
+    {
+      "id": "AN32",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_xlsx_inputs.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I2已读历史及新项目空as-is按本期有据工作新建，零匹配范围身份可复核；I4新历史加入会使旧零匹配结论失效，不由程序改模式。"
+    },
+    {
+      "id": "AN33",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "I2缺历史实际补料、实例未知保留具体候选；I4审批/服务基础不足时不借新建或M继续。损坏历史后的专业完整退出仍未单列。"
+    },
+    {
+      "id": "AN34",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2/I4区分本期公共建设与消费者工作，候选不充当已实现历史；I4公共参数修改后计划Task仍新建。新页面调用旧组件的所有组合未逐一实跑。"
+    },
+    {
+      "id": "AN35",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I2目标全部由as-is满足时空gap/零Task实际交付；I4增补只改查询Story、保留未提及的其他历史，没有按较新文件全量取代。"
+    },
+    {
+      "id": "AN36",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4真实区分A/B系统及R1/R2发布事件，历史同名不抵扣本期交付；迁移源目标全部排列未逐个演练。"
+    },
+    {
+      "id": "AN37",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4增补只替换指定Story、其余历史保留，较新跨系统同名材料未取代A，关键冲突进入有限问答退出。任意历史组合的正确率未证明。"
+    },
+    {
+      "id": "AN38",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "I2稀疏历史缺AC/类型仍保留可识别层级、说明、隐藏附注及排除范围，没有重建完整历史规格或逐条交付核验。"
+    },
+    {
+      "id": "AN39",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md"
+      ],
+      "limitation": "I2相关API实例适用未知时保留具体复用候选，本期有据工作按新建且带问题；明确实例按实际变化判断，没有将无关API扩成问卷。"
+    },
+    {
+      "id": "AN40",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md"
+      ],
+      "limitation": "I2出站事件实例未知保留具体候选并新建；明确发送/接收/触发契约的变体按适用性处理，不仅凭事件类型减工作。"
+    },
+    {
+      "id": "AN41",
+      "owner": "D04B",
+      "earliest_increment": "I1 工具 / I2 活动",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_project.py",
+        "tests/test_prototype_records.py"
+      ],
+      "limitation": "I4实际首批观察加一次共享追加结束，余下不可达/未观察面保留；连续产生新路径直至超限的宿主变体未单列。",
+      "mechanism_refs": [
+        {
+          "id": "M05-bounded-loops",
+          "applicability": "追加额度属于请求，新增路径不能重置计数或另开同义批次。"
+        },
+        {
+          "id": "M15-prototype",
+          "applicability": "剩余目标可以保存真实未观察限制，局部结论不伪装为全路径成功。"
+        }
+      ]
+    },
+    {
+      "id": "AN42",
+      "owner": "D04B",
+      "earliest_increment": "I1 工具 / I2 活动",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "tests/test_inputs.py",
+        "tests/test_xlsx_inputs.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "有限分页和重复游标无进展拒绝已测，I2串行片及固定长材料的有限集合完成有记录；不把两轮问答上限当首次完整读取页数上限。"
+    },
+    {
+      "id": "AN43",
+      "owner": "D04B",
+      "earliest_increment": "I1 工具 / I2 活动",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_project.py"
+      ],
+      "limitation": "I2实际问题合批至两轮停止，I4多个原型主题复用观察、局部未知不逐Task追问；每主题乘额度及任意一问多目标组合不由单例全数证明。"
+    },
+    {
+      "id": "CL01",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json"
+      ],
+      "limitation": "I3三个独立会话只获交付项目文件、插件及原始反馈，没有Generate聊天，均形成方案并经实际确认交付；I3.3再由新会话串行改备注。"
+    },
+    {
+      "id": "CL02",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "tests/test_inputs.py",
+        "tests/test_project.py",
+        "tests/test_clarify.py"
+      ],
+      "limitation": "空current、损坏/缺依赖基线有读取和完整恢复反例，Clarify不能凭空提交；未单列无基线用户会话的自然语言指引演练。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "空结果与损坏不同诊断，文件查询不自动创建Generate业务结果。"
+        },
+        {
+          "id": "M04-storage",
+          "applicability": "Clarify须绑定真实有效基线，缺失/损坏不能作为可应用候选。"
+        }
+      ]
+    },
+    {
+      "id": "CL03",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json"
+      ],
+      "limitation": "I3.3在前次M问题已解决后接受自由备注意见，定位一条Story形成并确认应用；Task、问题、决定不变。"
+    },
+    {
+      "id": "CL04",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_inputs.py",
+        "tests/test_clarify.py",
+        "docs/validation/I4-delivery.md"
+      ],
+      "limitation": "隔离专业检查从真实有效版文件识别“把查询任务改成S”的多个可能对象，列两页面/两API/公共库的现档和改法，并明确问实际选择；项目字节保持。仅到待答讨论，不冒称已形成正式计划或用户已经选定，后续确认/应用由I3证据覆盖。"
+    },
+    {
+      "id": "CL05",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "tests/test_clarify.py"
+      ],
+      "limitation": "I3受控备注方案先经一次真实Office预览，再登记实际确认并复用同prepared应用，当前在确认前不变；不是多套业务方案均已自主比较。"
+    },
+    {
+      "id": "CL06",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "tests/test_clarify.py"
+      ],
+      "limitation": "I3 M/S答复先进入实际专业方案，控制器读到展示方案后才确认；确认前原模型/问题不变，确认后才采用决定。"
+    },
+    {
+      "id": "CL07",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4完整候选机械变体验证多目标问题只采用迁移M、未答发布说明仍open并修订问题；A/C实际选择保留B不采用。前者是受控部分答复，非独立宿主多目标问答实跑。"
+    },
+    {
+      "id": "CL08",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I3真实方案等待时未应用；I4独立同步只到方案，未获执行确认且未改变current。已观察取消的真实prepared反例另证保护；未做把沉默当答复的定时机制。"
+    },
+    {
+      "id": "CL09",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify.py"
+      ],
+      "limitation": "I3 M/S/AC及串行备注均在实际方案确认后交付；I4 A/C用原选择消息确认严格子集，没有重复索要同一确认。"
+    },
+    {
+      "id": "CL10",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "tests/test_clarify.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I3确认后current、模板、候选、原始来源或确认字节变化的实际prepared消费者均拒绝；BASE_STALE保留草案/现版，不自动重建或跨前提应用。"
+    },
+    {
+      "id": "CL11",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "tests/test_clarify.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I3整体current指针及看似无关基线变化的反例已检，旧确认不能复用；串行已提交版本仍可从原请求幂等回查而不倒退。"
+    },
+    {
+      "id": "CL12",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3真实diff与确认绑定、I4公共影响邻域及r1/r2有证据；“执行中才发现需要更深回查→扩大方案再确认”的完整自然触发未跑。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "新增对象/值或改变前提不能沿用原确认，必须在有限专业修订中重新形成具体方案。"
+        },
+        {
+          "id": "M04-storage",
+          "applicability": "完整候选和prepared才可激活，局部执行产物不能成为current。"
+        }
+      ]
+    },
+    {
+      "id": "CL13",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_contracts.py",
+        "tests/test_clarify.py"
+      ],
+      "limitation": "合法空值+问题和确认后改值拒绝均有测试；实际执行中才发现需清空旧值、再返回讨论的自然会话未单列。",
+      "mechanism_refs": [
+        {
+          "id": "M01-contract",
+          "applicability": "局部未知可合法留空但必须保留问题和义务，不能静默删除未拆明工作。"
+        },
+        {
+          "id": "M16-finite-changes",
+          "applicability": "清空旧值也是实际diff；若与展示值不同，原确认不能应用，须重新形成方案。"
+        }
+      ]
+    },
+    {
+      "id": "CL14",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3同字段M→L不能复用展示M→S、候选构造后篡改和确认改字节均拒绝；I4子集不能带未展示值或改变前提，current保持。"
+    },
+    {
+      "id": "CL15",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4公共接口与少数消费者的有限变化已真实处理；看似局部意见实质改变全局政策的专业识别未单列实跑。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "可读方案展示条件/未决事项/回查边界，扩范围或改值必须纳入实际diff及有限修订；程序不自行判断全局政策语义。"
+        },
+        {
+          "id": "M04-storage",
+          "applicability": "不完整或未经相应确认的扩大候选不成为有效版。"
+        }
+      ]
+    },
+    {
+      "id": "CL16",
+      "owner": "D01",
+      "earliest_increment": "I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json"
+      ],
+      "limitation": "I3首次采用M保持档位与未知条数，仅更新依据/决定/问题；I3.3备注修改保持全部Task、问题和决定。都在实际确认后同步交付，真正重复答复不建空版本。"
+    },
+    {
+      "id": "CL17",
+      "owner": "D01",
+      "earliest_increment": "I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json"
+      ],
+      "limitation": "I3实际新Excel、同版剩余问题和变化说明已交付，离线打开/查看后可接下一次Clarify；无再定稿或必需后台步骤。"
+    },
+    {
+      "id": "CL18",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4公共库及资料消费者联合修改，公告与两个API保留；精确跨两个原Generate切片的反馈触发未按原片身份单列。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "按当前稳定对象和依赖限定读写集合，跨Story/Feature不要求整片重写，未改内容/顺序保持。"
+        }
+      ]
+    },
+    {
+      "id": "CL19",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4公共库增加可选参数，仅资料消费者实际适配，公告默认映射及两个API保留；A/C子集真实交付，公共建设单计。独立同步补例仅到专业方案。"
+    },
+    {
+      "id": "CL20",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4实际方案区分迁移内含核验与独立每日核验，A/C子集交付新增生产执行且保留客户迁移/演练边界；B每日核验未采用、无Office交付。"
+    },
+    {
+      "id": "CL21",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_xlsx_inputs.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4新增历史使原零匹配读取范围失效并拒绝旧方案，程序不改Task模式；I2有稀疏/明确实例/无gap专业正反例。尚无新历史命中后完成Clarify重分类及确认交付的自然全程。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "历史成员查询包含零命中范围的身份，新增成员也改变摘要，避免只跟随正向引用。"
+        },
+        {
+          "id": "M16-finite-changes",
+          "applicability": "已失效方案不能应用；新的模式/内容须重新作专业判断并进入具体差异与确认。"
+        }
+      ]
+    },
+    {
+      "id": "CL22",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3实际M→S有第二版方案；I4专业r1/r2、共享返修及子集槽拒绝变体已验。仅说可复用但实例未明又反复扩方案的自然多轮讨论未跑。",
+      "mechanism_refs": [
+        {
+          "id": "M05-bounded-loops",
+          "applicability": "专业首稿加最多一次修订与机械返修分开计数，改身份/新子集不能重置额度。"
+        },
+        {
+          "id": "M16-finite-changes",
+          "applicability": "没有具体实例/值的答复不能替代精确确认，未决项及原current可保留退出。"
+        }
+      ]
+    },
+    {
+      "id": "CL23",
+      "owner": "D05",
+      "earliest_increment": "I3；复杂组合 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "tests/test_clarify.py"
+      ],
+      "limitation": "I3首次采用M和M→S均实际确认交付，M保值仍有新决定并解决问题；重复已采用答复仅返回现版。条数未知保持，不冒充S数量标准已满足；L用户变体未另跑宿主。"
+    },
+    {
+      "id": "CL24",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_workbook.py",
+        "tests/test_contracts.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "投影保留版本与对象映射，I4拆合lineage带精确旧版本且未变子项ID保持；尚无用户引用旧Excel行号→一对多候选→澄清定位的实际会话。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "旧版投影能还原当时行对应的稳定对象，不能套用现版行号。"
+        },
+        {
+          "id": "M16-finite-changes",
+          "applicability": "拆合的确切版本lineage提供后继集合；一对多仍需专业定位，机制不自动替用户选择。"
+        }
+      ]
+    },
+    {
+      "id": "CL25",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4受控完整候选保留多目标问题的未答目标、status=open、revision递增；I3问题实质变化须revision、旧确认不复用。旧答复晚到并由宿主逐项定位的组合未另演练。"
+    },
+    {
+      "id": "CL26",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4实际完整方案60项diff，经“采用A和C，B暂不采用”得到49项严格子集，check/一次Office/apply成功；B对象/问题未进入新版，原shown-plan按字节归档。非闭合/改值/改前提有反例。"
+    },
+    {
+      "id": "CL27",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_contracts.py",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I4拆分/合并受控完整候选保留未变AC/Task身份、重定父归属和依赖并记录确切版本lineage；I3退出对象与open目标悬空反例拒绝。是文件级机械组合，非每种拆合的宿主专业实演。"
+    },
+    {
+      "id": "CL28",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3一次真实Office预览在确认后完整复用，无第二次重算；内容/来源/模板/基线改变的反例拒绝。I4合法子集保留原显示快照，完整原候选仍复核，不跨基线复用。"
+    },
+    {
+      "id": "CL29",
+      "owner": "D05",
+      "earliest_increment": "I3 基础 / I4 复杂修改",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I3 M/S/AC与后续备注改稿均保持实施方式；I4公共能力及生产责任修改后尚未实施的计划Task仍新建，不因Clarify改稿变成调整或历史as-is。"
+    },
+    {
+      "id": "XL01",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_contracts.py"
+      ],
+      "limitation": "I2实例未明的新建+问题、合法未知字段及基础不足退出均有实际例；I4审批基础缺失不借默认值继续。非空字段不等于问题已解决。"
+    },
+    {
+      "id": "XL02",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4PRD/HLD目标冲突且用户无法决定时实际停止，未选主方案或条件估算；后期局部多套既有方案未逐种实演。"
+    },
+    {
+      "id": "XL03",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_workbook.py",
+        "tests/test_contracts.py"
+      ],
+      "limitation": "I1受控完整包投影已知值/合法空值/M及unestimated_work；I2/I4局部未知真实交付。两类证据分别有效，不宣称一个自然案例同时覆盖全部未知组合。"
+    },
+    {
+      "id": "XL04",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "tests/test_office.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "真实引擎原公式/缓存保存、损坏拒绝和受控失败已有证据；公式错误值不触发金额门禁，注入失败不是自然Office故障。",
+      "mechanism_refs": [
+        {
+          "id": "M07-office",
+          "applicability": "引擎/文件失败只在既有额度内处理，最终字节必须复读。"
+        },
+        {
+          "id": "M06-projection",
+          "applicability": "只保留原模板输入和公式，合法计算错误值不驱动改公式或改业务。"
+        }
+      ]
+    },
+    {
+      "id": "XL05",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_workbook_sources.py",
+        "tests/test_office.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "I2 XLSX来源异常、I4原型来源消费失败均发生在Office前，保留原候选并修机械接缝；受控Office失败耗尽后停止，没有把未获Excel报成已交付。"
+    },
+    {
+      "id": "XL06",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_workbook.py",
+        "tests/test_workbook_sources.py"
+      ],
+      "limitation": "I1长原文出口与中等列表经真实Office/Excel查看；I4来源标签及附件区域进入待确认说明。未穷尽所有字体/显示器/长文布局。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "完整原文保存在details.md并由既有单元格引用，预览不能替换原文或错绑对象。"
+        }
+      ]
+    },
+    {
+      "id": "XL07",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "同版pending与Excel映射及篡改prepared拒绝已验，I3/I4真实新旧版摘要独立核对；不新增问题Sheet。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "同一候选投影问题/备注/Excel并验证定位，包括零问题说明。"
+        },
+        {
+          "id": "M08-prepared",
+          "applicability": "内容与输出摘要绑定，混入另一版本的说明不能复用完整包。"
+        }
+      ]
+    },
+    {
+      "id": "XL08",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "以公式前缀开头的普通文本按字符串写入并经真实Office保存，保留原文；没有把文本转成可执行公式。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "文本写入与模板公式列分离，实际保存后复读确认类型和原值。"
+        }
+      ]
+    },
+    {
+      "id": "XL09",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_prototype_records.py",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "I4完整PRD/HLD加BA草稿真实生成，XLSX多用途消费者另有验证；尚无用户手改交付Excel后作为意见的自然Clarify全程，无损手改回导不支持。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "用户工作簿作为新原件及明确用途登记，不直接覆盖内置模板或有效模型。"
+        },
+        {
+          "id": "M03-xlsx",
+          "applicability": "只读取真实区域/原值并保留未读面，draft与历史用途分别分析。"
+        }
+      ]
+    },
+    {
+      "id": "XL10",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_contracts.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "不适用与集成属性未知有不同编码/问题检查；I4独立同步方案实际集成类型不适用，未因此伪造外部集成工作。",
+      "mechanism_refs": [
+        {
+          "id": "M01-contract",
+          "applicability": "合法不适用与缺依据未知分开校验，未知须保留相应问题。"
+        },
+        {
+          "id": "M06-projection",
+          "applicability": "按已采用分类原值投影，不通过金额或空值猜分类。"
+        }
+      ]
+    },
+    {
+      "id": "XL11",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "tests/test_workbook.py",
+        "tests/test_template_uat.py"
+      ],
+      "limitation": "混合Task类型及原UAT公式/Office缓存有受控真实包；不从类型组合推出新的UAT计算规则。",
+      "mechanism_refs": [
+        {
+          "id": "M14-template",
+          "applicability": "混合类型仍使用原Story/Task引用及UAT公式，原引擎结果保持。"
+        }
+      ]
+    },
+    {
+      "id": "XL12",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "合法空人天及SUM仍有值的模板结果按原样保存，已有输入和问题分别核对；未添加缺值公式保护或部分金额汇总。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "已有值不漏写，合法空值关联同版问题，SUM缓存不作为业务完整性判断。"
+        },
+        {
+          "id": "M14-template",
+          "applicability": "汇总及SIT/UAT继续由原模板公式和Office计算，不重算口径。"
+        }
+      ]
+    },
+    {
+      "id": "XL13",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "tests/test_contracts.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "合法未知与非法分类/漏写已知值的受控反例分别处理；字段未知不会为通过模板检查而猜值。",
+      "mechanism_refs": [
+        {
+          "id": "M01-contract",
+          "applicability": "未知字段必须有问题去向，非法枚举/引用仍拒绝。"
+        },
+        {
+          "id": "M06-projection",
+          "applicability": "白色输入按已知事实填值、合法未知留空，不修改模板校验规则。"
+        }
+      ]
+    },
+    {
+      "id": "XL14",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "tests/test_contracts.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "合法未知Task类型留空并带问题、非法类型拒绝已有真实机械包；UAT的空白/数值/错误结果保持原样。",
+      "mechanism_refs": [
+        {
+          "id": "M01-contract",
+          "applicability": "区分未知与非法类型，未分类不是允许写非法值。"
+        },
+        {
+          "id": "M14-template",
+          "applicability": "原UAT公式不增加三态或强制空白逻辑。"
+        }
+      ]
+    },
+    {
+      "id": "XL15",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "Story公式列及Table扩行原型保护已有测试，I4实际查看AC/备注后的SIT/UAT；没有手填Story UAT。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "映射只写既有白色输入，公式列/数据验证/保护保留。"
+        }
+      ]
+    },
+    {
+      "id": "XL16",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "I3 Task分类变更已真实交付；I4移动/拆合/删除在完整候选验证，投影按现候选重建行。尚未把全部移动删除组合逐一Office交付。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "显式移动/退出必须给定子项和lineage去向，未变对象保留。"
+        },
+        {
+          "id": "M06-projection",
+          "applicability": "新行/类型/Story关系来自完整当前候选，旧行不能混入新版。"
+        },
+        {
+          "id": "M14-template",
+          "applicability": "重新填值仍保留原公式与引擎结果，不规定新空值语义。"
+        }
+      ]
+    },
+    {
+      "id": "XL17",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "大小写/Unicode/通配符/长名与新增同名别名分配已有受控反例及原生样本；没有为criteria名称修改模板公式。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "稳定对象ID、显示别名、父键与原文出口同时核对，名称碰撞不合并对象。"
+        }
+      ]
+    },
+    {
+      "id": "XL18",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "0/1/容量边界及61 Story/201 Task真实包保留Table、公式原型、样式和保护，原生打开已记录；空公式行不是业务工作。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "超容量沿原型扩行，保留行/列引用及Table范围。"
+        },
+        {
+          "id": "M14-template",
+          "applicability": "预留公式与UAT保持原语义，不新增公式体系。"
+        }
+      ]
+    },
+    {
+      "id": "XL19",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_template_uat.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "I2三类义务进入同层级实际交付；I4 PoC/生产执行交付中Task分类和Story公式实看。混合UAT类型的公式保持另由受控模板测试支持。"
+    },
+    {
+      "id": "XL20",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "I2新建且有具体历史候选的问题仍open并进入同版备注/说明；I3首次M采用与重复答复证明非空字段不自动关闭问题。"
+    },
+    {
+      "id": "XL21",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "近同名/长名/后续新增同名的稳定别名、父键和原文出口有测试；不是对任意名称的原生布局保证。",
+      "mechanism_refs": [
+        {
+          "id": "M06-projection",
+          "applicability": "保留有效既有别名并以身份解决新冲突，按版本反查稳定ID，完整长原文仍可达。"
+        }
+      ]
+    },
+    {
+      "id": "XL22",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "tests/test_workbook.py",
+        "tests/test_template_uat.py"
+      ],
+      "limitation": "按D09既定口径检验输入、引用、原公式与最终Office缓存保存；不因Story/Task结果不同计算新差额或金额未知状态。",
+      "mechanism_refs": [
+        {
+          "id": "M14-template",
+          "applicability": "原公式和缓存是保存验证对象，金额差异不形成额外算法或门禁。"
+        }
+      ]
+    },
+    {
+      "id": "XL23",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "I2充分依据的无gap/零Task和局部未知分别实际交付；I4基础撤回则停在草案，不把空版本或0金额当成功。预留行不计工作有测试。"
+    },
+    {
+      "id": "XL24",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_workbook.py",
+        "tests/test_workbook_sources.py",
+        "tests/test_clarify.py"
+      ],
+      "limitation": "I3预览成功复用及模板/内容/来源改变拒绝，I4原型导出旧失败按原额度重试并复读旧成功；引擎升级组合未全数验证。",
+      "mechanism_refs": [
+        {
+          "id": "M08-prepared",
+          "applicability": "复用要求候选、模板、投影/工具身份和最终字节仍有效，路径相同不足以证明缓存适用。"
+        }
+      ]
+    },
+    {
+      "id": "XL25",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_template_uat.py"
+      ],
+      "limitation": "原Q=SIT/R=UAT及Story F/G在原生Excel实看，模板原字节未变；无三态/缺值保护/公式转换。",
+      "mechanism_refs": [
+        {
+          "id": "M14-template",
+          "applicability": "按模板既有列和公式复读，SIT/UAT结果交给Office原样保存。"
+        }
+      ]
+    },
+    {
+      "id": "XL26",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_contracts.py",
+        "tests/test_workbook.py",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I1受控完整包把unestimated_work义务投到问题/既有备注；I4候选变体明确补齐Task或退出并记录lineage，静默删除open义务拒绝。未声称两种后续变体各自跑过宿主和Office。"
+    },
+    {
+      "id": "FS01",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_contracts.py",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3非法结构、孤儿引用、未登记来源、篡改候选和越界确认均不能生效；I4拆合/子集的完整引用消费者补充反例。"
+    },
+    {
+      "id": "FS02",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_project.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I2耗尽后fresh只inspect停止，I4候选/根因/专业修订与子集槽不能换名重置；开发worker不代表产品启用委派。"
+    },
+    {
+      "id": "FS03",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_project.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "真实提交切点和未完成准备包不激活已验；Generate任意半片恢复组合未单独全程演练。",
+      "mechanism_refs": [
+        {
+          "id": "M04-storage",
+          "applicability": "整包验证且切换current才生效，局部工作文件不能成为成功版本。"
+        },
+        {
+          "id": "M16-finite-changes",
+          "applicability": "有限修改仍构造完整候选，半个子集或不闭合引用不能提交。"
+        }
+      ]
+    },
+    {
+      "id": "FS04",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "tests/test_delivery.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I1真包五切点、I3真实Clarify子进程提交前kill均按生效点recover，孤儿不当成功且旧版本字节保持；POSIX本地目录受控切点。"
+    },
+    {
+      "id": "FS05",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I3真实Clarify提交完成但响应前kill，recover返回已应用且原意图重试不再重算/应用；实际重复M答复也未生成空版本。"
+    },
+    {
+      "id": "FS06",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "tests/test_project.py",
+        "tests/test_clarify.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I3整体current异常改变与锁内重检反例返回BASE_STALE，保留prepared/原版本，不自动合并；WRITE_BUSY短锁保护另测。"
+    },
+    {
+      "id": "FS07",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "tests/test_clarify_lifecycle.py",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "I3实际准备包取消及Office期间SIGINT保证业务不迟到激活；usage迟到去重另有测试，未进行产品worker或宿主模型迟到的整组实跑。",
+      "mechanism_refs": [
+        {
+          "id": "M04-storage",
+          "applicability": "已观察取消在render/锁前拒绝，指针后取消不撤销成功事实。"
+        },
+        {
+          "id": "M10-telemetry",
+          "applicability": "迟到用量回写原请求报告且去重，不触碰业务交付或复活请求。"
+        }
+      ]
+    },
+    {
+      "id": "FS08",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify_lifecycle.py",
+        "tests/test_delivery.py",
+        "tests/test_prototype_records.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3完整recover拒绝确认原件篡改，独立消费者删除历史依赖并重算manifest仍拒绝；I4原型资源/附件及子集永久依赖被核验。版本不兼容的任意升级迁移不在实测范围。"
+    },
+    {
+      "id": "FS09",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4实际静态识别原型中的生产POST且未启动或调用；受控资料没有真实可写后台，只证明该输入下的授权判断，非实际生产防护测试。"
+    },
+    {
+      "id": "FS10",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json"
+      ],
+      "limitation": "I4材料夹带导出全文及假批准语句未被作为操作授权，哨兵文件未产生；单组合输入反例不代表普遍注入防御正确率。"
+    },
+    {
+      "id": "FS11",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/performance.md",
+        "tests/test_project.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I2按文件续接失败/问答状态，I4从三片草稿接续撤回用途并保留旧片；任意半片后恢复生成并完成全案、自然压缩仍未直接演练。",
+      "mechanism_refs": [
+        {
+          "id": "M02-input",
+          "applicability": "采用主题和有效原件从文件定位，不能按旧聊天把已撤回分析恢复为有效。"
+        },
+        {
+          "id": "M04-storage",
+          "applicability": "未合并检查/未切current的片只作草稿保存。"
+        },
+        {
+          "id": "M05-bounded-loops",
+          "applicability": "文件续接保持已耗轮次，不因重启给无效半片计完成或重置额度。"
+        }
+      ]
+    },
+    {
+      "id": "FS12",
+      "owner": "D00",
+      "earliest_increment": "I1",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_delivery.py",
+        "tests/test_smoke_audit.py",
+        "tests/test_bootstrap.py",
+        "tests/support/smoke_plugin.py"
+      ],
+      "limitation": "Lite独立副本真实Generate→Clarify与旧请求回查、逐CLI/worker收据集合及越界读取反例已执行；不借旧插件通过代替Lite。Python启动前及Office原生读取不在审计内，跨平台安装另限。"
+    },
+    {
+      "id": "FS13",
+      "owner": "D07",
+      "earliest_increment": "条件实验；首版不启用委派",
+      "state": "conditional",
+      "evidence_refs": [
+        "docs/design/detailed/D09-validation-and-implementation.md",
+        "docs/design/implementation/P04-scope-and-performance.md"
+      ],
+      "limitation": "首版产品不启用worker/并发委派；旧尝试晚到、提供方变化和并行写集只保留条件实验。开发子agent及普通串行BASE_STALE反例不能代替此产品实验。"
+    },
+    {
+      "id": "FS14",
+      "owner": "D03",
+      "earliest_increment": "I2；原型 I4",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_contracts.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I2分析中的局部缺口随正式对象准确绑定；I4保留迁移原问题、B未采用不进入新版问题，机械测试拒绝丢失open义务。自然压缩中问题绑定丢失的反例未单列。"
+    },
+    {
+      "id": "FS15",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_project.py",
+        "tests/test_change_combinations.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I2文件续接保持计数，I4专业修订/每候选/每根因/请求共享返修上限有组合反例；I3实际Office取消只清理所属进程。未据此声称宿主UI取消或Windows验证。"
+    },
+    {
+      "id": "FS16",
+      "owner": "D04B",
+      "earliest_increment": "I1 工具 / I2 活动",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I2同根因/额度耗尽后停止，I4候选一次、请求两批和根因一次分别测试；实际A/C方案耗两次机械返修仍保持专业revision=1，没有重开请求。"
+    },
+    {
+      "id": "FS17",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_inputs.py",
+        "tests/test_project.py"
+      ],
+      "limitation": "初始化和分析登记中断反例只完成缺失步骤、保留原件/身份且不建current；I4三片后撤回基础也不提前激活分析。无额外setup用户入口。"
+    },
+    {
+      "id": "FS18",
+      "owner": "D07",
+      "earliest_increment": "I1；确认应用 I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "tests/test_project.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I2重复Generate文件回查，I3两次Clarify后旧Generate同意图仍返回原成功事实且current保持末版；异意图REQUEST_ID_CONFLICT，首次空基线异常拒绝。保留完整套件曾暴露的失败与定向修复记录。"
+    },
+    {
+      "id": "OB01",
+      "owner": "D08",
+      "earliest_increment": "I1 事件 / I2 宿主",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "I3/I4实际原生response计数与工具耗时分开记录；G12精确活动token、纯模型耗时、物理调用数和峰值上下文未知，不能平均分配或按差额推算。"
+    },
+    {
+      "id": "OB02",
+      "owner": "D08",
+      "earliest_increment": "I1 事件 / I2 宿主",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "真实长例/配对collector完成但报告仍partial/degraded，缺来源为unknown而非0；实际观测收尾故障不重复业务。没有自动取得每次请求完整token账的保证。"
+    },
+    {
+      "id": "OB03",
+      "owner": "D08",
+      "earliest_increment": "I1 事件 / I2 宿主",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "原生响应绝对值与turn累计核对、同绑定EOF重放不重复入账；合成修订/真实重试计数算法另测。response身份不证明物理调用，原生epoch未知时不猜填。"
+    },
+    {
+      "id": "OB04",
+      "owner": "D08",
+      "earliest_increment": "I1 事件 / I2 宿主",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "父子/并行时长重叠的合成测试已运行；长例/配对CLOCK_UNALIGNED仍保留，不把不同进程时钟拼成纯处理时长。",
+      "mechanism_refs": [
+        {
+          "id": "M10-telemetry",
+          "applicability": "只在可对齐区间求并集并排除父汇总重计，累计工具时长与请求历时分别展示。"
+        }
+      ]
+    },
+    {
+      "id": "OB05",
+      "owner": "D08",
+      "earliest_increment": "I1 事件 / I2 宿主",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I3实际Generate→离线Excel查看→新会话Clarify分别记录；长例协调轮次/等待亦单列。离线查看由评估者执行，未等待真实客户数日，不能外推客户行为。"
+    },
+    {
+      "id": "OB06",
+      "owner": "D08",
+      "earliest_increment": "I1 事件 / I2 宿主",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I3与I4分别给出方案阶段、可观察用户等待和确认到新文件；配对两侧方案/确认都真实交付，等待差异不用于判断速度。I3.3旧request_wall=null保留，不回填未记录讨论/放弃区间。"
+    },
+    {
+      "id": "OB07",
+      "owner": "D08",
+      "earliest_increment": "I2 基线 / I4 固定长例与对照",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "docs/validation/I2-generate.md"
+      ],
+      "limitation": "已补53619字节固定长材料，后段网点三分支逐项核对；同基线M采用配对减少不必要标准/原件回读，必要完整检查保留。没有发生显式自然压缩，首次规则读取并未被本次优化消除。"
+    },
+    {
+      "id": "OB08",
+      "owner": "D08",
+      "earliest_increment": "I2 基线 / I4 固定长例与对照",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "实际配对先核对同质量义务及全部旧版、新版候选字节，再比较完整方案/确认用量；两侧各一次Office。单次探索性配对缓存/调度不可控，不宣称因果节省百分比或SLA。"
+    },
+    {
+      "id": "OB09",
+      "owner": "D08",
+      "earliest_increment": "I1 事件 / I2 宿主",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/performance.md",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "shared/unassigned合成算例及实际原生归属缺口保留，一条response可能跨多个活动；没有按片数分摊token或把父级累计再加一次，精确逐片用量仍未知。"
+    },
+    {
+      "id": "OB10",
+      "owner": "D08",
+      "earliest_increment": "I2 基线 / I4 固定长例与对照",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I2三类义务与首次语义失败保留，I4长例公共库/四消费者/迁移发布及一AC改稿逐项核对；旧ai-sow缺同粒度历史账，没有Lite对旧版的速度比较或节省声明。"
+    },
+    {
+      "id": "OB11",
+      "owner": "D08",
+      "earliest_increment": "条件实验；首版不启用委派",
+      "state": "conditional",
+      "evidence_refs": [
+        "docs/design/detailed/D09-validation-and-implementation.md",
+        "docs/design/implementation/P04-scope-and-performance.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "首版产品单session串行，未启动分session/子上下文/并发产品性能实验；当前配对是两个独立串行请求比较指引，不证明委派或并发更省时/token。"
+    },
+    {
+      "id": "OB12",
+      "owner": "D08",
+      "earliest_increment": "I2 基线 / I4 固定长例与对照",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "已补小型842字节空gap/24响应/418.938秒、典型和53619字节长例，以及局部Clarify配对。累计输入、缓存明细、CLI信封、最终文件大小分开；无峰值上下文或全部中间写入量。长例无显式compaction，不把落盘当清空历史。"
+    },
+    {
+      "id": "OB13",
+      "owner": "D08",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I4实际原型首批加一次追加及复杂修改两批返修均保留；长例Generate 40次CLI、Clarify 22次，配对完整24/17次，响应/字节/时间另列。有限批数不是硬性时间或token上限，协调和失败成本不删除。"
+    },
+    {
+      "id": "OB14",
+      "owner": "D08",
+      "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "scope/epoch/乱序/混合范围算例与实际response/turn累计核对分开；长例业务两段与协调轮次分列，配对按明确turn绑定导入。未知native epoch及缺失区间不补造，请求coverage仍partial。"
+    },
+    {
+      "id": "OB15",
+      "owner": "D08",
+      "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/performance.md",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py",
+        "tests/test_clarify_lifecycle.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "缺end/跨时钟/负区间等合成反例、collector真实SIGINT及Clarify实际提交前后kill已有证据；宿主重启/墙钟实际跳变和模型中断未逐种实演。",
+      "mechanism_refs": [
+        {
+          "id": "M10-telemetry",
+          "applicability": "不完整生命周期保留unknown，跨进程时钟不能相减求并集或把缺口计为零/等待。"
+        },
+        {
+          "id": "M11-native",
+          "applicability": "真实采集SIGINT可传播且已落盘事件可重放；它不是宿主模型取消实证。"
+        }
+      ]
+    },
+    {
+      "id": "OB16",
+      "owner": "D08",
+      "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "实际330176字节非usage帧暴露256 KiB边界，512 KiB上限通过边界/+1与真实长源，8 MiB/10000行仍有限；采集首次/EOF开销分别报告，不落正文或开递归观测。观察失败只降级，不为补账重跑业务。"
+    },
+    {
+      "id": "OB17",
+      "owner": "D08",
+      "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_clarify_lifecycle.py",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "I3提交后观测失败不撤销成功；I4当前collector在演员结束后按原绑定导入并EOF复读，长例/配对业务版本与候选字节保持。事件落盘后游标失败的重放另有受控测试，末次快照不称完整请求。"
+    },
+    {
+      "id": "OB18",
+      "owner": "D08",
+      "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/host-support.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_host_usage.py",
+        "tests/test_bootstrap.py"
+      ],
+      "limitation": "桌面生产者0.153.4与CLI版本分开，当前512 KiB collector读取已知长源/配对而不改历史业务版本；自动宿主来源发现未证实。Claude只入口发现且认证失败，Windows/Linux业务未验，G12不因协议字段或manifest存在关闭。"
+    },
+    {
+      "id": "OB19",
+      "owner": "D08",
+      "earliest_increment": "I1.1 早期探针 / I1 事件 / I2 集成",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py",
+        "tests/test_skill_contracts.py"
+      ],
+      "limitation": "实际选定turn按response绝对观察一次，累计只交叉核对；报告partial、活动归属未知不算覆盖率。两名配对执行者各四个根标记修正后request_wall为535.209408/488.300054秒；旧I3.3 null及长例历史活动缺口保留，这些区间不是纯模型耗时。"
+    },
+    {
+      "id": "X01",
+      "owner": "D06",
+      "earliest_increment": "I1",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_workbook.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "实际局部未知交付与受控unestimated_work投影/补齐退出分别有证据；没有把它们拼成自然发生的完整贯穿案例。",
+      "mechanism_refs": [
+        {
+          "id": "M01-contract",
+          "applicability": "未拆明义务由open问题保留，与合法未知字段分开，不因已存在Task忽略剩余工作。"
+        },
+        {
+          "id": "M06-projection",
+          "applicability": "同版Excel/问题/备注原文自含，可带走；公式/金额仍按原模板。"
+        }
+      ]
+    },
+    {
+      "id": "X02",
+      "owner": "D05",
+      "earliest_increment": "I3",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3独立文件会话及确认前草案保持、I4受控部分答复有证据；“部分答复未确认后再由新会话继续”的完整组合未单列。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "已答与未答目标分别进入候选问题/决定，部分答复保持剩余open和revision。"
+        },
+        {
+          "id": "M04-storage",
+          "applicability": "未确认候选不改变current，后续会话可从同基线工作文件定位草案。"
+        }
+      ]
+    },
+    {
+      "id": "X03",
+      "owner": "D07",
+      "earliest_increment": "I3",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3预览/确认、I4公共影响邻域与子集交付各自已验；“已确认后共享影响扩大且Excel已局部生成”的完整自然序列未跑。",
+      "mechanism_refs": [
+        {
+          "id": "M16-finite-changes",
+          "applicability": "新增值/对象/前提不属于原确认，有限修订须重新展示完整具体变化。"
+        },
+        {
+          "id": "M08-prepared",
+          "applicability": "旧预览只有同候选/基线/模板/方案有效才可复用，局部文件不能冒充新整包。"
+        },
+        {
+          "id": "M04-storage",
+          "applicability": "激活只发生在整包通过验证后，扩大范围时旧current保持。"
+        }
+      ]
+    },
+    {
+      "id": "X04",
+      "owner": "D07",
+      "earliest_increment": "I3",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_clarify.py",
+        "tests/test_clarify_lifecycle.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "I3 current异常与旧确认拒绝、I4问题revision/历史失效分别已测；没有把所有旧答复晚到组合称作真实宿主全程。",
+      "mechanism_refs": [
+        {
+          "id": "M04-storage",
+          "applicability": "BASE_STALE对整个基线生效，保留现版与草案，不自动跨基线重建。"
+        },
+        {
+          "id": "M16-finite-changes",
+          "applicability": "旧值/旧问题前提不能沿旧确认应用，变更须重新形成精确方案。"
+        }
+      ]
+    },
+    {
+      "id": "X05",
+      "owner": "D07",
+      "earliest_increment": "I3",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "I3真实Clarify提交后响应前kill，recover并原调用重试返回同版；实际M重复答复无render/apply、新备注意见另开具体方案交付。故障切点与两次语义会话分开记录。"
+    },
+    {
+      "id": "X06",
+      "owner": "D07",
+      "earliest_increment": "I3",
+      "state": "covered_by_mechanism",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/performance.md",
+        "tests/test_clarify_lifecycle.py",
+        "tests/test_host_usage.py",
+        "tests/test_telemetry.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I3实际Office期间取消及提交切点、原生collectorSIGINT、迟到/重复usage分别有证据；产品worker未启用，未声称完整宿主模型取消+worker迟到整组实验。",
+      "mechanism_refs": [
+        {
+          "id": "M04-storage",
+          "applicability": "已观察取消阻止未提交包，生效后只保留成功事实，不静默替换旧文件。"
+        },
+        {
+          "id": "M10-telemetry",
+          "applicability": "迟到和重放按原请求归账且去重，仅更新telemetry。"
+        },
+        {
+          "id": "M11-native",
+          "applicability": "版本绑定原生响应可有界重放，但物理调用与精确活动身份不能由response推断。"
+        }
+      ]
+    },
+    {
+      "id": "X07",
+      "owner": "D04",
+      "earliest_increment": "I2",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "I2三类义务及S1/S2原始输入复验保留；I4长例四业务域、公共库一次/四接入、迁移和发布以及未知M问题实际交付。局部Clarify只改一AC，旧义务/问题/版本字节保持。"
+    }
+  ],
+  "mechanisms": [
+    {
+      "id": "M01-contract",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_contracts.py",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "分类、合法未知、精确引用及历史lineage有结构反例；I4拆合、部分答复和未拆明义务补齐/退出已走完整候选检查。受控业务编辑不证明任意来源含义或专业义务充分。"
+    },
+    {
+      "id": "M02-input",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_inputs.py",
+        "tests/test_xlsx_inputs.py"
+      ],
+      "limitation": "原件版本、用途/区域、定向读取和登记恢复已验；I4补同文件PRD/HLD、同工作簿history/draft及撤回用途。程序核对身份、字节和读取范围，不判断材料是否足够或冲突应如何裁定。"
+    },
+    {
+      "id": "M03-xlsx",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_xlsx_inputs.py",
+        "tests/test_prototype_records.py"
+      ],
+      "limitation": "真实原值、隐藏附注、合并区域、缓存缺口和同一工作簿两个用途的独立分析消费者已验。嵌入对象不解析；混合用途的任意专业综合未逐例实演。"
+    },
+    {
+      "id": "M04-storage",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_project.py",
+        "tests/test_clarify_lifecycle.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "真实Clarify准备包、串行两次修改、提交前后kill、同意图幂等、确认原件依赖和子集归档后追加输入的恢复已验。普通macOS本地目录证据不外推网络盘/同步盘或其他平台；受控切点不是宿主UI取消。"
+    },
+    {
+      "id": "M05-bounded-loops",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_project.py",
+        "tests/test_change_combinations.py"
+      ],
+      "limitation": "实际问答到限、文件续接、晚期基础撤回及I4两批机械返修保留原计数；专业r1/r2、每候选一次返修、每根因一次和单个严格子集槽有组合反例。计数机制不保证单批时长或任意专业调查质量。"
+    },
+    {
+      "id": "M06-projection",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_workbook.py",
+        "tests/test_workbook_sources.py"
+      ],
+      "limitation": "白色输入、别名、长文出口、同版问题和原公式已检；I3新旧版、I4原型来源及子集实际交付补消费者证据。正确投影不证明专业内容正确；仅有记录中的Excel布局实看范围。"
+    },
+    {
+      "id": "M07-office",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_office.py",
+        "tests/test_clarify_lifecycle.py"
+      ],
+      "limitation": "真实LibreOffice结果复读及Excel查看、I3一次预览复用和实际Office期间SIGINT清理已有证据。超时/损坏等受控故障不称自然引擎故障；无Windows/Linux等效实跑。"
+    },
+    {
+      "id": "M08-prepared",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_workbook.py",
+        "tests/test_clarify.py",
+        "tests/test_workbook_sources.py"
+      ],
+      "limitation": "I3备注预览→真实确认→同prepared应用只用一次Office；同字段异值、模板/基线/来源/确认字节变化拒绝。I4原型导出接缝旧失败按原额度重试，旧成功须完整复读；不保证所有引擎升级兼容。"
+    },
+    {
+      "id": "M09-copy",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_delivery.py",
+        "tests/test_smoke_audit.py",
+        "tests/test_clarify_lifecycle.py",
+        "tests/support/smoke_plugin.py"
+      ],
+      "limitation": "I3独立副本已走Generate→离线查看→确认Clarify→旧请求回查，独立枚举历史/确认依赖，CLI与worker收据集合逐一对账；I4补原型依赖及真实子集恢复。Python启动前和Office原生读取仍不在审计范围。"
+    },
+    {
+      "id": "M10-telemetry",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json",
+        "tests/test_telemetry.py"
+      ],
+      "limitation": "合成去重/修订/epoch/范围重叠/时钟/缺end/迟到算例及真实工具记录、观察收尾失败降级已验。合成调用身份不提升宿主能力；已知累计、区间、等待和未知项分别报告。"
+    },
+    {
+      "id": "M11-native",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/I3-clarify.md",
+        "tests/test_host_usage.py",
+        "docs/validation/performance.md",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "版本绑定的真实响应和有界游标/重放已验。单帧上限512 KiB已用边界反例及实际长源通过，8 MiB总读量和10,000行限制仍在；此前256 KiB截断缺口保留。G12精确活动token、纯模型时间、物理调用数、峰值上下文和自动宿主来源发现仍未证明，scope/epoch不猜填。"
+    },
+    {
+      "id": "M12-bootstrap",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I2-generate.md",
+        "docs/validation/host-support.md",
+        "tests/test_bootstrap.py"
+      ],
+      "limitation": "独立副本解释器、双副本/外来venv和链接写根反例有执行证据。PowerShell分支未实跑；manifest发现、开发副本执行、安装验收分别判断，不据包存在承诺跨宿主支持。"
+    },
+    {
+      "id": "M13-marks",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/performance.md",
+        "tests/test_skill_contracts.py",
+        "tests/test_telemetry.py",
+        "docs/validation/I4.3-performance-observations.json"
+      ],
+      "limitation": "request根标记统一后两名实际配对执行者都产生非空request_wall_ns；大活动、反馈/文件里程碑及等待有实际记录。I3.3旧标记不配对的null与LIFECYCLE_INCOMPLETE原样保留；UTC观察区间不是纯模型时间，也不保证未来每请求完整。"
+    },
+    {
+      "id": "M14-template",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I1-reliable-delivery.md",
+        "docs/validation/I1-delivery.md",
+        "docs/validation/I4-inputs-and-changes.md",
+        "tests/test_template_uat.py",
+        "tests/test_workbook.py"
+      ],
+      "limitation": "既有Q=SIT、R=UAT与Story F/G原公式、Table和缓存经真实引擎及原生查看核对，模板字节未改。不新增汇总/缺值保护/金额门禁，金额不能证明业务覆盖。"
+    },
+    {
+      "id": "M15-prototype",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.1-input-observations.json",
+        "tests/test_prototype_records.py",
+        "tests/test_prototype_boundary.py",
+        "tests/test_workbook_sources.py"
+      ],
+      "limitation": "目录句柄边界、不可变资源/观察/附件、主题采用和最终导出来源已由真实消费者及反例检验；实际静态/动态观察另有记录。不证明后端存在、未进入分支不存在、强制逆序响应或全部运行条件；无必要fd能力的平台明确拒绝。"
+    },
+    {
+      "id": "M16-finite-changes",
+      "state": "verified",
+      "evidence_refs": [
+        "docs/validation/I3-clarify.md",
+        "docs/validation/I3.2-feedback-observations.json",
+        "docs/validation/I3.3-serial-observations.json",
+        "docs/validation/I4-inputs-and-changes.md",
+        "docs/validation/I4.2-change-observations.json",
+        "tests/test_clarify.py",
+        "tests/test_change_combinations.py",
+        "tests/test_clarify_lifecycle.py",
+        "tests/test_clarify_observations.py",
+        "docs/validation/I4-delivery.md"
+      ],
+      "limitation": "有限编辑派生精确diff，确认绑定具体值/前提/读集合；I3真实局部交付及I4公共能力A/C严格子集已有完整交付，拆合/问题revision/零匹配新历史失效有机械变体。专业依赖闭合仍由Agent判断；B周期核验与独立同步仅到方案，AN13自然Generate后片补骨架全链未跑。 最终审查补真实登记的新原型观察→Clarify check正例及登记/附件损坏反例；此定点检查不冒称新的原型Clarify Excel全链演练。"
+    }
+  ]
+}

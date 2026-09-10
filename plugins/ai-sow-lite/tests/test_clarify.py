@@ -255,7 +255,7 @@ def test_preview_then_confirmation_applies_same_prepared_without_second_office(c
     assert rendered['ok'], rendered
     prepared_ref = rendered['result']['prepared_ref']
     render_folders = set((project / '.ai-sow-lite/work/clarify' / request).glob('render-*'))
-    attempt_path = project / '.ai-sow-lite/work/clarify' / request / 'render-attempt.json'
+    attempt_path = (project / result['candidate_ref']['path']).with_name('render-attempt.json')
     attempt_bytes = attempt_path.read_bytes()
     prepared_bytes = (project / prepared_ref['path']).read_bytes()
     candidate, _ = load_candidate(case, dict(result=result))

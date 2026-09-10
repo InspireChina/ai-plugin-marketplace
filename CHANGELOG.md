@@ -2,6 +2,12 @@
 
 所有重要的用户可见变更都记录在此。
 
+## AI SOW Lite 0.1.0-alpha.1 - 未发布
+
+- 新增独立的`ai-sow-lite`预发布插件及双marketplace条目，提供generate/clarify两入口，运行时、锁定依赖、模板、许可和验证记录随包。
+- 原始文本/XLSX及可选原型由Agent分析，程序完成来源/版本校验、模板投影与真实Office交付；修改绑定具体方案和实际确认，按有限范围应用。
+- 本次仅准备交付包，没有安装或公开发布；性能与平台限制见[Lite交付记录](plugins/ai-sow-lite/docs/validation/I4-delivery.md)。旧AI SOW条目与版本保持。
+
 ## 0.1.0-beta.1 - 未发布
 
 - 修复两项过期的架构测试：公共 runtime 清单包含已有 Finding 路由模块；Task 上下文检查跟随
