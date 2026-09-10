@@ -1,6 +1,6 @@
 # 宿主观测验证
 
-状态：已完成I1— I4的开发验证及[I9本地安装联合验证](I9-release-smoke.md)；以下保留各阶段历史观察，安装和入口发现的最新证据以文末I9为准。原生usage仅接已知版本和显式来源，G12逐活动精确计量仍开放。性能证据见[性能记录](performance.md)。
+状态：已完成I1— I4的开发验证、[I9本地安装联合验证](I9-release-smoke.md)及[I10引用缺口定向验证](I10-reference-gaps-and-skills.md)；以下保留各阶段历史观察，安装和入口发现的最新证据以文末I9为准。I10使用独立产品副本，未扩大宿主/平台支持；新版已原生打开，行截图因界面连接超时未完成。原生usage仅接已知版本和显式来源，G12逐活动精确计量仍开放。性能证据见[性能记录](performance.md)和[I10成本](I10-reference-gaps-and-skills.md#耗时与-token)。
 
 ## 已取得的实际证据
 
@@ -66,4 +66,4 @@ I5.1进一步复核原生字段：当前来源缺response↔tool↔activity身�
 
 系统 CLI `0.149.0` 因当前模型要求新版而 HTTP 400；使用已有随附版本后成功，没有更换模型或登录。Microsoft Excel 16.112.3 原生打开两版，LibreOffice 26.8.0.3 完成各一次重算。测试插件及临时 marketplace 注册已移除，用户原有注册和旧插件设置保持。
 
-安装与局部修改通过，但简明 AC 仍漏记隐式规范的适用内容/版本待确认；因此尚未完成发布前质量验收，也未发布。原生响应计量已核对，逐活动精确归属仍未知。详细边界、失败和成本见[I9报告](I9-release-smoke.md)及[观测数据](I9-release-smoke-metrics.json)。Windows/Linux、其他磁盘形态及 Claude Code 业务支持范围未扩展。
+当时安装与局部修改通过，但简明 AC 漏记隐式规范的适用内容/版本待确认，因此 I9 未完成发布前质量验收。后续 [I10](I10-reference-gaps-and-skills.md) 定向处理该缺口，未改写本次旧产物，也未发布。原生响应计量已核对，逐活动精确归属仍未知。I9的边界、失败和成本见[I9报告](I9-release-smoke.md)及[观测数据](I9-release-smoke-metrics.json)。Windows/Linux、其他磁盘形态及 Claude Code 业务支持范围未扩展。

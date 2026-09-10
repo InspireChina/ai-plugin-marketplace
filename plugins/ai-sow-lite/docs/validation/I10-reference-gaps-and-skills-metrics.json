@@ -1,0 +1,532 @@
+{
+  "record": "I10",
+  "date": "2026-09-11",
+  "base_commit": "7840a7dbdc80d1321ea1a4e49e499d32bace56b6",
+  "plugin_version": "0.1.0-alpha.1",
+  "status": "I9-F01 addressed in one fixed generate-to-clarify case; unpublished",
+  "scope": "Instruction refactor and semantic gap handling; runtime, schema and template unchanged",
+  "consumer_loading": "Explicit Skill path in isolated copy; I9 installation evidence reused",
+  "copy": {
+    "file_count": 42,
+    "initial_hashes": {
+      ".claude-plugin/plugin.json": "607c2024d4a15ace22b656435ca6f47af5db3dcc90b76ce9617c0d3c2bfe82c7",
+      ".codex-plugin/plugin.json": "ea80765aee3016a98312c127e07c9b351185b2833c75a965a6840998b9785553",
+      "CHANGELOG.md": "44349e8d5d17f5d5e9f0be9596f15ba06a5ff28f5a14936da0b3e81a2e08d19d",
+      "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "NOTICE": "20abb09cad81ab0853e89082d536d24df8efac1f0336244998f9ffbd6b977884",
+      "README.md": "ecbb069fca71079a92ec71ac0ca71783ee1032f949a21fca659131ce7c9fb9ec",
+      "assets/sow-template.xlsx": "28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e",
+      "contracts/artifacts.schema.json": "b1e871652b2c803f52ffbe6f4c02338e3af4b737aaf761217e60b3aa114970d7",
+      "contracts/change-plan.schema.json": "9619ef77fdd258c91fb1dee86dc308061690f52719ccb0a8b43d58653744c0e9",
+      "contracts/decisions.schema.json": "84987dc2e140e8d194cc15937278b6a051016a52e4403df3eacf52a715b0f511",
+      "contracts/evidence.schema.json": "f754f2af1b41648e29888c30f01374fa1d91471e9026eef80cfa477f484d62b3",
+      "contracts/model.schema.json": "a26909c0077db35a7d9f4e48c17cf9b114f7e1ad11ac35a790660e35d4bcd3a3",
+      "contracts/pending-items.schema.json": "7cdc4084fdf22339a1fcc8d0afe214218dc30be478cb933174303a183e9b2dd3",
+      "contracts/protocol.schema.json": "00963e3b17977a44c8558d702506ce091b04d346676f6349e76a7535f9f881b0",
+      "pyproject.toml": "e0e28860c03875469b9eceff6b26079d4d30cf00024f0cca188fc575d83cc5da",
+      "references/clarify-changes.md": "e468dd70fe7fdfe9677ed7396bab2d3e706592ba56fb28b34d5e2202d36a925e",
+      "references/generate-authoring.md": "f2f7e5e669db1b61c42c3f35741ab16157360e04864edf0704e994fe8d931528",
+      "references/generate-slices.md": "dc155b354d960d2d5ab04cf59578965e987f0429987e87ddfbb3b5888e472d33",
+      "references/input-analysis.md": "135cbf1a461b69d759bbe91f415feca60a46deb7f88783fc346ad77ee506a9c1",
+      "references/prototype-inputs.md": "90d55ecc8fc41ec296f229f99a510d11a9e7ac8eb7b3d3b8086c1bba88dfaf4f",
+      "references/python-client.md": "9080832710f1bb4e9c03e1f33aeb691b7f383874a80ba4eec342f7394ce0bb52",
+      "references/tools.md": "97295b8d59f24b41db16d3c56238570ce3e6c7f8d5315d94c08f4047501c739d",
+      "runtime/ai_sow_lite/__init__.py": "2e223417cee96b342f2f12e8ca0fc084f04d834b35dbaf7ee7559c3dd4bddad2",
+      "runtime/ai_sow_lite/_prototype.py": "d5b0bc209d982ab144112e8eba2806db2c43bb4750d813b6b5e6dda36b5b8c06",
+      "runtime/ai_sow_lite/_xlsx.py": "bf9592b656ae2f7952315f96e5050adfcf56d746489cea0b673b040c68e5f4a2",
+      "runtime/ai_sow_lite/authoring.py": "52df7a894815fb0fa4e60b4c2bd5f2df661bdfe156c431cda023e56cfeec7ba9",
+      "runtime/ai_sow_lite/changes.py": "72cefe1248cb0407b2419025bc1941f3fc692d0bbb92dbf9477ded2c014f73ca",
+      "runtime/ai_sow_lite/cli.py": "fee4fa02f7083a291e09207164c63a36815677590be1d911bdce3081407f62a6",
+      "runtime/ai_sow_lite/contracts.py": "f95d082fb16f4bf0fd4ab7918b93a9d5288825219a5782a960704bde1b9cbf9e",
+      "runtime/ai_sow_lite/host_usage.py": "1d26e7b3b03a286e6e33698aeefa446ac91f05c8183d15cfdd350b83bf655ad5",
+      "runtime/ai_sow_lite/inputs.py": "572aa39de6c174c6789c8db855c9026cff110c9517949e876e4d2ec702946536",
+      "runtime/ai_sow_lite/office.py": "c86fc1915392a3ca0a59a32d66f4e26c029b7e3b0575ebfac607fbd4a2363464",
+      "runtime/ai_sow_lite/project.py": "bfae0fc2d6c89869e3c62c3483ffb8e9b0a55654c0b9cd16bdc5b754b8d78927",
+      "runtime/ai_sow_lite/telemetry.py": "d5a919a10d4e760e9a9e366e6a9ee940f8c910ae84c3157e9ae1e18d3cc5fd7c",
+      "runtime/ai_sow_lite/validation.py": "5ab5a9df0fa25616c646c52a7266530a60b1282e6dcef6f7920998f57a22679a",
+      "runtime/ai_sow_lite/workbook.py": "fd7d7131e4e7b313258c25d58fdb4bdffbebef0762452e413de814ad61f7336d",
+      "scripts/bootstrap.ps1": "4e75dbf4ef8ce1034a2211b5524ca8119d50d0fa0abf9ddc6dbb1538f3ea5eb8",
+      "scripts/bootstrap.sh": "7cf154e385a0ebd5445f4f785daba016b25919e2ec79b054e5dff4474716e483",
+      "scripts/lite.py": "bdd2883e24ebdeee3f5a84d0848794354e77559d9e3cb5a89ffad03862a981d6",
+      "skills/clarify/SKILL.md": "c0dd5ff01631d54b52cff7ccf839dbf53a205a171f62529d1139b6dd74f1e691",
+      "skills/generate/SKILL.md": "8d2e37994e73ebc61b58ca60277ffee1ed8b9402183f37db7a3aab982aa73c30",
+      "uv.lock": "ca0a0a2c752a159dd3329cc8ca8380c1d913a4339f7f07da1a083af7ceb39659"
+    },
+    "review_fixes_before_clarify": {
+      "references/clarify-changes.md": {
+        "before": "e468dd70fe7fdfe9677ed7396bab2d3e706592ba56fb28b34d5e2202d36a925e",
+        "after": "ef8d6ec3e05670d0e5ba269f8dca4a49ab6b6a8c5f02f7fdf05ea128ae9c28eb"
+      },
+      "references/tools.md": {
+        "before": "97295b8d59f24b41db16d3c56238570ce3e6c7f8d5315d94c08f4047501c739d",
+        "after": "09f71a8a470bdecf0fd17b8c35ef7ae985699f4ccd76bdfbd8b667c575c7bd4a"
+      }
+    },
+    "final_integrity_passed": true,
+    "tests_docs_and_oracle_excluded": true
+  },
+  "source_sha256": {
+    "prd.md": "65cea1f359ad275733f4c5d5d3d400c7f217af9e957246d57a4fffb012758b28",
+    "hld.md": "99f62232d2151412864784437f8598e8750418caa86507f959ff8f6546bb309c",
+    "release-rules.md": "168042b276bf7d86579906874a3df3f14b349a4f95dd9ed4e4f0417146f56f97"
+  },
+  "text": {
+    "before": {
+      "plugins/ai-sow-lite/skills/clarify/SKILL.md": {
+        "bytes": 6794,
+        "characters": 2808,
+        "lines": 46,
+        "sha256": "e545c6a4ae43bfb9a71dde646cb00b44cd4c15d607596d8b12d1a78357cb8c38"
+      },
+      "plugins/ai-sow-lite/skills/generate/SKILL.md": {
+        "bytes": 7356,
+        "characters": 3236,
+        "lines": 56,
+        "sha256": "0dea7c709916aa2a099f1d51a05865339fde4524b6f367bd590e12416d01cc9d"
+      },
+      "plugins/ai-sow-lite/references/generate-authoring.md": {
+        "bytes": 18707,
+        "characters": 11895,
+        "lines": 166,
+        "sha256": "8af9bacd3a26fde3e09e1710dc8ba47e28ba4031070431e77eafd5008ce145e7"
+      },
+      "plugins/ai-sow-lite/references/generate-slices.md": {
+        "bytes": 13106,
+        "characters": 5240,
+        "lines": 85,
+        "sha256": "d5a5d1682d2c87fe5583a524305e83b6cbd87e95a2d9e1720d32376ffe3611d0"
+      },
+      "plugins/ai-sow-lite/references/prototype-inputs.md": {
+        "bytes": 8798,
+        "characters": 5400,
+        "lines": 80,
+        "sha256": "22074adb940163cbd236ea5719d657749e3860c8ea0e8acbd57d30f0bb8438c2"
+      },
+      "plugins/ai-sow-lite/references/python-client.md": {
+        "bytes": 6942,
+        "characters": 4484,
+        "lines": 87,
+        "sha256": "9080832710f1bb4e9c03e1f33aeb691b7f383874a80ba4eec342f7394ce0bb52"
+      },
+      "plugins/ai-sow-lite/references/input-analysis.md": {
+        "bytes": 10141,
+        "characters": 4681,
+        "lines": 57,
+        "sha256": "097a3e6313bdbd4153178a130573497f53defff75b29bcbf779b76e5b00827a6"
+      },
+      "plugins/ai-sow-lite/references/clarify-changes.md": {
+        "bytes": 19232,
+        "characters": 9754,
+        "lines": 137,
+        "sha256": "59b2a4601b690dda8e90be09382a664fbd5ed3981addd6c27b3d0811059cd9b8"
+      },
+      "plugins/ai-sow-lite/references/tools.md": {
+        "bytes": 55606,
+        "characters": 32774,
+        "lines": 396,
+        "sha256": "2325311da8bb868305cc82ad0abd7c40c6636eee2b83b96604164a41786ffe8d"
+      }
+    },
+    "after": {
+      "plugins/ai-sow-lite/skills/clarify/SKILL.md": {
+        "bytes": 3826,
+        "characters": 1740,
+        "lines": 46,
+        "sha256": "c0dd5ff01631d54b52cff7ccf839dbf53a205a171f62529d1139b6dd74f1e691"
+      },
+      "plugins/ai-sow-lite/skills/generate/SKILL.md": {
+        "bytes": 4192,
+        "characters": 1980,
+        "lines": 45,
+        "sha256": "8d2e37994e73ebc61b58ca60277ffee1ed8b9402183f37db7a3aab982aa73c30"
+      },
+      "plugins/ai-sow-lite/references/generate-authoring.md": {
+        "bytes": 17069,
+        "characters": 11047,
+        "lines": 161,
+        "sha256": "f2f7e5e669db1b61c42c3f35741ab16157360e04864edf0704e994fe8d931528"
+      },
+      "plugins/ai-sow-lite/references/generate-slices.md": {
+        "bytes": 9550,
+        "characters": 4054,
+        "lines": 94,
+        "sha256": "dc155b354d960d2d5ab04cf59578965e987f0429987e87ddfbb3b5888e472d33"
+      },
+      "plugins/ai-sow-lite/references/prototype-inputs.md": {
+        "bytes": 8931,
+        "characters": 5461,
+        "lines": 82,
+        "sha256": "90d55ecc8fc41ec296f229f99a510d11a9e7ac8eb7b3d3b8086c1bba88dfaf4f"
+      },
+      "plugins/ai-sow-lite/references/python-client.md": {
+        "bytes": 6942,
+        "characters": 4484,
+        "lines": 87,
+        "sha256": "9080832710f1bb4e9c03e1f33aeb691b7f383874a80ba4eec342f7394ce0bb52"
+      },
+      "plugins/ai-sow-lite/references/input-analysis.md": {
+        "bytes": 6255,
+        "characters": 2543,
+        "lines": 66,
+        "sha256": "135cbf1a461b69d759bbe91f415feca60a46deb7f88783fc346ad77ee506a9c1"
+      },
+      "plugins/ai-sow-lite/references/clarify-changes.md": {
+        "bytes": 13095,
+        "characters": 7301,
+        "lines": 134,
+        "sha256": "ef8d6ec3e05670d0e5ba269f8dca4a49ab6b6a8c5f02f7fdf05ea128ae9c28eb"
+      },
+      "plugins/ai-sow-lite/references/tools.md": {
+        "bytes": 56427,
+        "characters": 32931,
+        "lines": 418,
+        "sha256": "09f71a8a470bdecf0fd17b8c35ef7ae985699f4ccd76bdfbd8b667c575c7bd4a"
+      }
+    },
+    "summary": {
+      "entrypoints": {
+        "bytes": {
+          "before": 14150,
+          "after": 8018,
+          "reduction_pct": 43.34
+        },
+        "characters": {
+          "before": 6044,
+          "after": 3720,
+          "reduction_pct": 38.45
+        }
+      },
+      "all_instructions": {
+        "bytes": {
+          "before": 146682,
+          "after": 126287,
+          "reduction_pct": 13.9
+        },
+        "characters": {
+          "before": 80272,
+          "after": 71541,
+          "reduction_pct": 10.88
+        }
+      }
+    }
+  },
+  "stages": {
+    "generate": {
+      "version_id": "414c54d7-7c87-4cdf-906e-fc507c17cb5d",
+      "manifest_sha256": "0b8be89b05db0ae2a8ab7b368c5b6ca327bf4e4444ed4bbc0d34b95bcb0fca68",
+      "workbook": {
+        "sha256": "7497e353f0227c1bdc6b8767d7fdbcd5421885730b858bb5a75a4a8074ee05c6",
+        "bytes": 103662,
+        "formula_count": 1304,
+        "failures": []
+      },
+      "native": {
+        "cli_version": "0.153.4",
+        "originator": "Codex Desktop",
+        "model": "gpt-6-astra",
+        "effort": "xhigh",
+        "source_sha256": "bfd8dc7bb427ac204ad6ef8546c29d8ffc8f40fa151bf57923dacf377336500d",
+        "source_bytes": 1075378
+      },
+      "cost": {
+        "response_count": 33,
+        "counts": {
+          "total_tokens": 1818811,
+          "input_tokens": 1794600,
+          "output_tokens": 24211,
+          "cached_input_tokens": 1705856,
+          "reasoning_output_tokens": 5152,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 88744,
+        "native_processing_duration_ms": 840635,
+        "max_response_input_tokens": 88709,
+        "tool_operations": {
+          "ingest": {
+            "count": 5,
+            "duration_ms": 85.145457,
+            "failed": 1
+          },
+          "inspect": {
+            "count": 20,
+            "duration_ms": 144.15350099999998,
+            "failed": 0
+          },
+          "check": {
+            "count": 5,
+            "duration_ms": 159.322459,
+            "failed": 0
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 1200.166792,
+            "failed": 0
+          },
+          "render": {
+            "count": 2,
+            "duration_ms": 5448.806541,
+            "failed": 1
+          }
+        },
+        "native_counter_errors": []
+      },
+      "integrity": {
+        "version_bytes_preserved": true,
+        "version_file_count": 10,
+        "workbook_mechanical_failures": [],
+        "semantic_status": "separate_review"
+      }
+    },
+    "clarify": {
+      "version_id": "fccec05d-c04f-411b-b9f6-bc0aabd108a3",
+      "manifest_sha256": "1b429d1999e0af5e5c2f6124568925028bc68dd3cb21ec17b29d857824ea521b",
+      "workbook": {
+        "sha256": "b2848dc799b443c819a8c6c68089bff46d27e9360bced911cf59557059f0ba3b",
+        "bytes": 103718,
+        "formula_count": 1304,
+        "failures": []
+      },
+      "native": {
+        "cli_version": "0.153.4",
+        "originator": "Codex Desktop",
+        "model": "gpt-6-astra",
+        "effort": "xhigh",
+        "source_sha256": "6595ad3e3e855ca3fecacc75d6de22ece219c524a30a941ee18496c3d04a6d7c",
+        "source_bytes": 914784
+      },
+      "cost": {
+        "response_count": 20,
+        "counts": {
+          "total_tokens": 1099228,
+          "input_tokens": 1084751,
+          "output_tokens": 14477,
+          "cached_input_tokens": 1012480,
+          "reasoning_output_tokens": 3389,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 72271,
+        "native_processing_duration_ms": 500630,
+        "max_response_input_tokens": 81743,
+        "tool_operations": {
+          "inspect": {
+            "count": 22,
+            "duration_ms": 136.63679199999999,
+            "failed": 0
+          },
+          "render": {
+            "count": 1,
+            "duration_ms": 6012.237417,
+            "failed": 0
+          },
+          "check": {
+            "count": 2,
+            "duration_ms": 286.872834,
+            "failed": 0
+          },
+          "ingest": {
+            "count": 3,
+            "duration_ms": 64.416459,
+            "failed": 0
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 1397.772792,
+            "failed": 0
+          }
+        },
+        "native_counter_errors": []
+      },
+      "integrity": {
+        "version_bytes_preserved": true,
+        "version_file_count": 25,
+        "ignored_finder_metadata": [
+          ".ai-sow-lite/versions/.DS_Store"
+        ],
+        "workbook_mechanical_failures": [],
+        "semantic_status": "separate_review"
+      }
+    }
+  },
+  "generate_review": {
+    "checks": [
+      {
+        "id": "G01",
+        "status": "passed",
+        "evidence": "真实业务、公共技术及交付成果覆盖，5 Story/7 Task；公共库和迁移核验各计一次，生产执行未纳入"
+      },
+      {
+        "id": "G02",
+        "status": "passed",
+        "evidence": "未取得的查询规则、迁移映射和发布规范落 open 问题并指向实际 AC；并非仅 Task 层有问题"
+      },
+      {
+        "id": "G03",
+        "status": "passed",
+        "evidence": "只读查询、三类反馈、手动重试和迟到响应等已知结果保留；不虚构具体字段/规范版本/六步流程"
+      },
+      {
+        "id": "G04",
+        "status": "passed",
+        "evidence": "迁移量未知，Task 为 M且问题仅绑定其 complexity；未追加取数"
+      },
+      {
+        "id": "G05",
+        "status": "passed",
+        "evidence": "未因公共库“标准实现”背景索要实现手册；公共库的实际 pending 来自共用错误提示约定"
+      },
+      {
+        "id": "G06",
+        "status": "passed",
+        "evidence": "所有受影响 Story 行为待确认，Task 的量级问题保持在任务行；Excel无外部MD/UUID替代正文"
+      },
+      {
+        "id": "G07",
+        "status": "passed",
+        "evidence": "14条 AC，分布4/3/3/2/2；无GWT、完整测试步骤或字段矩阵。查询AC仍偏密，不据此声称全部写法最佳"
+      },
+      {
+        "id": "G08",
+        "status": "passed",
+        "evidence": "两次有界返修保留第一次失败；排版修正未改变Task、Story/AC ID或已有责任/结果，未修改模板"
+      },
+      {
+        "id": "G09",
+        "status": "passed",
+        "evidence": "真实Office四表及1304公式缓存已复读无机械错误，Excel原生打开无恢复提示；所查查询和发布正文完整"
+      },
+      {
+        "id": "G10",
+        "status": "passed",
+        "evidence": "原生查看后10份已归档产物原字节保持"
+      }
+    ],
+    "first_attempt_success": false,
+    "repairs": [
+      {
+        "kind": "EVIDENCE_MISSING",
+        "scope": "补答分析缺少旧依据闭包，补实际已有依据"
+      },
+      {
+        "kind": "WORKBOOK_LAYOUT_OVERFLOW",
+        "scope": "合并重复查询问题、压缩处理说明、调整AC/备注的已有范围表达，重用原Task"
+      }
+    ],
+    "ac_counts": [
+      4,
+      3,
+      3,
+      2,
+      2
+    ],
+    "open_count": 4,
+    "task_values_preserved_in_layout_repair": true,
+    "source_rule_gap_status": "I9-F01 addressed in the observed generation",
+    "semantic_scope": "One fixed synthetic case; manual source/content review, not universal correctness proof"
+  },
+  "clarify_review": {
+    "status": "passed",
+    "published_matches_shown_candidate": true,
+    "all_tasks_exactly_preserved": true,
+    "all_other_stories_and_release_second_ac_preserved": true,
+    "other_three_pending_exactly_preserved": true,
+    "release_norm_pending_resolved": true,
+    "release_row_still_pending_for_unanswered_migration_evidence": true,
+    "formula_expressions_and_caches_preserved": true,
+    "old_version_preserved": true,
+    "formula_count": 1304,
+    "first_attempt_success": true,
+    "changed_cells": [
+      {
+        "sheet": "01-需求故事",
+        "cell": "D9",
+        "before_sha256": "633d29c0aba2ea590ee17379f97b95447e89719ba28351e883410edc2b4470da",
+        "after_sha256": "a31a0b82693ac3faf902ba7aea582290a893086413b982d1841665d81c6f7b35"
+      },
+      {
+        "sheet": "01-需求故事",
+        "cell": "E9",
+        "before_sha256": "90889e02a031913cdae44236c0686e65dd63d702201b79d9864c6f0d5aa276dc",
+        "after_sha256": "175d3b726eb29b31b04c8e9bf55d8c1666235b28c082df1190ac3f2c05bf2019"
+      }
+    ]
+  },
+  "clarify_confirmation": {
+    "actual_confirmation_after_display_and_scope_review": true,
+    "shown_plan_sha256": "23f4f9526f2ba191a8d2a4593c14c984aa366d48d8a9ae0bf4400bc292d16116",
+    "base_unchanged_before_confirmation": true,
+    "published_matches_shown_candidate": true,
+    "one_decision_added": true
+  },
+  "expectation_correction_before_clarify": {
+    "before_sha256": "15d531ab75a6e632cbc2e373446b92c651ef6f519b24e37b0bb0929b20a32703",
+    "old": "最终 Excel 的发布行可通过，未答的查询/迁移范围仍待确认。",
+    "new": "发布规范对应问题已解决；最终行状态由全部剩余目标决定。未答的查询/迁移范围仍待确认，若迁移依据问题也实际影响发布 AC，发布行继续待确认，不能为使整行通过而关闭无关问题。",
+    "reason": "Generate 已将未答的迁移核验依据绑定到发布AC；用户要求任何目标未决即该行待确认，发布规范闭合不等于整行全部已确认。修正验证预期，不改实际模型/问题或提供额外答案。",
+    "recorded_before_clarify": true
+  },
+  "native_excel": {
+    "generate": {
+      "opened_without_recovery_prompt": true,
+      "checked_zoom_percent": 100,
+      "reviewed": "Query and release rows; complete AC/notes and pending status",
+      "screenshots": {
+        "generate-release-pending.png": "c530df8f58c9ababd6652421b82d7f1dd48582413c4b8d67aac64d96443fd0e5",
+        "generate-story-pending.png": "680de078d20fc182614e5f1c5188e71a7b102585dceca72ca9ca9e3370e14c71",
+        "generate-story-top.png": "5a015d7c11b82a1141cdc82108d72cafda05a6c69c23938813cf164cc1901d84"
+      }
+    },
+    "clarify": {
+      "opened_without_recovery_prompt": true,
+      "actual_version_path_verified": true,
+      "changed_row_visual_review": "incomplete: native UI connection timed out after opening; reset did not recover",
+      "forced_quit_or_manual_recalculation": false,
+      "workbook_bytes_preserved_after_attempt": true
+    }
+  },
+  "development_checks": {
+    "lite_full": {
+      "passed": 887,
+      "skipped": 12,
+      "seconds": 715.28,
+      "note": "Collected before the last XLSX recipe test; final targeted suite covers its addition"
+    },
+    "skill_contracts": {
+      "passed": 24,
+      "seconds": 12.34,
+      "includes_final_document_links": true
+    },
+    "old_plugin_skills": {
+      "passed": 388,
+      "skipped": 4,
+      "seconds": 48.68
+    },
+    "old_plugin_copy_smoke": "passed",
+    "scenario_ledger": {
+      "entries": 163,
+      "scope": "structural only"
+    },
+    "independent_review": {
+      "initial_p2": 2,
+      "closed": 2,
+      "remaining_findings": 0
+    },
+    "root_tests": {
+      "passed": 52,
+      "seconds": 5.083
+    },
+    "repository_validator": "passed",
+    "locked_dependency_sync": "both plugins passed",
+    "git_diff_check": "passed"
+  },
+  "limitations": [
+    "One fixed semantic case does not prove universal correctness; generation required two bounded repairs",
+    "Query acceptance text remains dense; no paired performance improvement claim",
+    "Native processing includes tools and repairs, excludes between-turn waiting and controller/UI/audit work",
+    "Cumulative input is not context peak or cost; cached input and reasoning are subsets",
+    "Exact per-activity tokens, physical model invocation count and pure model duration remain unknown",
+    "Clarify changed-row native screenshot incomplete after UI connection timeouts",
+    "Controller corrected archive-layout assumptions in audit scripts; consumer and published artifacts were not changed",
+    "Finder metadata excluded from business archive integrity counts",
+    "No new installation/platform claim and no push or publication"
+  ]
+}

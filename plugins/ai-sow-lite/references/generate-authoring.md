@@ -117,9 +117,9 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
 
 ## 检查点与活动观察
 
-已有 checkpoint 中的 additional_investigation_batches、repair_batches、recovery_queries 和 operation_retries 按实际消耗保存；其他专业次数保存在 activity-record，避免扩展运行时领域合同。更新 checkpoint 使用已有 `ai_sow_lite.project.ensure_request`/`save_checkpoint`：在本次隔离 Python 子进程中令 `PYTHONPATH=<plugin-root>/runtime`，加载原 checkpoint、只修改本批已知事实、调用 save_checkpoint。不要重建或归零已有/未知计数。render 可能自己消耗 repair_batches，外层更新前先复读，不能用旧字典覆盖。
+在开始专业工作前加载本节。checkpoint 的 additional_investigation_batches、repair_batches、recovery_queries、operation_retries 保存实际次数，其他专业次数放 activity-record。通过隔离 Python 的 ai_sow_lite.project.ensure_request/save_checkpoint 读取原检查点、只更新本批事实；不重建/归零未知计数，render 可能已扣额度，更新前复读。
 
-每次 generate **必须尽力记录**请求边界、首次有用反馈、首个可用文件和实际大活动。生成 request_id 后，在最早可执行工具的位置记录 request/start；缺失的前段如实保留为未观测，结束本次处理前记录 request/end。发生过的边界才记录，缺标记不回填时间。它们是同一专业工作的观察，不增加专业阶段、问答或审批；记录失败给一次简短缺口后继续业务。
+每个执行段尽力记录实际请求和大活动边界，沿同一 request_id/execution_id。恢复可新建 execution_id，不能每次工具调用都换活动身份。起点在开始读取/构思之前，终点在成果形成之后；仅把 start/end 包在最后 save() 周围会漏掉专业用时。
 
 | 实际边界 | name | phase | 记录时机 |
 | --- | --- | --- | --- |
@@ -133,16 +133,9 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
 | 首次有用反馈 | `useful_feedback` | `milestone` | 首次给出可回答的问题包或可用方案；普通进度消息不算 |
 | 首个可用文件 | `usable_file` | `milestone` | 首版已核验并应用、可以交给用户时 |
 
-使用 Client 时，直接在已有 Python 调用中执行 `client.mark(name, phase)`，复用其当前 observation_context；request 根标签自动保持为空。示例及跨轮身份见 [直接活动埋点](python-client.md#直接活动埋点)。
+优先在已有调用里用 `client.mark(name, phase)`，见 [直接活动埋点](python-client.md#直接活动埋点)。大活动/片使用实际且起止一致的 activity_ids/slice_ids；业务 observation_context 也带当前标签。根 request/start 与 request/end 标签均为空；同处边界可合批，只在真实语义边界补轻量 mark，不逐 Task/思考打点。
 
-活动起点放在开始读取或构思之前的那次工具调用，终点放在成果形成之后。例如第一次调用先 `client.mark("outline", "start")` 再读取已选主题；Agent 在随后回合组织骨架，必要工具继续携带同一 activity_id；保存实际骨架后才 `client.mark("outline", "end")`。跨 Python 进程复建 Client 时沿用保存的 request_id/execution_id/activity_ids，不为每次调用另起活动。仅把 start/end 包在最终 `save()` 周围会漏掉分析用时，不算完整活动观测。
-
-Clarify 的 input_analysis/design_discussion 同理：开始读取反馈/对象前标开始，具体方案检查并形成可展示内容后标结束；展示时记录 useful_feedback 和实际 user_wait/start，收到答复后记录 user_wait/end。没有对应起点或明确关联就保留缺口，不把后来的响应 token 按活动时长比例切分。
-
-
-仅需独立命令时，使用同一隔离 Python、仅在本次进程设置上述 PYTHONPATH，执行 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。多个恰好同处的边界可与已有工具命令合在一次宿主调用中执行；标记不能移动到事后伪造起点。已有业务信封附 `observation_context={"execution_id":"<execution-id>","activity_ids":["<activity-id>"],"slice_ids":[]}`，保持当前活动/片标签。纯语义边界才补轻量mark，不逐思考或逐 Task 埋点。
-
-以下是请求根标记：request/start 和 request/end 的 `activity_ids=[]`、`slice_ids=[]`，同一执行段的 request_id/execution_id 保持不变；结束时只把 phase 改为 end，不附当时的活动或片ID。大活动/片另用表中对应的 name/phase 标记，附真实 activity_ids/slice_ids，并在该活动起止间保持这些ID一致；业务 observation_context 仍填实际活动/片。
+独立命令使用本插件隔离 Python，仅本进程设置 PYTHONPATH=<plugin-root>/runtime，调用 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。请求根示例如下，结束时仅改 phase 为 end：
 
 <!-- observation-mark-example -->
 ```json
@@ -157,7 +150,9 @@ Clarify 的 input_analysis/design_discussion 同理：开始读取反馈/对象�
 }
 ```
 
-request/end记录发生在最终答复用量到达之前，报告可为partial。宿主明确提供已授权来源路径和准确thread/turn关联时，按[原生采集合同](tools.md#原生响应的有界采集)执行一次有界采集；源不可得即保留unknown，不搜索聊天目录。生产者结束后只有显式采集才补迟到用量。响应结束时间不证明活动独占token；跨活动有证据就记shared，无法关联就未归属。记录故障不重跑模型、Office或专业工作。
+Clarify 的活动表见 [修改观察](clarify-changes.md#本次修改的观察)，沿用相同记录方法。提问/展示方案时记 useful_feedback 和 user_wait/start，实际答复后记 user_wait/end；等待和处理分开报告。
+
+缺标记不回填，观测失败简短报一次并继续业务。request/end 早于最终答复 usage 时报告可为 partial；宿主明确提供授权来源路径和准确 thread/turn 关联才按 [原生采集](tools.md#原生响应的有界采集) 有界读取，来源不可得则 unknown，不搜索聊天目录。迟到用量只经显式采集补入；跨活动有据则 shared，无法关联则未归属，不按时长摊 token，不为观测重跑专业工作或 Office。
 
 ## 有效交付
 

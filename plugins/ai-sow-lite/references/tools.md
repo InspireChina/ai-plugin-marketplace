@@ -2,7 +2,15 @@
 
 Generate 首次编写可按活动读取 [命令与候选编写](generate-authoring.md)，遇到具体字段/诊断再查本页相应定义；无需预加载全部 Schema。
 
-当前提供真实文本/XLSX `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 支持有限 `check/edits`、带 `plan_path` 的检查及具体确认后的应用；专业变化由 Agent 提供。运行时不依赖旧插件，不生成模拟观察或交付。
+按当前操作定位，不整篇预加载：
+
+- [文件字段](#七份-schema-与实际文件位置)、[响应与诊断](#返回与限制)
+- [来源登记和定向查询](#登记与查询)、[读取表示与边界](#读取表示与边界)
+- [有限编辑与确认](#有限编辑具体计划与确认)、[检查点与恢复](#检查点应用与恢复边界)
+- [模板投影](#模板投影与真实-office)、[引擎核验](#引擎与最终封存)、[复用](#复用与变动)
+- [观测接口](#观测接口)、[规范化 usage](#规范化-usage边界及查询)、[原生采集](#原生响应的有界采集)
+
+当前提供真实文本/XLSX/目录原型 `ingest/sources`、`ingest/analysis`、定向 `inspect`、`check/candidate` 与只查事实的 `recover`。公共 `render` 使用真实模板和隔离 Office，完成投影、计算和最终复读；`apply` 核验实际准备包后保存版本。Clarify 支持有限 `check/edits`、带 `plan_path` 的检查及具体确认后的应用；专业变化由 Agent 提供。运行时不依赖旧插件，不生成模拟观察或交付。
 
 ```text
 <Lite 隔离 Python> <Lite 安装目录>/scripts/lite.py --request <UTF-8 请求文件>
@@ -12,16 +20,16 @@ Generate 首次编写可按活动读取 [命令与候选编写](generate-authori
 
 ## 七份 Schema 与实际文件位置
 
-- [model.schema.json](../contracts/model.schema.json)：D02 的 Epic/Feature/Story/内嵌 AC/Task/Dependency/Lineage。
+- [model.schema.json](../contracts/model.schema.json)：Epic/Feature/Story/内嵌 AC/Task/Dependency/Lineage。
 - [pending-items.schema.json](../contracts/pending-items.schema.json)：`schema_version/items`；target 为 `{object_id, field}`。resolved 精确为 `{decision_id, request_id, summary}`；superseded 为 `{replacement_item_ids, lineage_refs, request_id, reason}`，其中 lineage 引用 `{from_version_id, from_ids}`。
 - [decisions.schema.json](../contracts/decisions.schema.json)：`schema_version/items`；决定的 `applies_to` 同 target。
 - [evidence.schema.json](../contracts/evidence.schema.json)：`schema_version/items`；analysis 的 `evidence[]` 使用其 `$defs/item`。来源定位为 `text_lines`、`xlsx_range`、`observation`。
-- [protocol.schema.json](../contracts/protocol.schema.json)：请求及 `$defs/response`。支持的 payload 和 inspect 选择器采用封闭结构；不接受任意路径、脚本或绕过开关。I1.1 的空占位调用仍明确返回未支持。
-- [artifacts.schema.json](../contracts/artifacts.schema.json)：首次消费者的工件结构，按 `$defs` 校验。增加 prepared、request、intent、analysis_index；checkpoint 保存业务续接信息，manifest/current 由公共核验后的存储内核写入。projection 与 verification 由 I1.3 实际消费者核对完整交付。
+- [protocol.schema.json](../contracts/protocol.schema.json)：请求及 `$defs/response`。支持的 payload 和 inspect 选择器采用封闭结构；不接受任意路径、脚本或绕过开关。未列入协议的操作明确拒绝。
+- [artifacts.schema.json](../contracts/artifacts.schema.json)：输入与交付工件结构，按 `$defs` 校验。包含 prepared、request、intent、analysis_index；checkpoint 保存业务续接信息，manifest/current 由公共核验后的存储内核写入。projection 与 verification 用于核对完整交付。
 
 - [change-plan.schema.json](../contracts/change-plan.schema.json)：具体计划；`$defs/edit_draft` 定义有限编辑稿，`$defs/confirmation` 定义内容与实际执行输入的绑定。
 
-以下路径由真实登记/检查操作消费。既有 I1.1 `contract_case` 与 seed history 保持独立合成单测含义；新增 `build_ingested_case` 使用真实 CLI ingest→inspect→analysis→check，保留真实返回的身份和定位。
+以下路径由登记、检查与版本工具维护。
 
 | 文件 | Schema 定义及关键字段 |
 | --- | --- |
@@ -49,18 +57,20 @@ stdout 仅一个 JSON：`ok/request_id/operation/result/diagnostics`。检查报
 
 诊断为 `code/target/message/preserved_paths`，target 为 `{path, object_id, field}`，未知部分 null。退出码 0 完成，2 不合法/不支持，3 本地 I/O/输入读取/锁/工作簿故障，4 已观察取消且未应用，1 未预期故障。部分输入失败返回 ok=false，同时保留成功引用；技术失败不冒充业务待确认。
 
-I1.1 保留的 CLI/校验错误码：`PROTOCOL_INVALID`、`VERSION_INCOMPATIBLE`、`OPERATION_UNSUPPORTED`、`CANDIDATE_INVALID`、`EVIDENCE_MISSING`、`IO_FAILED`、`INTERNAL_ERROR`。自举错误码：`BOOTSTRAP_DIRECTORY_FAILED`、`UV_INSTALL_DOWNLOAD_FAILED`、`UV_INSTALL_DOWNLOADER_MISSING`、`UV_INSTALL_FAILED`、`UV_INSTALL_INVALID`、`UV_CHECK_FAILED`、`UV_VERSION_INVALID`、`PYTHON_INSTALL_FAILED`、`DEPENDENCY_SYNC_FAILED`、`VENV_MISSING`、`PYTHON_CHECK_FAILED`、`PYTHON_VERSION_INVALID`、`DEPENDENCY_IMPORT_FAILED`。自举失败使用相同信封、request_id/operation=null 和退出码 3。不回显原始异常或业务输入。合法未知、默认 M、有值 open 问题和未拆明工作不会被自动改值或关闭；工具不判断金额或语义充分性。
+CLI/校验错误码：`PROTOCOL_INVALID`、`VERSION_INCOMPATIBLE`、`OPERATION_UNSUPPORTED`、`CANDIDATE_INVALID`、`EVIDENCE_MISSING`、`IO_FAILED`、`INTERNAL_ERROR`。自举错误码：`BOOTSTRAP_DIRECTORY_FAILED`、`UV_INSTALL_DOWNLOAD_FAILED`、`UV_INSTALL_DOWNLOADER_MISSING`、`UV_INSTALL_FAILED`、`UV_INSTALL_INVALID`、`UV_CHECK_FAILED`、`UV_VERSION_INVALID`、`PYTHON_INSTALL_FAILED`、`DEPENDENCY_SYNC_FAILED`、`VENV_MISSING`、`PYTHON_CHECK_FAILED`、`PYTHON_VERSION_INVALID`、`DEPENDENCY_IMPORT_FAILED`。自举失败使用相同信封、request_id/operation=null 和退出码 3。不回显原始异常或业务输入。合法未知、默认 M、有值 open 问题和未拆明工作不会被自动改值或关闭；工具不判断金额或语义充分性。
 
 UUID4 必须恰好 36 字符，SHA-256 恰好 64 字符，json-v1 摘要恰好 72 字符；均拒绝尾随换行，不修剪或改写。业务文件或登记/分析文件无效时保留其真实诊断，继续运行其余有效依赖足以支持的检查；不会把无效文件当作合法空集合制造悬空引用。`valid_for_render=false` 的报告不授予任何交付权威；pending 文件无效时 `unknowns_count` 的占位 0 不代表业务没有待确认项，以文件诊断为准。
 
-实际定位校验支持已登记单文件文本的 `text_lines` 和类型化 XLSX 的 `xlsx_range`；原型包内文本和 `observation` 属于 I4，当前明确拒绝，不冒充附件已验证。历史复合键及恢复沿 current → manifest 的摘要绑定基线链读取；存储验证不等于工作簿交付验证。候选语义摘要覆盖所采用主题分析及依据；报告另绑定实际文件字节和依赖摘要，不把字节格式变化当作业务文字变化。
+实际定位校验支持已登记单文件/原型包文本的 `text_lines`、类型化 XLSX 的 `xlsx_range` 及真实 `observation`；原型资源和观察附件按 [原型合同](prototype-inputs.md) 核对。历史复合键及恢复沿 current → manifest 的摘要绑定基线链读取；存储验证不等于工作簿交付验证。候选语义摘要覆盖所采用主题分析及依据；报告另绑定实际文件字节和依赖摘要，不把字节格式变化当作业务文字变化。
 
 Lineage 仅检查 current 到显式 from_version_id 所需的已绑定历史区间。对象保持 `(version_id, object_id)` 身份；继承记录须与该区间已保存的同复合键记录完全一致，以其首次出现的后继模型定位替换发生版本。原对象须在替换前持续存在，去向须在该次模型存在；已退出的中间去向只能由时间更晚的有效替换继续到当前对象或明确删除。缺少摘要绑定模型、缺少实际继承记录或只在任意早期历史找到同名 ID 的链不支持据此通过，会返回文件或 lineage 诊断；不推断发生顺序、不恢复缺件、不扫描显式区间以外的无关历史。
 
-Bash/PowerShell 自举迁入来源为 D00 的 `2fc8588`，只适配身份、路径与单请求 CLI。脚本固定 uv 0.11.7、Python 3.12 和锁定依赖；缓存/下载安装放在 Lite 副本 `.ai-sow-tools/`。没有沿用旧 Windows 97 字符支持声明；本轮平台验证范围以任务报告为准。
+自举固定 uv 0.11.7、Python 3.12 和锁定依赖；缓存及下载保存在 Lite 副本 `.ai-sow-tools/`。实际平台支持以插件 README 为准。
 
 
-## I3.1 有限编辑、具体计划与确认
+<a id="i31-有限编辑具体计划与确认"></a>
+
+## 有限编辑、具体计划与确认
 
 `check` 的 edits payload 固定为 `{"edit_path":"<本请求编辑稿路径>","scope":"full"}`，与 candidate_path/plan_path 互斥。
 编辑稿放在本请求 `work/clarify/<request-id>/`，字段为 schema_version/plan_id/revision/base_version_id/
@@ -119,7 +129,9 @@ artifacts.clarify_confirmation 的 confirmation.json；后者用版本内可达�
 实际 input_record/source_ref/digest/selected_changes。原来源进入 manifest 依赖，确认输入不自动成为业务采用依据。
 同请求同意图重复 apply 返回原结果；current 变化不能自动换基线或复用跨版本确认。
 
-## I1.2 登记与查询
+<a id="i12-登记与查询"></a>
+
+## 登记与查询
 
 新增诊断包括 INPUT_UNAVAILABLE、FORMAT_UNSUPPORTED、INPUT_ID_CONFLICT、PROJECT_ID_CONFLICT、IDENTITY_CONFLICT、REQUEST_ID_CONFLICT、PATH_UNSAFE、CHECKPOINT_UNKNOWN、LOOP_LIMIT_REACHED、BASE_STALE、WRITE_BUSY、REQUEST_CANCELLED、WORKBOOK_INVALID、RESULT_TOO_LARGE。游标失效沿用 VERSION_INCOMPATIBLE。
 
@@ -129,7 +141,7 @@ artifacts.clarify_confirmation 的 confirmation.json；后者用版本内可达�
 
 相同原字节以不同文件名再次导入时，先按本次 source_path 的 basename 核对输入 locator；复用身份后，将本次用途区域中显式提供的 locator.path 绑定到实际保存原件的 basename 再合并。返回区域可原样用于 inspect/regions；原件身份、字节和 reading 保持不变，未保存的别名仍不能用于读取。
 
-返回 project_id、input_refs（登记项）、reading_refs（文件引用）、failures（诊断）和 checkpoint_ref。文本原件下的 reading-ref.json 指向不可变读取记录；XLSX 使用 originals/<input-version-id>/readings/<读取身份哈希>.json。后续复用复核原件、记录和摘录附件。读取成功只证明物理读取可用。完整字段、边界与历史理解方法见 [输入分析](input-analysis.md)。
+返回 project_id、input_refs（登记项）、reading_refs（文件引用）、failures（诊断）和 checkpoint_ref。文本原件下的 reading-ref.json 指向不可变读取记录；XLSX 使用 originals/<input-version-id>/readings/<读取身份哈希>.json。后续复用复核原件、记录和摘录附件。读取成功只证明物理读取可用。物理表示与边界见下节，历史判断见 [输入分析](input-analysis.md)。
 
 `ingest/analysis` payload：`kind="analysis"`、entrypoint、analysis_path。文件必须在本请求 work 内。共用候选的来源、摘要、依据图与主题校验后，保存实际输入分析字节至 `analysis/registrations/<sha256>/analysis.json`，按 topic_version_id 拆存分析并登记 `analysis/index.json`。各主题保存 registration-ref.json 以回查原始登记候选。返回 analysis_ref、evidence_ids、topic_version_ids；同依据/主题版本冲突拒绝；新依据须由新的主题版本实际承载，不能通过重复旧主题返回未保存的依据身份。observations 可引用本请求 work 中的真实观察或已登记观察，核对后保留不可变记录和附件；每个主题仅保留其输入相关观察。不支持的 locator 明确拒绝。登记不代表当前 SOW 已采用。
 
@@ -158,11 +170,37 @@ current 的 coverage.verification_scope 为 manifest，verified_file_ref 为 nul
 
 cursor 绑定查询、实际来源/索引/所读版本和续读位置。绑定变化或游标不合法统一返回 VERSION_INCOMPATIBLE；调用方必须用 cursor=null 明确选择新集合。没有历史输入集合快照，不因零命中扩大查询。
 
+## 读取表示与边界
+
+本节描述物理读取。内容含义、历史匹配和输入充分性由 [输入分析](input-analysis.md) 判断；读取成功或分页完成不证明业务完整。
+
+| 表示 | 读取与引用规则 |
+|---|---|
+| UTF-8 文本 | 按登记编码严格解码；新 BOM 输入记 utf-8-sig，旧 utf-8 登记仍保留原 BOM。保留 CRLF/LF/CR，不 trim 或 Unicode 归一化。目录识别围栏代码块之外的 ATX 标题 |
+| 文本区域 | 含端点的 1 起始行；长行按 line_number/character_offset 有限分段。source_ref 使用 coverage 的实际 locator 和 excerpt_hash，原件不改写 |
+| XLSX 目录 | Sheet、Table、有效范围、合并、隐藏、附注及解析限制供导航；目录 read_id 不能替代实际区域 read_id |
+| XLSX 区域 | Sheet 名保持原值，有限 A1 含端点范围；绝对坐标规范为 A1:C8。使用区域返回的 coverage.locator/read_id 和 excerpt_hash，读齐相关表头/合并锚点/附注 |
+| 单元格 | 类型化 type/value；数值保留十进制字符串，布尔保留布尔值，日期保留类型化值及原始序列/格式。公式原式与缓存分开，缓存缺失不当作 false/0；工具不执行公式 |
+| reading 身份 | 绑定 input_version_id、原字节 hash、适配器与选择范围；XLSX 为 lite-xlsx-v1、options={data_only:false}。相同身份复用前复核原件、记录和附件 |
+
+XLSX 首次区域请求的 `read_id` 使用目录查询返回的 `selected_version.read_id`，所选 Sheet/范围来自实际目录。以下为请求形状，替换两个身份及实际范围：
+
+<!-- xlsx-region-request-example -->
+```json
+{"view":"regions","selector":{"input_version_id":"<input-version-id>","locator":{"kind":"xlsx_range","sheet":"历史范围","range":"A1:C8","read_id":"<directory-read-id>"}},"limit":20,"cursor":null}
+```
+
+工具随后生成区域 reading；证据使用返回的 `coverage.locator` 和 `coverage.excerpt_hash`，不能沿用请求中的目录 ID 充当区域证据。可由 [source_ref 助手](generate-authoring.md#登记读取和分析) 直接映射。
+
+返回默认 20 项，最多 100 项，完整信封最多 64 KiB（正文预留信封空间）；大正文通过返回附件定位，超大单项不能靠反复翻页解决。游标绑定查询/来源/版本；改变 selector 或来源时以 cursor=null 显式开始新查询，零进展不继续循环。
+
+XLSX 解析硬边界：原件 50 MiB；ZIP 最多 2048 项、解压合计 200 MiB、压缩比 100；最多 64 Sheet，每表 100000 行、512 列、100 万单元格，全簿 200 万单元格；单格 32767 字符、全文 1000 万字符。拒绝 XML 实体扩展；图形、媒体、嵌入对象或外链等不支持内容记录未读限制，不执行或静默认为不存在。原型资源上限另见 [原型合同](prototype-inputs.md)。
+
 ## 检查点、应用与恢复边界
 
 请求 work 内 `request.json` 记录请求/入口，`checkpoint.json` 保存 P00 活动、目标、游标、追加调查/返修计数、候选、最近进展/修法和退出原因。已知计数不得倒退；未知用 null 保留，不能自动归零。可选 recovery_queries 为0/1/null，operation_retries 的每个已知操作/根因计数至多1。`save_checkpoint` 只持久化有界计数和续接事实，不决定专业活动，不拦截宿主内的纯模型活动。
 
-检查点缺失/损坏/计数未知时，ensure_request 先以不可变 unknown-recovery.json 记录一次恢复查询尝试，查询后仍未知就 CHECKPOINT_UNKNOWN 退出；再次调用不忙等或重置。真正新增材料可定向登记，不刷新旧探索/返修额度。工具内部不自动重试、backoff、重算或重新生成；共享语义批次仍由调用方按 D04B 记录。源登记、业务恢复与未来 telemetry 分开保存。
+检查点缺失/损坏/计数未知时，ensure_request 先以不可变 unknown-recovery.json 记录一次恢复查询尝试，查询后仍未知就 CHECKPOINT_UNKNOWN 退出；再次调用不忙等或重置。真正新增材料可定向登记，不刷新旧探索/返修额度。工具内部不自动重试、backoff、重算或重新生成；共享语义批次由调用方按 [返修边界](generate-slices.md#有界返修和恢复) 记录，来源、恢复与观测分别保存。
 
 公共 apply payload 固定 entrypoint、prepared_path、expected_current、plan_path。当前拒绝条件：
 
@@ -170,17 +208,17 @@ cursor 绑定查询、实际来源/索引/所读版本和续读位置。绑定�
 - 准备/候选/检查/文件结构或实际摘要不一致：协议、候选或依据诊断；已有非预期 current：BASE_STALE。
 - 其余准备包：`workbook.verify_prepared` 复核实际投影、Office 记录、原始产物和最终工作簿；不符返回 WORKBOOK_INVALID，target.field=verification_ref。自填 `valid=true` 无效；没有 skip/force/failpoint 等生产绕过参数。
 
-I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志；当前核验还须验证原四表原列全文、目标行 open 备注、范围行和校验优先级，外部 Markdown 完整不能替代。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，新输出不含 details.md；verification_ref 独立指向核验记录。
+准备包核验函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志；当前核验还须验证原四表原列全文、目标行 open 备注、范围行和校验优先级，外部 Markdown 完整不能替代。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，新输出不含 details.md；verification_ref 独立指向核验记录。
 
-公共入口在重新执行完整候选检查并通过实际 I1.3 核验后，冻结业务 JSON 和输入记录快照，将可达输入/分析/读取附件列入 manifest；不把可变 inputs/index 或 work 当稳定依赖，再交给 `_commit_version` 存储内核。`application.json` 绑定原应用调用，`intent.json` 在应用候选进入保存时封存意图，讨论/分析登记不会提前封存。
+公共入口在重新执行完整候选检查并通过准备包核验后，冻结业务 JSON 和输入记录快照，将可达输入/分析/读取附件列入 manifest；不把可变 inputs/index 或 work 当稳定依赖，再交给 `_commit_version` 存储内核。`application.json` 绑定原应用调用，`intent.json` 在应用候选进入保存时封存意图，讨论/分析登记不会提前封存。
 
 存储内核在锁外构造并刷新完整目录，要求与 versions 同一文件系统；Unix 用 flock，Windows 用 msvcrt 对固定字节非阻塞加锁。锁忙立即 WRITE_BUSY。锁内复核意图、取消、current 和摘要，保存不可变版本，最后以 fsync 临时指针 + os.replace 切换 current。已生效后的日志/响应失败不撤销事实；锁中不运行 Office、模型或等待用户。Windows 无标准库目录 fsync 分支会如实返回不支持该刷新，不以此声称断电持久性。真实平台覆盖以验证报告为准；没有网络/同步盘承诺。
 
 `recover` payload 只有 target_request_id；沿 current 和摘要绑定的 base_version_id 历史链核实，返回 applied/draft/cancelled/incompatible、applied_version、preserved_paths、diagnostics_ref。损坏诊断进入公共信封，diagnostics_ref 无独立文件时为 null；查询不会写源数据或激活孤立版本。已成功请求返回原 applied_version 与当前 current_version，后续串行版本不会被旧请求倒回。取消只能通过已观察到的本地 `cancel_request` 记录执行边界，不承诺收到任意宿主 UI 的取消事件。
 
-`storage_package` 及 `_commit_version` 单测只验证文件事务；其 sow.xlsx 特意不是 Office 工作簿，不能经公共 apply 绕过核验。真实交付回归使用 `office` marker，存储单测不作为 Excel 交付证据。独立复制及真实包中断覆盖见 [I1.5 交付验收](../docs/validation/I1-delivery.md)。
+<a id="i13-模板投影与真实-office"></a>
 
-## I1.3 模板投影与真实 Office
+## 模板投影与真实 Office
 
 `render` payload 必须为 candidate_path、check_path、expected_current。首版 Generate 的期望指针为 null。工具重新执行 full check，并与指定检查文件完整比较；slice、候选/来源字节变化、自填通过标志均不能作为导出依据。候选和检查文件必须属于本请求 work，原业务 JSON 逐字节复制。
 
@@ -192,53 +230,37 @@ I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonO
 
 业务字符串由 write_literal 强制写为字符串，不加单引号。Story/Task 名分别按 NFC、casefold 和 trim 比较键检查碰撞；安全原名保留。通配符、criteria 运算符、数值/布尔/错误码形名称、换行和超过120个 UTF-16 单元的名称使用稳定 ID 别名；原文完整保留在对应备注，模型名称不改。
 
-当前 v8 输出只含原四表。完整 AC 在 Story D，Story E 通常为空；Task G 另展示非新建工作方式、非 M 复杂度的既有 rationale，按 fields 选取并合并相同正文，classification_basis 映射到 G。必要责任例外、安全别名原名及 open 问题仍保留。open 的真实 question + current_handling 以“待确认：”开始写在目标行；AC 指明哪条，父项问题落实际受影响的 Story，Task 问题只落 Task 行。无 Story 的未拆明 Epic/Feature 在 01 表末尾追加范围行，仅实际父项和问题，Story/AC/人天空。resolved/superseded 不在 Excel，只留项目 JSON/MD 历史；依赖、Task 清单、证据 ID 和外部路径不自动写备注。
+当前输出只含原四表。完整 AC 在 Story D，Story E 通常为空；Task G 另展示非新建工作方式、非 M 复杂度的既有 rationale，按 fields 选取并合并相同正文，classification_basis 映射到 G。必要责任例外、安全别名原名及 open 问题仍保留。open 的真实 question + current_handling 以“待确认：”开始写在目标行；AC 指明哪条，父项问题落实际受影响的 Story，Task 问题只落 Task 行。无 Story 的未拆明 Epic/Feature 在 01 表末尾追加范围行，仅实际父项和问题，Story/AC/人天空。resolved/superseded 不在 Excel，只留项目 JSON/MD 历史；依赖、Task 清单、证据 ID 和外部路径不自动写备注。
 
 长文保存在原列，新输出 D 列宽 88、顶对齐/换行、字号不变，原模板不修改。预计超过 409 点可见高度返回 WORKBOOK_LAYOUT_OVERFLOW，定位原对象/字段和 Sheet/单元格；派生 H 任务列表定位所属 Story、field=null。保留候选和 current，不生成裁切文件、不调用 Office；最终单格文本超过 32767 UTF-16 单元时返回对象/字段定向 diagnostic 并沿既有有界修复，不摘要、不截断或另起说明表。任务列表 H 保留原公式、数组属性和 Office 原样结果，全部任务在 TaskTable，不复制到备注。
 
 projection.json 使用 **projector_version**；prepared/manifest 使用既有 **projection_version**，均为 lite-projection-v1，不接受双别名。projection 仍含 schema_version、version_id、template_hash、model_hash、pending_items_hash、decisions_hash、workbook_hash、objects、pending_items、details。objects 为 object_id/kind/sheet/table/rows/display_name/fields；单行使用 rows 数组，未拆明父项含实际范围行。fields 为 `{field,cells}`，cell 为 `{sheet,cell}`；AC 增加1起始 entry，保留自身 ID。问题 targets 为 object_id/field/cells，历史问题 cells 为空。pending path/anchor 继续指向项目 pending-items.md；新输出 details=[]、details_ref=null，不生成 details.md。历史 v1 字段合同和旧 applied 文件不变。
 
-Excel 可单独查看与分享，clarify 仍需完整项目 JSON、依据及版本目录。 [I6.1](../docs/validation/I6-self-contained.md) 保留 v5 实测状态，不证明本次提示效果；当前活动设计见 [D06](../docs/design/detailed/D06-excel-projection-and-delivery.md)。
+Excel 可单独查看与分享；Clarify 仍需完整项目 JSON、依据及版本目录。
 
 ### 引擎与最终封存
 
 `office.recalculate(source, destination)` 从 AI_SOW_LITE_OFFICE_BIN 或 PATH 的 soffice/libreoffice 发现引擎；探测10秒、单次重算120秒。每次使用独立输入、输出、配置目录与所属进程组；超时清理所属进程树和临时目录，不接管桌面 Excel，不安装宿主工具，无内部二次重算。Office 不存在为 OFFICE_ENGINE_UNAVAILABLE，超时/非零退出/退出0却无文件为 CALCULATION_FAILED，实际文件/缓存/保护损坏为 WORKBOOK_INVALID。
 
-按 Controller Ruling3（先前复用已验证旧机械能力的用户授权下的实现裁定，并非新收到的用户决定），raw 先经公式视图、data_only、OOXML 与元数据核验，再只允许两项变换：已有 Table 身份、列和 ref 完全一致时补缺失的 calculatedColumnFormula 子节点；DV 规则未变且 sqref 精确符合已观察到的占用末行+1000裁切时恢复原范围。不整段替换 Table/保护，不改任何单元格、公式、缓存或保护。变换前后公式/cache 清单哈希一致，最终路径再次只读核验。Office 保存后不调用 openpyxl.save。
+raw 先经公式视图、data_only、OOXML 与元数据核验，再只允许两项变换：已有 Table 身份、列和 ref 完全一致时补缺失的 calculatedColumnFormula 子节点；DV 规则未变且 sqref 精确符合已观察到的占用末行+1000裁切时恢复原范围。不整段替换 Table/保护，不改任何单元格、公式、缓存或保护。变换前后公式/cache 清单哈希一致，最终路径再次只读核验。Office 保存后不调用 openpyxl.save。
 
 只读比较承认的等价表示包括引号外 TRUE→TRUE()；缺省保护属性的解码值；空白单元格的有效行/列样式继承；Table part ID/样式 ID 重编号；未指定打印项显式化；list/custom 规则不适用的默认 operator 与 formula2；单条条件规则的优先级编号及同色 differential fill 表示；行高向下量化到0.75pt。这些不触发写入修复。其余范围、规则、已指定打印设置、有效样式/锁定、原公式及数组 ref 均核对。行 hidden/collapsed/outlineLevel、声明字体和实际主题字体（含 CJK）、charset/family 默认值、上标/下标及其他字体显示属性也纳入复读。
 
-唯一字体例外是 Controller 为已观察保存回退限定的三个固定说明格：01-需求故事/02-任务清单/03-工作量汇总 的 A2，模板 Calibri/minor → raw Arial Unicode MS/无 scheme。文本、其余字体属性及原 minor 主题字体必须不变；这是观察到的 fallback，不是相同主题或有效字体。业务格、其他位置或字体对、主题/文本/样式变动和隐藏行仍拒绝。此例外只影响只读比较，不恢复字体或修改 OOXML；增加本机已有 Office 字体目录的隔离探针仍未保留原 A2 字体身份，因此没有增加字体发现或安装子系统。
+唯一字体例外限定为三个固定说明格：01-需求故事/02-任务清单/03-工作量汇总 的 A2，模板 Calibri/minor → raw Arial Unicode MS/无 scheme。文本、其余字体属性及原 minor 主题字体必须不变；这是观察到的 fallback，不是相同主题或有效字体。业务格、其他位置或字体对、主题/文本/样式变动和隐藏行仍拒绝。此例外只影响只读比较，不恢复字体或修改 OOXML。
 
 verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏的引擎名/版本、可执行文件 hash、平台、固定参数、退出码、实际单调时钟毫秒、Office 输入/raw/最终字节 hash，以及实际公式/缓存清单与兼容变换记录。office_identity 是引擎记录的稳定 sha256 字符串。它是本地执行记录，不是签名执行证明；不能抵御有权重写整个项目与全部收据的攻击者。程序仍从模板/候选重新构造预期映射并读取实际文件，不信任自填 valid 标志，不用 Python 验算金额。
 
 修改版投影从同次完整检查绑定的基线model/projection继承未改对象显示名；新同名对象不能夺用旧别名。summary.md使用绑定计划，说明本次具体变化；严格子集只列实际选中的变化，不沿用包含暂缓内容的整案摘要。旧成功准备包只有完整复核并匹配原成功记录时才保留历史正文。
 
-### 复用、变动与测试入口
+### 复用与变动
 
-render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。Generate沿用请求目录的记录；Clarify将记录放在既有不可变候选槽内，首次预览r1/r2/严格子集不算故障重试，返回旧槽复用已成功包。槽位仍由原有限构造约束控制；失败后有条件变化的重试继续消耗全请求共享额度。实现修订 `implementation_version=lite-render-v9` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2/v3/v4/v5/v6/v7/v8 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。旧失败收据没有候选身份时保守继承其失败历史，改变引擎签名不能证明是独立新槽；原预算耗尽即退出。旧 applied 版本保留原成功事实及内容，不就地升级。修复前成功 prepared/预览的旧签名只有在相同检查/指针/引擎且通过当前完整复核时才可复用；旧成功收据、相同 Schema 或历史验证器不能绕过 v9 的可见高度、判断原因及四表原列全文、目标行备注、范围行和校验优先级核验。v8 成功 prepared 的正文与布局若通过当前完整复核仍可复用；v9 只减少可选底部留白，不按版本号强制重算有效文件。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。Generate沿用请求目录的记录；Clarify将记录放在既有不可变候选槽内，首次预览r1/r2/严格子集不算故障重试，返回旧槽复用已成功包。槽位仍由原有限构造约束控制；失败后有条件变化的重试继续消耗全请求共享额度。实现修订 `implementation_version=lite-render-v9` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2/v3/v4/v5/v6/v7/v8 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原请求返修额度；不删除 attempt 或归零计数。旧失败收据没有候选身份时保守继承其失败历史，改变引擎签名不能证明是独立新槽；原预算耗尽即退出。旧 applied 版本保留原成功事实及内容，不就地升级。修复前成功 prepared/预览的旧签名只有在相同检查/指针/引擎且通过当前完整复核时才可复用；旧成功收据、相同 Schema 或历史验证器不能绕过 v9 的可见高度、判断原因及四表原列全文、目标行备注、范围行和校验优先级核验。v8 成功 prepared 的正文与布局若通过当前完整复核仍可复用；v9 只减少可选底部留白，不按版本号强制重算有效文件。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，遵守原子生效与幂等恢复。
 
 项目 pending-items.md 的来源标签按真实 locator 显示：文本保留文件名和起止行，XLSX 使用文件名、Sheet 和 range；judgment 沿 basis_refs 回溯相同来源标签，不猜文本行号。此显示修复不改候选、模板、标准或公式。
 
-测试命令：
+<a id="i14-观测接口"></a>
 
-```text
-uv run --project plugins/ai-sow-lite --locked pytest plugins/ai-sow-lite/tests/test_workbook.py plugins/ai-sow-lite/tests/test_office.py plugins/ai-sow-lite/tests/test_template_uat.py -q
-```
-
-office marker 表示真实引擎；没有引擎时允许解释 skip，但 I1 退出仍需至少一个环境没有真实引擎跳过。受控子进程测试仅用于超时、输出丢失与重试边界，存储夹具仍不冒充 Office。
-
-测试专用 native-QA builder 在 tests/support/excel.py。对新的临时/ignored 项目目录运行：
-
-```text
-uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/excel.py --project <新的QA项目目录> --variant representative
-uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/excel.py --project <另一个新的QA项目目录> --variant expanded
-uv run --project plugins/ai-sow-lite --locked python plugins/ai-sow-lite/tests/support/excel.py --project <新的中等列表QA目录> --variant medium-list
-```
-
-builder 真实 ingest/inspect/analysis/check/render，并输出准备包引用。representative 含三个范围、默认 M 与待确认；expanded 含61 Story/201 Task、特殊名称和长正文；medium-list 含1 Story/3 Task、短 AC/空备注和中等任务名，另登记其较小范围的测试分析，不改既有登记记录。原生 Excel 保存/重开应使用整包副本，保持已绑定原文件不变。该入口是测试资产，不是 I1.5 独立安装验收，也不运行 Controller 的独立 CLI smoke。
-
-## I1.4 观测接口
+## 观测接口
 
 被协议 Schema 拒绝或不可调度的请求，仅在已有安全 project/request 身份可验证时记录失败工具 span；无效 payload 不落盘，这两类拒绝请求身份未知/越界时不为观测创建目录。首次有效来源登记仍观察实际工具边界。外层信封 Schema 通过不等于 payload 可执行，原业务响应和诊断不变。
 

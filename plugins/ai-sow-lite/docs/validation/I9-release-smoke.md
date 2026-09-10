@@ -2,6 +2,8 @@
 
 2026-09-11，验证提交 `a32611e`（插件 `0.1.0-alpha.1`）。**实际安装后的 generate → clarify 已跑通；新 AC 口径的内容审查部分通过，仍有一项发布前质量缺口 I9-F01。未发布。**
 
+后续状态：[I10](I10-reference-gaps-and-skills.md) 已定向验证缺失依据的识别与部分答复闭合。本页保留 I9 首次结果和当时结论，不回写为通过；最新成本与检查限制见 I10。
+
 ## 范围与执行方式
 
 把安装消费者验证和新 AC 的 Excel 验证合成一次小案例，不重跑 Greenfield → Brownfield 整案。执行前冻结已有 [PRD](../../tests/fixtures/generate/cases/three-scope/inputs/prd.md)、[HLD](../../tests/fixtures/generate/cases/three-scope/inputs/hld.md)、输入答复脚本及“迁移数量仍未知，本次采用 M”的修改意见。没有预填模型、期望 Story 数或通过结论。

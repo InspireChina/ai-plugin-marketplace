@@ -52,11 +52,10 @@ def test_host_manifests_agree_on_identity_and_description():
         assert manifests[0][key] == manifests[1][key]
 
 
-@pytest.mark.parametrize("relative", [
-    "skills/generate/SKILL.md", "references/generate-slices.md",
-    "references/generate-authoring.md", "references/input-analysis.md",
-    "references/tools.md", "README.md", "skills/clarify/SKILL.md", "references/clarify-changes.md",
-])
+@pytest.mark.parametrize("relative", ["README.md", *sorted(
+    str(path.relative_to(PLUGIN)) for pattern in ("skills/*/SKILL.md", "references/*.md")
+    for path in PLUGIN.glob(pattern)
+)])
 def test_relative_reference_links_resolve_inside_plugin(relative):
     path = PLUGIN / relative
     text = required_text(path)
@@ -64,11 +63,19 @@ def test_relative_reference_links_resolve_inside_plugin(relative):
     assert links, f"No reachable references in {relative}"
     for link in links:
         parsed = urlsplit(link)
-        if parsed.scheme or not parsed.path:
+        if parsed.scheme:
             continue
-        target = (path.parent / unquote(parsed.path)).resolve()
+        target = (path.parent / unquote(parsed.path)).resolve() if parsed.path else path.resolve()
         assert target.is_relative_to(PLUGIN), (relative, link)
         assert target.exists(), (relative, link)
+        if parsed.fragment and target.suffix == ".md":
+            body = required_text(target)
+            # Check the sections agents are told to read, not specific prose or headings.
+            headings = re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", body, re.M)
+            anchors = {re.sub(r"[^\w\s-]", "", heading.lower()).replace(" ", "-")
+                       for heading in headings}
+            anchors.update(re.findall(r'<a\s+(?:id|name)="([^"]+)"', body))
+            assert unquote(parsed.fragment) in anchors, (relative, link)
 
 
 def test_runtime_instructions_route_to_their_own_executable_files():
@@ -256,6 +263,29 @@ def test_clarify_confirmation_example_consumes_real_responses(clarify_case, monk
         plan_path=confirmation_ref['path'], scope='full'))
     assert accepted['ok'] and accepted['result']['valid_for_render'], accepted
     assert read_json(project / '.ai-sow-lite/current.json') == case['current']
+
+
+def test_xlsx_first_region_recipe_uses_directory_identity_then_actual_region(tmp_path):
+    from ai_sow_lite.authoring import Client, source_ref
+    from .test_xlsx_inputs import ingest_history
+
+    project, request, entry, _ = ingest_history(tmp_path)
+    client = Client(project, request, 'generate')
+    directory = client.call('inspect', dict(view='regions', selector=dict(
+        input_version_id=entry['input_version_id'])))
+    guide = required_text(PLUGIN / 'references/tools.md')
+    example = re.search(r'<!-- xlsx-region-request-example -->\s*```json\n(.*?)\n```', guide, re.S)
+    assert example, 'Missing executable first-region request recipe'
+    directory_id = directory['selected_version']['read_id']
+    payload = json.loads(example[1].replace('<input-version-id>', entry['input_version_id'])
+                         .replace('<directory-read-id>', directory_id))
+    region = client.call('inspect', payload)
+    ref = source_ref(region)
+    assert ref['locator']['read_id'] != directory_id
+    assert ref['locator']['sheet'] == '历史范围' and ref['locator']['range'] == 'A1:C8'
+    assert ref['excerpt_hash'] == hashlib.sha256(
+        (project / region['coverage']['excerpt_ref']['path']).read_bytes()).hexdigest()
+    assert next(c for c in region['items'] if c['address'] == 'A2')['value']['value'] == '订单查询'
 
 
 def test_python_client_setup_example_works_before_first_generate_ingest(tmp_path):
