@@ -4,6 +4,8 @@
 
 后续状态：[I10](I10-reference-gaps-and-skills.md) 已定向验证缺失依据的识别与部分答复闭合。本页保留 I9 首次结果和当时结论，不回写为通过；最新成本与检查限制见 I10。
 
+当前语义口径以 [I11](I11-estimation-relevance.md) 为准：缺规范明细仅在影响工作量评估时才构成问题，I9-F01 不再作为要求完整开发/验收资料的发布门槛。
+
 ## 范围与执行方式
 
 把安装消费者验证和新 AC 的 Excel 验证合成一次小案例，不重跑 Greenfield → Brownfield 整案。执行前冻结已有 [PRD](../../tests/fixtures/generate/cases/three-scope/inputs/prd.md)、[HLD](../../tests/fixtures/generate/cases/three-scope/inputs/hld.md)、输入答复脚本及“迁移数量仍未知，本次采用 M”的修改意见。没有预填模型、期望 Story 数或通过结论。

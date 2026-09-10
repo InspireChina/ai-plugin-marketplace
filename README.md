@@ -21,7 +21,7 @@ AI SOW 的既有支持范围为 macOS、Linux 和 Windows 11 x64。三个平台�
 
 AI SOW Lite 的证据范围包括 macOS 普通本地目录的交付与恢复，以及 Codex 桌面随附
 CLI 0.153.4 经本地 marketplace 安装后的入口发现、generate 与 clarify 执行。
-最近一次[联合验证](plugins/ai-sow-lite/docs/validation/I9-release-smoke.md)仍有 AC 规范引用缺口，尚未发布。Windows、Linux、同步盘和网络盘没有对应
+安装证据见[联合验证](plugins/ai-sow-lite/docs/validation/I9-release-smoke.md)，当前待确认按[估算相关性](plugins/ai-sow-lite/docs/validation/I11-estimation-relevance.md)取舍，尚未发布。Windows、Linux、同步盘和网络盘没有对应
 实跑保证；Claude Code 有 manifest 校验和入口发现证据，业务执行因认证失败未完成。
 详见 [Lite 交付验证](plugins/ai-sow-lite/docs/validation/I1-delivery.md) 和
 [宿主支持记录](plugins/ai-sow-lite/docs/validation/host-support.md)。

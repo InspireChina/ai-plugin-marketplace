@@ -2,7 +2,7 @@
 
 AI SOW Lite 根据 PRD、HLD 和旧项目的往期 SOW，生成本期首版 SOW Excel、摘要与待确认事项。专业分析和联合拆解由一个主 session 完成，插件工具负责可追溯读取、机械检查、模板投影、真实 Office 核验和版本保存。
 
-当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），提供 [generate](skills/generate/SKILL.md) 和 [clarify](skills/clarify/SKILL.md) 两个入口。两宿主 manifest 共用这些 Skill，仓库双 marketplace 已包含预发布条目；尚未公开发布。[I9](docs/validation/I9-release-smoke.md) 已验证本地 marketplace 安装、原生入口发现及 generate → clarify，测试注册已清理。[I10](docs/validation/I10-reference-gaps-and-skills.md) 重写入口和参考导航，并定向验证了缺失规范的待确认与部分闭合；实际返修、耗时及新版界面检查限制均保留。其他范围与历史证据见[I4 交付汇总](docs/validation/I4-delivery.md)、 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
+当前是 `0.1.0-alpha.1` 开发插件（Python 版本 `0.1.0a1`），提供 [generate](skills/generate/SKILL.md) 和 [clarify](skills/clarify/SKILL.md) 两个入口。两宿主 manifest 共用这些 Skill，仓库双 marketplace 已包含预发布条目；尚未公开发布。[I9](docs/validation/I9-release-smoke.md) 已验证本地 marketplace 安装、原生入口发现及 generate → clarify，测试注册已清理。两入口已整理为四阶段，专业参考按需读取；[I11](docs/validation/I11-estimation-relevance.md) 按工作量评估取舍待确认，取代此前追求规范完整性的口径。[I10](docs/validation/I10-reference-gaps-and-skills.md) 的实际返修、耗时及界面检查限制保留为历史证据。其他范围与历史证据见[I4 交付汇总](docs/validation/I4-delivery.md)、 [I2 生成验证](docs/validation/I2-generate.md)、[I1 交付验证](docs/validation/I1-delivery.md) 和 [宿主支持记录](docs/validation/host-support.md)；入口和文本合同通过不代表真实语义场景通过。
 
 ## 使用
 
@@ -40,7 +40,7 @@ Excel 只保留原四张表，完整验收条件直接放在“验收条件”�
 
 完整生成与有限修改已有真实输入、Office及文件续接证据。[首次串联](docs/validation/E2E-greenfield-brownfield.md)保留原26通过、2失败、1部分通过的结果；它不能代表后来追加的AC语义要求已满足。本轮按 [I7.1—I7.6](docs/design/implementation/P05-quality-and-performance.md)实施AC指引、估算问题闭合、原列可读性、可信拒绝计量、输入区域助手与按需读取，实际证据见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
 
-当前AC采用用户进一步明确的SOW定义：以简短条目约定可验证的业务结果和关键边界，不展开完整接口规格或测试步骤。引用规范时使用实际名称、版本和必要适用范围；只有规则名、缺少实际验收依据时，在受影响行保留待确认；已直接给出的具体规则无需额外索要材料版本。Generate/Clarify共用 [引用判断](references/input-analysis.md#引用中的缺口)；表达对照见 [I8](docs/validation/I8-sow-acceptance.md)，本次生成和部分答复的实际验证见 [I10](docs/validation/I10-reference-gaps-and-skills.md)。下面I7产物保留为历史证据，未按新定义重生成。
+当前AC以简短条目约定可验证的业务结果和关键边界，服务工作量评估，不展开开发规格或测试步骤。待确认只保留会改变工作范围、Task 单元/数量、分类或本方责任的未知；缺字段明细、规范版本或验收执行依据本身不构成估算问题，也不转存备注。有据内容仍保留，未知事实不编造。Generate/Clarify共用 [估算相关性](references/input-analysis.md#引用中的缺口)，当前口径及验证见 [I11](docs/validation/I11-estimation-relevance.md)。[I8](docs/validation/I8-sow-acceptance.md)、[I10](docs/validation/I10-reference-gaps-and-skills.md)及下面I7产物保留各轮历史证据。
 
 [修复后串联](docs/validation/I7-final-e2e.md)已实际完成两期生成、采用M、接口部分采纳与重复意见；首次发现的AC遗漏、How和歧义通过有限反馈处理，保留首份失败及独立复核，不把工具检查等同于语义正确。原生Excel已检查长行、判断原因和待确认；超长行仍可能在确认后导出时才被拒绝，需有限修订。首稿质量不能承诺无需review，一期还有一处备注重复待精简。
 

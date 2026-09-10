@@ -105,7 +105,7 @@ generate/clarify 按单人串行使用。生效前保留最小预期版本核对
 
 ### Story 备注内容与来源
 
-专业编写规则集中在 [备注与问题的目标](../../../references/generate-slices.md#备注与问题的目标)，Generate 与 Clarify 共用。已确认且必要的范围、责任或外部前提说明，由 Agent 根据 PRD/HLD 明确陈述或用户已确认答复写入 `Story.notes`；可观察的验收成果写入 AC。未知来自输入分析、拆分或修改反馈，保存为独立问题并绑定实际 Story/AC；投影器只组合 `notes` 与目标 open 问题，不识别责任、不补写前提，也不从 Task 自动推断 Story 是否待确认。
+专业编写规则集中在 [备注与问题的目标](../../../references/generate-slices.md#备注与问题的目标)，Generate 与 Clarify 共用。已确认且必要的范围、责任或外部前提说明，由 Agent 根据 PRD/HLD 明确陈述或用户已确认答复写入 `Story.notes`；可观察的验收成果写入 AC。仅影响工作量评估的未知保存为问题，按真实影响绑定 Story/AC 或 Task；不影响估算的开发/验收细节既不创建问题，也不转存 notes。投影器只组合 `notes` 与目标 open 问题，不识别语义、不补写前提，也不从 Task 自动推断 Story 是否待确认。
 
 原有字段和投影机制已经承载上述分工；内容取舍属于 Agent 的专业判断，不新增语义门禁或额外检查轮次。仅有必要已确认说明的 Story 沿用普通校验，有目标 open 问题的 Story 显示“待确认”。安全别名所需原名仍按第 3 节完整保留。
 

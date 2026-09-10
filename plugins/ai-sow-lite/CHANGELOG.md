@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- I11：按用户要求，待确认仅保留影响本期工作范围、Task 单元/数量、分类或本方责任的未知。去掉缺开发细则/验收规范即追问的要求；Story 与 Task 按真实估算影响归属，默认 M/具体历史候选问题保持。Clarify 可按确认方案清理不影响估算的旧问题，记录撤销追问而不伪造事实。替换原专业段落并同步设计，I9/I10 保留为历史口径，见 [I11](docs/validation/I11-estimation-relevance.md)。
+
 - I10：在输入分析集中判断引用依据，缺失规范沿现有待确认绑定实际 Story/AC；实际补充只关闭对应问题。重写 generate/clarify 为四阶段入口，专业规则和机械协议按需查询，两主文字符减少38.45%。固定材料 generate → clarify 验证只改发布行 AC/备注、保留其余未决项及全部 Task；记录两次生成返修、新版界面检查超时和实际成本，不宣称提速。未改运行时、Schema、模板或版本，见 [验证与取舍](docs/validation/I10-reference-gaps-and-skills.md)。
 
 - I9：完成原生本地 marketplace 安装、双入口发现、自举及小案例 generate → clarify 联合验证。两版 Excel、精确修改范围和原生计量已复核；保留 I9-F01 隐式规范未落待确认的语义缺口，未宣称发布就绪。测试注册已清理，运行时、Skill、模板和版本号未改。见 [联合验证](docs/validation/I9-release-smoke.md)。

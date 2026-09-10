@@ -176,6 +176,8 @@ As-is/to-be/gap 的必要结论与匹配范围保存在上述主题和 `judgment
 
 `pending-items.json` 含 `schema_version` 和 `items`。每项字段见 EX01：`id`、`revision`、`question`、`targets`、`evidence_refs`、`current_handling`、`unestimated_work`、`status`、`resolution`。
 
+入列条件是影响工作量评估，按 [估算相关性](../../../references/input-analysis.md#引用中的缺口) 判断；不是所有未提供的开发/验收细节都形成问题。结构仍沿用现有字段，Agent 在 question/current_handling 说明具体工作影响，不新增量化或语义评分字段。
+
 `unestimated_work` 是布尔值，正常为 false；只表示“本期已有依据的某部分工作尚未形成可计量 Task”，不表示字段未确认或资料总体充分。为 true 的 open 问题必须指向 Story/Feature/Epic 的对象级目标（field=null），current_handling 说明尚未拆明的义务和保留范围。已知 Task 字段缺值由字段目标表达；默认 M、按新建出稿的复用问题、仅缺 AC 文本均为 false。机械检查不根据问句或备注中的关键词推断这个标记。
 
 该标记服务范围覆盖说明和 clarify 定位：未拆明义务在工作簿内待确认说明中可见；问题 resolved/superseded 后历史标记可保留。它不驱动任何金额、公式或估算完整性判断。含义改变、目标变化或 true/false 变化要提升 revision，并纳入 clarify 的写集合和确认。仍属大范围基础不足时按 D01 退出，不能靠 true 放行一个不可用 SOW。
