@@ -74,7 +74,7 @@ def test_representative_exact_columns_pending_and_unchanged_template(tmp_path):
     text = (tmp_path / 'pending-items.md').read_text()
     assert result['version_id'] in text and '条数未知' in text
     assert (PLUGIN / 'assets/sow-template.xlsx').read_bytes() == before
-    assert hashlib.sha256(before).hexdigest() == '7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919'
+    assert hashlib.sha256(before).hexdigest() == '28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e'
 
 
 @pytest.mark.parametrize('stories,tasks,last_s,last_t', [(0,0,64,204),(1,1,64,204),(60,200,64,204),(61,201,65,205)])

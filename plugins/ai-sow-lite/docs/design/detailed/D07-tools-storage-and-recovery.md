@@ -94,7 +94,7 @@ Agent 可在本请求 work 目录写草案；版本目录由工具独占生成�
 
 `project.json` 保持项目身份及少量设置。材料登记、候选检查和工作保存不是新一套有效业务版本；generate 成功才产生首个完整版本，clarify 讨论只写 work。
 
-`projection.json` 保留 D02/D06 的 ID/行/名称、字段及历史 path/anchor，数据合同仍为 lite-projection-v1；当前 lite-render-v6 新输出 details=[]、details_ref=null，无 details.md。原四表的 AC 原列全文、open 目标行备注与范围行按 D06 核验；resolved/superseded 仅留 JSON/MD 历史。manifest 绑定 Office 身份、文件版本和最终核验记录，prepared/projection 绑定实际项目模板 hash；唯一旧模板只在内存适配校验原型/A2。Excel 分享无需附项目归档，clarify 仍依赖项目 JSON/依据/版本文件。
+`projection.json` 保留 D02/D06 的 ID/行/名称、字段及历史 path/anchor，数据合同仍为 lite-projection-v1；当前 lite-render-v7 新输出 details=[]、details_ref=null，无 details.md。原四表的 AC 原列全文、open 目标行备注与范围行按 D06 核验；resolved/superseded 仅留 JSON/MD 历史。manifest 绑定 Office 身份、文件版本和最终核验记录，prepared/projection 绑定实际项目模板 hash；已知旧模板只在内存适配校验原型/A2。Excel 分享无需附项目归档，clarify 仍依赖项目 JSON/依据/版本文件。
 
 旧 applied 版本按原成功事实恢复并保持不变；旧 prepared/预览的复用与 apply 必须通过当前完整核验，不能靠旧签名或相同 projection Schema 放行不满足当前四表原列合同的文件。实现版本变化不清除原失败历史或重置 D04B 额度。
 

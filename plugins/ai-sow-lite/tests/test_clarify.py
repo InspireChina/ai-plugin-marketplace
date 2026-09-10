@@ -699,7 +699,8 @@ def test_explicit_reference_and_obligation_errors_remain_diagnostics(clarify_cas
 
 
 @pytest.mark.office
-def test_superseded_layout_preview_reprojects_once_without_erasing_old_files(prepared_case,monkeypatch):
+@pytest.mark.parametrize('old_implementation', ['lite-render-v5', 'lite-render-v6'])
+def test_superseded_layout_preview_reprojects_once_without_erasing_old_files(prepared_case,monkeypatch,old_implementation):
     from ai_sow_lite import office,workbook
     from ai_sow_lite.contracts import semantic_digest
     from ai_sow_lite.project import StorageError
@@ -708,9 +709,9 @@ def test_superseded_layout_preview_reprojects_once_without_erasing_old_files(pre
     attempt_path=candidate.with_name('render-attempt.json')
     attempt=read_json(attempt_path)
     payload=dict(candidate_path=result['candidate_ref']['path'],check_path=result['check_ref']['path'],expected_current=case['current'])
-    attempt.update(implementation_version='lite-render-v5',signature=semantic_digest(dict(
+    attempt.update(implementation_version=old_implementation,signature=semantic_digest(dict(
         check=read_json(project/payload['check_path']),payload=payload,projector_version='lite-projection-v1',
-        engine=office.selection_fingerprint(),implementation_version='lite-render-v5')))
+        engine=office.selection_fingerprint(),implementation_version=old_implementation)))
     write_json(attempt_path,attempt)
     old_dir=(project/attempt['prepared_ref']['path']).parent
     old_files={p:p.read_bytes() for p in old_dir.iterdir() if p.is_file()}

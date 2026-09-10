@@ -1450,9 +1450,11 @@
         "tests/test_workbook_self_contained.py",
         "docs/validation/I6-inline-acceptance.md",
         "tests/test_workbook_inline.py",
-        "tests/test_template_pending.py"
+        "tests/test_template_pending.py",
+        "docs/validation/I6-task-note-reasons.md",
+        "tests/test_task_note_reasons.py"
       ],
-      "limitation": "I6.2 open问题及当前处理直接填目标行备注，校验公式显示待确认；已关闭问题仅保留项目历史。未拆明父项在原表范围行展示，不伪造Story。Excel独立阅读不等于单文件可回导clarify。",
+      "limitation": "I6.2 open问题及当前处理直接填目标行备注，校验公式显示待确认；已关闭问题仅保留项目历史。未拆明父项在原表范围行展示，不伪造Story。Excel独立阅读不等于单文件可回导clarify。 I6.3 从分类依据投影非新建/非M原因，只有原因不标待确认；真实Office验证同备注共存及状态，专业原因本身未新增语义评测。",
       "mechanism_refs": [
         {
           "id": "M06-projection",

@@ -19,12 +19,13 @@ from openpyxl.worksheet.formula import ArrayFormula
 
 from .project import StorageError, atomic_bytes
 
-TEMPLATE_HASH = '7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919'
+TEMPLATE_HASH = '28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e'
+INLINE_TEMPLATE_HASH = '7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919'
 LEGACY_TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
-SUPPORTED_TEMPLATE_HASHES = (TEMPLATE_HASH, LEGACY_TEMPLATE_HASH)
+SUPPORTED_TEMPLATE_HASHES = (TEMPLATE_HASH, INLINE_TEMPLATE_HASH, LEGACY_TEMPLATE_HASH)
 PROJECTOR_VERSION = 'lite-projection-v1'
 # Render retry identity is separate from the unchanged projection data contract.
-RENDER_IMPLEMENTATION_VERSION = 'lite-render-v6'
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v7'
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
 XML_BAD = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]')
@@ -104,9 +105,9 @@ def _template(path):
             if metadata.calculatedColumnFormula:
                 if cell.data_type != 'f' or metadata.calculatedColumnFormula.text != formula_text(cell.value)[1:]:
                     raise StorageError('VERSION_INCOMPATIBLE', 'Table 计算列原型不一致。')
-    if digest == LEGACY_TEMPLATE_HASH:
-        # The user-authorized validation display update applies to the one known
-        # previous template too. Its project bytes/hash and all estimate formulas
+    if digest != TEMPLATE_HASH:
+        # The user-authorized validation display update applies to the known
+        # previous templates too. Their project bytes/hash and all estimate formulas
         # remain intact. Read the actual shipped prototypes, never reimplement them.
         current = _template(Path(__file__).resolve().parents[2] / 'assets/sow-template.xlsx')
         for sheet, column in [(STORY_SHEET, 10), (TASK_SHEET, 12)]:
@@ -231,7 +232,7 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
             value = sn[task['story_id']] if field == 'story_id' else tn[task['id']] if field == 'name' else task[field]
             put(TASK_SHEET, row, col, value, task['id'], field)
         obj_record(task, 'task', TASK_SHEET, 'TaskTable', [row], tn[task['id']],
-                   [dict(field=f,cells=[_cell(TASK_SHEET,f'{c}{row}')]) for f,c in columns])
+                   [dict(field=f,cells=[_cell(TASK_SHEET,f'{c}{row}')]) for f,c in [*columns, ('classification_basis', 'G')]])
     by_id = {o['object_id']:o for o in objects}
     mappings = []
     for item in pending['items']:
@@ -261,11 +262,22 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
                 text = f'待确认：{context}{item["question"]}\n当前处理：{item["current_handling"]}'
                 if item['unestimated_work']: text += '\n未拆明工作，尚未估算。'
                 notes.setdefault(key, []).append(text)
-    # Only authored exceptions, alias originals, and current questions belong in
-    # notes. Dependencies and classification rationale remain structured data.
+    # Pending questions stay first for the template's status formula. Project
+    # existing classification reasons without inferring or rewriting them.
     for collection, sheet, names, name_field in [(stories,STORY_SHEET,sn,'title'), (tasks,TASK_SHEET,tn,'name')]:
         for obj in collection:
             key = (sheet, by_id[obj['id']]['rows'][0])
+            if sheet == TASK_SHEET:
+                reasons = {}
+                for basis in obj['classification_basis']:
+                    reasons.setdefault(basis['rationale'], set()).update(basis['fields'])
+                for rationale, fields in reasons.items():
+                    labels = [f'{label}（{obj[field]}）' for field, default, label in
+                              [('work_mode', '新建', '工作方式'), ('complexity', 'M', '复杂度')]
+                              if field in fields and obj[field] not in (None, default)]
+                    if labels:
+                        note_source(key, obj['id'], 'classification_basis', rationale)
+                        notes.setdefault(key, []).append('、'.join(labels) + '判断原因：' + rationale)
             if obj.get('notes'):
                 note_source(key, obj['id'], 'notes', obj['notes'])
                 notes.setdefault(key, []).append(obj['notes'])
@@ -958,9 +970,9 @@ def render_candidate(project: Path,request_id: str,payload):
         if file_ref(project,old_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
         old_prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)
         old_check=checked_json(project,old_prepared['check_ref']['path'],'check',area)
-        # v4/v5 projected appendices or external text. Keep the old package, but
-        # spend the existing bounded retry to prepare the current inline layout.
-        reusable=(previous.get('implementation_version') not in ('lite-render-v4','lite-render-v5')
+        # v4/v5 had appendices; v6 omitted classification reasons. Preserve the
+        # old package and use the existing bounded retry for the current output.
+        reusable=(previous.get('implementation_version') not in ('lite-render-v4','lite-render-v5','lite-render-v6')
                   and old_prepared['candidate_ref']==file_ref(project,candidate_path)
                   and old_prepared['expected_current']==expected
                   and old_prepared['template_hash']==candidate['template_hash']

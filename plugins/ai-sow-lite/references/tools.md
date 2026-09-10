@@ -188,11 +188,11 @@ I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonO
 
 `render-<version_id>/` 保留 projected.xlsx（Office 前输入）、sow.office-raw.xlsx（Office 原始输出）、最终 sow.xlsx 和同版 JSON/Markdown。失败保留工作目录及可得 raw，failure.json 记录诊断，不产生成功 prepared，不切换 current。正式文件集合仍是 model/pending-items/decisions/projection JSON、sow.xlsx、summary.md、pending-items.md，新输出不生成 details.md；apply 另保存 verification 和输入索引快照。raw/投影输入只用于 work 核验，不成为不可变版本的 work 依赖。
 
-新模板 SHA 为 `7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919`。唯一兼容旧 SHA 为 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`：在内存从新版资产仅复制校验列 prototype/A2 说明，再按原项目模板投影；不改旧项目模板字节和 hash，prepared/projection 仍绑定实际项目 hash。其余模板拒绝，不自动重建项目。Story A:E、Task A:G 是输入；Story D 是 AC，F:I 和 Task H:K 保留原公式；Story J / Task L 校验使用新版模板原型，空行空、待确认优先、否则原校验，不改人天/金额/SIT/UAT 规则。标准 Q/R 分别为 SIT/UAT。容量内保留 Story 5—64、Task 5—204；超容量仅按模板原型追加，保留样式、保护、数组公式 ref、Table/filter 与计算列元数据。当前固定模板使用结构化跨表引用、整列 DV/条件格式和数据表空 print_area，扩行无需改写这些范围或公式。未知模板字节/原型返回 VERSION_INCOMPATIBLE。
+新模板 SHA 为 `28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e`。兼容旧 SHA 为 `7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919` 和 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`：在内存从新版资产仅复制校验列 prototype/A2 说明，再按原项目模板投影；不改旧项目模板字节和 hash，prepared/projection 仍绑定实际项目 hash。其余模板拒绝，不自动重建项目。Story A:E、Task A:G 是输入；Story D 是 AC，F:I 和 Task H:K 保留原公式；Story J / Task L 校验使用新版模板原型，空行空、待确认优先、否则原校验，不改人天/金额/SIT/UAT 规则。标准 Q/R 分别为 SIT/UAT。容量内保留 Story 5—64、Task 5—204；超容量仅按模板原型追加，保留样式、保护、数组公式 ref、Table/filter 与计算列元数据。当前固定模板使用结构化跨表引用、整列 DV/条件格式和数据表空 print_area，扩行无需改写这些范围或公式。未知模板字节/原型返回 VERSION_INCOMPATIBLE。
 
 业务字符串由 write_literal 强制写为字符串，不加单引号。Story/Task 名分别按 NFC、casefold 和 trim 比较键检查碰撞；安全原名保留。通配符、criteria 运算符、数值/布尔/错误码形名称、换行和超过120个 UTF-16 单元的名称使用稳定 ID 别名；原文完整保留在对应备注，模型名称不改。
 
-当前 v6 输出只含原四表。完整 AC 在 Story D，正常 Story E / Task G 备注为空；仅投影必要责任例外、安全别名原名及 open 问题。open 的真实 question + current_handling 以“待确认：”开始写在目标行；AC 指明哪条，父项问题落实际受影响的 Story，Task 问题只落 Task 行。无 Story 的未拆明 Epic/Feature 在 01 表末尾追加范围行，仅实际父项和问题，Story/AC/人天空。resolved/superseded 不在 Excel，只留项目 JSON/MD 历史；依赖、分类依据、Task 清单、证据 ID 和外部路径不自动写备注。
+当前 v7 输出只含原四表。完整 AC 在 Story D，Story E 通常为空；Task G 另展示非新建工作方式、非 M 复杂度的既有 rationale，按 fields 选取并合并相同正文，classification_basis 映射到 G。必要责任例外、安全别名原名及 open 问题仍保留。open 的真实 question + current_handling 以“待确认：”开始写在目标行；AC 指明哪条，父项问题落实际受影响的 Story，Task 问题只落 Task 行。无 Story 的未拆明 Epic/Feature 在 01 表末尾追加范围行，仅实际父项和问题，Story/AC/人天空。resolved/superseded 不在 Excel，只留项目 JSON/MD 历史；依赖、Task 清单、证据 ID 和外部路径不自动写备注。
 
 长文保存在原列，行高最多 409 点；最终单格文本超过 32767 UTF-16 单元时返回对象/字段定向 diagnostic 并沿既有有界修复，不摘要、不截断或另起说明表。任务列表 H 保留原公式、数组属性和 Office 原样结果，全部任务在 TaskTable，不复制到备注。
 
@@ -216,7 +216,7 @@ verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏�
 
 ### 复用、变动与测试入口
 
-render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。Generate沿用请求目录的记录；Clarify将记录放在既有不可变候选槽内，首次预览r1/r2/严格子集不算故障重试，返回旧槽复用已成功包。槽位仍由原有限构造约束控制；失败后有条件变化的重试继续消耗全请求共享额度。实现修订 `implementation_version=lite-render-v6` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2/v3/v4/v5 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。旧失败收据没有候选身份时保守继承其失败历史，改变引擎签名不能证明是独立新槽；原预算耗尽即退出。旧 applied 版本保留原成功事实及内容，不就地升级。修复前成功 prepared/预览的旧签名只有在相同检查/指针/引擎且通过当前完整复核时才可复用；旧成功收据、相同 Schema 或历史验证器不能绕过 v6 的四表原列全文、目标行备注、范围行和校验优先级核验。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。Generate沿用请求目录的记录；Clarify将记录放在既有不可变候选槽内，首次预览r1/r2/严格子集不算故障重试，返回旧槽复用已成功包。槽位仍由原有限构造约束控制；失败后有条件变化的重试继续消耗全请求共享额度。实现修订 `implementation_version=lite-render-v7` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2/v3/v4/v5/v6 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。旧失败收据没有候选身份时保守继承其失败历史，改变引擎签名不能证明是独立新槽；原预算耗尽即退出。旧 applied 版本保留原成功事实及内容，不就地升级。修复前成功 prepared/预览的旧签名只有在相同检查/指针/引擎且通过当前完整复核时才可复用；旧成功收据、相同 Schema 或历史验证器不能绕过 v7 的判断原因及四表原列全文、目标行备注、范围行和校验优先级核验。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
 
 项目 pending-items.md 的来源标签按真实 locator 显示：文本保留文件名和起止行，XLSX 使用文件名、Sheet 和 range；judgment 沿 basis_refs 回溯相同来源标签，不猜文本行号。此显示修复不改候选、模板、标准或公式。
 

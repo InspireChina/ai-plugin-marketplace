@@ -16,7 +16,9 @@ AC 和备注中的事实、方案、责任及验证前提都须有输入依据�
 
 ## 备注与问题的目标
 
-正常 Story/Task 的 `notes` 为空；仅保留有依据且该对象确需说明的责任例外等内容。依赖、分类依据、Task 列表和证据引用各归自己的结构字段，不自动转抄备注。Excel 的安全别名原名由投影器保留，Agent 不预写机械说明或外部路径。
+正常 Story/Task 的模型 `notes` 为空；仅保留有依据且该对象确需说明的责任例外等内容。依赖、Task 列表和证据引用各归自己的结构字段。Excel 的安全别名原名由投影器保留，Agent 不预写机械说明或外部路径。
+
+Task 的 Excel 备注还展示非新建工作方式、非 M 复杂度的判断原因。Agent 将实际采用的原因写入 `classification_basis.rationale`，用 `fields` 标明支撑的维度；说明采用哪个既有实例及本次变化，或本次规模/规则如何符合标准定档，用户指定口径则如实写明。不同维度原因宜分别记录，共同原因可合并；不要再次抄到模型 `notes`。投影器只选择适用维度的已有原因，合并完全相同的正文，未知不编造；新建、M 的原因不额外展示，默认 M 的未知仍通过原待确认项表达。
 
 open 问题用具体 `question` 加 `current_handling`，准确绑定实际目标；投影备注以“待确认：”开始。Epic/Feature 问题落实际受影响的 Story 行，AC 问题标明哪条 AC，Task 问题只落 Task 行，不把未知扩散到无关 Story。resolved/superseded 留项目 JSON/MD 历史，不留在 Excel 备注。未拆明且无 Story 的实际 Epic/Feature 由投影器在 01 表追加范围行，仅填实际父项和问题，Story/AC/人天为空；不为显示缺口伪造 Story/Task。
 

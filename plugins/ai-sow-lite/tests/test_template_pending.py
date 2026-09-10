@@ -138,7 +138,10 @@ def test_table_metadata_matches_native_row_formula(book, sheet, table, column, n
 def test_normal_notes_are_blank_and_guidance_has_no_fixed_bullet(book, sheet, table, column, note, last):
     assert all(book[sheet][f"{note}{row}"].value is None for row in range(5, last + 1))
     guidance = book[sheet]["A2"].value
-    assert "无待确认事项时备注留空" in guidance
+    if sheet == '02-任务清单':
+        assert "非新建工作方式、非M复杂度的判断原因写备注" in guidance
+    else:
+        assert "无待确认事项时备注留空" in guidance
     assert "待确认事项以‘待确认：’开头写备注" in guidance
     assert "校验结果" in guidance
     assert "通用事项留在说明" not in guidance

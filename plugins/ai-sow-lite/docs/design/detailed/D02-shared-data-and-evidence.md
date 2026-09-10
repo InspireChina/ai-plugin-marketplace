@@ -86,7 +86,7 @@ ID 不编码 Excel 行号、生成片号或固定业务类别。Example 使用�
 
 [D05](D05-clarify-and-change-scope.md) / [EX05](examples/EX05-clarify-changes.md) 细化拆合：父项变化但义务未变的 Task/AC 可保留自身 ID；实质变化才新建。lineage 的 from_ids 必须在 from_version_id 中存在，该版本须为已应用的前序版本；新去向在该次候选中合法，后续再次退出须有明确后续去向。继承旧 lineage 保留原版本定位，拒绝循环或无法解析的去向，避免扫描全部历史。版本 manifest 保留这些历史引用的可达依赖，不能只留下无法读取的 ID/哈希。
 
-`projection.json` 随 Excel 自动产生，保存对象 ID → Sheet/Table/行/显示名/字段位置，供同版反馈反查，不是业务模型或估算权威。[D06](D06-excel-projection-and-delivery.md) 定义安全别名、AC 原列全文、open 目标行和无 Story 父项范围行。lite-projection-v1 与历史 path/anchor 合同保持；当前 lite-render-v6 的 details=[]，新输出无 details.md；pending-items.md 保存全部状态，resolved/superseded 无 Excel cells。prepared/projection 的 template_hash 仍是实际项目模板 hash。手改位置需另行核对，显示名不替代稳定 ID。
+`projection.json` 随 Excel 自动产生，保存对象 ID → Sheet/Table/行/显示名/字段位置，供同版反馈反查，不是业务模型或估算权威。[D06](D06-excel-projection-and-delivery.md) 定义安全别名、AC 原列全文、open 目标行和无 Story 父项范围行。lite-projection-v1 与历史 path/anchor 合同保持；当前 lite-render-v7 的 details=[]，新输出无 details.md；pending-items.md 保存全部状态，resolved/superseded 无 Excel cells。prepared/projection 的 template_hash 仍是实际项目模板 hash。手改位置需另行核对，显示名不替代稳定 ID。
 
 ## 4. 原件、依据与轻量分析
 

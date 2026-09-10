@@ -8,7 +8,7 @@
 
 本轮按 Q1/Q2 调整原 ID 的验收范围，保留 163 项映射。正常使用为单人串行 generate/clarify；异常基线变化只验证 `BASE_STALE` 保护退出，不验证并行改稿成功或跨基线自动复用确认。AN27/AN28、FS13、OB11 仍是未来片内 worker 优化的条件实验。
 
-金额及 SIT/UAT 结果由模板与 Office 计算。本次 v6 按 [D06](detailed/D06-excel-projection-and-delivery.md) 保留原四表原列：AC 全文、open 目标行备注、无 Story 父项范围行、单格物理限额、校验优先级及唯一旧模板内存兼容。resolved/superseded 只留 JSON/MD 历史，新输出 details=[]、无 details.md；专业规则集中 generate-slices，语义评测不使用 AC 数量门禁。I6.1 旧通过状态不代表本次要求已验证，场景结构通过也不证明新提示效果。
+金额及 SIT/UAT 结果由模板与 Office 计算。本次 v6 按 [D06](detailed/D06-excel-projection-and-delivery.md) 保留原四表原列：AC 全文、open 目标行备注、无 Story 父项范围行、单格物理限额、校验优先级及已知旧模板内存兼容。resolved/superseded 只留 JSON/MD 历史，新输出 details=[]、无 details.md；专业规则集中 generate-slices，语义评测不使用 AC 数量门禁。I6.1 旧通过状态不代表本次要求已验证，场景结构通过也不证明新提示效果。
 
 ## 1. Generate 接收与问答
 
@@ -128,7 +128,7 @@
 | XL04 | Office 失败、文件损坏，或原模板公式产生错误值 / 文件检查 | 执行/文件/写入/公式保存失败只恢复对应机械步骤；若输入和公式保存正确，原模板产生的数值、空白或错误值均原样保留，不修公式或用金额判定业务状态 |
 | XL05 | Excel 写入失败，合法模型已形成 / 交付 | 保留候选模型，仅恢复文件步骤，本次未获得 Excel 不报告交付成功 |
 | XL06 | 长 AC 被裁切、预览错绑或关键内容遗漏 / 显示检查 | 完整 AC 保留 D，备注保留 E/G；行高最多 409 点，单格 32767 UTF-16 超限给对象/字段 diagnostic，沿现有有界修复，不摘要、截断或搬说明表 |
-| XL07 | 工作簿备注与问题状态或目标不同 / 交付 | 同版 open 的 question/current_handling 以待确认前缀落准确目标行；正常备注空，resolved/superseded 仅项目 JSON/MD 历史；仅原四表，新输出无 details.md |
+| XL07 | 工作簿备注与问题状态或目标不同 / 交付 | 同版 open 的 question/current_handling 以待确认前缀落准确目标行；无必要说明时备注留空，resolved/superseded 仅项目 JSON/MD 历史；仅原四表，新输出无 details.md |
 | XL08 | 业务文本以公式起始字符开头 / 写入 | 按文本安全写入，不触发公式执行 |
 | XL09 | 用户交来一个已有 Excel draft 或 tech note / 接收 | 明确辅助分析用途；首次使用仍需 PRD/HLD 等材料，有基线则 clarify 讨论具体意见，不假定无损往返同步 |
 | XL10 | 非集成 Task 与集成类型未知的 Task 都显示空白 / 投影 | 内部区分不适用与缺依据；前者不报待确认，后者须关联问题。检查对应输入和说明，不据此改变支持工作金额或模板计算 |

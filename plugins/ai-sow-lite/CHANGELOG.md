@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- I6.3 在 Task 备注展示非新建工作方式、非 M 复杂度的已有判断原因，合并相同正文；待确认项仍位于首段并优先显示“待确认”，只有原因不改变校验状态。复用 classification_basis，不新增业务字段或判断门禁。模板只改 Task A2 指引，公式不变；兼容两个已知旧模板，render 修订为 v7。见 [验证与边界](docs/validation/I6-task-note-reasons.md)。
+
 - 根据 I6.1 后反馈恢复原四表：AC 全文留 D，正常备注空，open 问题及 current_handling 以“待确认：”落实际目标行，校验优先显示待确认；resolved/superseded 仅留项目历史，无 Story 的未拆明父项追加实际范围行。取消两张说明表及新 details.md 输出，v1 合同不变、details=[]，render 修订为 v6；单格 32767 UTF-16 超限返回字段诊断，行高最多 409 点，不引入摘要或 AC 数量门禁。模板仅改校验原型/A2 说明，新 SHA `7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919`；唯一旧 `6abc55d` 在内存兼容，项目模板和实际 hash 保留，其他模板拒绝。专业规则集中 generate-slices、clarify 复用；初步根因与证据限制见 [AD33](docs/design/13-self-review-and-decisions.md#ad33--四表原列与验收成果)，样例修订不冒充 fresh generate 评测。
 
 - I6.1 历史记录（当时 v5 状态，后续反馈已覆盖展示方案）：实现 Excel 独立可读：原模板资产、四张表结构和全部计算规则不变，输出增加可见的 `04-待确认事项`、`05-完整说明`；完整 AC、问题、处理、已有来源和实际采用答复在工作簿内阅读，长文按原顺序续行并用内部链接定位。Markdown 与 projection path/anchor 保留兼容归档用途，clarify 仍需项目文件。投影数据合同保持 `lite-projection-v1`，渲染实现修订为 `lite-render-v5`；旧 applied 保留，旧 prepared 不得绕过新核验。该要求覆盖早先四表输出限制；实际验证及限制见 [I6.1](docs/validation/I6-self-contained.md)。

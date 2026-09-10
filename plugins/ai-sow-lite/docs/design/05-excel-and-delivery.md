@@ -2,13 +2,13 @@
 
 [返回总览](README.md)
 
-详细活动合同见 [D06](detailed/D06-excel-projection-and-delivery.md)，字段走读见 [EX04](detailed/examples/EX04-excel-projection.md)。当前只输出原四表：D 保留完整 AC，open 问题与 current_handling 写入实际目标行备注，校验列优先显示待确认；正常备注空，历史问题仅项目归档。长文留原列，物理限额按 D06 定向诊断。 [I6.1](../validation/I6-self-contained.md) 是旧 v5 说明表方案的实测记录，不证明本次变更。
+详细活动合同见 [D06](detailed/D06-excel-projection-and-delivery.md)，字段走读见 [EX04](detailed/examples/EX04-excel-projection.md)。当前只输出原四表：D 保留完整 AC，open 问题与 current_handling 写入实际目标行备注，校验列优先显示待确认；无必要说明时备注留空，历史问题仅项目归档。长文留原列，物理限额按 D06 定向诊断。 [I6.1](../validation/I6-self-contained.md) 是旧 v5 说明表方案的实测记录，不证明本次变更。
 
 ## 1. 可独立手工填写的基础模板
 
 模板位于 [assets/sow-template.xlsx](../../assets/sow-template.xlsx)，以用户选定的文件为基础，整理为无需插件即可手工填写、估算的工作簿。只保留可见业务字段、计算结果、估算标准和参数；没有隐藏行、隐藏列、折叠列或隐藏工作表。原有标准人天、系数、工作方式和复杂度规则保持原值。
 
-当前模板 SHA-256：`7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919`。唯一兼容旧模板为 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`；仅在内存从新版资产复制校验列 prototype/A2 说明，保留旧项目模板原字节及 hash，prepared/projection 绑定实际项目 hash。其他模板拒绝，不自动重建项目。
+当前模板 SHA-256：`28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e`。兼容旧模板为 `7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919` 和 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`；仅在内存从新版资产复制校验列 prototype/A2 说明，保留旧项目模板原字节及 hash，prepared/projection 绑定实际项目 hash。其他模板拒绝，不自动重建项目。
 
 | 工作表 | 已核对内容 |
 |---|---|
@@ -70,7 +70,7 @@
 
 待确认项不只对应空白。复用问题即使 `work_mode` 已填新建仍保持 open；备注以“待确认：”写候选适用问题及当前新建处理。金额结果不会自动关闭问题，问题状态也不驱动计算。
 
-AC 原列全文、问题目标、未拆明父项范围行、必要备注、历史状态及物理限额统一按 D06。正常 notes 为空，依赖/分类依据/Task 列表/证据 ID/外部路径不自动进入备注。新输出不生成 `details.md`，`details=[]`；同版 `pending-items.md` 保留历史与锚点。
+AC 原列全文、问题目标、未拆明父项范围行、必要备注、历史状态及物理限额统一按 D06。模型 notes 通常为空；Task Excel 备注的适用判断原因按 D06 从分类依据生成。依赖、Task 列表、证据 ID 和外部路径不自动进入备注。新输出不生成 `details.md`，`details=[]`；同版 `pending-items.md` 保留历史与锚点。
 
 “必填项缺失”等模板提示不能统一当作要求 agent 反复补值的门禁。若它对应已识别的局部业务缺口，输出应清楚表达待确认；若实际是漏写已知内容，则修复投影。不能为了通过校验猜值，也不能把非法分类当合法空缺。
 

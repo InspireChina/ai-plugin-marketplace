@@ -12,6 +12,7 @@ from .test_workbook import bundle, project
 def test_original_four_sheets_complete_acs_and_normally_empty_notes(tmp_path):
     m,p,d=bundle()
     for obj in [*m['stories'],*m['tasks']]: obj['notes']=''
+    for task in m['tasks']: task.update(work_mode='新建', complexity='M')
     p['items']=[]
     result=project(tmp_path,m,p,d)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
@@ -103,11 +104,12 @@ def test_text_beyond_excel_capacity_returns_specific_target_without_partial_xlsx
     assert not (tmp_path/'projected.xlsx').exists()
 
 
-def test_old_project_template_is_unchanged_but_gets_current_inline_status_formulas(tmp_path):
+@pytest.mark.parametrize('filename', ['sow-template-before-inline.xlsx', 'sow-template-before-task-reasons.xlsx'])
+def test_old_project_template_is_unchanged_but_gets_current_inline_status_formulas(tmp_path, filename):
     import hashlib
     from .support.fixtures import FIXTURES,PLUGIN
     from ai_sow_lite.workbook import project_workbook,formula_text
-    old=FIXTURES/'workbook/sow-template-before-inline.xlsx';original=old.read_bytes()
+    old=FIXTURES/'workbook'/filename;original=old.read_bytes()
     m,p,d=bundle()
     result=project_workbook(old,m,p,d,str(uuid4()),tmp_path)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')

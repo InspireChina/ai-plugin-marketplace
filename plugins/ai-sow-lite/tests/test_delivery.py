@@ -60,7 +60,7 @@ def test_copy_smoke_delivers_and_removes_its_temporary_workspace(tmp_path):
     assert result['cleaned'] and not list(tmp_path.iterdir())
     assert result['delivery']['idempotent'] and result['delivery']['recovered'] == 'applied'
     assert result['delivery']['pending_count'] == 1 and result['delivery']['details'] is False
-    assert result['delivery']['template_hash'] == '7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919'
+    assert result['delivery']['template_hash'] == '28d23be2b50e6abcb3abd81e97ebba3e9e696a8994e05dd9bda72987a1c8ab9e'
     assert result['delivery']['dependency_counts'] == dict(identity=1, originals=3, readings=6, analysis=2, template=1,
                                                          observations=0, history=0)
     assert result['delivery']['tool_duration_ns'] > 0
