@@ -15,6 +15,8 @@ I5.2已完成 [分析类型与直接埋点](../../validation/I5.2-proposal.md)�
 
 [I6.1 增量](P01-reliable-delivery.md#i61--excel-独立可读增量) 记录当时 v5 两张说明表的实现与实测。当前反馈改为 v6 四表原列交付，AC 全文、open 目标备注、范围行和单旧模板内存兼容见 [D06](../detailed/D06-excel-projection-and-delivery.md)；提示根因与效果证据限制见 [AD33](../13-self-review-and-decisions.md#ad33--四表原列与验收成果)。以上历史证据保持原版本归属。
 
+最新 [P05 · I7.1—I7.6](P05-quality-and-performance.md) 已形成方案、尚未实施：P0 依次修 AC 语义、估算问题闭合和原列可读性，P1 修观测及易错的机械构造，P2 做同质量配对优化。它吸收[两期串联实测](../../validation/E2E-greenfield-brownfield.md)及用户追加的 AC 质量要求，不回写旧运行结果，也不新增产品评审循环。
+
 ## 1. 阅读与实施顺序
 
 | 文档 | 解决的问题 | 进入条件 | 交付结果 |
@@ -24,6 +26,7 @@ I5.2已完成 [分析类型与直接埋点](../../validation/I5.2-proposal.md)�
 | [P02 Generate](P02-generate.md) | 从真实材料得到三类范围的初版 | I1 交付验收通过 | I2：一个主 session 完成实际 generate |
 | [P03 Clarify](P03-clarify.md) | 新会话讨论和应用有限修改 | I2 的有效交付目录 | I3：完整用户使用周期 |
 | [P04 范围与性能收口](P04-scope-and-performance.md) | 剩余输入/修改组合、真实支持范围和性能 | I3；测量自 I1 开始 | I4：首版交付准备与实证清单 |
+| [P05 E2E 后质量与性能](P05-quality-and-performance.md) | AC 质量、已采用估算闭合、布局与成本观测 | 已有两期实测及追加评审 | I7：分六项修复验证，同质量优化；当前待实施 |
 
 P00 不作为额外开发增量：P01 按消费者实现它的交付合同，P02 增加输入分析，P03 增加变更方案，P04 扩展已承诺的组合。不要先把所有 Schema、兼容层和报告器写完再跑第一个例子。
 

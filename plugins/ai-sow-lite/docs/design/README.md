@@ -8,6 +8,8 @@
 
 领域边界从 [13 自检结论与已定边界](13-self-review-and-decisions.md) 和 [设计审阅入口](REVIEW.md) 查看。单人串行、金额交给模板且计算口径不变已落实到设计及实施计划；实际支持范围以对应验证记录为准，设计完成不代表功能已实现。
 
+最新追加方案见 [14 · E2E 后修复与优化](14-e2e-remediation-and-optimization.md) 和 [P05 · I7 实施计划](implementation/P05-quality-and-performance.md)：先解决 AC 语义质量、采用 M 后的问题闭合和 Excel 可读性，再修观测并优化成本。方案待实施，不替代当前运行时合同；首轮 26/29 是历史结果，不能作为新增 AC 要求的通过结论。
+
 当前输出为原四表原列：D 保存全部 AC，open 问题及当前处理落实际目标行备注；无必要说明时备注为空，无 Story 的未拆明父项追加范围行。人天、金额及 SIT/UAT 规则不变，模板仅窄改校验原型/A2 说明，已知旧模板在内存兼容。v1 合同保持、render 为 v7，新输出 details=[] 且无 details.md。当前合同见 [D06](detailed/D06-excel-projection-and-delivery.md)，取舍与初步语义根因见 [AD33](13-self-review-and-decisions.md#ad33--四表原列与验收成果)；I6.1 实测仅代表过去 v5。
 
 ## 1. 用户如何使用

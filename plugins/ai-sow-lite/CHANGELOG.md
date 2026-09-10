@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 新增 [E2E 后修复与优化方案](docs/design/14-e2e-remediation-and-optimization.md) 和 [P05 实施计划](docs/design/implementation/P05-quality-and-performance.md)，按 P0 质量、P1 观测/机械构造、P2 同质量性能拆为 I7.1—I7.6。追加记录 F03：AC 混入实现方法及多个结果；明确四条 AC 质量要求、三类 Story 的验收对象、仅补有据边界及有限验证。方案待实施；旧输入、oracle、结果、产品 Skill、运行时及模板不变。
+
 - 完成提前冻结资料的 Greenfield → Brownfield 串联 E2E，含两次 generate、两次 clarify 及重复答复；实际四份 Excel、29项检查、时间和原生 token 已审查。26通过、2失败、1部分通过，保留复杂度问题闭合、长AC裁切和观测缺口，未修改产品或模板掩盖结果。见[实测报告](docs/validation/E2E-greenfield-brownfield.md)及[指标](docs/validation/E2E-greenfield-brownfield-metrics.json)。
 
 - 明确用户已确认的 Story 备注口径及来源：通常为空，仅写有依据且 AC 未表达的必要交付边界说明，以及实际目标的待确认事项与当前处理。Generate/Clarify 共用专业规则，答复后的结论落回相应业务字段；Task 问题不自动上卷。复用既有模型与投影，不改运行时、模板或增加检查轮次。见 [备注规则](references/generate-slices.md#备注与问题的目标)。
