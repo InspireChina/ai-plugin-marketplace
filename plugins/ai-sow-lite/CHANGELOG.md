@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- I7.1：统一四项 AC 质量要求，以业务场景/成果及外部契约组织，保留状态前提、必要判据和有据边界；Clarify 同义改稿保持 Task/分类和未影响对象。真实消费者保留首跑失败及局部修复，独立复核四根因解除；未增加语义代码门禁、模板改动或产品检查循环。完整串联与新生成 Task 计量继续 I7.6，见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
+
+
 - 新增 [E2E 后修复与优化方案](docs/design/14-e2e-remediation-and-optimization.md) 和 [P05 实施计划](docs/design/implementation/P05-quality-and-performance.md)，按 P0 质量、P1 观测/机械构造、P2 同质量性能拆为 I7.1—I7.6。追加记录 F03：AC 混入实现方法及多个结果；明确四条 AC 质量要求、三类 Story 的验收对象、仅补有据边界及有限验证。方案待实施；旧输入、oracle、结果、产品 Skill、运行时及模板不变。
 
 - 完成提前冻结资料的 Greenfield → Brownfield 串联 E2E，含两次 generate、两次 clarify 及重复答复；实际四份 Excel、29项检查、时间和原生 token 已审查。26通过、2失败、1部分通过，保留复杂度问题闭合、长AC裁切和观测缺口，未修改产品或模板掩盖结果。见[实测报告](docs/validation/E2E-greenfield-brownfield.md)及[指标](docs/validation/E2E-greenfield-brownfield-metrics.json)。

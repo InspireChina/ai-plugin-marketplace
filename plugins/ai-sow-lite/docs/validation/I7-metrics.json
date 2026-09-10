@@ -1,0 +1,119 @@
+{
+  "scope": "开发期真实消费者评估；不是产品完整E2E或提速对照",
+  "semantic_consumers": [
+    {
+      "evaluation": "I7.1-first-consumer",
+      "source_sha256": "6cb87296e9ce6a1309a06e6ddb3f097f9cc704fc93ebe29ba1a296231ab941b2",
+      "response_count": 11,
+      "counts": {
+        "total_tokens": 655697,
+        "input_tokens": 638035,
+        "output_tokens": 17662,
+        "cached_input_tokens": 583936,
+        "reasoning_output_tokens": 4447,
+        "cache_write_input_tokens": 0
+      },
+      "turns": [
+        {
+          "counts": {
+            "total_tokens": 294306,
+            "input_tokens": 281817,
+            "output_tokens": 12489,
+            "cached_input_tokens": 246400,
+            "reasoning_output_tokens": 2544,
+            "cache_write_input_tokens": 0
+          },
+          "processing_ms": 410503,
+          "settings": {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        },
+        {
+          "counts": {
+            "total_tokens": 361391,
+            "input_tokens": 356218,
+            "output_tokens": 5173,
+            "cached_input_tokens": 337536,
+            "reasoning_output_tokens": 1903,
+            "cache_write_input_tokens": 0
+          },
+          "processing_ms": 171852,
+          "settings": {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        }
+      ],
+      "counter_errors": [],
+      "activity_token_attribution": "unknown"
+    },
+    {
+      "evaluation": "I7.1-second-consumer",
+      "source_sha256": "ff4f2d5af6a703c3a0a099aca214bc53c41ed4ad810e0d27c7ee5fe3ff859502",
+      "response_count": 12,
+      "counts": {
+        "total_tokens": 814401,
+        "input_tokens": 786973,
+        "output_tokens": 27428,
+        "cached_input_tokens": 719360,
+        "reasoning_output_tokens": 10893,
+        "cache_write_input_tokens": 0
+      },
+      "turns": [
+        {
+          "counts": {
+            "total_tokens": 126448,
+            "input_tokens": 116208,
+            "output_tokens": 10240,
+            "cached_input_tokens": 92032,
+            "reasoning_output_tokens": 3766,
+            "cache_write_input_tokens": 0
+          },
+          "processing_ms": 318447,
+          "settings": {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        },
+        {
+          "counts": {
+            "total_tokens": 256793,
+            "input_tokens": 249110,
+            "output_tokens": 7683,
+            "cached_input_tokens": 223616,
+            "reasoning_output_tokens": 2876,
+            "cache_write_input_tokens": 0
+          },
+          "processing_ms": 242100,
+          "settings": {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        },
+        {
+          "counts": {
+            "total_tokens": 431160,
+            "input_tokens": 421655,
+            "output_tokens": 9505,
+            "cached_input_tokens": 403712,
+            "reasoning_output_tokens": 4251,
+            "cache_write_input_tokens": 0
+          },
+          "processing_ms": 300128,
+          "settings": {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        }
+      ],
+      "counter_errors": [],
+      "activity_token_attribution": "unknown"
+    }
+  ]
+}

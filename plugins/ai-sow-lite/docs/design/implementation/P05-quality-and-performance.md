@@ -8,7 +8,7 @@
 
 **Tech Stack:** 沿用 Python 3.12、uv、jsonschema、openpyxl、pytest 和已验证 Office；不换模型、执行框架或解析栈。
 
-**Spec:** [14 · 修复与优化方案](../14-e2e-remediation-and-optimization.md)。状态：待实施；本文件的新增接口和诊断均为拟实现设计，不是当前能力。
+**Spec:** [14 · 修复与优化方案](../14-e2e-remediation-and-optimization.md)。状态：实施中；I7.1 已完成有限专业修复，其他阶段按下列勾选及 [I7 验证](../../validation/I7-quality-and-performance.md) 查看，未完成项仍是拟实现设计。
 
 ## Global Constraints
 
@@ -33,11 +33,11 @@
 
 **Interfaces:** 消费原 `Story.acs[].text/evidence_refs`、来源主题及已有 Task；输出相同模型合同。规则统一涵盖四条质量要求与例外边界，引用改写不成为丢弃实现约束的手段。
 
-- [ ] 固定四类反例：G1 事务/重放、B1 服务商权限/敏感信息、公共审计消费与建设、迁移/发布交付。加入“材料未给时限/次数，不补猜”的变体。
-- [ ] 用新 rubric 对旧输出评估并记录失败位置；一项缺少依据、内部 How、混合结果或跨 Story 重复均单列，不能由总分抵消。
-- [ ] 更新单份专业规则和少量正反例，不增加运行时阶段、schema 字段或质量打分代码。
-- [ ] 真实 Agent 从源材料完成有限生成及一次 AC 局部改稿；独立核对七个维度。除实际义务变化外，Task、分类、数量及未影响对象保持；原机制约束有可追溯去向。
-- [ ] 运行引用/示例测试和完整 Lite 检查；记录与提交 `fix(ai-sow-lite): align acceptance criteria with observable outcomes`。
+- [x] 固定四类反例：G1 事务/重放、B1 服务商权限/敏感信息、公共审计消费与建设、迁移/发布交付。加入“材料未给时限/次数，不补猜”的变体。
+- [x] 用新 rubric 对旧输出评估并记录失败位置；一项缺少依据、内部 How、混合结果或跨 Story 重复均单列，不能由总分抵消。
+- [x] 更新单份专业规则和少量正反例，不增加运行时阶段、schema 字段或质量打分代码。
+- [x] 真实 Agent 从源材料完成有限生成及一次 AC 局部改稿；独立核对七个维度。除实际义务变化外，Task、分类、数量及未影响对象保持；原机制约束有可追溯去向。
+- [x] 运行引用/示例测试和完整 Lite 检查；记录与提交 `fix(ai-sow-lite): align acceptance criteria with observable outcomes`。
 
 验收用例必须逐项回答以下义务，代码只检查记录完整，不能自动给语义 pass：
 
