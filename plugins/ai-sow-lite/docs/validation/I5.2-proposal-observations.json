@@ -1,0 +1,226 @@
+{
+  "schema_version": "1.0",
+  "base_commit": "8101a49",
+  "case": "explicit-default-M-proposal-only",
+  "model": "gpt-6-astra",
+  "effort": "xhigh",
+  "model_override": null,
+  "counts": {
+    "input_tokens": 684001,
+    "cached_input_tokens": 633728,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 10706,
+    "reasoning_output_tokens": 2482,
+    "total_tokens": 694707
+  },
+  "responses": 13,
+  "duration_ms": 388597,
+  "tool_calls": 12,
+  "tool_source_utf8_bytes": 24516,
+  "native_source_sha256": "01b6cb09ab5d006b56cebbae69e01d1ae6f39d4b8fd8f34c46b904491f655efc",
+  "native_source_bytes": 862482,
+  "native_source_lines": 110,
+  "feedback_sha256": "ae5ac88ba32a46cd24c6433b62070f47b5bb682efc6d579e87af1971b72a44a0",
+  "recorded_operations": {
+    "inspect": 9,
+    "ingest": 3,
+    "check": 1
+  },
+  "failed_operations": {
+    "ingest": 1
+  },
+  "unchanged_event_count": 63,
+  "unchanged_business_files_during_collection": 93,
+  "all_response_groups_unassigned": true,
+  "candidate_verified": true,
+  "current_unchanged": true,
+  "exported": false,
+  "execution_confirmation": null,
+  "prior_observation": {
+    "file": "I5.1-performance-observations.json",
+    "variant": "client",
+    "turn_number": 1,
+    "counts": {
+      "input_tokens": 844276,
+      "cached_input_tokens": 781568,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 12658,
+      "reasoning_output_tokens": 1993,
+      "total_tokens": 856934
+    },
+    "responses": 14,
+    "duration_ms": 437128,
+    "tool_source_utf8_bytes": 31723
+  },
+  "request_metrics": {
+    "first_useful_feedback_ns": {
+      "name": "first_useful_feedback_ns",
+      "value": 290582823000,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "3480cffd-ad67-4f8f-ade7-7e971f532430"
+      },
+      "basis": {
+        "kind": "utc_request_start_to_first_observed_milestone_including_wait",
+        "start": "087980da-5238-4726-b507-c350cb899092",
+        "end": "fc7382ff-fa63-426a-b688-7c8ee8c0a108",
+        "event_ids": [
+          "087980da-5238-4726-b507-c350cb899092",
+          "fc7382ff-fa63-426a-b688-7c8ee8c0a108"
+        ]
+      },
+      "coverage": "partial",
+      "attribution": "unassigned",
+      "diagnostics": []
+    },
+    "request_wall_ns": {
+      "name": "request_wall_ns",
+      "value": 290586507000,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "3480cffd-ad67-4f8f-ade7-7e971f532430"
+      },
+      "basis": {
+        "kind": "utc_observed_interval"
+      },
+      "coverage": "partial",
+      "attribution": "unassigned",
+      "diagnostics": []
+    },
+    "tool_duration_ns": {
+      "name": "tool_duration_ns",
+      "value": 219139043,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "3480cffd-ad67-4f8f-ade7-7e971f532430"
+      },
+      "basis": {
+        "kind": "same_process_monotonic"
+      },
+      "coverage": "partial",
+      "attribution": "unassigned",
+      "diagnostics": []
+    },
+    "user_wait_ns": {
+      "name": "user_wait_ns",
+      "value": null,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "3480cffd-ad67-4f8f-ade7-7e971f532430"
+      },
+      "basis": {
+        "kind": "same_process_union"
+      },
+      "coverage": "unknown",
+      "attribution": "unassigned",
+      "diagnostics": [
+        "LIFECYCLE_INCOMPLETE"
+      ]
+    },
+    "known_tokens": {
+      "name": "known_tokens",
+      "value": 694707,
+      "unit": "tokens",
+      "scope": {
+        "kind": "request",
+        "id": "3480cffd-ad67-4f8f-ade7-7e971f532430"
+      },
+      "basis": {
+        "kind": "observed"
+      },
+      "coverage": "partial",
+      "attribution": "exclusive",
+      "diagnostics": [
+        "OBSERVATION_CONTEXT_INVALID"
+      ]
+    },
+    "model_call_count": {
+      "name": "model_call_count",
+      "value": null,
+      "unit": "count",
+      "scope": {
+        "kind": "request",
+        "id": "3480cffd-ad67-4f8f-ade7-7e971f532430"
+      },
+      "basis": {
+        "kind": "observed"
+      },
+      "coverage": "unknown",
+      "attribution": "unassigned",
+      "diagnostics": [
+        "OBSERVATION_CONTEXT_INVALID"
+      ]
+    },
+    "model_duration_ns": {
+      "name": "model_duration_ns",
+      "value": null,
+      "unit": "ns",
+      "scope": {
+        "kind": "request",
+        "id": "3480cffd-ad67-4f8f-ade7-7e971f532430"
+      },
+      "basis": {
+        "kind": "same_process_monotonic"
+      },
+      "coverage": "unknown",
+      "attribution": "unassigned",
+      "diagnostics": []
+    }
+  },
+  "initial_collection": {
+    "recording": "degraded",
+    "gaps": [
+      "CLOCK_UNALIGNED",
+      "LIFECYCLE_INCOMPLETE",
+      "OBSERVATION_CONTEXT_INVALID"
+    ],
+    "read": {
+      "bytes_read": 862482,
+      "lines_read": 110,
+      "start_offset": 22518,
+      "end_offset": 862482,
+      "eof": true
+    },
+    "collector_duration_ns": 49515167
+  },
+  "eof_replay": {
+    "recording": "degraded",
+    "gaps": [
+      "CLOCK_UNALIGNED",
+      "LIFECYCLE_INCOMPLETE",
+      "OBSERVATION_CONTEXT_INVALID"
+    ],
+    "read": {
+      "bytes_read": 25916,
+      "lines_read": 2,
+      "start_offset": 862482,
+      "end_offset": 862482,
+      "eof": true
+    },
+    "collector_duration_ns": 17255916
+  },
+  "experiment_file_hashes": {
+    "references/generate-authoring.md": "0eee1a50b8a15a4fedfcaf688d29b30ba81c6811d5fe497598ba303ded3b69ad",
+    "references/python-client.md": "81f56511acd67afb4dd5e59fb6cd0dceb16e8b7812c23849d070c11be804b05c",
+    "references/tools.md": "724857ca9ab05fa20de8b3a8f1af9d4348e802474c1fe08baa4a52c138b1258c",
+    "runtime/ai_sow_lite/telemetry.py": "d5a919a10d4e760e9a9e366e6a9ee940f8c910ae84c3157e9ae1e18d3cc5fd7c",
+    "runtime/ai_sow_lite/authoring.py": "fe5731da98e4b0e3e6e216249cf319445a0b72f3594ecce123c582ea3441ecbc"
+  },
+  "limits": [
+    "Exploratory followup, not a new controlled pair or a causal percentage.",
+    "Default model/effort verified in both source contexts; cache, service scheduling and local regression load not controlled.",
+    "Native user-turn duration includes host/tools; cumulative input is not peak context; cache input and reasoning are already included.",
+    "All response costs stay unassigned to activities; observed mark gaps remain.",
+    "No execution confirmation, Office conversion or apply in this proposal-only actor; do not combine it with another actor confirmation to claim an observed full-run speed.",
+    "Final UUID4 and absolute source-path clarifications were added after this actor; their prevention effect has not been demonstrated in a fresh actor."
+  ],
+  "observed_failures": [
+    "Initial activity_ids used a semantic name instead of UUID4: TELEMETRY_MARK_INVALID and OBSERVATION_CONTEXT_INVALID.",
+    "Initial source_path was relative feedback.md: INPUT_UNAVAILABLE; one same-request absolute-path repair."
+  ],
+  "analysis_string_field_repair_observed": false
+}

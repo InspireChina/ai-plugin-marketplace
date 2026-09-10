@@ -4,7 +4,7 @@
 
 ## 启动与请求身份
 
-`<plugin-root>` 从已加载 `skills/generate/SKILL.md` 的位置解析，`<project-root>` 为显式用户项目目录。业务 JSON 路径均为项目相对 POSIX 路径。先生成一个 UUID4 作为逻辑 `request_id`，同一请求的所有工具调用沿用它；请求信封可分别落文件。
+`<plugin-root>` 从已加载 `skills/generate/SKILL.md` 的位置解析，`<project-root>` 为显式用户项目目录。已保存业务工件的引用用项目相对 POSIX 路径；原始输入的 source_path 必须是绝对路径，例如 `str(client.project / "feedback.md")`。两类路径分开填写。先生成一个 UUID4 作为逻辑 `request_id`，同一请求的所有工具调用沿用它；请求信封可分别落文件。
 
 首次 `ingest` 会创建项目和本请求 work/checkpoint。**不要提前创建 `.ai-sow-lite/work/generate/<request-id>/`**，否则它会被视为已存在但缺失检查点的请求。把首个请求信封放项目内该 work 之外，待 ingest 成功再写分析/候选。
 
@@ -83,9 +83,9 @@ work_type_name = standard_row["工作类型"]
 
 | 记录 | 字段与实际来源 |
 | --- | --- |
-| evidence item | `id, kind, text, source_refs, basis_refs, limitations`；kind 为 statement/observation/judgment。当前直接材料用 statement，source_refs 非空；专业推断用 judgment，basis_refs 非空并最终回到真实来源 |
+| evidence item | `id, kind, text, source_refs, basis_refs, limitations`；kind 为 statement/observation/judgment。当前直接材料用 statement，source_refs 非空；专业推断用 judgment，basis_refs 非空并最终回到真实来源。text/limitations 为字符串，source_refs/basis_refs 为数组 |
 | source_ref | `input_version_id, locator, excerpt_hash`，按上例从真实区域响应取得；文本 start_line/end_line 为含端点的 1 起始行，XLSX 用返回区域 read_id，不能用目录 read_id 代替 |
-| topic | `topic_id, topic_version_id, title, input_version_ids, uses, covered_regions, uncovered_regions, evidence_refs, related_object_ids, external_responsibilities, limitations, conclusion, historical_items`；related_object_ids 只放业务模型中的 Epic/Feature/Story/AC/Task 及 dependency ID，不放待确认项、决定或依据 ID。答复待确认项时关联其 targets 指向的实际业务对象；问题处理通过 pending_items/decisions 的原有关系记录 |
+| topic | `topic_id, topic_version_id, title, input_version_ids, uses, covered_regions, uncovered_regions, evidence_refs, related_object_ids, external_responsibilities, limitations, conclusion, historical_items`；related_object_ids 只放业务模型中的 Epic/Feature/Story/AC/Task 及 dependency ID，不放待确认项、决定或依据 ID。答复待确认项时关联其 targets 指向的实际业务对象；问题处理通过 pending_items/decisions 的原有关系记录。external_responsibilities/limitations/conclusion 为字符串；前两者没有内容可用空字符串，conclusion 必须有实际非空结论；不是单元素数组 |
 | topic 区域 | covered_regions 是 source_ref 数组；uncovered_regions 每项为 `input_version_id, locator, reason`。只声明真实覆盖，conclusion 保存 Agent 的分析结论 |
 | historical_item | 必需 `id, label, description, evidence_refs`；仅已有时加 level/parent_id/type_hint/instance_facts，instance_facts 项为 `text, evidence_refs` |
 
@@ -138,7 +138,9 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
 | 首次有用反馈 | `useful_feedback` | `milestone` | 首次给出可回答的问题包或可用方案；普通进度消息不算 |
 | 首个可用文件 | `usable_file` | `milestone` | 首版已核验并应用、可以交给用户时 |
 
-使用同一隔离 Python、仅在本次进程设置上述 PYTHONPATH，执行 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。多个恰好同处的边界可与已有工具命令合在一次宿主调用中执行；标记不能移动到事后伪造起点。已有业务信封附 `observation_context={"execution_id":"<execution-id>","activity_ids":["<activity-id>"],"slice_ids":[]}`，保持当前活动/片标签。纯语义边界才补轻量mark，不逐思考或逐 Task 埋点。
+使用 Client 时，直接在已有 Python 调用中执行 `client.mark(name, phase)`，复用其当前 observation_context；request 根标签自动保持为空。示例及跨轮身份见 [直接活动埋点](python-client.md#直接活动埋点)。
+
+仅需独立命令时，使用同一隔离 Python、仅在本次进程设置上述 PYTHONPATH，执行 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。多个恰好同处的边界可与已有工具命令合在一次宿主调用中执行；标记不能移动到事后伪造起点。已有业务信封附 `observation_context={"execution_id":"<execution-id>","activity_ids":["<activity-id>"],"slice_ids":[]}`，保持当前活动/片标签。纯语义边界才补轻量mark，不逐思考或逐 Task 埋点。
 
 以下是请求根标记：request/start 和 request/end 的 `activity_ids=[]`、`slice_ids=[]`，同一执行段的 request_id/execution_id 保持不变；结束时只把 phase 改为 end，不附当时的活动或片ID。大活动/片另用表中对应的 name/phase 标记，附真实 activity_ids/slice_ids，并在该活动起止间保持这些ID一致；业务 observation_context 仍填实际活动/片。
 

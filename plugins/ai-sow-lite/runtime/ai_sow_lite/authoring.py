@@ -55,6 +55,15 @@ class Client:
         ensure_request(self.project, self.request_id, self.entrypoint)
         return write_json(self.project, self.area + '/authoring/' + name, value, immutable=True)
 
+    def mark(self, name, phase):
+        """Observe a real boundary, using current labels; never infer or advance business state."""
+        from .telemetry import record_mark
+        context = self.observation_context if isinstance(self.observation_context, dict) else {}
+        return record_mark(self.project, dict(schema_version='1.0', request_id=self.request_id,
+            execution_id=context.get('execution_id'), name=name, phase=phase,
+            activity_ids=[] if name == 'request' else context.get('activity_ids', []),
+            slice_ids=[] if name == 'request' else context.get('slice_ids', [])))
+
     def bind_confirmation(self, check_ref, answer_ref):
         """Attach the caller-recognized real answer; the existing check still validates it.
 

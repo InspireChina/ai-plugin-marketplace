@@ -43,6 +43,29 @@ def test_empty_usage_is_unknown(tmp_path):
     assert not list(schema_validator('artifacts', 'telemetry_report').iter_errors(report(tmp_path)))
 
 
+def test_direct_mark_accepts_existing_envelope_and_rejects_extra_content(tmp_path):
+    from ai_sow_lite.telemetry import record_mark
+
+    assert record_mark(tmp_path, mark())['recording'] == 'recorded'
+    before = report(tmp_path)
+    rejected = record_mark(tmp_path, dict(mark('end'), observed_at='2020-01-01T00:00:00Z'))
+    assert rejected['recording'] == 'degraded'
+    assert report(tmp_path)['event_count'] == before['event_count'] == 1
+    assert record_mark(tmp_path, mark('end'))['recording'] == 'recorded'
+    rebuilt = report(tmp_path)
+    assert rebuilt['event_count'] == 2
+    assert metric(rebuilt, 'request_wall_ns')['value'] is not None
+    assert metric(rebuilt, 'total_tokens')['value'] is None
+
+
+def test_direct_mark_storage_failure_is_observation_only(tmp_path):
+    from ai_sow_lite.telemetry import record_mark
+
+    (tmp_path / '.ai-sow-lite').write_bytes(b'preserve')
+    assert record_mark(tmp_path, mark())['recording'] == 'degraded'
+    assert (tmp_path / '.ai-sow-lite').read_bytes() == b'preserve'
+
+
 def test_event_is_durable_replay_deduplicated_and_report_rebuildable(tmp_path):
     item = event(input_bytes=17, output_bytes=29)
     append(tmp_path, item, item)

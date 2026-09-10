@@ -664,9 +664,31 @@ def finish_tool(request, start, response, end_ns, gaps, *, interrupted=False):
                 report_path=None if 'TELEMETRY_RECORDING_FAILED' in gaps else f"{AREA}/{request['request_id']}/report.json")
 
 
+def record_mark(project, mark):
+    """Record one caller-declared boundary now; observation failures never raise."""
+    from uuid import uuid4
+    outcome = dict(recording='degraded', gaps=['TELEMETRY_MARK_INVALID'], report_path=None)
+    try:
+        if len(_validate('telemetry_mark', mark)) > MAX_EVENT_BYTES:
+            return outcome
+        data = dict(name=mark['name'], phase=mark['phase'], span_id=str(uuid4()), parent_span_id=None,
+                    clock_domain=None, monotonic_ns=None, status=None, operation_id=None,
+                    attempt_id=None, host_call_id=None, timing='utc_marker')
+        event = _new_event(mark['request_id'], mark['execution_id'], str(uuid4()), 0, 'lifecycle', data,
+                           mark['activity_ids'], mark['slice_ids'])
+        project = Path(project).resolve()
+        append_event(project, event)
+        result_path = None
+        if mark['name'] == 'request' and mark['phase'] == 'end':
+            build_report(project, mark['request_id'])
+            result_path = f"{AREA}/{mark['request_id']}/report.json"
+        return dict(recording='recorded', gaps=[], report_path=result_path)
+    except Exception:
+        return outcome
+
+
 def main(argv=None):
     import sys
-    from uuid import uuid4
     from .cli import _Parser
     parser=_Parser(add_help=False)
     parser.add_argument('--project',required=True)
@@ -692,19 +714,7 @@ def main(argv=None):
         raw=_read(Path(args.mark_file),MAX_EVENT_BYTES)
         if len(raw)>MAX_EVENT_BYTES:
             raise ValueError('TELEMETRY_LIMIT')
-        mark=strict_json_loads(raw)
-        _validate('telemetry_mark',mark)
-        data=dict(name=mark['name'],phase=mark['phase'],span_id=str(uuid4()),parent_span_id=None,
-                  clock_domain=None,monotonic_ns=None,status=None,operation_id=None,attempt_id=None,
-                  host_call_id=None,timing='utc_marker')
-        e=_new_event(mark['request_id'],mark['execution_id'],str(uuid4()),0,'lifecycle',data,
-                     mark['activity_ids'],mark['slice_ids'])
-        append_event(Path(args.project).resolve(),e)
-        result_path=None
-        if mark['name']=='request' and mark['phase']=='end':
-            build_report(Path(args.project).resolve(),mark['request_id'])
-            result_path=f"{AREA}/{mark['request_id']}/report.json"
-        outcome=dict(recording='recorded',gaps=[],report_path=result_path)
+        outcome=record_mark(args.project,strict_json_loads(raw))
     except Exception:
         pass  # Observation-only entry never emits source text or a business failure/retry.
     if hasattr(sys.stdout,'reconfigure'):

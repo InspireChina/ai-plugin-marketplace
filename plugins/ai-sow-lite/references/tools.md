@@ -384,3 +384,5 @@ start_offset/end_offset/eof，collector_duration_ns仅描述该次采集，不�
 
 
 `inspect/telemetry`中的`first_useful_feedback_ns`和`first_usable_file_ns`按实际可对齐request起点计算，包含等待，coverage为partial。多个执行段须UTC根各自完整、标签配对且不重叠，才沿用最早观测起点；缺失、歧义、负间隔或时钟不兼容保留unknown及诊断。basis记录起点/终点事件和含等待口径，不能视为用户开场、纯模型耗时或精确逐步token。
+
+Python 编写时可用 `ai_sow_lite.telemetry.record_mark(project, mark)` 消费同一 telemetry_mark 信封，或用 [Client.mark](python-client.md#直接活动埋点) 复用真实标签；两者记录实际调用时刻，失败仅返回观测降级。原 mark-file CLI 共用同一实现，未增加业务操作。

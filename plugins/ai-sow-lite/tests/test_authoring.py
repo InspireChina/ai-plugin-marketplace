@@ -1,4 +1,5 @@
 """Thin authoring consumer: real storage and existing public operations."""
+import json
 from uuid import uuid4
 
 import pytest
@@ -136,3 +137,37 @@ def test_binding_never_substitutes_for_source_validation(clarify_case):
         client.call('check', dict(candidate_path=checked['candidate_ref']['path'],
                                  plan_path=confirmed['path'], scope='full'))
     assert read_json(client.project / '.ai-sow-lite/current.json') == clarify_case['current']
+
+
+def test_client_marks_root_and_current_activity_without_business_state(tmp_path):
+    from ai_sow_lite.authoring import Client
+    from ai_sow_lite.telemetry import build_report
+
+    context = dict(execution_id=str(uuid4()), activity_ids=[str(uuid4())], slice_ids=[str(uuid4())])
+    client = Client(tmp_path, str(uuid4()), 'generate', observation_context=context)
+    for name, phase in [('request', 'start'), ('input_analysis', 'start'),
+                        ('input_analysis', 'end'), ('request', 'end')]:
+        assert client.mark(name, phase)['recording'] == 'recorded'
+    events = [json.loads(line) for path in (tmp_path / '.ai-sow-lite/telemetry').glob('*/events/*/*.jsonl')
+              for line in path.read_text().splitlines()]
+    roots = [e for e in events if e['data']['name'] == 'request']
+    activities = [e for e in events if e['data']['name'] == 'input_analysis']
+    assert len(events) == 4 and len(roots) == len(activities) == 2
+    assert all(e['activity_ids'] == e['slice_ids'] == [] for e in roots)
+    assert all(e['activity_ids'] == context['activity_ids'] and e['slice_ids'] == context['slice_ids']
+               for e in activities)
+    report = build_report(tmp_path, client.request_id)
+    assert next(m['value'] for m in report['metrics'] if m['name'] == 'request_wall_ns') is not None
+    assert not (tmp_path / '.ai-sow-lite/work').exists()
+    assert not (tmp_path / '.ai-sow-lite/project.json').exists()
+
+
+def test_failed_client_mark_keeps_business_query_usable(clarify_case):
+    from ai_sow_lite.authoring import Client
+
+    case = clarify_case
+    client = Client(case['project'], case['request_id'], 'clarify')
+    result = client.mark('request', 'start')  # No execution identity: do not invent one.
+    assert result['recording'] == 'degraded'
+    assert client.call('inspect', dict(view='current', selector={}))
+    assert read_json(case['project'] / '.ai-sow-lite/current.json') == case['current']
