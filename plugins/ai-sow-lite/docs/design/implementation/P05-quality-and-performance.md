@@ -10,6 +10,8 @@
 
 **Spec:** [14 · 修复与优化方案](../14-e2e-remediation-and-optimization.md)。状态：I7.1—I7.6 本轮实施与验证完成；性能未达标，最终29项中仍有两项部分通过。各项实证与限制见 [I7 验证](../../validation/I7-quality-and-performance.md)，不将已完成实施等同于全部目标达成。
 
+本计划已关闭。用户随后收敛SOW验收定义，当前写法及验证范围见 [I8](../../validation/I8-sow-acceptance.md)；不重新执行本计划的细粒度AC矩阵或完整串联来解释新定义。
+
 ## Global Constraints
 
 - 准确性和减少可避免返工优先；未知不猜，复杂度未知默认 M+待确认，实例不明按既定新建口径+问题。

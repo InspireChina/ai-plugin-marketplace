@@ -40,6 +40,8 @@ Excel 只保留原四张表，完整验收条件直接放在“验收条件”�
 
 完整生成与有限修改已有真实输入、Office及文件续接证据。[首次串联](docs/validation/E2E-greenfield-brownfield.md)保留原26通过、2失败、1部分通过的结果；它不能代表后来追加的AC语义要求已满足。本轮按 [I7.1—I7.6](docs/design/implementation/P05-quality-and-performance.md)实施AC指引、估算问题闭合、原列可读性、可信拒绝计量、输入区域助手与按需读取，实际证据见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
 
+当前AC采用用户进一步明确的SOW定义：以简短条目约定可验证的业务结果和关键边界，规范引用注明版本，不展开完整接口规格或测试步骤。Generate/Clarify共用同一规则，见 [当前写法与对照](docs/validation/I8-sow-acceptance.md)。下面I7产物保留为历史证据，未按新定义重生成。
+
 [修复后串联](docs/validation/I7-final-e2e.md)已实际完成两期生成、采用M、接口部分采纳与重复意见；首次发现的AC遗漏、How和歧义通过有限反馈处理，保留首份失败及独立复核，不把工具检查等同于语义正确。原生Excel已检查长行、判断原因和待确认；超长行仍可能在确认后导出时才被拒绝，需有限修订。首稿质量不能承诺无需review，一期还有一处备注重复待精简。
 
 性能未达标：核心五段本次消费者原生处理累计约76分42秒，包含失败续接和测试记录工作，额外AC反馈另计；这不是普通用户耗时SLA。唯一窄改稿配对调整后反而更慢，没有提速证据。请求级token可核对，逐活动归属未知；G1补答与G2展示的标记仍有缺口，详见 [实测](docs/validation/I7-final-e2e.md) 与 [指标](docs/validation/I7-metrics.json)。

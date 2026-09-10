@@ -2,6 +2,8 @@
 
 对应 [P05](../design/implementation/P05-quality-and-performance.md)。沿用首次 [E2E](E2E-greenfield-brownfield.md) 冻结的两期输入与29项 oracle，另按七项 AC 义务审查；旧输入、版本、失败及计量不覆盖。机械实现与有限配对见 [I7 验证](I7-quality-and-performance.md)，完整数值见 [I7 指标](I7-metrics.json)。
 
+本报告记录I7当时较细的AC口径。用户随后明确简明SOW验收定义，当前规则及表达对照见 [I8](I8-sow-acceptance.md)；本次Excel和旧通过结论不代表已按新定义重新生成或验收。
+
 ## 结论与验证边界
 
 G1→G2→历史 Excel→B1→B2→B3 已完成实际串联。采用 M 后的问题闭合、接口组部分采纳、重复意见不产生版本均有实际交付证据。首稿语义仍有缺陷：一期三项、二期四项；两期均已通过有限改稿与独立定点复核。不能将机械检查通过称为首稿语义全部通过。

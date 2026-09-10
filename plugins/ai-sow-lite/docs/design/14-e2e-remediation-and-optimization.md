@@ -2,6 +2,8 @@
 
 状态：I7.1—I7.6 本轮实施与验证完成，性能未达标，备注精简与活动计量覆盖仍有部分通过项。依据为 `bbe138a` 的[首轮实测](../validation/E2E-greenfield-brownfield.md)以及用户追加的 AC 质量要求。实施拆分见 [P05](implementation/P05-quality-and-performance.md)，实际选择和验证结果见 [I7 验证](../validation/I7-quality-and-performance.md)。下文保留实施前的方案及候选参数；冻结输入、oracle、旧 Excel 和首轮计量不改写。
 
+后续用户已用“可验证的业务结果和关键边界的简明约定”重新定义SOW验收条件。当前专业写法统一见 [generate-slices](../../references/generate-slices.md#目标与验收属于谁)；下文较细的AC评审要求仅用于解释I7历史，不能作为继续展开接口规格和测试场景的指令。新定义的同步范围与对照见 [I8](../validation/I8-sow-acceptance.md)。
+
 ## 1. 调整结论与优先级
 
 上一轮把 AC 的主要问题归为 Excel 行高，判断不完整。复读实际 Story 后，新增 **F03：AC 混入实现方法、技术细节和多个验收结果**。来源齐全、边界覆盖及结构通过，不足以证明 AC 编写合格；原 26/29 是当时冻结检查的历史结果，不能继续用作本轮 AC 质量结论。
