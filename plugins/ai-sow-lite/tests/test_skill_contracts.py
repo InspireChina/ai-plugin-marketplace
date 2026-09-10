@@ -129,6 +129,21 @@ def test_authoring_example_maps_real_region_and_standard_response_fields(tmp_pat
     assert context["standard_id"] == row["工作类型 ID"]
     assert context["work_type_name"] == row["工作类型"]
 
+    from ai_sow_lite.authoring import Client
+    source_spec=dict(source_path=str(project/entry['relative_path']),input_id=entry['input_id'],
+                     material_types=entry['material_types'],uses=entry['uses'],use_regions=entry['use_regions'])
+    usage_guide=required_text(PLUGIN/'references/python-client.md')
+    example=re.search(r'<!-- source-use-region-example -->\s*```python\n(.*?)\n```',usage_guide,re.S)
+    assert example, 'Missing executable existing-ingest use-region example'
+    example_context=dict(client=Client(project,request,'generate'),registered_source=entry,
+                         source_spec=source_spec,selected_region_results=[response['result']],
+                         chosen_material_type=entry['material_types'][0],chosen_use=entry['uses'][0],
+                         project_type='new' if file_format=='text' else 'existing')
+    exec(compile(example[1],'python-client.md','exec'),example_context)
+    actual=example_context['registered']['input_refs'][0]
+    assert actual['input_id']==entry['input_id'] and actual['input_version_id']==entry['input_version_id']
+    assert example_context['region_entry']==dict(material_type=entry['material_types'][0],use=entry['uses'][0],locators=[locator])
+
 
 @pytest.mark.parametrize('reference, expected_activities, event_count', [
     ('generate-authoring.md', ['input_analysis', 'outline', 'generation', 'merge', 'export', 'user_wait'], 16),

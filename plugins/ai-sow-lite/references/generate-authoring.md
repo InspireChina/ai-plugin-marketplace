@@ -66,18 +66,13 @@ Windows 对应 `& "<plugin-root>/.venv/Scripts/python.exe" "<plugin-root>/script
 以下映射可直接执行：`region_result` 是成功的**区域查询**响应的 `result`（不是目录），`standard_row` 是 Agent 已选标准查询的 `result.items` 中一项。文本定位取 `coverage.selector.locator`，XLSX 定位取 `coverage.locator` 以保留实际区域 read_id；两者摘要均取 `coverage.excerpt_hash`。标准返回的精确键为 `工作类型 ID` 和 `工作类型`。
 
 ```python
-coverage = region_result["coverage"]
-selector = coverage["selector"]
-locator = (coverage["locator"] if selector["locator"]["kind"] == "xlsx_range"
-           else selector["locator"])
-source_ref = {
-    "input_version_id": selector["input_version_id"],
-    "locator": locator,
-    "excerpt_hash": coverage["excerpt_hash"],
-}
+from ai_sow_lite.authoring import source_ref as observed_source_ref
+source_ref = observed_source_ref(region_result)
 standard_id = standard_row["工作类型 ID"]
 work_type_name = standard_row["工作类型"]
 ```
+
+需要登记已选的用途区域时，按 [实际区域助手示例](python-client.md#用实际读取结果登记用途区域) 使用 source_use_region；外层 sources 条目沿用实际原件及 input_id，材料类型/用途由 Agent 明确选择。不要手写另一个 ingest kind 或把 input_version_id 塞进 use_regions。
 
 分析文件形状为 `{"schema_version":"1.0","evidence":[],"topics":[],"observations":[]}`；topics 必须非空且有实际依据。没有采用实际观察时 observations 为空；有目录原型及真实观察时，按 [原型输入](prototype-inputs.md) 填已保存记录的file_ref并核对附件，不能伪造浏览器状态。初次分析可先用主题 ID，实际业务对象尚未形成时 related_object_ids 为空。
 

@@ -1,6 +1,7 @@
 """Small Python client for caller-selected operations; no workflow or semantic decisions."""
 from copy import deepcopy
 from pathlib import Path
+from uuid import UUID
 
 from .cli import execute
 from .contracts import load_json
@@ -14,6 +15,29 @@ def source_ref(region_result):
     locator = coverage['locator'] if selector['locator']['kind'] == 'xlsx_range' else selector['locator']
     return deepcopy(dict(input_version_id=selector['input_version_id'], locator=locator,
                          excerpt_hash=coverage['excerpt_hash']))
+
+
+def source_use_region(region_results, *, material_type, use):
+    """Map one input version's reads; role/use and source checks remain with ingest."""
+    refs = []
+    for result in region_results:
+        try:
+            ref = source_ref(result)
+            identity = ref['input_version_id']
+            if not isinstance(identity, str):
+                raise ValueError('identity')
+            parsed = UUID(identity)
+            if parsed.version != 4 or str(parsed) != identity:
+                raise ValueError('identity')
+        except (KeyError, TypeError, ValueError):
+            raise ValueError('区域读取结果须含定位信息和有效的 input_version_id（规范 UUID4）。') from None
+        refs.append(ref)
+    if not refs:
+        raise ValueError('至少提供一个实际区域读取结果。')
+    if len({ref['input_version_id'] for ref in refs}) != 1:
+        raise ValueError('区域读取结果必须属于同一 input_version_id。')
+    return dict(material_type=material_type, use=use,
+                locators=[ref['locator'] for ref in refs])
 
 
 class OperationError(RuntimeError):

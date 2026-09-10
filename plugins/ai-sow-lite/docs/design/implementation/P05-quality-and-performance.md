@@ -131,11 +131,11 @@ B1原3.5毫秒outline标记不能继续代表完整骨架工作；实际边界�
 
 **Interfaces:** 拟新增 `source_use_region(region_results, *, material_type, use) -> dict`，只返回现有 `sources[].use_regions[]` 中的一项 `{material_type, use, locators}`，不是完整 ingest payload。多个结果须属于同一 input_version_id，保持读取结果中的实际 locator/read_id；版本身份仅校验，不作为新字段输出。Agent 明确提供用途、材料类型及外层来源，助手不猜。
 
-- [ ] 先按真实 region response 写测试：文本及 XLSX 单区域、同原件多区域、混原件拒绝、缺身份拒绝、类型/用途非法仍由原 schema 拒绝；原 dict 不被修改。
-- [ ] 实现纯机械映射：核对实际来源版本 ID，取各 `source_ref(result)['locator']` 组装 `material_type/use/locators`；不同原件不自动合并。外层仍使用已登记来源的 source_path/input_id/material_types/uses，不用 input_version_id 替代 input_id，也不新增 ingest kind。
-- [ ] 将 B1 场景的运行示例改用助手，实际调用公开 ingest；删掉该示例重复手写字段的部分，不扩成泛化 schema DSL。
-- [ ] 真实有限分析样本对照协议失败次数、输出/未缓存输入和时间；功能及来源一致。若只是薄 API 可用但 Agent 未采用，要如实记录效果，不以单测冒充改善。
-- [ ] 完整相关检查、文档同步后提交。
+- [x] 先按真实 region response 写测试：文本及 XLSX 单区域、同原件多区域、混原件拒绝、缺身份拒绝、类型/用途非法仍由原 schema 拒绝；原 dict 不被修改。
+- [x] 实现纯机械映射：核对实际来源版本 ID，取各 `source_ref(result)['locator']` 组装 `material_type/use/locators`；不同原件不自动合并。外层仍使用已登记来源的 source_path/input_id/material_types/uses，不用 input_version_id 替代 input_id，也不新增 ingest kind。
+- [x] 将 B1 场景的运行示例改用助手，实际调用公开 ingest；删掉该示例重复手写字段的部分，不扩成泛化 schema DSL。
+- [x] 真实有限分析样本对照协议失败次数、输出/未缓存输入和时间；功能及来源一致。若只是薄 API 可用但 Agent 未采用，要如实记录效果，不以单测冒充改善。
+- [x] 完整相关检查、文档同步后提交。
 
 拟议调用形式（source_spec 为调用方选定的原 sources 条目，registered_source 为其实际登记结果；新增用途须由 Agent 显式声明，此例沿用已有用途）：
 

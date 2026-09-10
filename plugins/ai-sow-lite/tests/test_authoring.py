@@ -1,11 +1,148 @@
 """Thin authoring consumer: real storage and existing public operations."""
+from copy import deepcopy
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from .support.clarify import delivered_baseline, clarify_case, edit_draft
 from .support.fixtures import read_json
+
+
+def registered_regions(tmp_path, kind='text'):
+    from ai_sow_lite.authoring import Client
+
+    filename = 'prd-hld.md' if kind == 'text' else 'sparse-history.xlsx'
+    source = tmp_path / filename
+    source.write_bytes((Path(__file__).parent / 'fixtures/history' / filename).read_bytes())
+    client = Client(tmp_path / 'project', str(uuid4()), 'generate')
+    spec = dict(source_path=str(source), input_id=None, material_types=['prd', 'hld'],
+                uses=['to-be-scope', 'to-be-architecture'], use_regions=[])
+    registered = client.call('ingest', dict(kind='sources', entrypoint='generate', project_type='new',
+                                            sources=[spec]))
+    entry = registered['input_refs'][0]
+    if kind == 'text':
+        locators = [dict(kind='text_lines', start_line=start, end_line=end) for start, end in [(1, 2), (3, 4)]]
+    else:
+        reading = read_json(client.project / registered['reading_refs'][0]['path'])
+        locators = [dict(kind='xlsx_range', sheet='历史范围', range=address, read_id=reading['read_id'])
+                    for address in ['A1:C4', 'B2:C3']]
+    regions = [client.call('inspect', dict(view='regions', selector=dict(
+        input_version_id=entry['input_version_id'], locator=locator))) for locator in locators]
+    return client, spec, entry, regions
+
+
+@pytest.mark.parametrize('kind', ['text', 'xlsx'])
+@pytest.mark.parametrize('count', [1, 2])
+def test_source_use_region_consumed_by_public_ingest_preserves_actual_locators(tmp_path, kind, count):
+    from ai_sow_lite import authoring
+
+    client, spec, entry, regions = registered_regions(tmp_path, kind)
+    selected = regions[:count]
+    before = deepcopy((spec, entry, regions))
+
+    mapped = authoring.source_use_region(selected, material_type='hld', use='to-be-architecture')
+
+    if kind == 'text':
+        expected = [dict(kind='text_lines', start_line=1, end_line=2),
+                    dict(kind='text_lines', start_line=3, end_line=4)][:count]
+    else:
+        expected = [dict(kind='xlsx_range', sheet='历史范围', range=address,
+                         read_id=result['coverage']['locator']['read_id'])
+                    for address, result in zip(['A1:C4', 'B2:C3'], selected)]
+        assert all(locator['read_id'] != result['coverage']['selector']['locator']['read_id']
+                   for locator, result in zip(expected, selected))
+        assert len({locator['read_id'] for locator in expected}) == count
+    assert mapped == dict(material_type='hld', use='to-be-architecture', locators=expected)
+    assert (spec, entry, regions) == before
+    updated = deepcopy(spec)
+    updated['input_id'] = entry['input_id']
+    updated['use_regions'].append(mapped)
+    consumed = client.call('ingest', dict(kind='sources', entrypoint='generate', project_type='new',
+                                         sources=[updated]))['input_refs'][0]
+    assert consumed['input_version_id'] == entry['input_version_id']
+    assert consumed['input_id'] == entry['input_id']
+    assert consumed['use_regions'] == [mapped]
+    # The mapping owns its locators; caller edits must not mutate the inspect response.
+    mapped['locators'][0]['kind'] = 'caller-edit'
+    assert (spec, entry, regions) == before
+
+
+@pytest.mark.parametrize('same_input_id', [False, True], ids=['different-inputs', 'same-input-new-version'])
+def test_source_use_region_rejects_mixed_actual_input_versions(tmp_path, same_input_id):
+    from ai_sow_lite.authoring import source_use_region
+
+    client, spec, entry, regions = registered_regions(tmp_path)
+    source = Path(spec['source_path']) if same_input_id else tmp_path / 'other.md'
+    source.write_text('另一份输入内容或本原件的新版本。\n', encoding='utf-8')
+    updated = deepcopy(spec)
+    updated.update(source_path=str(source), input_id=entry['input_id'] if same_input_id else None)
+    newer = client.call('ingest', dict(kind='sources', entrypoint='generate', project_type='new',
+                                      sources=[updated]))['input_refs'][0]
+    newer_region = client.call('inspect', dict(view='regions', selector=dict(
+        input_version_id=newer['input_version_id'], locator=dict(kind='text_lines', start_line=1, end_line=1))))
+    assert newer['input_version_id'] != entry['input_version_id']
+    assert (newer['input_id'] == entry['input_id']) == same_input_id
+    mixed = [regions[0], newer_region]
+    before = deepcopy(mixed)
+
+    with pytest.raises(ValueError, match='同一.*input_version_id'):
+        source_use_region(mixed, material_type='prd', use='to-be-scope')
+
+    assert mixed == before
+
+
+def test_source_use_region_explains_empty_selection():
+    from ai_sow_lite.authoring import source_use_region
+
+    with pytest.raises(ValueError, match='至少.*区域'):
+        source_use_region([], material_type='prd', use='to-be-scope')
+
+
+@pytest.mark.parametrize('identity_fields', [{}, {'input_version_id': None}, {'input_version_id': []},
+    {'input_version_id': 'not-a-uuid'}, {'input_version_id': 'ABCDEFAB-0000-4000-8000-000000000001'},
+    {'input_version_id': '00000000-0000-1000-8000-000000000001'},
+    {'input_version_id': '00000000-0000-4000-8000-000000000001\n'}],
+    ids=['missing', 'null', 'array', 'invalid', 'noncanonical', 'not-v4', 'trailing-newline'])
+def test_source_use_region_explains_missing_or_invalid_version_identity(tmp_path, identity_fields):
+    from ai_sow_lite.authoring import source_use_region
+
+    _, _, _, regions = registered_regions(tmp_path)
+    selected = [deepcopy(regions[0])]
+    selector = selected[0]['coverage']['selector']
+    del selector['input_version_id']
+    selector.update(identity_fields)
+    before = deepcopy(selected)
+
+    with pytest.raises(ValueError, match='input_version_id.*UUID4'):
+        source_use_region(selected, material_type='prd', use='to-be-scope')
+
+    assert selected == before
+
+
+@pytest.mark.parametrize('field,value', [('material_type', ''), ('material_type', 7),
+                                       ('use', None), ('use', '  ')])
+def test_source_use_region_leaves_role_and_use_rejection_to_public_protocol(tmp_path, field, value):
+    from ai_sow_lite.authoring import OperationError, source_use_region
+
+    client, spec, entry, regions = registered_regions(tmp_path)
+    choices = dict(material_type='prd', use='to-be-scope')
+    choices[field] = value
+    mapped = source_use_region([regions[0]], **choices)
+    assert mapped[field] == value
+    updated = deepcopy(spec)
+    updated['input_id'] = entry['input_id']
+    updated['use_regions'].append(mapped)
+    index = client.project / '.ai-sow-lite/inputs/index.json'
+    before = index.read_bytes()
+
+    with pytest.raises(OperationError) as rejected:
+        client.call('ingest', dict(kind='sources', entrypoint='generate', project_type='new',
+                                   sources=[updated]))
+
+    assert rejected.value.response['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'
+    assert index.read_bytes() == before
 
 
 def test_client_starts_without_poisoning_first_ingest(tmp_path):

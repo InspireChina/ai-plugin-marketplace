@@ -19,6 +19,7 @@ client = Client(project, request_id, entrypoint, observation_context=observation
 | `client.mark(name, phase)` | 以当前真实 execution/activity/slice 标签记录当前边界，request 根活动/片集合自动为空。返回 recorded/degraded，不抛业务异常，不自动开始下一阶段。 |
 | `client.save(name, value)` | 输入登记成功后，将 Agent 编写的 JSON 存入本请求 `authoring/`，返回 `{path,sha256}`。name 只含文件名；同名同内容复用，不同内容拒绝覆盖。新稿选新名，保持原请求及修订额度。 |
 | `source_ref(region_result)` | 从实际区域查询的 result 取 input_version_id、locator、excerpt_hash；XLSX 保留实际 read_id。 |
+| `source_use_region(region_results, *, material_type, use)` | 同一输入版本的实际区域结果映射为一个 use_regions 条目，仅含 material_type/use/locators；空选择、身份缺失或混版本拒绝，XLSX read_id 保持。类型/用途和真实来源由原 ingest 校验。 |
 | `client.bind_confirmation(check_ref, answer_ref)` | 核验实际成功检查和展示计划原字节，将 Agent 已识别的真实执行答复引用附到确认副本，返回文件引用。后续 check 仍核验来源、候选和确认。只适用于 Clarify。 |
 
 原始输入 `source_path` 必须为绝对路径；项目内反馈可用 `str(client.project / "feedback.md")`。返回的 candidate/check/plan 等已保存工件引用则用项目相对路径，直接沿用真实返回值。
@@ -43,6 +44,30 @@ applied = client.call("apply", {
 ```
 
 此例的执行前提仍由 [真实确认规则](clarify-changes.md#把真实执行答复接到工具生成的计划) 约束。构造确认引用不表示来源是同意，也不认证用户身份。执行中失败保留已成功的引用，按原有限返修/恢复处理；不会因重新构造 Client 清零额度。
+
+## 用实际读取结果登记用途区域
+
+一份材料兼有多种用途时，Agent 先明确对应区域、材料类型及用途，再调用这个机械助手。`source_spec` 是调用方已选原件的原 sources 条目，`registered_source` 是其真实登记项；`selected_region_results` 是该原件已读取区域的 result。保留原有声明，外层使用实际 input_id，不能写成 input_version_id，也不新增 ingest kind。
+
+<!-- source-use-region-example -->
+```python
+from copy import deepcopy
+from ai_sow_lite.authoring import source_ref, source_use_region
+
+assert {source_ref(r)["input_version_id"] for r in selected_region_results} == {
+    registered_source["input_version_id"]}
+assert chosen_material_type in source_spec["material_types"]
+assert chosen_use in source_spec["uses"]
+region_entry = source_use_region(selected_region_results,
+    material_type=chosen_material_type, use=chosen_use)
+source_entry = deepcopy(source_spec)
+source_entry["input_id"] = registered_source["input_id"]
+source_entry["use_regions"].append(region_entry)
+registered = client.call("ingest", dict(kind="sources", entrypoint=client.entrypoint,
+    project_type=project_type, sources=[source_entry]))
+```
+
+助手不判断用途、不扩读材料、不合并不同原件或版本。已有用途/区域由原 ingest 追加去重；仍须声明真实采用的读取，不用助手补造覆盖。
 
 ## 直接活动埋点
 
