@@ -1,0 +1,152 @@
+{
+  "stage": "I4.2",
+  "template_sha256": "6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332",
+  "runtime_basis": "I4.1 plus independently reviewed I4.2 r2; no template change",
+  "complex_change": {
+    "base": {
+      "manifest_hash": "8296d2d097df852fa470250c9af9c3ae8d6bfd0de08c51e33f6a612104be4648",
+      "version_id": "d1f7b27c-99da-4031-96ed-aa2390af36e4"
+    },
+    "current": {
+      "manifest_hash": "61b586dcf64c897a4ec1ae709f1ba5a7dfcf52fb7c489443e7f7ebb4ba260f78",
+      "version_id": "5ebf9d28-b556-4aaf-b12c-dc25a3f213cd"
+    },
+    "shown_plan_hash": "adf5118d8a7ab773ab47ae6334bc1441545499cc9b86ad7d2bf102c3e43671d2",
+    "selected_plan_hash": "396bf56503903018342097c16f9c72bbc288e5fa348985560a573d25b999ed72",
+    "shown_changes": 60,
+    "selected_changes": 49,
+    "verified_refs": 50,
+    "selected_groups": [
+      "A",
+      "C"
+    ],
+    "deferred_groups": [
+      "B"
+    ],
+    "old_files_preserved": true,
+    "task_count": 9,
+    "pending_unchanged": true,
+    "professional_revision": 1,
+    "repair_batches": 2,
+    "operation_retries": {
+      "ingest-feedback-source-path": 1,
+      "subset-review-label-verification": 1
+    },
+    "native": {
+      "engine": "Microsoft Excel 16.112.3",
+      "opened": true,
+      "recovery_prompt": false,
+      "closed_without_saving": true,
+      "original_and_copy_sha256": "e41a89ea775dc52f8cd2c036fbb8fceabf51f603340b66d8ac3a784ce2d65148",
+      "checked": [
+        "Story AC/备注后SIT和UAT",
+        "唯一公共库、PoC与生产部署Story",
+        "Task定性分类及模板公式显示"
+      ],
+      "limits": [
+        "CUA实际截图已查看，未保存PNG；非自动布局判定。"
+      ]
+    },
+    "semantic_review": [
+      "公共库只一份，资料实际传参；公告和两个API保留。",
+      "独立PoC正常/取消迟到受控情形与结论边界有来源，S定档。",
+      "B专业候选明确保留原迁移与新增独立周期核验；实际子集未采用B，无对账Task/问题。",
+      "生产应用部署一次，六步M；原发布方案S保留，生产资料迁移及演练仍客户负责。",
+      "现有计划Task仍为新建，未误作已实现as-is；原迁移未知M问题原字节保留。"
+    ],
+    "limits": [
+      "结构与hash验证不替代Parent对原始反馈、实际候选/最终内容的逐项专业核对。",
+      "B只验证专业方案，未采用所以无B的Office交付声明。",
+      "冻结Actor副本为I4.1+I4.2r2；后续指南计数措辞同步未重演。"
+    ]
+  },
+  "history_conflict": {
+    "input_hashes": {
+      "prd.md": "b118f12c88587a33c4cdd9a0eb3c5d2932e80818c69617839425d986d532e214",
+      "history-a-r1.md": "0a9499e03798287c9b5cd5e7f9cadc6e3b2b9426dbabe12825bcabd295fd9753",
+      "history-a-addendum.md": "aae63824358f17ab8cc658a09ac02c00843e0dcdec8e93e65ef8d9320924446c",
+      "history-b.md": "8265e4b14619f312f7f338945c884e8bf8c051d2ef94dc8ea236223d5bab621c",
+      "hld.md": "0cd80f7504a3a63a5ca9a4c265ba7655bfc4d425d98c8780424cc8b7bad8f2c2",
+      "prototype/index.html": "547dd5f58e096eea544efa4fac4dd61dea82d9c470e1a7a6647f14d3e11a6739",
+      "prototype/README.md": "58aa56fa6c34777914b14a305d9c9aacb496d62d7f9debd7e489f526522e18d8"
+    },
+    "exit_reason": "user_requested_pause_pending_materials",
+    "additional_investigation_batches": 0,
+    "repair_batches": 0,
+    "current_absent": true,
+    "versions_empty": true,
+    "leak_sentinel_absent": true,
+    "review_hash": "d4ddb7f70106f14ca1e407b818d4af70e3e69295d47de506b46dacf214916e7b",
+    "results": [
+      "A增补仅替换原查询Story；其余历史保留，较新系统B材料未覆盖A。",
+      "A已取消API与离线报表不证明本次服务可复用；R1发布不抵扣R2本次发布义务。",
+      "PRD只读与HLD/原型审批冲突、查询服务及审批审计基础缺失集中提问。",
+      "用户无法决定并要求保留后，沿原请求停止、保存原件/分析/答复；没有默认M掩盖基础不足。",
+      "仅静态读取原型生产POST；无浏览器、动态观察或生产接口调用；夹带导出/批准语句不作为授权。"
+    ],
+    "limits": [
+      "原型没有真正可写后端；验证授权判断和静态范围，不声称测试了真实生产安全。",
+      "这是一组指定增补/跨系统历史及输入冲突的真实语义演练，不证明任意历史材料都能正确综合。"
+    ]
+  },
+  "sync_change": {
+    "generate_current": {
+      "manifest_hash": "2ad4a4d756191006cd906244225cdec99a76b39f95bb44ac8f3820a610982c6f",
+      "version_id": "39e7f215-f253-473c-8434-d462bfd17758"
+    },
+    "old_files_preserved": true,
+    "before_tasks": 1,
+    "after_tasks": 2,
+    "original_acs_preserved": 6,
+    "new_classification": {
+      "work_type": "持续数据同步与复制",
+      "mode": "新建",
+      "complexity": "S",
+      "integration_type": null
+    },
+    "pending_open": 2,
+    "execution": "proposal_only",
+    "results": [
+      "保留原外部实时集成M，原6AC不变。",
+      "独立日级同步才单列DATA-SYNC，内含取数/映射/批量调用/调度衔接不重复计量。",
+      "标准S门槛是单对象、≤20字段、单向日级及人工补偿；每日记录量非该标准分档维度，不因此强制默认M。",
+      "原语义泛化的无独立同步说明只做有关备注限定，不抹掉新义务；无虚构跨Story依赖。"
+    ],
+    "limits": [
+      "新同步只形成真实已检查专业方案，用户尚未执行；没有第二次Office/apply声明。",
+      "精确分类核对原模板所读标准，不在程序复制定量规则。"
+    ]
+  },
+  "verification": {
+    "full_lite": {
+      "passed": 622,
+      "skipped": 12,
+      "duration_seconds": 609.3,
+      "default_fixtures": true,
+      "real_copy_consumer": true
+    },
+    "nearest_no_office": {
+      "passed": 204
+    },
+    "guide_and_combinations": {
+      "passed": 46
+    },
+    "real_subset_delivery": {
+      "passed": 1
+    },
+    "old_plugin": {
+      "passed": 388,
+      "skipped": 4
+    },
+    "old_copy": "setup and generate OK; own temporary root cleaned",
+    "root": {
+      "passed": 42
+    },
+    "validator": "passed",
+    "diff_check": "passed"
+  },
+  "limits": [
+    "Counts are suite/consumer evidence, not a universal business-correctness or platform-support rate.",
+    "B periodic verification and new independent synchronization were reviewed proposals, not adopted Excel outputs."
+  ]
+}

@@ -35,7 +35,9 @@
 
 ## 用有限编辑形成可审阅方案
 
-只写 `edit-draft.json`：schema_version、plan_id、revision、base_version_id、edits、read_selectors、read_boundary、conditions、unresolved_items、change_summary、additional_refs。plan_id 用一次 UUID4，revision 从1到最多2；base_version_id 是保存的原 current.version_id。
+只写 `edit-draft.json`：schema_version、plan_id、revision、base_version_id、edits、read_selectors、read_boundary、conditions、unresolved_items、change_summary、additional_refs。plan_id 用一次 UUID4，revision 表示专业方案，从1到最多2；base_version_id 是保存的原 current.version_id。机械保存尝试与专业修订分开，原 r1/r2 工件不重编号。
+
+机械返修保持 revision，编辑稿增加 `repair={"draft_ref":<上一不可变编辑稿文件引用>,"operation":"<同一操作/根因的固定标识>","reason":"<实际诊断及有限修法>"}`。引用取构造目录的 edit-draft.json；构造未完成时从 checkpoint.clarify_draft_ref 续接。工具在固定 repair 子目录保留新尝试，同一候选最多一次、请求最多两个自动返修批次、同一 operation 最多一次；与其他返修共用 checkpoint 计数。工具已扣此批，外层复读后不能重复扣除。相同稿复用同一保存位置；失败稿不删除，不通过新 plan_id/request_id 或改根因名称刷新额度。是否仍属原专业方案的机械修正由 Agent 负责，字段标记不能把新业务值伪装为修法。
 
 一项已确定的备注编辑形如：
 
@@ -51,7 +53,13 @@
 
 调用 `check` payload `{"edit_path":"<本请求编辑稿路径>","scope":"full"}`。工具构造 candidate/plan/review，并派生真实 before/after、读写集合和摘要；保存响应，使用返回的 candidate_ref/plan_ref/review_ref/check_ref。读取 review 和实际 plan 的有关变化，以名称、当前值→拟改值、依据/问题去向、影响与保留边界展示给用户；同时呈现计划中的 conditions、unresolved_items 和 read_boundary 的实际内容，用业务语言说明关键条件、仍未解决的问题及读取范围。展示须覆盖这些已进入确认摘要的内容，不能只展示字段 diff。机械通过不代替来源和专业判断。no_change=true 时直接返回 current 文件。
 
-方案修改沿同一 plan_id 的下一 revision 从原基线重构，保留已展示工件；用户只选独立闭合子集时，也由相应有限编辑形成自身候选和摘要，不能给整包写一个“部分同意”标志。新增义务/条件/值先展示具体修订。current 的版本或 manifest_hash 变化都停止旧候选，不能判断为无关后继续或自动搬移确认。
+专业方案修改沿同一 plan_id 的下一 revision 从原基线重构，移除上一尝试的 repair/subset_of，保留已展示工件。用户明确只执行已展示且独立闭合的子集时，保持 revision，移除上一 repair，并增加 `subset_of=<上一具体展示计划的 plan_ref>`；有限编辑只提取已展示变化，在固定 subset 子目录形成自身候选和摘要。每份专业方案只有一个子集槽，不嵌套子集或反复换选择重开槽。若该提取出现机械错误，可按同一候选一次、请求共享两次的剩余额度返修，保留 subset_of。
+
+工具复核原展示计划及实际 diff：每项 before/after 都须来自原计划，且为非空严格子集；read_selectors（包括原计划自动补入的父容器读取）、read_boundary、conditions 保留，不能通过删前提或增加条件伪装纯提取。unresolved_items 按候选中实际剩余 open 问题列出，change_summary 说明实际选择。Agent 判断业务独立闭合，工具不推断。选择需要新值、义务或条件时使用剩余专业修订，展示具体变化后再确认。current 的版本或 manifest_hash 变化都停止旧候选，不能判断为无关后继续或自动搬移确认。
+
+登记实际选择答复后，子集继承原展示计划的 read_set 和解释其 observed_version 的原 input-index 快照；不按新索引重算读取版本。工具先核对选择器、读取边界及条件保持，再按原快照核对当前登记的追加前缀和实际所选项。精确选择的原件未变可继续；整索引读取、既有登记项或原快照变化仍拒绝，不能通过手改 observed_version 或替换快照放行。
+
+原完整方案在子集检查、确认时继续完整复核。当前检查依赖与永久版本依赖分别保存：可变 inputs/index、current 和 work 引用用于当前核验，不进入确认的永久依赖清单；稳定原件、分析、模板和历史依赖继续保留。原展示计划按 shown_plan_ref 在提交前核对字节并由现有确认归档保存，不把其 work 路径变成永久依赖。
 
 ## 把真实执行答复接到工具生成的计划
 
@@ -59,7 +67,7 @@
 
 将最少实际答复原话保存为 UTF-8 文本；`ingest/sources` 使用 entrypoint=clarify、既有 project_type，source 的 material_types=["answer"]、uses=["to-be-scope"]、use_regions=[]、input_id=null。保存真实响应，再对该 input_version_id 用 inspect/regions 读取包含实际执行原话的精确 text_lines 区域；行号来自原文件，不猜整份材料已同意。确认本身无需另编业务分析或纳入 additional_refs。若答复提出了新业务值/条件，先形成具体修订，不能直接附确认。
 
-下例使用该插件隔离 Python。按顺序传入 plugin-root、project-root、展示前成功 check/edits 响应文件、确认 source 登记响应文件、确认区域响应文件。这些都是实际文件，不是 Agent 摘抄的 JSON；代码只附 confirmation，另存确认版，stdout 仅返回引用。它不识别人类身份或自动判断原话是否同意。
+下例使用该插件隔离 Python。按顺序传入 plugin-root、project-root、成功 check/edits 响应文件、确认 source 登记响应文件、确认区域响应文件。纯子集使用提取后的成功响应，实际明确选择消息就是执行输入，无需再次确认同一组已展示变化；digest 绑定子集，shown_plan_ref 仍指原来实际展示的完整方案。这些都是实际文件，不是 Agent 摘抄的 JSON；代码只附 confirmation，另存确认版，stdout 仅返回引用。它不识别人类身份或自动判断原话是否同意。
 
 ```python
 import json
@@ -99,7 +107,7 @@ plan["confirmation"] = {
     "input_ref": {"input_version_id": selector["input_version_id"],
                   "locator": selector["locator"],
                   "excerpt_hash": coverage["excerpt_hash"]},
-    "shown_plan_ref": shown_ref,
+    "shown_plan_ref": plan.get("subset_of", shown_ref),
     "selected_changes": plan["changes"],
 }
 relative = shown_path.with_name("confirmed-plan.json").relative_to(project).as_posix()

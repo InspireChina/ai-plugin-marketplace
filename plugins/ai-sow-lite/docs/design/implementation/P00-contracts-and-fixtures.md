@@ -83,7 +83,7 @@ prepared.json 是候选准备记录，不是已经应用的收据。apply 复核
 
 Clarify 的 Agent 不需要重输出全量模型或手写重复的 before/after、write_set、hash。它写一份 `edit-draft.json`，调用现有 `check` 的 edits 输入形式；I3.1 实现该机械接缝，I1 不提供伪实现。
 
-编辑稿字段为 `schema_version/plan_id/revision/base_version_id/edits/read_selectors/read_boundary/conditions/unresolved_items/change_summary/additional_refs`。additional_refs 只含本次新增的 input_version_ids/topic_version_ids/evidence_ids 三个列表，无新增为空；均必须已通过 ingest 登记，基线已采用的引用由代码继承。read_selectors 每项为 {view, selector}，只使用 inspect 已支持的视图和选择器；专业依赖由 Agent 指定，代码不能从 diff 猜齐。工具从选定不可变版本及登记工件解析 observed_version，将带 view 的选择器和版本写入 read_set。
+编辑稿必需字段为 `schema_version/plan_id/revision/base_version_id/edits/read_selectors/read_boundary/conditions/unresolved_items/change_summary/additional_refs`。I4.2 增加可选 `repair/subset_of`：机械返修绑定上一不可变稿与实际根因；严格子集绑定原展示方案。专业 revision 仍最多2，返修及子集在原专业目录的固定槽保存，具体有限额度见 D04B 和工具参考。additional_refs 只含本次新增的 input_version_ids/topic_version_ids/evidence_ids 三个列表，无新增为空；均必须已通过 ingest 登记，基线已采用的引用由代码继承。read_selectors 每项为 {view, selector}，只使用 inspect 已支持的视图和选择器；专业依赖由 Agent 指定，代码不能从 diff 猜齐。工具从选定不可变版本及登记工件解析 observed_version，将带 view 的选择器和版本写入 read_set。
 
 edits 的每项为 `op/collection/object_id/field` 加必要的 `value`。op 为 add/replace/remove；增删完整对象时 field=null，add/replace 必须给 value，remove 不给 value。编辑对象限于第4节的模型/问题/决定集合，依据集合由 additional_refs 登记；嵌入 AC 的编辑统一替换所属 Story 的 acs 字段，迁移 AC 明确编辑两个 Story.acs，不引入虚拟父字段或数组下标协议。lineage 沿用既有复合键。已有字段替换保留原顺序，完整对象新增按编辑稿顺序追加到所属父项的现有同级项之后；删除只移除明确对象，不自动级联。其他重排首版不支持。同一地址重复编辑、父对象/字段与子字段交叠、未知 ID 或隐式级联合批拒绝；新增引用按不可变身份去重，不删除基线引用。
 
@@ -129,7 +129,7 @@ P03 方案沿用 D07 字段。changes 为稳定地址的操作数组：`op`（ad
 
 read_set 每项为 selector、observed_version，记录实际所读对象、来源、模板或关系查询所在的不可变版本。当前版整体身份不一致即拒绝应用，不设计字段/关系级冲突合并摘要。write_set 由实际 diff 派生，列目标字段或整个增删对象；read_boundary 为允许来源/主题/对象集合及最深层级（current/topic/source）。元信息变化同样列入；派生 Excel 的行位移不成为业务 changes。
 
-确认内容摘要覆盖 plan_id/revision、original base_version_id、changes、read_set/write_set/read_boundary、conditions、unresolved_items 及可读 change_summary；**不包含 confirmation 自身或导出路径**。确认保存 digest、用户明确执行意思的最小输入引用、展示方案引用与所选变化。已展示且独立闭合的子集生成自身摘要并保留展示关系。任何专业内容/条件变化都重新核对确认，不能靠措辞概括授权任意改写。
+确认内容摘要覆盖 plan_id/revision、original base_version_id、changes、read_set/write_set/read_boundary、conditions、unresolved_items 及可读 change_summary；**不包含 confirmation 自身或导出路径**。确认保存 digest、用户明确执行意思的最小输入引用、展示方案引用与所选变化。已展示且独立闭合的子集生成自身摘要并绑定 subset_of 展示关系；继承原读取集合和 input-index 快照，选择器、边界、条件不得减少或改写。实际选择答复可作为该子集的执行输入，不再询问同一授权。机械 repair 元数据不改变专业内容摘要。任何专业内容/条件变化都重新核对确认，不能靠措辞概括授权任意改写。
 
 项目由同一人串行生成和修改，原确认方案保持不可变。current 与 base_version_id/expected_current 不同即返回 BASE_STALE，保留草案与有效文件；不判断变化是否无关，不自动换基线、复用跨版本确认或重建候选。manifest 只保存本次 base_version_id，不另存实际应用基线。顺序进行的后续请求自然使用最新 current；过期草案需基于当前版定向续接，不能直接应用旧确认。
 

@@ -16,7 +16,10 @@ PLAN_CONTENT = ('plan_id', 'revision', 'base_version_id', 'changes', 'read_set',
 
 
 def plan_digest(plan):
-    return semantic_digest({key: plan[key] for key in PLAN_CONTENT})
+    content = {key: plan[key] for key in PLAN_CONTENT}
+    if 'subset_of' in plan:
+        content['subset_of'] = plan['subset_of']
+    return semantic_digest(content)
 
 
 def _identity(collection, item):
@@ -270,6 +273,92 @@ def _review(plan, bundle):
     ]) + '\n'
 
 
+def _save_attempt(project, area, draft, checkpoint):
+    """Fixed physical branches, independent of the two professional revisions."""
+    from .project import _verify_refs
+    previous_ref = checkpoint.get('clarify_draft_ref')
+    if previous_ref is None and checkpoint['candidate_path']:
+        # Existing r1/r2 captures retain their original identity and digest.
+        previous_ref = file_ref(project, safe_path(project,
+            str(Path(checkpoint['candidate_path']).with_name('edit-draft.json')), area))
+    previous = None
+    if previous_ref:
+        _verify_refs(project, [previous_ref])
+        previous = load_json(safe_path(project, previous_ref['path'], area))
+        if draft == previous:
+            return str(Path(previous_ref['path']).parent), previous_ref
+        if draft['plan_id'] != previous['plan_id']:
+            raise StorageError('SCOPE_EXCEEDED', '同一请求不能换方案身份刷新额度。')
+    elif safe_path(project, area + '/plans').exists():
+        raise StorageError('CHECKPOINT_UNKNOWN', '已有保存尝试但位置未知；保留工件，不重置次数。')
+
+    directory = f"{area}/plans/{draft['plan_id']}/r{draft['revision']}"
+    repair = draft.get('repair')
+    if repair:
+        if (previous is None or repair['draft_ref'] != previous_ref or previous.get('repair')
+                or draft['revision'] != previous['revision']
+                or draft.get('subset_of') != previous.get('subset_of')):
+            raise StorageError('LOOP_LIMIT_REACHED', '机械返修必须沿上一候选，且同一候选只能返修一次。')
+        retries = checkpoint.get('operation_retries', {})
+        if checkpoint['repair_batches'] >= 2 or retries.get(repair['operation'], 0):
+            raise StorageError('LOOP_LIMIT_REACHED', '请求返修或同操作/根因重试已到限。')
+        directory = str(Path(previous_ref['path']).parent / 'repair')
+    elif 'subset_of' in draft:
+        if (previous is None or previous.get('subset_of')
+                or draft['revision'] != previous['revision']):
+            raise StorageError('LOOP_LIMIT_REACHED', '每份专业方案只机械提取一次明确子集，不嵌套或重开。')
+        shown = file_ref(project, safe_path(project, str(Path(previous_ref['path']).with_name('plan.json')), area))
+        if draft['subset_of'] != shown:
+            raise StorageError('SCOPE_EXCEEDED', '子集必须引用上一份具体展示计划。')
+        directory = str(Path(previous_ref['path']).parent / 'subset')
+    elif draft['revision'] != (previous['revision'] + 1 if previous else 1):
+        raise StorageError('SCOPE_EXCEEDED', '专业方案从 1 开始，变化须沿原身份递增；机械返修须明确来源。')
+
+    path = directory + '/edit-draft.json'
+    if safe_path(project, path, area).exists():
+        raise StorageError('CHECKPOINT_UNKNOWN', '保存槽已有工件但不是最近记录；保留并查询恢复，不覆盖或重新扣次数。')
+    ref = write_json(project, path, draft, immutable=True)
+    if repair:
+        checkpoint['repair_batches'] += 1
+        checkpoint.setdefault('operation_retries', {})[repair['operation']] = 1
+        checkpoint['last_repair'] = repair['reason']
+    checkpoint['clarify_draft_ref'] = ref
+    save_checkpoint(project, checkpoint)
+    return directory, ref
+
+
+def _subset_source(project, ref, area):
+    """Resolve the original constructed plan, including its bound reading snapshot."""
+    from .project import _verify_refs
+    path = safe_path(project, ref['path'], area)
+    _verify_refs(project, [ref])
+    shown = load_json(path)
+    if list(schema_validator('change-plan').iter_errors(shown)) or 'subset_of' in shown:
+        raise StorageError('SCOPE_EXCEEDED', '子集来源须为原具体方案，不能嵌套子集。')
+    construction = checked_json(project, str(path.with_name('construction.json').relative_to(project)),
+                                'edit_construction', area)
+    if construction['plan_ref'] != ref:
+        raise StorageError('SCOPE_EXCEEDED', '子集来源不是构造时的具体展示计划。')
+    return shown, construction
+
+
+def _verify_subset(project, plan, area):
+    """Check exact selected values and retained premises; never infer independence."""
+    from .validation import check_candidate
+    ref = plan['subset_of']
+    shown, construction = _subset_source(project, ref, area)
+    path = safe_path(project, ref['path'], area)
+    report = check_candidate(project, safe_path(project, construction['candidate_ref']['path'], area), 'full', path)
+    if not report['valid_for_render']:
+        raise StorageError('SCOPE_EXCEEDED', '子集来源未通过当前机械复核；不能沿用旧展示。')
+    if (any(plan[key] != shown[key] for key in ('plan_id', 'revision', 'base_version_id',
+                                              'read_set', 'read_boundary', 'conditions'))
+            or not plan['changes'] or len(plan['changes']) >= len(shown['changes'])
+            or any(change not in shown['changes'] for change in plan['changes'])):
+        raise StorageError('SCOPE_EXCEEDED', '纯子集必须保留读取/条件，实际变化严格取自已展示前后值；新值须专业修订。')
+    return report['dependencies'] + [ref]
+
+
 def prepare_edit(project, request_id, edit_path):
     project = Path(project).resolve()
     area = request_area(request_id, 'clarify')
@@ -279,14 +368,7 @@ def prepare_edit(project, request_id, edit_path):
         raise StorageError('CANDIDATE_INVALID', '有限编辑稿字段或版本不符合合同。')
     current, manifest, raw, before = _base(project, draft['base_version_id'])
     checkpoint = ensure_request(project, request_id, 'clarify')
-    if checkpoint['candidate_path']:
-        previous = load_json(safe_path(project, str(Path(checkpoint['candidate_path']).with_name('edit-draft.json')), area))
-        if draft['plan_id'] != previous['plan_id'] or draft['revision'] not in (previous['revision'], previous['revision'] + 1):
-            raise StorageError('SCOPE_EXCEEDED', '同一请求须沿原方案身份有界修订，不能换身份或倒退修订。')
-    elif draft['revision'] != 1:
-        raise StorageError('SCOPE_EXCEEDED', '首次方案修订号必须为 1。')
-    directory = f"{area}/plans/{draft['plan_id']}/r{draft['revision']}"
-    draft_ref = write_json(project, directory + '/edit-draft.json', draft, immutable=True)
+    directory, draft_ref = _save_attempt(project, area, draft, checkpoint)
     after = _apply_edits(before, draft['edits'])
     for collection, key in REFS.items():
         after[collection] = list(dict.fromkeys([*before[collection], *draft['additional_refs'][key]]))
@@ -298,16 +380,30 @@ def prepare_edit(project, request_id, edit_path):
         atomic_bytes(safe_path(project, candidate[key], area), _encoded(value, raw[name]), immutable=True)
     candidate_ref = write_json(project, directory + '/candidate.json', candidate, immutable=True)
     changes = diff_bundle(before, after)
+    selectors = _selectors(draft, changes)
+    snapshot = None
+    if 'subset_of' in draft:
+        shown, source_construction = _subset_source(project, draft['subset_of'], area)
+        if (selectors != [r['selector'] for r in shown['read_set']]
+                or any(draft[key] != shown[key] for key in ('read_boundary', 'conditions'))):
+            raise StorageError('SCOPE_EXCEEDED', '子集只能继承原选择器、读取边界和条件，不能改写读取前提。')
+        reads = deepcopy(shown['read_set'])
+        snapshot = source_construction['input_index_snapshot_ref']
+    else:
+        reads = _read_set(project, selectors)
     plan = {key: draft[key] for key in ('schema_version', 'plan_id', 'revision', 'base_version_id',
                                       'read_boundary', 'conditions', 'unresolved_items', 'change_summary')}
-    plan.update(changes=changes, read_set=_read_set(project, _selectors(draft, changes)),
+    plan.update(changes=changes, read_set=reads,
                 write_set=_write_set(changes), confirmation=None)
+    if 'subset_of' in draft:
+        plan['subset_of'] = draft['subset_of']
     plan_ref = write_json(project, directory + '/plan.json', plan, immutable=True)
     review = _review(plan, after)
     review_path = safe_path(project, directory + '/review.md', area)
     atomic_bytes(review_path, review.encode('utf-8'), immutable=True)
-    snapshot = write_json(project, directory + '/input-index.json',
-                          checked_json(project, '.ai-sow-lite/inputs/index.json', 'input_index'), immutable=True)
+    if snapshot is None:
+        snapshot = write_json(project, directory + '/input-index.json',
+                              checked_json(project, '.ai-sow-lite/inputs/index.json', 'input_index'), immutable=True)
     write_json(project, directory + '/construction.json', dict(expected_current=current, draft_ref=draft_ref,
         candidate_ref=candidate_ref, plan_ref=plan_ref, input_index_snapshot_ref=snapshot,
         business_refs=[file_ref(project, safe_path(project, candidate[key])) for key in FILES.values()]), immutable=True)
@@ -340,6 +436,12 @@ def check_plan(ctx, candidate, candidate_path, model, pending, decisions, plan_p
         ctx.add('input_index_snapshot_ref', '输入登记快照字节变化。', code='EVIDENCE_MISSING')
     if plan_digest(plan) != plan_digest(preview):
         ctx.add('changes', '确认版的具体内容不同于已展示方案。', code='SCOPE_EXCEEDED')
+    if 'subset_of' in plan:
+        try:
+            for ref in _verify_subset(ctx.project, plan, area):
+                ctx.dependencies[ref['path']] = ref
+        except StorageError as error:
+            ctx.diagnostics.extend(error.diagnostics)
     try:
         _index_extension(ctx.project, snapshot_ref)
     except StorageError as error:
@@ -474,8 +576,10 @@ def confirmation_details(project, plan_path, candidate_path):
     preview_ref = construction['plan_ref']
     _verify_refs(project, [preview_ref, construction['candidate_ref'], *construction['business_refs']])
     preview = load_json(safe_path(project, preview_ref['path'], area))
+    shown_ref = plan.get('subset_of', preview_ref)
+    subset_dependencies = _verify_subset(project, plan, area) if 'subset_of' in plan else []
     if (confirmation['digest'] != plan_digest(plan) or plan_digest(plan) != plan_digest(preview)
-            or confirmation['shown_plan_ref'] != preview_ref or confirmation['selected_changes'] != plan['changes']):
+            or confirmation['shown_plan_ref'] != shown_ref or confirmation['selected_changes'] != plan['changes']):
         raise StorageError('SCOPE_EXCEEDED', '执行输入、展示方案或所选具体变化不能绑定同一内容。')
     binding_path = area + '/confirmations/' + plan_digest(plan).split(':')[1] + '.json'
     if safe_path(project, binding_path).exists():
@@ -489,8 +593,14 @@ def confirmation_details(project, plan_path, candidate_path):
     excerpt, dependencies = source_excerpt(project, entry, source['locator'])
     if not excerpt.strip() or hashlib.sha256(excerpt).hexdigest() != source['excerpt_hash']:
         raise StorageError('EVIDENCE_MISSING', '实际确认原话字节与绑定摘录不同。')
-    return dict(plan=plan, plan_ref=file_ref(project, path), shown_plan_ref=preview_ref,
-                input_record=entry, dependencies=dependencies, digest=plan_digest(plan), binding_path=binding_path)
+    # apply persists this list. Full live checks above remain in the check report;
+    # the exact shown plan is verified separately and archived by confirmation_files.
+    permanent_dependencies = [ref for ref in dependencies + subset_dependencies
+                              if not ref['path'].startswith('.ai-sow-lite/work/')
+                              and ref['path'] not in ('.ai-sow-lite/inputs/index.json', '.ai-sow-lite/current.json')]
+    return dict(plan=plan, plan_ref=file_ref(project, path), shown_plan_ref=shown_ref,
+                input_record=entry, dependencies=permanent_dependencies,
+                digest=plan_digest(plan), binding_path=binding_path)
 
 
 def seal_confirmation(project, plan_path, candidate_path):

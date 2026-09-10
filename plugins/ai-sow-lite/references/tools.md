@@ -66,6 +66,9 @@ Bash/PowerShell 自举迁入来源为 D00 的 `2fc8588`，只适配身份、路�
 编辑稿放在本请求 `work/clarify/<request-id>/`，字段为 schema_version/plan_id/revision/base_version_id/
 edits/read_selectors/read_boundary/conditions/unresolved_items/change_summary/additional_refs。
 revision 首次为1，同请求沿同一 plan_id 最多修订到2；每份方案从原完整基线构造。
+可选 repair 绑定上一不可变 draft_ref、同根因 operation 和实际 reason；可选 subset_of 绑定原展示 plan_ref。
+机械返修保持专业 revision，同候选一次、请求共享两批、同根因一次；每份专业方案只有一个严格子集槽，
+不嵌套提取、不以新计划身份刷新额度。具体保存与确认示例见 [局部修改参考](clarify-changes.md)。
 
 每项 edit 为 `{op,collection,object_id,field,value}`；op 为 add/replace/remove，remove 不带 value。
 field=null 只允许完整对象的 add/remove，值须含同一稳定身份；字段增删须符合原字段存在性。
@@ -83,7 +86,7 @@ conditions 为关键条件文字列表，unresolved_items 只能引用候选中�
 
 `validation.prepare_edit` 委托有限 changes 模块复制原三份业务文件、保留未涉及 JSON 字节和展示顺序，
 在 `plans/<plan-id>/r<revision>/` 保存 candidate.json、plan.json、review.md、原编辑稿、input-index.json
-及 construction.json。construction 使用 artifacts.edit_construction，绑定构造时完整 current 与实际文件 hash。
+及 construction.json；返修或子集使用其固定 repair/subset 子目录。construction 使用 artifacts.edit_construction，绑定构造时完整 current 与实际文件 hash。
 check/edits 返回 candidate_ref/plan_ref/review_ref/check_ref、candidate_digest、valid_for_render、unknowns_count，
 另有 no_change/current_version；真正无变化仅指回现版，不 render 或创建版本。M 保持 M 但采用新依据/决定或
 处理问题仍是实际变化。`diff_bundle` 比较实际前后值；`verify_plan` 返回完整检查报告，不写文件。
@@ -92,7 +95,7 @@ check/edits 返回 candidate_ref/plan_ref/review_ref/check_ref、candidate_diges
 conditions/unresolved_items/change_summary/confirmation。changes 为实际 `{op,collection,object_id,field,before,after}`，
 read_set 为 `{selector,observed_version}`，write_set 为稳定地址。hash 使用现有 json-v1，覆盖 plan_id/revision/
 base_version_id/changes/read_set/write_set/read_boundary/conditions/unresolved_items/change_summary，
-排除 confirmation 自身和导出路径。候选原字节及完整 current 的 version_id、manifest_hash 均须保持一致。
+子集另绑定 subset_of；排除 confirmation 自身、机械 repair 元数据和导出路径。候选原字节及完整 current 的 version_id、manifest_hash 均须保持一致。
 
 confirmation=null 可检查和预览。Agent 识别实际执行意思后，把最少真实答复作为 answer 输入登记，
 按真实 inspect 摘录形成 confirmation：`digest`、`input_ref`（source_ref）、`shown_plan_ref`（file_ref）、
@@ -105,6 +108,9 @@ confirmation=null 可检查和预览。Agent 识别实际执行意思后，把�
 所选读取结果及采用的不可变原件、reading、analysis、registration、模板、历史依赖仍逐项复查。
 仅 inputs/index.json 在这个已验证追加条件下可改变记录 hash，不忽略其他依赖变化。
 显式读取整个 inputs 集合时新增成员仍使读取失效；定向读取必须保持选中登记项不变。
+严格子集继承原展示计划的 read_set 与原 input-index 快照；选择器、边界和条件必须相同，
+不能在选择答复追加后重算 observed_version。原完整候选仍复查。确认永久依赖仅保留不可变来源、
+分析、模板和历史；work、current、实时 inputs/index 只作当前校验，原展示字节随版本归档。
 
 确认后新 check 引用不强制重算：候选精确字节、计划内容摘要、模板和完整基线一致，且原 prepared
 通过实际文件复核时，render 复用原准备包。apply 再读候选和采用来源，沿既有短锁原子生效。

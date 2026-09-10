@@ -9,3 +9,11 @@
 `correct-source-reading` 使用测试明确植入误读、再由真实 I1 通道生成的错误基线：PRD 仍明确迟到响应不覆盖新查询，已交付 AC 被误写为覆盖。结构合法不代表业务正确；本例验证局部语义修正，不将故障归咎于原始生成。
 
 候选悬空引用使用 I3.1 机械故障测试；不向真实语义会话泄露答案或额外制造一场无意义的 ID 讨论。
+
+## I4 复杂变化
+
+`shared-periodic-production/feedback.md`在同一真实I1交付基线提出A/B/C三组；方案形成后才给实际选择，不预制业务补丁。
+
+`independent-sync/prd.md`和`hld.md`先用于真实Generate；`feedback.md`只在首版交付后提供给Clarify。初版执行者不提前读取后续意见；现版实时集成与新增独立周期同步分别判断。
+
+实际专业结果、失败和未覆盖面见包内docs/validation/I4-inputs-and-changes.md；这些输入的存在不证明语义通过。

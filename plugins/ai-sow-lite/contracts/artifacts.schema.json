@@ -1318,6 +1318,9 @@
             "minimum": 0,
             "maximum": 1
           }
+        },
+        "clarify_draft_ref": {
+          "$ref": "#/$defs/file_ref"
         }
       },
       "required": [

@@ -165,6 +165,9 @@
           "$ref": "#/$defs/confirmation"
         }
       ]
+    },
+    "subset_of": {
+      "$ref": "artifacts.schema.json#/$defs/file_ref"
     }
   },
   "required": [
@@ -326,6 +329,31 @@
             "input_version_ids",
             "topic_version_ids",
             "evidence_ids"
+          ],
+          "additionalProperties": false
+        },
+        "subset_of": {
+          "$ref": "artifacts.schema.json#/$defs/file_ref"
+        },
+        "repair": {
+          "type": "object",
+          "properties": {
+            "draft_ref": {
+              "$ref": "artifacts.schema.json#/$defs/file_ref"
+            },
+            "operation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "draft_ref",
+            "operation",
+            "reason"
           ],
           "additionalProperties": false
         }
