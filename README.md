@@ -7,10 +7,10 @@
 
 | 插件 | 版本 | 用途 |
 | --- | --- | --- |
-| [AI SOW](plugins/ai-sow/README.md) | 0.1.0-beta.1 | 分析范围、核对系统现状、估算交付工作并生成可评审的 XLSX。 |
+| [AI SOW](plugins/ai-sow/README.md) | [0.1.0-beta.1（预发布）](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-v0.1.0-beta.1) | 分析范围、核对系统现状、估算交付工作并生成可评审的 XLSX。 |
 | [AI SOW Lite](plugins/ai-sow-lite/README.md) | 0.1.0-alpha.1（预发布） | 从 PRD、HLD 与往期 SOW 生成本期首版 Excel、摘要和待确认事项，再按确认意见作有限修改。 |
 
-Lite 提供 `generate`、`clarify` 两个入口，使用独立的 `.ai-sow-lite/` 项目数据，
+两个插件均已公开预发布，可按需独立安装。Lite 提供 `generate`、`clarify` 两个入口，使用独立的 `.ai-sow-lite/` 项目数据，
 不需要安装 AI SOW。首个 Alpha 试用版已发布；安装与使用见 [Lite README](plugins/ai-sow-lite/README.md)，版本记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。
 
 ## 支持平台

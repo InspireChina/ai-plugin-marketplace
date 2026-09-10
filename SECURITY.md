@@ -2,8 +2,14 @@
 
 ## 支持版本
 
-安全修复面向当前发布面。当前支持版本为 0.1.0-beta.1。本项目尚未对外发布，
-不维护预发布内部原型的数据迁移或兼容层。
+安全修复面向以下已公开预发布版本（2026-09-11）：
+
+| 插件 | 当前支持版本 |
+| --- | --- |
+| AI SOW | [0.1.0-beta.1](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-v0.1.0-beta.1) |
+| AI SOW Lite | [0.1.0-alpha.1](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1) |
+
+两者均为试用版本，支持与限制分别见各插件 README。不维护首次公开预发布前内部原型的数据迁移或兼容层。
 
 ## 报告漏洞
 
@@ -14,4 +20,4 @@
 调查、在适当情况下协调修复与披露，并按报告者意愿公开致谢。
 
 AI SOW 工作流会处理来自输入来源和客户环境的衍生数据。使用前请检查项目的
-`.gitignore` 和共享策略；不得假定生成的工作簿或 `.ai-sow/` 输入适合公开发布。
+`.gitignore` 和共享策略；不得假定生成的工作簿、`.ai-sow/` 或 `.ai-sow-lite/` 项目数据适合公开发布。

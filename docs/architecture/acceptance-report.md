@@ -1,6 +1,8 @@
 # AI SOW 新版本多 Session E2E 阶段汇总报告
 
-- 报告性质：中期验收报告
+> 历史验收记录：以下状态只对应本报告的固定基线与统计截止时间，保留当时的失败和未完成项。当前公开版本与发布验证见 [变更日志](../../CHANGELOG.md)和 [AI SOW Beta Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-v0.1.0-beta.1)，不以本报告代替当前发布状态，也不将新的机械检查视作本轮语义 E2E 已完成。
+
+- 报告性质：历史中期验收报告
 - Run ID：`2026-08-30-codex-v2`
 - 统计截止：`2026-08-31T03:54:58+08:00`
 - 当前状态：`BLOCKED`

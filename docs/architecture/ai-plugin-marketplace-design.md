@@ -1,14 +1,15 @@
 # AI Plugin Marketplace 设计规格
 
 日期：2026-08-20
+发布状态同步：2026-09-11
 
 ## 目标
 
-发布 AI SOW `0.1.0` / SOW `1.3` 首个稳定合同，形成一个可公开发布、可继续添加插件、可由 Codex 本地安装并从已安装插件目录独立运行的 marketplace 仓库。
+以单仓库发布自包含插件包，支持持续添加插件和从安装副本独立运行。当前已公开预发布 AI SOW `0.1.0-beta.1`（SOW 标准 `1.3`）与 AI SOW Lite `0.1.0-alpha.1`；AI SOW 稳定版 `0.1.0` 仍是后续目标。
 
 ## 标识
 
-- 仓库目录与未来建议仓库名：`ai-plugin-marketplace`
+- 仓库目录与仓库名：`ai-plugin-marketplace`
 - Marketplace ID：`ai-plugin-marketplace`
 - Marketplace 展示名：`AI Plugin Marketplace`
 - 首个插件 ID 与目录名：`ai-sow`
@@ -20,6 +21,8 @@
 - 鉴权策略：`ON_INSTALL`
 
 插件名称、插件目录和 manifest 的 `name` 必须始终一致。AI SOW 条目的 `source.path` 为 `./plugins/ai-sow`；独立预发布条目 AI SOW Lite 使用 `./plugins/ai-sow-lite`，名称为 `ai-sow-lite`、版本为 `0.1.0-alpha.1`。两宿主目录分别核对每个插件，不能以一个插件的版本覆盖另一个。
+
+版本 tag 按插件区分：AI SOW 使用 `ai-sow-v<version>`，Lite 使用 `ai-sow-lite-v<version>`。已发布 tag 保持固定；发布状态、能力摘要及安装入口以 [变更日志](../../CHANGELOG.md)和各版本 GitHub Release 为准。
 
 ## 选择的架构
 
@@ -73,7 +76,7 @@ AI SOW 的领域实现与参考资料全部位于 `plugins/ai-sow/`：
 
 内部实施计划、本机绝对路径、运行时生成文件和 `.DS_Store` 不进入仓库的正式源代码提交。
 
-插件 manifest 名为 `ai-sow`，当前 Beta 为 `0.1.0-beta.1`、首个稳定版本为 `0.1.0`，配套 SOW 标准为 `1.3`，并提供 Apache-2.0、关键词和规范化的 install-surface 文案。未知的 GitHub URL、主页、隐私条款和服务条款不使用占位值；远程仓库建立后再增加真实 HTTPS 地址。`defaultPrompt` 使用最多三个短字符串组成的数组。
+插件 manifest 名为 `ai-sow`，已发布 Beta 为 `0.1.0-beta.1`、目标稳定版本为 `0.1.0`，配套 SOW 标准为 `1.3`，并提供 Apache-2.0、关键词和规范化的 install-surface 文案。仓库和安装入口使用已建立的 GitHub 地址；未提供的主页、隐私条款和服务条款不使用占位值。`defaultPrompt` 使用最多三个短字符串组成的数组。
 
 ## 安装后运行模型
 
