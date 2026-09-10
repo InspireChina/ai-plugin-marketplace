@@ -240,6 +240,8 @@ builder 真实 ingest/inspect/analysis/check/render，并输出准备包引用�
 
 ## I1.4 观测接口
 
+被协议 Schema 拒绝或不可调度的请求，仅在已有安全 project/request 身份可验证时记录失败工具 span；无效 payload 不落盘，这两类拒绝请求身份未知/越界时不为观测创建目录。首次有效来源登记仍观察实际工具边界。外层信封 Schema 通过不等于 payload 可执行，原业务响应和诊断不变。
+
 CLI 的五个顶层字段与退出码保持原合同。合法业务信封的实际执行在 `result.observation`
 附带 `{recording, gaps, report_path}`：recording 为 recorded/degraded，gaps 为去重后的稳定缺口码，
 report_path 为 `.ai-sow-lite/telemetry/<request_id>/report.json` 或 null。它只描述观测；

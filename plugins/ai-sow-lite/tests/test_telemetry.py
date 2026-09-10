@@ -97,6 +97,326 @@ def request(project, **extra):
                 payload=dict(view='current', selector={}), **extra)
 
 
+def existing_request(project, entrypoint='generate'):
+    from ai_sow_lite.project import ensure_request, initialize
+    template = Path(__file__).resolve().parents[1] / 'assets/sow-template.xlsx'
+    initialize(project, 'new', template)
+    ensure_request(project, REQUEST, entrypoint)
+    return request(project)
+
+
+def tool_events(project):
+    return [json.loads(line) for path in (project / '.ai-sow-lite/telemetry').glob('*/events/*/*.jsonl')
+            for line in path.read_bytes().splitlines()]
+
+
+@pytest.mark.parametrize('context', [dict(execution_id=EXECUTION, activity_ids=[ACTIVITY], slice_ids=[PRODUCER]),
+                                   dict(execution_id='/PRIVATE/execution'), None])
+def test_invalid_payload_validates_observation_context_independently(tmp_path, context):
+    from ai_sow_lite.cli import execute, exit_code
+    req = existing_request(tmp_path)
+    req['payload']['unapproved'] = 'PRIVATE payload'
+    expected = execute(req)
+    previous_events = {e['event_id'] for e in tool_events(tmp_path)}
+    req['observation_context'] = context
+
+    response = execute(req)
+
+    assert response['diagnostics'] == expected['diagnostics']
+    assert not response['ok'] and exit_code(response) == 2
+    valid_context = context is not None and context.get('execution_id') == EXECUTION
+    observation = response['result']['observation']
+    assert observation['gaps'] == ([] if valid_context else ['OBSERVATION_CONTEXT_INVALID'])
+    assert observation['recording'] == ('recorded' if valid_context else 'degraded')
+    starts = [e for e in tool_events(tmp_path)
+              if e['event_id'] not in previous_events and e['data'].get('phase') == 'start']
+    assert len(starts) == 1
+    labelled = starts[0]
+    if valid_context:
+        assert labelled['execution_id'] == EXECUTION
+        assert labelled['activity_ids'] == [ACTIVITY] and labelled['slice_ids'] == [PRODUCER]
+    else:
+        assert labelled['activity_ids'] == labelled['slice_ids'] == []
+    assert 'PRIVATE' not in json.dumps(tool_events(tmp_path)) + json.dumps(response)
+
+
+@pytest.mark.parametrize('payload_fields', [{}, {'payload': None}, {'payload': []},
+    {'payload': ['PRIVATE']}, {'payload': 'PRIVATE'}, {'payload': 7}, {'payload': True}],
+    ids=['missing', 'null', 'empty-array', 'array', 'string', 'integer', 'boolean'])
+def test_missing_or_non_object_payload_is_observed_without_changing_rejection(tmp_path, payload_fields):
+    from ai_sow_lite.cli import execute, exit_code
+    req = existing_request(tmp_path)
+    del req['payload']
+    req.update(payload_fields)
+
+    response = execute(req)
+
+    assert not response['ok'] and exit_code(response) == 2
+    assert response['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'
+    assert response['result']['observation']['recording'] == 'recorded'
+    ends = [e for e in tool_events(tmp_path) if e['data'].get('phase') == 'end']
+    assert len(ends) == 1 and ends[0]['data']['status'] == 'failed'
+    assert 'PRIVATE' not in json.dumps(tool_events(tmp_path)) + json.dumps(response)
+
+
+@pytest.mark.parametrize('operation,payload', [
+    ('ingest', {}), ('inspect', {}), ('render', {}), ('apply', {}), ('recover', {}),
+    ('ingest', dict(kind='sources', project_type='new', sources=[dict(
+        source_path='/PRIVATE/source.md', input_id=None, material_types=['prd'],
+        uses=['to-be-scope'], use_regions=[])])),
+], ids=['empty-ingest', 'empty-inspect', 'empty-render', 'empty-apply', 'empty-recover',
+        'ingest-without-entrypoint'])
+@pytest.mark.parametrize('identity_state', ['known', 'unknown-project', 'unknown-request'])
+def test_unsupported_payload_observation_requires_existing_identity(
+        tmp_path, monkeypatch, operation, payload, identity_state):
+    from ai_sow_lite.cli import execute, exit_code
+    project = tmp_path / 'project'
+    req = request(project) if identity_state == 'unknown-project' else existing_request(project)
+    if identity_state == 'unknown-request':
+        req['request_id'] = EXECUTION
+    req.update(operation=operation, payload=payload,
+               observation_context=dict(execution_id=EXECUTION, activity_ids=[ACTIVITY]))
+    assert schema_validator('protocol').is_valid(req)  # These are schema-compatible legacy forms.
+    before = {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    paths_before = set(tmp_path.rglob('*'))
+    ticks = iter([100, 160])
+    monkeypatch.setattr('time.monotonic_ns', lambda: next(ticks))
+
+    response = execute(req)
+
+    assert not response['ok'] and exit_code(response) == 2
+    assert response['diagnostics'] == [dict(code='OPERATION_UNSUPPORTED',
+        target=dict(path=None, object_id=None, field='operation'),
+        message='尚未实现此操作，或没有提供受支持的 payload 形式。', preserved_paths=[])]
+    if identity_state == 'known':
+        assert response['result']['observation']['recording'] == 'recorded'
+        events = tool_events(project)
+        assert len(events) == 3
+        ends = [e for e in events if e['data'].get('phase') == 'end']
+        assert len(ends) == 1 and ends[0]['data']['status'] == 'failed'
+        assert ends[0]['execution_id'] == EXECUTION and ends[0]['activity_ids'] == [ACTIVITY]
+        assert metric(report(project), 'tool_duration_ns')['value'] == 60
+    else:
+        assert set(tmp_path.rglob('*')) == paths_before
+        assert response['result'] == {}
+    assert {p: p.read_bytes() for p in tmp_path.rglob('*')
+            if p.is_file() and 'telemetry' not in p.relative_to(tmp_path).parts} == before
+
+
+def test_invalid_telemetry_query_records_rejection_without_recursive_reporting(tmp_path):
+    from ai_sow_lite.cli import execute
+    req = existing_request(tmp_path)
+    req['payload'] = dict(view='telemetry', selector={'request_id': REQUEST}, unapproved=True)
+
+    response = execute(req)
+
+    assert response['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'
+    assert response['result'].get('observation', {}).get('recording') == 'recorded'
+    assert len(tool_events(tmp_path)) == 3
+    del req['payload']['unapproved']
+    inspected = execute(req)
+    assert inspected['ok']
+    assert len(tool_events(tmp_path)) == 3
+
+
+def test_invalid_source_fields_for_existing_request_record_one_redacted_failed_span(tmp_path, monkeypatch):
+    from ai_sow_lite.cli import execute, exit_code
+    req = existing_request(tmp_path)
+    req.update(operation='ingest', payload=dict(kind='sources', entrypoint='generate', project_type='new',
+        sources=[dict(source_path='/PRIVATE/source.md', input_version_id=EXECUTION,
+                      material_types=['prd'], uses=['to-be-scope'], use_regions=[])]))
+    before = {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    ticks = iter([100, 160])
+    monkeypatch.setattr('time.monotonic_ns', lambda: next(ticks))
+
+    response = execute(req)
+
+    assert not response['ok'] and exit_code(response) == 2
+    assert response['diagnostics'] == [dict(code='PROTOCOL_INVALID',
+        target=dict(path=None, object_id=None, field=None),
+        message='请求信封或操作字段不符合合同。', preserved_paths=[])]
+    assert response['result'].get('observation') == dict(recording='recorded', gaps=[],
+        report_path=f'.ai-sow-lite/telemetry/{REQUEST}/report.json')
+    events = tool_events(tmp_path)
+    assert len(events) == 3
+    start, end = sorted((e for e in events if e['event_type'] == 'lifecycle'), key=lambda e: e['sequence'])
+    assert start['data']['phase'] == 'start' and end['data']['phase'] == 'end'
+    assert end['data']['status'] == 'failed'
+    assert start['producer_id'] == end['producer_id'] == start['data']['clock_domain'] == end['data']['clock_domain']
+    assert start['data']['span_id'] == end['data']['span_id']
+    measured = report(tmp_path)
+    assert metric(measured, 'tool_duration_ns')['value'] == 60
+    assert metric(measured, 'tool_duration_ns')['basis']['kind'] == 'same_process_monotonic'
+    assert metric(measured, 'total_tokens')['value'] is None
+    # Replaying durable events or rebuilding a report is not a second invocation.
+    append(tmp_path, *events)
+    assert report(tmp_path)['event_count'] == 3
+    assert metric(report(tmp_path), 'tool_duration_ns')['value'] == 60
+    assert {p: p.read_bytes() for p in tmp_path.rglob('*')
+            if p.is_file() and 'telemetry' not in p.relative_to(tmp_path).parts} == before
+    assert all(b'PRIVATE' not in p.read_bytes() and b'input_version_id' not in p.read_bytes()
+               for p in (tmp_path / '.ai-sow-lite/telemetry').rglob('*') if p.is_file())
+
+
+@pytest.mark.parametrize('field,value', [
+    ('protocol_version', '9.0'), ('protocol_version', None),
+    ('operation', 'PRIVATE'), ('operation', None),
+    ('request_id', '../outside'), ('request_id', REQUEST + '\n'),
+    ('request_id', 'ABCDEFAB-0000-4000-8000-000000000001'),
+    ('request_id', '00000000-0000-1000-8000-000000000001'),
+    ('request_id', REQUEST.replace('-', '')), ('request_id', None),
+    ('project_path', ''), ('project_path', '  '), ('project_path', None),
+    ('project_path', '/PRIVATE/invalid\x00path'),
+])
+def test_invalid_envelope_identity_never_starts_observation(tmp_path, field, value):
+    from ai_sow_lite.cli import execute, exit_code
+    req = existing_request(tmp_path)
+    req.update(payload=None, observation_context=dict(execution_id=EXECUTION))
+    req[field] = value
+    before = {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+
+    response = execute(req)
+
+    expected_code = 'VERSION_INCOMPATIBLE' if field == 'protocol_version' and value == '9.0' else 'PROTOCOL_INVALID'
+    assert not response['ok'] and exit_code(response) == 2
+    assert response['diagnostics'][0]['code'] == expected_code
+    assert response['result'] == {}
+    assert not (tmp_path / '.ai-sow-lite/telemetry').exists()
+    assert {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()} == before
+
+
+@pytest.mark.parametrize('damage', [
+    'unknown-request', 'missing-project-path', 'project-path-file', 'other-project',
+    'missing-project-record', 'invalid-project-record', 'missing-request-record',
+    'invalid-request-record', 'mismatched-request-id', 'mismatched-entrypoint',
+    'ambiguous-entrypoint', 'request-record-directory',
+    'project-root-link', 'project-record-link', 'request-record-link',
+])
+def test_invalid_payload_requires_existing_safe_matching_project_and_request(tmp_path, damage):
+    from ai_sow_lite.cli import execute
+    project = tmp_path / 'project'
+    req = existing_request(project)
+    req['payload'] = ['PRIVATE']
+    root = project / '.ai-sow-lite'
+    marker = root / 'work/generate' / REQUEST / 'request.json'
+    project_record = root / 'project.json'
+    if damage == 'unknown-request':
+        req['request_id'] = EXECUTION
+    elif damage == 'missing-project-path':
+        req['project_path'] = str(tmp_path / 'missing')
+    elif damage == 'project-path-file':
+        req['project_path'] = str(project_record)
+    elif damage == 'other-project':
+        other = tmp_path / 'other'
+        other.mkdir()
+        req['project_path'] = str(other)
+    elif damage == 'missing-project-record':
+        project_record.unlink()
+    elif damage == 'invalid-project-record':
+        project_record.write_bytes(b'{"schema_version":"9.0"}')
+    elif damage == 'missing-request-record':
+        marker.unlink()
+    elif damage == 'invalid-request-record':
+        marker.write_bytes(b'{"PRIVATE":')
+    elif damage in ('mismatched-request-id', 'mismatched-entrypoint', 'ambiguous-entrypoint'):
+        record = json.loads(marker.read_bytes())
+        if damage == 'mismatched-request-id':
+            record['request_id'] = EXECUTION
+        else:
+            record['entrypoint'] = 'clarify'
+        if damage == 'ambiguous-entrypoint':
+            marker = root / 'work/clarify' / REQUEST / 'request.json'
+            marker.parent.mkdir(parents=True)
+        marker.write_bytes(canonical_json_bytes(record))
+    elif damage == 'request-record-directory':
+        marker.unlink()
+        marker.mkdir()
+    else:
+        target = {'project-root-link': root, 'project-record-link': project_record,
+                  'request-record-link': marker}[damage]
+        outside = tmp_path / 'outside'
+        target.rename(outside)
+        target.symlink_to(outside, target_is_directory=outside.is_dir())
+    before = {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    paths_before = set(tmp_path.rglob('*'))
+
+    response = execute(req)
+
+    assert response['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'
+    assert response['result'] == {}
+    assert set(tmp_path.rglob('*')) == paths_before
+    assert {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()} == before
+
+
+@pytest.mark.parametrize('entrypoint', ['generate', 'clarify'])
+def test_initial_valid_ingest_and_later_rejection_both_keep_observation(tmp_path, entrypoint):
+    from ai_sow_lite.cli import execute
+    project = tmp_path / 'new-project'
+    req = request(project)
+    source = Path(__file__).parent / 'fixtures/generate/prd.md'
+    req.update(operation='ingest', payload=dict(kind='sources', entrypoint=entrypoint, project_type='new',
+        sources=[dict(source_path=str(source), input_id=None, material_types=['prd'],
+                      uses=['to-be-scope'], use_regions=[])]))
+    assert not project.exists()
+
+    registered = execute(req)
+
+    assert registered['ok'] and registered['result']['observation']['recording'] == 'recorded'
+    assert len(tool_events(project)) == 3
+    req['payload'] = None
+    rejected = execute(req)
+    assert rejected['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'
+    assert rejected['result']['observation']['recording'] == 'recorded'
+    ends = [e for e in tool_events(project) if e['data'].get('phase') == 'end']
+    assert sorted(e['data']['status'] for e in ends) == ['failed', 'succeeded']
+    assert len(tool_events(project)) == 6
+
+
+@pytest.mark.parametrize('mode', ['file', 'symlink', 'disk_full'])
+def test_invalid_payload_observation_failure_keeps_original_business_diagnostic(tmp_path, monkeypatch, mode):
+    from ai_sow_lite import cli, telemetry
+    req = existing_request(tmp_path)
+    req['payload'] = 'PRIVATE'
+    area = tmp_path / '.ai-sow-lite/telemetry'
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    if mode == 'file':
+        area.write_bytes(b'obstruction')
+    elif mode == 'symlink':
+        area.symlink_to(outside, target_is_directory=True)
+    else:
+        def fail(*args, **kwargs):
+            raise OSError('PRIVATE disk full')
+        monkeypatch.setattr(telemetry, 'append_event', fail)
+
+    response = cli.execute(req)
+
+    assert not response['ok'] and cli.exit_code(response) == 2
+    assert response['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'
+    assert response['result']['observation'] == dict(recording='degraded',
+        gaps=['TELEMETRY_RECORDING_FAILED'], report_path=None)
+    assert not list(outside.iterdir())
+    assert 'PRIVATE' not in json.dumps(response)
+
+
+def test_invalid_payload_after_cancellation_does_not_reclassify_or_change_state(tmp_path):
+    from ai_sow_lite.cli import execute
+    from ai_sow_lite.project import cancel_request, recover_request
+    req = existing_request(tmp_path)
+    cancel_request(tmp_path, REQUEST, 'generate')
+    before = {p: p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    req['payload'] = None
+
+    response = execute(req)
+
+    assert response['diagnostics'][0]['code'] == 'PROTOCOL_INVALID'
+    ends = [e for e in tool_events(tmp_path) if e['data'].get('phase') == 'end']
+    assert len(ends) == 1 and ends[0]['data']['status'] == 'failed'
+    assert recover_request(tmp_path, REQUEST)['state'] == 'cancelled'
+    assert {p: p.read_bytes() for p in tmp_path.rglob('*')
+            if p.is_file() and 'telemetry' not in p.relative_to(tmp_path).parts} == before
+
+
 def lifecycle(name, phase, ns, *, span=None, parent=None, domain=PRODUCER, sequence=1, status=None):
     item = event('lifecycle', sequence, name=name, phase=phase, span_id=span or ACTIVITY,
                  parent_span_id=parent, clock_domain=domain, monotonic_ns=ns,

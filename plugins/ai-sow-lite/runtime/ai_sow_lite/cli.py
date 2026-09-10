@@ -30,12 +30,19 @@ def _failure(request, code, message, field=None):
     return _response(request, diagnostics=[diagnostic(code, field=field, message=message)])
 
 
+def _supports_payload(operation, payload):
+    """Dispatch eligibility after schema validation, shared with observation admission."""
+    return operation == 'check' or (bool(payload) and (operation != 'ingest' or 'entrypoint' in payload))
+
+
 def _execute(request):
     if isinstance(request, dict) and request.get('protocol_version') not in (None, '1.0'):
         return _failure(request, 'VERSION_INCOMPATIBLE', '未知协议版本。', 'protocol_version')
     if list(schema_validator('protocol').iter_errors(request)):
         return _failure(request, 'PROTOCOL_INVALID', '请求信封或操作字段不符合合同。')
     operation, payload = request['operation'], request['payload']
+    if not _supports_payload(operation, payload):
+        return _failure(request, 'OPERATION_UNSUPPORTED', '尚未实现此操作，或没有提供受支持的 payload 形式。', 'operation')
     if operation == 'render' and payload:
         from .workbook import render_candidate
         return _response(request, result=render_candidate(Path(request['project_path']).resolve(), request['request_id'], payload), ok=True)
@@ -63,8 +70,6 @@ def _execute(request):
             result = recover_request(project, payload['target_request_id'])
         diagnostics = result.pop('diagnostics', [])
         return _response(request, result=result, diagnostics=diagnostics, ok=not diagnostics)
-    if operation != 'check':
-        return _failure(request, 'OPERATION_UNSUPPORTED', '尚未实现此操作，或没有提供受支持的 payload 形式。', 'operation')
     project = Path(request['project_path']).resolve()
     constructed = {}
     if 'edit_path' in payload:
@@ -120,6 +125,35 @@ def _business_execute(request):
         return _failure(request, 'INTERNAL_ERROR', '工具发生未预期错误；未应用任何版本。')
 
 
+def _existing_observation_identity(request):
+    """Read-only trust check for rejected envelopes; never register or recover."""
+    from .project import checked_json, request_area, safe_path
+    try:
+        validator = schema_validator('protocol')
+        for field in ('protocol_version', 'request_id', 'project_path', 'operation'):
+            if not validator.evolve(schema=validator.schema['properties'][field]).is_valid(request.get(field)):
+                return False
+        project = Path(request['project_path']).resolve(strict=True)
+        if not project.is_dir() or not safe_path(project, '.ai-sow-lite/project.json').is_file():
+            return False
+        checked_json(project, '.ai-sow-lite/project.json', 'project')
+        matches = 0
+        for entrypoint in ('generate', 'clarify'):
+            relative = request_area(request['request_id'], entrypoint) + '/request.json'
+            path = safe_path(project, relative)
+            if not path.exists():
+                continue
+            if not path.is_file():
+                return False
+            marker = checked_json(project, relative, 'request')
+            if marker['request_id'] != request['request_id'] or marker['entrypoint'] != entrypoint:
+                return False
+            matches += 1
+        return matches == 1
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def execute(request):
     """Keep business validation/exit semantics separate from optional observation."""
     import time
@@ -128,15 +162,20 @@ def execute(request):
     if not isinstance(request, dict):
         return _business_execute(request)
     business = {k: v for k, v in request.items() if k != 'observation_context'}
-    if next(schema_validator('protocol').iter_errors(business), None):
+    business_valid = schema_validator('protocol').is_valid(business)
+    dispatchable = business_valid and _supports_payload(business['operation'], business['payload'])
+    if not dispatchable and not _existing_observation_identity(business):
         return _business_execute(business)
     gaps = []
     if 'observation_context' in request:
-        if next(schema_validator('protocol').iter_errors(request), None):
+        validator = schema_validator('protocol')
+        context_validator = validator.evolve(schema=validator.schema['properties']['observation_context'])
+        if not context_validator.is_valid(request['observation_context']):
             gaps.append('OBSERVATION_CONTEXT_INVALID')
         else:
             business['observation_context'] = request['observation_context']
-    if business['operation'] == 'inspect' and business['payload'].get('view') == 'telemetry':
+    if (business_valid and business['operation'] == 'inspect'
+            and business['payload'].get('view') == 'telemetry'):
         response = _business_execute(business)  # Reporting never recursively observes itself.
         if gaps:
             observation = response['result'].setdefault('observation', dict(recording='degraded', gaps=[],

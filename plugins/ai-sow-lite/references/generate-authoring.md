@@ -140,6 +140,11 @@ targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象�
 
 使用 Client 时，直接在已有 Python 调用中执行 `client.mark(name, phase)`，复用其当前 observation_context；request 根标签自动保持为空。示例及跨轮身份见 [直接活动埋点](python-client.md#直接活动埋点)。
 
+活动起点放在开始读取或构思之前的那次工具调用，终点放在成果形成之后。例如第一次调用先 `client.mark("outline", "start")` 再读取已选主题；Agent 在随后回合组织骨架，必要工具继续携带同一 activity_id；保存实际骨架后才 `client.mark("outline", "end")`。跨 Python 进程复建 Client 时沿用保存的 request_id/execution_id/activity_ids，不为每次调用另起活动。仅把 start/end 包在最终 `save()` 周围会漏掉分析用时，不算完整活动观测。
+
+Clarify 的 input_analysis/design_discussion 同理：开始读取反馈/对象前标开始，具体方案检查并形成可展示内容后标结束；展示时记录 useful_feedback 和实际 user_wait/start，收到答复后记录 user_wait/end。没有对应起点或明确关联就保留缺口，不把后来的响应 token 按活动时长比例切分。
+
+
 仅需独立命令时，使用同一隔离 Python、仅在本次进程设置上述 PYTHONPATH，执行 `-m ai_sow_lite.telemetry --project "<project-root>" --mark-file "<mark-file>"`。多个恰好同处的边界可与已有工具命令合在一次宿主调用中执行；标记不能移动到事后伪造起点。已有业务信封附 `observation_context={"execution_id":"<execution-id>","activity_ids":["<activity-id>"],"slice_ids":[]}`，保持当前活动/片标签。纯语义边界才补轻量mark，不逐思考或逐 Task 埋点。
 
 以下是请求根标记：request/start 和 request/end 的 `activity_ids=[]`、`slice_ids=[]`，同一执行段的 request_id/execution_id 保持不变；结束时只把 phase 改为 end，不附当时的活动或片ID。大活动/片另用表中对应的 name/phase 标记，附真实 activity_ids/slice_ids，并在该活动起止间保持这些ID一致；业务 observation_context 仍填实际活动/片。
