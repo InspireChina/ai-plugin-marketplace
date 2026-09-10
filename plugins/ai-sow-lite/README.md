@@ -38,7 +38,7 @@ Excel 只保留原四张表，完整验收条件直接放在“验收条件”�
 
 ## 当前交付范围
 
-完整生成与有限修改已有真实输入、Office及文件续接证据；性能仍是明确限制。当前典型/长例Generate约13分钟，局部改稿方案约5—9分钟，均为已记录宿主处理轮次，不含全部用户等待；没有速度SLA或相对旧版提速比例。逐活动token精确归属仍未解决。完整数据、口径及一次定向读取对照见[性能记录](docs/validation/performance.md)。
+完整生成与有限修改已有真实输入、Office及文件续接证据；性能仍是明确限制。此前典型/长例Generate约13分钟，局部改稿方案约5—9分钟，见[性能记录](docs/validation/performance.md)。最新[Greenfield → Brownfield 串联实测](docs/validation/E2E-greenfield-brownfield.md)完成两期生成、方案修订、部分采纳和重复答复：29项检查中26通过、2失败、1部分通过，保留已采用M的问题闭合和长AC可见性缺陷。该案例两次Generate约22.5/16.9分钟、两次Clarify约12.4/9.4分钟，均为原生处理时间，不含全部用户等待；逐活动token仍未知，没有速度SLA或相对旧版提速比例。
 
 声明范围以[宿主支持](docs/validation/host-support.md)为准：当前实际业务验证基于macOS本地目录及Codex桌面显式加载副本；Claude认证失败，Windows/Linux和同步/网络盘未验证。仓库双marketplace目录已准备预发布安装入口，本次未执行宿主安装。复制包本身不依赖仓库README或其他插件。
 

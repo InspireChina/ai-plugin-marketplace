@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 完成提前冻结资料的 Greenfield → Brownfield 串联 E2E，含两次 generate、两次 clarify 及重复答复；实际四份 Excel、29项检查、时间和原生 token 已审查。26通过、2失败、1部分通过，保留复杂度问题闭合、长AC裁切和观测缺口，未修改产品或模板掩盖结果。见[实测报告](docs/validation/E2E-greenfield-brownfield.md)及[指标](docs/validation/E2E-greenfield-brownfield-metrics.json)。
+
 - 明确用户已确认的 Story 备注口径及来源：通常为空，仅写有依据且 AC 未表达的必要交付边界说明，以及实际目标的待确认事项与当前处理。Generate/Clarify 共用专业规则，答复后的结论落回相应业务字段；Task 问题不自动上卷。复用既有模型与投影，不改运行时、模板或增加检查轮次。见 [备注规则](references/generate-slices.md#备注与问题的目标)。
 
 - I6.3 在 Task 备注展示非新建工作方式、非 M 复杂度的已有判断原因，合并相同正文；待确认项仍位于首段并优先显示“待确认”，只有原因不改变校验状态。复用 classification_basis，不新增业务字段或判断门禁。模板只改 Task A2 指引，公式不变；兼容两个已知旧模板，render 修订为 v7。见 [验证与边界](docs/validation/I6-task-note-reasons.md)。
