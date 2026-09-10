@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 明确用户已确认的 Story 备注口径及来源：通常为空，仅写有依据且 AC 未表达的必要交付边界说明，以及实际目标的待确认事项与当前处理。Generate/Clarify 共用专业规则，答复后的结论落回相应业务字段；Task 问题不自动上卷。复用既有模型与投影，不改运行时、模板或增加检查轮次。见 [备注规则](references/generate-slices.md#备注与问题的目标)。
+
 - I6.3 在 Task 备注展示非新建工作方式、非 M 复杂度的已有判断原因，合并相同正文；待确认项仍位于首段并优先显示“待确认”，只有原因不改变校验状态。复用 classification_basis，不新增业务字段或判断门禁。模板只改 Task A2 指引，公式不变；兼容两个已知旧模板，render 修订为 v7。见 [验证与边界](docs/validation/I6-task-note-reasons.md)。
 
 - 根据 I6.1 后反馈恢复原四表：AC 全文留 D，正常备注空，open 问题及 current_handling 以“待确认：”落实际目标行，校验优先显示待确认；resolved/superseded 仅留项目历史，无 Story 的未拆明父项追加实际范围行。取消两张说明表及新 details.md 输出，v1 合同不变、details=[]，render 修订为 v6；单格 32767 UTF-16 超限返回字段诊断，行高最多 409 点，不引入摘要或 AC 数量门禁。模板仅改校验原型/A2 说明，新 SHA `7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919`；唯一旧 `6abc55d` 在内存兼容，项目模板和实际 hash 保留，其他模板拒绝。专业规则集中 generate-slices、clarify 复用；初步根因与证据限制见 [AD33](docs/design/13-self-review-and-decisions.md#ad33--四表原列与验收成果)，样例修订不冒充 fresh generate 评测。

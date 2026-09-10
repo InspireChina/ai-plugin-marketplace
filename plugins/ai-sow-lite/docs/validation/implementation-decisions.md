@@ -119,3 +119,9 @@
 | 决策 | 采用方案 | 依据与影响 |
 |---|---|---|
 | AD34 / I6.3 | 用既有 classification_basis 投影非新建/非 M 的原因，open 问题仍居首；完全相同正文合并维度标签 | 用户明确要求原因和问题出现在 Task 备注。专业原因继续由 Agent 依据材料或用户决定编写，代码只选取和排版，不新增字段、搜索或语义门禁。模型 notes 不重复原因，G 列可反查 classification_basis。已有合并依据原文保留，不用代码按句切分原因。仅更新模板 Task A2 说明，公式原样保留；v6 模板继续受支持，旧预览重投影沿既有一次额度，历史 applied 不变。详见 [本增量验证](I6-task-note-reasons.md)。 |
+
+### Story 备注口径补充（用户确认）
+
+用户确认 Story 备注通常为空，只包含必要且有明确依据的交付边界说明，以及实际影响该 Story 的问题和当前处理。专业内容、来源及答复后的去向集中在 [generate-slices](../../references/generate-slices.md#备注与问题的目标)，Clarify 复用；[D06](../design/detailed/D06-excel-projection-and-delivery.md#story-备注内容与来源) 记录字段到 Excel 的衔接。
+
+实施取舍是复用现有 `Story.notes`、问题 targets 及投影机制，只细化编写指引。Task 与 Story 同受影响时显式绑定两个目标，不做自动问题上卷；不新增字段、模板变更、内容分类算法或检查轮次。本次文档明确规则，不代表已经证明新指引的端到端生成效果。

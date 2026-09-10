@@ -45,7 +45,7 @@ generate/clarify 按单人串行使用。生效前保留最小预期版本核对
 | Story → Feature.title | 01 / B / 子需求 | 按父关系取值 |
 | Story.title | 01 / C / 故事 | 第 3 节的显示名 |
 | Story.acs | 01 / D / 验收条件 | 完整验收正文逐条编号换行；无 AC 时真正留空，编号不代替 AC 身份 |
-| Story.notes、目标 open 问题 | 01 / E / 备注 | 正常为空；必要备注及问题按第 4 节投影，不写回模型 notes |
+| Story.notes、目标 open 问题 | 01 / E / 备注 | 正常为空；已确认且必要的交付边界说明来自 notes，问题另按第 4 节合并，不写回模型 notes |
 | Task.story_id | 02 / A / 所属故事 | 使用同版父 Story 显示名，禁止再次独立拼名 |
 | Task.name | 02 / B / 任务名称 | 第 3 节的显示名 |
 | Task.work_type_name | 02 / C / 工作类型名称 | 精确目录名或合法空白 |
@@ -87,13 +87,13 @@ generate/clarify 按单人串行使用。生效前保留最小预期版本核对
 
 ## 4. open 问题只在实际目标行显示
 
-由同版 `pending-items.json` 取 open 问题，将真实 `question` 和 `current_handling` 完整写入目标行备注，以“待确认：”开始；有必要的其他备注接在其后。多个问题逐项表达，不用 UUID 或“有待确认项”替代正文。resolved/superseded 不投影到 Excel，状态、依据、采用答复与决定仅留项目 JSON/MD 历史；无问题且无必要说明时备注真正为空。
+由同版 `pending-items.json` 取 open 问题，将真实 `question` 和 `current_handling` 完整写入目标行备注，以“待确认：”开始；有必要的其他备注接在其后。多个问题逐项表达，不用 UUID 或“有待确认项”替代正文。resolved/superseded 问题不投影到 Excel，其关闭过程、依据、完整采用答复与决定记录留项目 JSON/MD 历史；仍影响当前交付的结论由 Agent 更新到对应业务字段。无问题且无必要说明时备注真正为空。
 
 | 目标 | Excel 位置与范围 |
 |---|---|
 | Story | 本 Story 的 E 备注 |
 | AC | 所属 Story 的 E 备注，明确标记 D 中第几条 AC；D 保留全部已知 AC |
-| Task / Task 字段 | 仅本 Task 的 G 备注，不把该问题上卷到 Story |
+| Task / Task 字段 | 仅本 Task 的 G 备注，不自动上卷；若影响 Story 范围或 AC，由 Agent 显式追加相应 target |
 | Epic/Feature 且有 Story | 仅实际受影响的 Story 行；专业 targets 按真实影响绑定，不扩散到无关 Story |
 | 未拆明 Epic/Feature 且无 Story | 在 01 表正常 Story 行之后追加范围行，仅填实际 Epic/Feature 与 E 中问题；不存在的层级、Story、AC、人天留空，不伪造 Story/Task |
 
@@ -102,6 +102,12 @@ generate/clarify 按单人串行使用。生效前保留最小预期版本核对
 复杂度未知仍为 Task E=M+具体问题；候选实例未定仍为新建+问题。`unestimated_work` 仅说明未计量的业务范围，不参与金额/SIT/UAT 计算。输入不足走补料出口，不能靠范围行把基础不足伪装成可交付 SOW。
 
 `pending-items.md` 保留所有状态及稳定 ID 锚点，供项目历史和机器定位；Excel 阅读不依赖该文件。
+
+### Story 备注内容与来源
+
+专业编写规则集中在 [备注与问题的目标](../../../references/generate-slices.md#备注与问题的目标)，Generate 与 Clarify 共用。已确认且必要的范围、责任或外部前提说明，由 Agent 根据 PRD/HLD 明确陈述或用户已确认答复写入 `Story.notes`；可观察的验收成果写入 AC。未知来自输入分析、拆分或修改反馈，保存为独立问题并绑定实际 Story/AC；投影器只组合 `notes` 与目标 open 问题，不识别责任、不补写前提，也不从 Task 自动推断 Story 是否待确认。
+
+原有字段和投影机制已经承载上述分工；内容取舍属于 Agent 的专业判断，不新增语义门禁或额外检查轮次。仅有必要已确认说明的 Story 沿用普通校验，有目标 open 问题的 Story 显示“待确认”。安全别名所需原名仍按第 3 节完整保留。
 
 ### Task 判断原因
 
@@ -226,7 +232,7 @@ flowchart TD
 | 通配符、criteria 运算符、大小写/Unicode 同名、长名、移动/删除 | 机械别名唯一且可反查，所有父引用一致，COUNTIF/SUMIF 原公式未改，完整原名可达 |
 | 0/1、60/61 个 Story/范围行，200/201 Task | 容量内不缩表，超容量按原型扩行，末行/数组 ref/校验/保护/打印一致 |
 | 长 AC、备注、任务列表及公式起始文本 | 原列全文、32767 UTF-16 边界、409 点行高上限及字段诊断；公式列不被正文覆盖 |
-| 无问题、多个目标及问题状态变化 | 无必要说明时备注留空；open 问题+处理以待确认前缀落目标行；AC 标条目，Task 不上卷；resolved/superseded 仅项目历史 |
+| 无问题、多个目标及问题状态变化 | 无必要说明时备注留空；open 问题+处理以待确认前缀落目标行；AC 标条目，Task 不自动上卷，显式多目标各自展示；resolved/superseded 问题仅项目历史 |
 | 新模板、已知旧模板与未知 hash | 新模板定向变更校验/说明；旧模板内存兼容且原字节/hash 不变；未知模板拒绝，不重建项目 |
 | 旧 applied 与旧 prepared | 保留历史版；旧准备包不得绕过 v7 判断原因及四表原列核验，失败历史和额度不重置 |
 | Office 保存、重开、缓存或 Table/保护丢失 | 检查最终文件和原生兼容性；原样缓存保存，不以金额结果替代文件证据 |
