@@ -2,11 +2,11 @@
 
 所有重要的用户可见变更都记录在此。
 
-## AI SOW Lite 0.1.0-alpha.1 - 未发布
+## AI SOW Lite 0.1.0-alpha.1 - 2026-09-11
 
 - 新增独立 Lite 插件：从 PRD/HLD、往期 SOW 和可选原型生成四表 SOW Excel，通过 clarify 讨论并应用有限修改。
 - 覆盖业务、技术及交付范围；简明 AC 与影响估算的待确认直接写入对应行，计算使用模板。
-- 已完成本地 Codex 安装、生成与改稿验证；首版仍未公开发布，支持范围以 macOS 本地目录及可用 LibreOffice 为基础。
+- 发布首个 Alpha 试用版，可从远端 marketplace 安装；已完成本地 Codex 安装、生成与改稿验证，支持范围以 macOS 本地目录及可用 LibreOffice 为基础。
 - [Lite 版本说明](plugins/ai-sow-lite/CHANGELOG.md)汇总能力，[支持说明](plugins/ai-sow-lite/docs/support.md)记录限制；阶段记录归档，发布入口不再混入开发日记。
 
 ## 0.1.0-beta.1 - 未发布

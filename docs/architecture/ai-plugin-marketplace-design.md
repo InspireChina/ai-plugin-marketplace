@@ -222,4 +222,4 @@ codex plugin add ai-sow@ai-plugin-marketplace
 
 Lite遵守相同自包含边界，拥有自己的runtime、Skill、contracts、assets、pyproject/uv.lock及LICENSE/NOTICE。其内部流程与旧AI SOW分别维护，不复用旧Owner门禁或跨插件运行文件。根目录只登记插件和执行仓库验证，不能成为插件业务依赖。
 
-Lite 已完成独立副本及本地 marketplace 安装后的生成、改稿验证，当前尚未公开发布。用户入口为 [Lite README](../../plugins/ai-sow-lite/README.md)，实际支持范围与限制见 [支持说明](../../plugins/ai-sow-lite/docs/support.md)，阶段事实集中到 [验证摘要](../../plugins/ai-sow-lite/docs/validation/README.md)。
+Lite 首个 Alpha 版本通过远端 marketplace 发布，版本 tag 使用 `ai-sow-lite-v<version>`，避免与其他插件混淆。用户入口为 [Lite README](../../plugins/ai-sow-lite/README.md)，实际支持范围与限制见 [支持说明](../../plugins/ai-sow-lite/docs/support.md)，阶段事实集中到 [验证摘要](../../plugins/ai-sow-lite/docs/validation/README.md)。每次发布的精确提交和远端安装验证结果记录在对应 GitHub Release 中。

@@ -1,8 +1,8 @@
 # 版本说明
 
-## 0.1.0-alpha.1 — 未发布
+## 0.1.0-alpha.1 — 2026-09-11
 
-首个 AI SOW Lite 试用版。Lite 独立安装，提供 `generate` 与 `clarify` 两个入口。
+首个 AI SOW Lite 试用版。Lite 独立安装，提供 `generate` 与 `clarify` 两个入口。可从远端 marketplace 安装；发布与安装验证记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。
 
 ### 主要能力
 

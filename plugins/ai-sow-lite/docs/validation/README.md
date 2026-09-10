@@ -1,12 +1,12 @@
 # 验证摘要
 
-面向 `0.1.0-alpha.1` 的发布准备，当前产品基线为 `08f01ef`。这是验证入口，不是插件运行步骤。安装、生成、局部改稿和 Excel 已有实际证据；当前仍未公开发布。
+面向 `0.1.0-alpha.1`，业务实现基线为 `08f01ef`，发布文档整理基线为 `d5cde4f`。这是验证入口，不是插件运行步骤。安装、生成、局部改稿和 Excel 已有实际证据；最终发布提交、发布前回归与远端安装结果统一记录在 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。
 
 ## 验证结果与边界
 
 | 能力 | 已有结果 | 证据与限制 |
 |---|---|---|
-| 独立安装与入口 | 本地 marketplace 安装、首次依赖准备、原生发现两个 Skill，并完成 generate → clarify | [安装联合验证](../archive/validation/I9-release-smoke.md)；基于 macOS 和已记录宿主版本，未验证远端发布更新 |
+| 独立安装与入口 | 本地 marketplace 安装、首次依赖准备、原生发现两个 Skill，并完成 generate → clarify | [安装联合验证](../archive/validation/I9-release-smoke.md)；基于 macOS 和已记录宿主版本。远端安装结果单独记录在上述 Release，不将本地证据等同于远端验证 |
 | 首稿生成 | 已覆盖业务、技术、交付三类范围，以及公共单计、未知 M 和输入澄清 | [Generate 验证](../archive/validation/I2-generate.md)、[两期串联](../archive/validation/I7-final-e2e.md)；保留首跑错误和局部修正，不承诺首稿免 review |
 | 局部修改 | 明确采用 M、部分答复、重复意见、新会话续接及历史版本保护已有实测 | [Clarify 验证](../archive/validation/I3-clarify.md)、[安装后改稿](../archive/validation/I9-release-smoke.md) |
 | Excel | 四张原表、完整 AC 原列交付、目标行备注及模板公式；真实 Office 重算、结构与缓存复读 | [四表交付](../archive/validation/I6-inline-acceptance.md)、[Task 判断原因](../archive/validation/I6-task-note-reasons.md)、[近期定向验证](../archive/validation/I10-reference-gaps-and-skills.md) |

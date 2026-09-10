@@ -1,6 +1,6 @@
 # 支持与限制
 
-适用于 `0.1.0-alpha.1`。当前仍处于发布准备，尚未公开发布；以下区分已验证能力和未验证范围。
+适用于首个 Alpha 试用版 `0.1.0-alpha.1`；以下区分已验证能力和未验证范围。远端发布与安装验证记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。
 
 ## 运行环境
 
@@ -28,7 +28,7 @@
 
 | 情况 | 如何处理 |
 |---|---|
-| 找不到 Lite 入口 | 核对所选 marketplace 快照是否包含 Lite、插件是否已安装；当前远端尚未发布 |
+| 找不到 Lite 入口 | 刷新 Git marketplace 快照，核对 Lite 是否已安装并启用；安装后在新会话使用入口 |
 | 首次依赖准备失败 | 按诊断检查网络和插件目录权限，修正后在原项目继续 |
 | `BOOTSTRAP_PATH_UNSAFE` | 插件工具根目录为符号链接或重解析点；使用真实安装目录，不绕过目录保护 |
 | 缺少 LibreOffice | 安装或提供可用引擎后继续；候选会保留，缺引擎时没有可用的新 Excel |

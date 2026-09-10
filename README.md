@@ -11,7 +11,7 @@
 | [AI SOW Lite](plugins/ai-sow-lite/README.md) | 0.1.0-alpha.1（预发布） | 从 PRD、HLD 与往期 SOW 生成本期首版 Excel、摘要和待确认事项，再按确认意见作有限修改。 |
 
 Lite 提供 `generate`、`clarify` 两个入口，使用独立的 `.ai-sow-lite/` 项目数据，
-不需要安装 AI SOW。当前为首个试用版的发布准备，尚未公开发布；安装与使用见 [Lite README](plugins/ai-sow-lite/README.md)。
+不需要安装 AI SOW。首个 Alpha 试用版已发布；安装与使用见 [Lite README](plugins/ai-sow-lite/README.md)，版本记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。
 
 ## 支持平台
 
@@ -68,17 +68,19 @@ AI SOW 安装后八个 Skill 以 `ai-sow:<skill>` 命名空间出现，可直接
 
 ### AI SOW Lite 试用入口
 
-Lite 当前尚未公开发布。从包含该条目的本地 checkout 注册 marketplace 后，可选择安装：
+从远端 marketplace 安装 Lite：
 
 ```text
-codex plugin marketplace add /absolute/path/to/ai-plugin-marketplace
+codex plugin marketplace add InspireChina/ai-plugin-marketplace
 codex plugin add ai-sow-lite@ai-plugin-marketplace
 ```
+
+已有同名 Git marketplace 时，先执行 `codex plugin marketplace upgrade ai-plugin-marketplace` 刷新快照，再安装 Lite，无需重复注册。
 
 Claude Code 的目录中也有同名条目，但完整业务执行暂未验证：
 
 ```text
-/plugin marketplace add /absolute/path/to/ai-plugin-marketplace
+/plugin marketplace add InspireChina/ai-plugin-marketplace
 /plugin install ai-sow-lite@ai-plugin-marketplace
 ```
 

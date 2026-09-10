@@ -2,7 +2,7 @@
 
 从 PRD、高阶设计和往期 SOW 生成本期工作量估算，再根据反馈作局部修改。交付为可独立阅读的 Excel，覆盖业务、技术和交付工作。
 
-当前版本：**0.1.0-alpha.1，首个试用版，尚未公开发布**。已验证 macOS 本地目录中的 Codex 使用流程；Excel 导出需要已安装的 LibreOffice。完整边界见 [支持与限制](docs/support.md)。
+当前版本：**0.1.0-alpha.1，首个 Alpha 试用版**（[发布记录](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)）。已验证 macOS 本地目录中的 Codex 使用流程；Excel 导出需要已安装的 LibreOffice。完整边界见 [支持与限制](docs/support.md)。
 
 ## 安装与准备
 
@@ -12,15 +12,15 @@ Lite 是独立插件，不需要安装 AI SOW。先准备：
 - 可用的 LibreOffice，用于 Excel 公式重算；Microsoft Excel 可用于查看交付。
 - 首次使用时允许访问工具链下载源。插件自动准备隔离的 Python 和依赖，用户无需手工配置 Python/uv。
 
-当前可从包含 Lite 条目的本地 marketplace checkout 安装：
+从远端 marketplace 安装：
 
 ```text
-codex plugin marketplace add /absolute/path/to/ai-plugin-marketplace
+codex plugin marketplace add InspireChina/ai-plugin-marketplace
 codex plugin add ai-sow-lite@ai-plugin-marketplace
 codex plugin list
 ```
 
-公开发布后，第一条可改为 `codex plugin marketplace add InspireChina/ai-plugin-marketplace`。远端快照尚未包含 Lite 时不能通过远端安装本版本。已有同名 marketplace 指向其他来源时应先核对注册，不用重复添加来切换来源。
+已有同名 Git marketplace 时，先执行 `codex plugin marketplace upgrade ai-plugin-marketplace` 刷新快照，再安装 Lite，无需重复注册。本地开发可将注册命令的来源改为仓库 checkout 的绝对路径；已有同名 marketplace 指向其他来源时先核对注册。
 
 更新 Git marketplace 时先执行 `codex plugin marketplace upgrade ai-plugin-marketplace`，再移除并重新添加 `ai-sow-lite@ai-plugin-marketplace`；本地来源先更新 checkout。卸载插件使用 `codex plugin remove ai-sow-lite@ai-plugin-marketplace`。
 
