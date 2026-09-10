@@ -25,7 +25,8 @@ LEGACY_TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0
 SUPPORTED_TEMPLATE_HASHES = (TEMPLATE_HASH, INLINE_TEMPLATE_HASH, LEGACY_TEMPLATE_HASH)
 PROJECTOR_VERSION = 'lite-projection-v1'
 # Render retry identity is separate from the unchanged projection data contract.
-RENDER_IMPLEMENTATION_VERSION = 'lite-render-v7'
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v8'
+AC_COLUMN_WIDTH = 88
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
 XML_BAD = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]')
@@ -191,7 +192,7 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
 
     def put(sheet, row, column, value, identity, field):
         if value not in ('', None):
-            inputs[(sheet, f'{column}{row}')] = text_value(value, identity, field)
+            inputs[(sheet, f'{column}{row}')] = (text_value(value, identity, field), identity, field)
 
     note_sources = {}
 
@@ -315,13 +316,7 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
 
 def project_workbook(template, model, pending, decisions, version_id, directory, *, evidence=None, previous=None):
     """Write a pre-Office workbook and accompanying text; caller supplies checked data."""
-    book=_template(template)
-    projection,inputs,docs=_projection(model,pending,decisions,version_id,evidence,previous,layout=book)
-    _extend(book,STORY_SHEET,'SOWStoryTable',max((r - 4 for obj in projection['objects'] if obj['sheet']==STORY_SHEET for r in obj['rows']),default=0))
-    _extend(book,TASK_SHEET,'TaskTable',len(model['tasks']))
-    _fill_inputs(book,inputs)
-    _fit_task_lists(book,model,projection)
-    projection['template_hash']=hashlib.sha256(Path(template).read_bytes()).hexdigest()
+    book,projection,docs=_expected_book(template,model,pending,decisions,version_id,evidence,previous)
     directory=Path(directory); directory.mkdir(parents=True,exist_ok=True)
     book.save(directory/'projected.xlsx'); book.close()
     for name,content in docs.items():
@@ -779,6 +774,12 @@ def _baseline_aliases(project,candidate,checked):
 
 def _expected_book(template,model,pending,decisions,version,evidence,previous=None):
     book=_template(template)
+    book[STORY_SHEET].column_dimensions['D'].width=AC_COLUMN_WIDTH
+    for row in book[STORY_SHEET].iter_rows(min_row=5,min_col=4,max_col=4):
+        alignment=copy(row[0].alignment)
+        alignment.vertical='top'
+        alignment.wrap_text=True
+        row[0].alignment=alignment
     projection,inputs,docs=_projection(model,pending,decisions,version,evidence,previous,layout=book)
     _extend(book,STORY_SHEET,'SOWStoryTable',max((r - 4 for obj in projection['objects'] if obj['sheet']==STORY_SHEET for r in obj['rows']),default=0))
     _extend(book,TASK_SHEET,'TaskTable',len(model['tasks']))
@@ -797,9 +798,7 @@ def _fit_task_lists(book, model, projection):
         row = rows[story['id']]
         lines = [' '.join([names[t['id']], *(t[f] or '' for f in ('work_type_name','work_mode','complexity','integration_type'))])
                  for t in model['tasks'] if t['story_id']==story['id']]
-        height = _required_height('\n'.join(lines), _column_width(book[STORY_SHEET], f'H{row}'))
-        dimensions = book[STORY_SHEET].row_dimensions[row]
-        dimensions.height = min(409, max(dimensions.height or 15, height))
+        _fit_height(book[STORY_SHEET][f'H{row}'], '\n'.join(lines), story['id'], None)
 
 
 def _column_width(sheet,coordinate):
@@ -808,27 +807,42 @@ def _column_width(sheet,coordinate):
     return sheet.column_dimensions[column].width or 8.43
 
 
-def _required_height(value,width):
-    """Conservative CJK/wrap layout, using actual template column widths.
+def _required_height(value,width,*,acceptance=False):
+    """Estimate visible lines; retain the proven margin for notes/task lists.
 
-    Excel native QA found fixed-width estimation clipped notes. Allow a spare
-    wrap line per paragraph and 15% width margin; these are display units only.
+    AC uses the wider original column and counts a spare line where Excel wraps
+    a long numbered paragraph at its space. This is display layout only.
     """
     import math
     if not value: return 0
-    usable=max(1,(width-2)*.85)
-    lines=sum(max(1,math.ceil(sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in line)/usable))+1
-              for line in value.split('\n'))
-    return lines*18+28
+    usable=max(1,width-2) if acceptance else max(1,(width-2)*.85)
+    lines=0
+    for paragraph in value.split('\n'):
+        units=sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in paragraph)
+        wrapped=max(1,math.ceil(units/usable))
+        spare=int(units>usable and bool(re.search(r'\s',paragraph))) if acceptance else 1
+        lines+=wrapped+spare
+    return lines*16+12 if acceptance else lines*18+28
+
+
+def _fit_height(cell,value,identity,field):
+    height=_required_height(value,_column_width(cell.parent,cell.coordinate),
+                            acceptance=cell.parent.title==STORY_SHEET and cell.column==4)
+    if height>409:
+        error=StorageError('WORKBOOK_LAYOUT_OVERFLOW',
+            f'{cell.parent.title}!{cell.coordinate} 的完整正文预计超过 409 点可见高度；保留候选，不能删减验收义务来凑布局。')
+        error.diagnostics[0]['target'].update(object_id=identity,field=field)
+        raise error
+    dimension=cell.parent.row_dimensions[cell.row]
+    dimension.height=max(dimension.height or 15,height)
 
 
 def _fill_inputs(book,inputs):
-    for (sheet,coordinate),value in inputs.items():
+    for (sheet,coordinate),(value,identity,field) in inputs.items():
         cell=book[sheet][coordinate]
         write_literal(cell,value)
         if cell.alignment.wrap_text:
-            height=_required_height(value,_column_width(book[sheet],coordinate))
-            book[sheet].row_dimensions[cell.row].height=min(409,max(book[sheet].row_dimensions[cell.row].height or 15,height))
+            _fit_height(cell,value,identity,field)
 
 
 def verify_prepared(project,prepared):
@@ -970,9 +984,9 @@ def render_candidate(project: Path,request_id: str,payload):
         if file_ref(project,old_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
         old_prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)
         old_check=checked_json(project,old_prepared['check_ref']['path'],'check',area)
-        # v4/v5 had appendices; v6 omitted classification reasons. Preserve the
+        # v4/v5 had appendices; v6 omitted reasons; v7 could clip text. Preserve the
         # old package and use the existing bounded retry for the current output.
-        reusable=(previous.get('implementation_version') not in ('lite-render-v4','lite-render-v5','lite-render-v6')
+        reusable=(previous.get('implementation_version') not in ('lite-render-v4','lite-render-v5','lite-render-v6','lite-render-v7')
                   and old_prepared['candidate_ref']==file_ref(project,candidate_path)
                   and old_prepared['expected_current']==expected
                   and old_prepared['template_hash']==candidate['template_hash']

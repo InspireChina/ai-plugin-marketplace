@@ -699,7 +699,7 @@ def test_explicit_reference_and_obligation_errors_remain_diagnostics(clarify_cas
 
 
 @pytest.mark.office
-@pytest.mark.parametrize('old_implementation', ['lite-render-v5', 'lite-render-v6'])
+@pytest.mark.parametrize('old_implementation', ['lite-render-v5', 'lite-render-v6', 'lite-render-v7'])
 def test_superseded_layout_preview_reprojects_once_without_erasing_old_files(prepared_case,monkeypatch,old_implementation):
     from ai_sow_lite import office,workbook
     from ai_sow_lite.contracts import semantic_digest

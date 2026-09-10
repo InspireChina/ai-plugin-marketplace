@@ -1,5 +1,5 @@
 """The original tables alone carry acceptance and unresolved user decisions."""
-from copy import deepcopy
+from copy import copy, deepcopy
 from uuid import uuid4
 
 import openpyxl
@@ -83,11 +83,9 @@ def test_closed_questions_do_not_keep_rows_pending_and_history_stays_in_project(
     assert '已采用答复' in (tmp_path/'pending-items.md').read_text()
 
 
-def test_no_ac_count_gate_and_no_truncation_or_sidecar_for_long_cell(tmp_path):
+def test_many_short_acs_keep_original_text_without_ac_count_gate(tmp_path):
     m,p,d=bundle()
-    raw='源文中的验收界限😀。'*500
     m['stories'][0]['acs']=[dict(id=str(uuid4()),text=f'{n}项验收。',evidence_refs=m['stories'][0]['evidence_refs']) for n in range(20)]
-    m['stories'][0]['acs'][0]['text']=raw
     project(tmp_path,m,p,d)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
     assert w['01-需求故事']['D5'].value=='\n'.join(f'{i}. {ac["text"]}' for i,ac in enumerate(m['stories'][0]['acs'],1))
@@ -128,7 +126,7 @@ def test_old_project_template_is_unchanged_but_gets_current_inline_status_formul
 
 
 def test_crlf_capacity_is_checked_after_display_newline_normalization(tmp_path):
-    m,p,d=bundle();raw='字\r\n'*11000
+    m,p,d=bundle();raw='字\r\n'*6
     m['tasks'][0]['notes']=raw
     project(tmp_path,m,p,d)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
@@ -153,3 +151,76 @@ def test_oversize_alias_original_points_to_the_authored_name(tmp_path,collection
     with pytest.raises(StorageError) as caught:project(tmp_path,m,p,d)
     assert caught.value.diagnostics[0]['target']['object_id']==obj['id']
     assert caught.value.diagnostics[0]['target']['field']==field
+
+
+@pytest.mark.parametrize('target', ['acs', 'notes', 'tasks'])
+def test_visible_layout_overflow_names_its_original_object_and_cell(tmp_path, target):
+    m,p,d=bundle()
+    story=m['stories'][0]
+    p['items']=[]
+    if target == 'acs':
+        story['acs'][0]['text']='一行验收。\n'*60
+        identity,field,sheet,cell=story['id'],'acs','01-需求故事','D5'
+    elif target == 'notes':
+        m['tasks'][0]['notes']='一行必要说明。\n'*60
+        identity,field,sheet,cell=m['tasks'][0]['id'],'notes','02-任务清单','G5'
+    else:
+        m['tasks']=[dict(deepcopy(m['tasks'][0]),id=str(uuid4()),name=f'实际独立任务{n}') for n in range(40)]
+        identity,field,sheet,cell=story['id'],None,'01-需求故事','H5'
+    original=deepcopy((m,p,d))
+    with pytest.raises(StorageError) as caught:
+        project(tmp_path,m,p,d)
+    diag=caught.value.diagnostics[0]
+    assert diag['code']=='WORKBOOK_LAYOUT_OVERFLOW'
+    assert diag['target']['object_id']==identity and diag['target']['field']==field
+    assert sheet+'!'+cell in diag['message']
+    assert (m,p,d)==original
+    assert not (tmp_path/'projected.xlsx').exists()
+
+
+@pytest.mark.parametrize('case', ['long_acs', 'overflow_acs'])
+def test_real_consumer_acceptance_layout_preserves_text_or_diagnoses_overflow(tmp_path, case):
+    from .support.fixtures import FIXTURES,read_json,PLUGIN
+    m,p,d=bundle()
+    before=(PLUGIN/'assets/sow-template.xlsx').read_bytes()
+    texts=read_json(FIXTURES/'workbook/ac-layout.json')[case]
+    story=m['stories'][0]
+    story['acs']=[dict(id=str(uuid4()),text=text,evidence_refs=story['evidence_refs']) for text in texts]
+    expected='\n'.join(f'{i}. {text}' for i,text in enumerate(texts,1))
+    if case=='overflow_acs':
+        with pytest.raises(StorageError) as caught: project(tmp_path,m,p,d)
+        assert caught.value.diagnostics[0]['code']=='WORKBOOK_LAYOUT_OVERFLOW'
+        assert caught.value.diagnostics[0]['target']['object_id']==story['id']
+        assert not (tmp_path/'projected.xlsx').exists()
+    else:
+        project(tmp_path,m,p,d)
+        w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
+        cell=w['01-需求故事']['D5']
+        assert cell.value==expected and cell.alignment.vertical=='top' and cell.alignment.wrap_text
+        assert w['01-需求故事'].column_dimensions['D'].width==88
+        assert w['01-需求故事'].row_dimensions[5].height<=409
+        assert copy(cell.font)==copy(openpyxl.load_workbook(PLUGIN/'assets/sow-template.xlsx')['01-需求故事']['D5'].font)
+        assert w['01-需求故事']['F5'].protection.locked
+    assert (PLUGIN/'assets/sow-template.xlsx').read_bytes()==before
+
+
+def test_layout_failure_does_not_reach_office_or_apply_and_keeps_candidate(tmp_path,monkeypatch):
+    from .support.excel import prepare_case
+    from .support.fixtures import read_json,write_json
+    from .support.cli import run_request
+    from ai_sow_lite import office
+    case,payload,_=prepare_case(tmp_path/'project',render=False)
+    model=read_json(case.file('model.json'))
+    model['stories'][0]['acs'][0]['text']='验收正文仍在候选中。\n'*60
+    write_json(case.file('model.json'),model)
+    before=case.file('model.json').read_bytes()
+    checked=run_request(case.project,case.request_id,'check',dict(candidate_path=payload['candidate_path'],scope='full',plan_path=None))
+    assert checked['ok']
+    payload['check_path']=checked['result']['check_ref']['path']
+    monkeypatch.setattr(office,'recalculate',lambda *args: pytest.fail('Overflow must not invoke Office'))
+    from ai_sow_lite.cli import execute
+    result=execute(dict(protocol_version='1.0',request_id=case.request_id,project_path=str(case.project),operation='render',payload=payload))
+    assert not result['ok'] and result['diagnostics'][0]['code']=='WORKBOOK_LAYOUT_OVERFLOW'
+    assert case.file('model.json').read_bytes()==before
+    assert not (case.project/'.ai-sow-lite/current.json').exists()
+    assert not list(case.file('render-attempt.json').parent.glob('render-*/prepared.json'))

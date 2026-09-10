@@ -32,7 +32,7 @@ Python 安装不写用户 bin 或注册表，只使用本插件副本的 managed
 
 Excel 只保留原四张表，完整验收条件直接放在“验收条件”列。Story 备注通常为空，仅补充输入或用户已确认且 AC 未表达的必要范围、责任和外部前提说明。Task 备注列出非新建工作方式、非 M 复杂度的判断原因。尚未解决的问题与当前处理写在实际受影响的行上，以“待确认：”开头，校验列显示“待确认”；只有已确认说明或判断原因不会变成待确认。Task 问题不自动上卷到 Story；内容与来源规则见 [备注与问题的目标](references/generate-slices.md#备注与问题的目标)。已解决或已被替代的问题留在项目历史中。尚未拆明且没有 Story 的范围保留实际 Epic/Feature 与问题，不虚构工作。Excel 可单独阅读和分享。
 
-既有项目可以继续使用，仍需保留项目文件供后续 clarify 定位和修改。具体兼容规则、长内容限制见 [Excel 投影合同](docs/design/detailed/D06-excel-projection-and-delivery.md)，验证进展与限制见 [原列验收记录](docs/validation/I6-inline-acceptance.md) 和 [Task 判断原因](docs/validation/I6-task-note-reasons.md)。
+既有项目可以继续使用，仍需保留项目文件供后续 clarify 定位和修改。新输出将验收条件列加宽并保留完整正文；预计超出 Excel 单行可显示高度时返回对象/单元格诊断，保留候选供有限修改。原打印缩放仍可能使长表文字偏小。具体兼容规则、长内容限制见 [Excel 投影合同](docs/design/detailed/D06-excel-projection-and-delivery.md)，验证进展与限制见 [原列验收记录](docs/validation/I6-inline-acceptance.md) 和 [Task 判断原因](docs/validation/I6-task-note-reasons.md)。
 
 工具耗时和大活动标记保存在项目的独立资源报告中。原生 token 采集只接已验证版本、明确选定且属于本次请求的来源；无法确定的调用次数或活动归属保留未知，不按文件大小估算 token，也不设置 token 预算门禁。观测失败不重做业务交付，迟到用量只更新资源报告。当前真实粒度与性能基线见 [宿主观测](docs/validation/host-support.md) 和 [性能记录](docs/validation/performance.md)。
 

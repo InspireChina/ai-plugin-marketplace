@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- I7.3：新输出验收列 D 加宽至 88、顶对齐换行，原文及字体保持；可见高度溢出返回目标单元格诊断并保留候选。模板及计算规则不变，render v8 拒绝沿用旧 v7 prepared；真实 Office 与原生长文检查通过，原整表打印缩放限制保留。见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
+
 - I7.2：明确采用 M 只关闭准确的定档问题，未答责任保留；首次同值采用保存依据与决定，重复已采用反馈不再出版本。真实 clarify 完成确认、Office 和应用，复读证明数量未知及未影响对象保持。见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
 
 - I7.1：统一四项 AC 质量要求，以业务场景/成果及外部契约组织，保留状态前提、必要判据和有据边界；Clarify 同义改稿保持 Task/分类和未影响对象。真实消费者保留首跑失败及局部修复，独立复核四根因解除；未增加语义代码门禁、模板改动或产品检查循环。完整串联与新生成 Task 计量继续 I7.6，见 [I7 验证](docs/validation/I7-quality-and-performance.md)。

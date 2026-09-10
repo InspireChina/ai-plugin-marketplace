@@ -121,7 +121,7 @@ def test_aliases_are_stable_unique_case_unicode_and_criteria_safe():
 
 
 def test_long_text_stays_inline_with_literal_notes_and_alias_original(tmp_path):
-    m,p,d=bundle(); original='验收原文😀\n' * 1200
+    m,p,d=bundle(); original='验收原文😀\n' * 6
     m['stories'][0]['title']='查询*?~订单'
     m['stories'][0]['acs'][0]['text']=original
     m['tasks'][0]['notes']='=SUM(A1:A9)'
@@ -393,12 +393,12 @@ def test_checked_partial_classification_and_unestimated_targets_keep_original_fo
     from .support.cli import run_request
     case,payload,_=prepare_case(tmp_path/'project',render=False)
     m,p,d=[read_json(case.file(n)) for n in ('model.json','pending-items.json','decisions.json')]
-    task=m['tasks'][0];task.update(work_type_name=None,work_mode=None,not_applicable_fields=[])
+    task=m['tasks'][0];task.update(work_type_name=None,work_mode=None,not_applicable_fields=[],notes='')
     task['classification_basis'][0].update(standard_id=None,fields=['complexity'])
     def question(target,field,unestimated=False):
-        return dict(id=str(uuid4()),revision=1,question='请确认已有资料中未确定的业务事项。',
+        return dict(id=str(uuid4()),revision=1,question='此项待确认。',
             targets=[dict(object_id=target,field=field)],evidence_refs=task['evidence_refs'],
-            current_handling='保留已知值；未知分类留空，未拆明工作列待确认。',unestimated_work=unestimated,status='open',resolution=None)
+            current_handling='留空待答。',unestimated_work=unestimated,status='open',resolution=None)
     for field in ('work_type_name','work_mode','integration_type'):p['items'].append(question(task['id'],field))
     integration=m['tasks'][2];integration.update(work_type_name='跨系统业务交互集成',integration_type=None,not_applicable_fields=[])
     integration['classification_basis'][0]['standard_id']='IN-INTEGRATION'
@@ -500,25 +500,27 @@ def test_native_clipped_rows_get_actual_column_width_and_cjk_margin(tmp_path):
     # Reserve room for AC, the formula task list and the inline question using
     # actual template widths. No generated reference filler is needed.
     assert 90 <= w['01-需求故事'].row_dimensions[5].height <=409
-    assert 100 <= w['01-需求故事'].row_dimensions[7].height <=409
+    assert 80 <= w['01-需求故事'].row_dimensions[7].height <=409
     assert 180 <= w['02-任务清单'].row_dimensions[10].height <=409
     assert w['01-需求故事'].column_dimensions['E'].width==30
     assert w['02-任务清单'].column_dimensions['G'].width==36
 
 
-def test_layout_overflow_keeps_full_cell_with_excel_row_height_cap(tmp_path):
+def test_layout_overflow_preserves_candidate_and_does_not_export_clipped_notes(tmp_path):
+    from ai_sow_lite.project import StorageError
     model,pending,decisions=bundle()
     model['stories'][0]['notes']='甲'*700
-    project(tmp_path,model,pending,decisions)
-    w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
-    cell=w['01-需求故事']['E5']
-    assert cell.value == '甲'*700
-    assert not (tmp_path/'details.md').exists()
-    assert w['01-需求故事'].row_dimensions[5].height<=409
+    original=deepcopy(model)
+    with pytest.raises(StorageError) as caught:
+        project(tmp_path,model,pending,decisions)
+    assert caught.value.diagnostics[0]['code']=='WORKBOOK_LAYOUT_OVERFLOW'
+    assert caught.value.diagnostics[0]['target']['object_id']==model['stories'][0]['id']
+    assert caught.value.diagnostics[0]['target']['field']=='notes'
+    assert model==original and not (tmp_path/'projected.xlsx').exists()
 
 
 def test_narrow_parent_title_is_not_truncated(tmp_path):
-    m,p,d=bundle();m['epics'][0]['title']='窄列完整标题'*600
+    m,p,d=bundle();m['epics'][0]['title']='窄列完整标题'*6
     project(tmp_path,m,p,d)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
     assert w['01-需求故事']['A5'].value == m['epics'][0]['title']
@@ -550,9 +552,9 @@ def test_medium_task_list_expands_row_without_filling_notes_after_office(tmp_pat
 def test_medium_list_notes_and_pending_remain_complete_inline(tmp_path):
     from .support.excel import medium_list_model
     model,pending,decisions=bundle();model=medium_list_model(model)
-    story=model['stories'][0];story['notes']='甲'*700
+    story=model['stories'][0];story['notes']='甲'*40
     item=pending['items'][0];item['targets']=[dict(object_id=story['id'],field='notes')]
-    item['current_handling']='保留全部待确认处理说明。'*100
+    item['current_handling']='保留全部待确认处理说明。'*2
     result=project(tmp_path,model,pending,decisions)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx');notes=w['01-需求故事']['E5'].value
     assert result['details']==[]

@@ -25,11 +25,11 @@ def assert_internal_delivery(book):
 
 def test_xlsx_alone_preserves_long_ac_notes_and_pending(tmp_path):
     model,pending,decisions=bundle()
-    raw='验收原文😀\n'*1200+'最终验收条件。'
+    raw='验收原文😀\n'*8+'最终验收条件。'
     model['stories'][0]['acs'][0]['text']=raw
-    model['tasks'][0]['notes']='=不是公式\n'+'备注全文。'*500
-    pending['items'][0]['question']='需要决定的真实问题。'*300
-    pending['items'][0]['current_handling']='采用M但记录数量仍未知。'*300
+    model['tasks'][0]['notes']='=不是公式\n'+'备注全文。'*15
+    pending['items'][0]['question']='需要决定的真实问题。'*2
+    pending['items'][0]['current_handling']='采用M但记录数量仍未知。'*2
     project(tmp_path,model,pending,decisions)
     for path in tmp_path.glob('*.md'):path.unlink()
     book=openpyxl.load_workbook(tmp_path/'projected.xlsx')
@@ -64,9 +64,17 @@ def test_multiple_questions_and_authored_exception_are_all_inline(tmp_path):
     assert_internal_delivery(book)
 
 
-@pytest.mark.parametrize('prefix',['\n'*8,' '*800])
-def test_leading_spaces_and_lines_are_preserved_inline(tmp_path,prefix):
-    m,p,d=bundle();raw=prefix+'正文。'*150;m['tasks'][0]['notes']=raw
+@pytest.mark.parametrize('prefix,repetitions,overflow', [
+    ('\n'*3,10,False), (' '*80,10,False),
+    ('\n'*8,150,True), (' '*800,150,True)])
+def test_leading_spaces_and_lines_are_preserved_inline(tmp_path,prefix,repetitions,overflow):
+    m,p,d=bundle();raw=prefix+'正文。'*repetitions;m['tasks'][0]['notes']=raw
+    if overflow:
+        with pytest.raises(StorageError, match='WORKBOOK_LAYOUT_OVERFLOW'):
+            project(tmp_path,m,p,d)
+        assert m['tasks'][0]['notes']==raw
+        assert not (tmp_path/'projected.xlsx').exists()
+        return
     project(tmp_path,m,p,d)
     book=openpyxl.load_workbook(tmp_path/'projected.xlsx')
     assert book['02-任务清单']['G5'].value==raw
