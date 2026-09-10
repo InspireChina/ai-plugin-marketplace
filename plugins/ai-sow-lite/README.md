@@ -38,9 +38,11 @@ Excel 只保留原四张表，完整验收条件直接放在“验收条件”�
 
 ## 当前交付范围
 
-完整生成与有限修改已有真实输入、Office及文件续接证据；性能仍是明确限制。此前典型/长例Generate约13分钟，局部改稿方案约5—9分钟，见[性能记录](docs/validation/performance.md)。最新[Greenfield → Brownfield 串联实测](docs/validation/E2E-greenfield-brownfield.md)完成两期生成、方案修订、部分采纳和重复答复：29项检查中26通过、2失败、1部分通过，保留已采用M的问题闭合和长AC可见性缺陷。该案例两次Generate约22.5/16.9分钟、两次Clarify约12.4/9.4分钟，均为原生处理时间，不含全部用户等待；逐活动token仍未知，没有速度SLA或相对旧版提速比例。
+完整生成与有限修改已有真实输入、Office及文件续接证据。[首次串联](docs/validation/E2E-greenfield-brownfield.md)保留原26通过、2失败、1部分通过的结果；它不能代表后来追加的AC语义要求已满足。本轮按 [I7.1—I7.6](docs/design/implementation/P05-quality-and-performance.md)实施AC指引、估算问题闭合、原列可读性、可信拒绝计量、输入区域助手与按需读取，实际证据见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
 
-追加评审发现 AC 还混入实现方法及多个验收结果，原 26/29 不能作为 AC 质量达标的结论。[修复与优化方案](docs/design/14-e2e-remediation-and-optimization.md)将 AC 语义放在首位，后续按 [I7.1—I7.6](docs/design/implementation/P05-quality-and-performance.md) 分阶段处理问题闭合、可读性、观测和同质量性能；I7.1 已完成专业规则和有限真实消费者修复，后续仍在实施；阶段实证与未覆盖范围见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
+[修复后串联](docs/validation/I7-final-e2e.md)已实际完成两期生成、采用M、接口部分采纳与重复意见；首次发现的AC遗漏、How和歧义通过有限反馈处理，保留首份失败及独立复核，不把工具检查等同于语义正确。原生Excel已检查长行、判断原因和待确认；超长行仍可能在确认后导出时才被拒绝，需有限修订。首稿质量不能承诺无需review，一期还有一处备注重复待精简。
+
+性能未达标：核心五段本次消费者原生处理累计约76分42秒，包含失败续接和测试记录工作，额外AC反馈另计；这不是普通用户耗时SLA。唯一窄改稿配对调整后反而更慢，没有提速证据。请求级token可核对，逐活动归属未知；G1补答与G2展示的标记仍有缺口，详见 [实测](docs/validation/I7-final-e2e.md) 与 [指标](docs/validation/I7-metrics.json)。
 
 声明范围以[宿主支持](docs/validation/host-support.md)为准：当前实际业务验证基于macOS本地目录及Codex桌面显式加载副本；Claude认证失败，Windows/Linux和同步/网络盘未验证。仓库双marketplace目录已准备预发布安装入口，本次未执行宿主安装。复制包本身不依赖仓库README或其他插件。
 

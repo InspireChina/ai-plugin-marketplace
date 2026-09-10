@@ -9,15 +9,17 @@ description: 当用户要根据 PRD、HLD 和旧项目的往期 SOW 生成本期
 
 ## 开场与接收
 
+先完成本节的简短接收；尚缺身份或必需材料时，直接询问具体缺项，再按实际回复进入分析。此时只需本 Skill，不预读后续专业参考、工具全合同或模板标准。
+
 复用用户已给的信息。开场只核对新/旧项目、PRD、HLD 路径；旧项目另需往期 SOW，原型可选。缺必需材料时立即列具体缺件并结束本次推进，不以长问卷、Epic/Feature draft 或零工作版本代替完整输入。非原型材料当前支持可读 UTF-8 文本和 XLSX。
 
-从**当前已加载的本文件位置**定位 `<plugin-root>`：`skills/generate/SKILL.md` 所在目录向上两级。项目目录使用用户项目，插件副本拥有全部运行依赖。首次执行读 [命令与编写](../../references/generate-authoring.md) 的启动和登记部分；使用 `<plugin-root>/scripts/bootstrap.sh` 或 `<plugin-root>/scripts/bootstrap.ps1` 自举，随后直接使用该副本隔离 Python 调用 `<plugin-root>/scripts/lite.py`。沿用一个逻辑 request_id，不把每次工具调用变成新请求。
+从**当前已加载的本文件位置**定位 `<plugin-root>`：`skills/generate/SKILL.md` 所在目录向上两级。项目目录使用用户项目，插件副本拥有全部运行依赖。信息齐备后读 [启动与请求身份](../../references/generate-authoring.md#启动与请求身份) 和 [登记、读取和分析](../../references/generate-authoring.md#登记读取和分析)；连续机械调用复用 [Python 调用助手](../../references/python-client.md)，工具字段只查 [工具合同](../../references/tools.md) 的当前操作段；使用 `<plugin-root>/scripts/bootstrap.sh` 或 `<plugin-root>/scripts/bootstrap.ps1` 自举，随后直接使用该副本隔离 Python 调用 `<plugin-root>/scripts/lite.py`。沿用一个逻辑 request_id，不把每次工具调用变成新请求。
 
 登记原件和项目身份，保存缺件/可读性结论。已有项目先查看请求和 current：重复调用优先恢复已有结果；本入口只创建首版，不覆盖已有有效版本。压缩续接沿用原候选、依据及已耗次数。
 
 ## 全输入分析
 
-读取 [输入分析](../../references/input-analysis.md)，按目录和相关主题覆盖 PRD/HLD、旧项目历史、实际补充输入及未读面，复用已有有效读取。历史用途、稀疏条目、实例匹配及有限澄清以该参考为准。目录原型及已有观察按 [原型输入](../../references/prototype-inputs.md) 登记资源、实际观察和附件；观察目标与路径由本主session决定，复用已有适用记录。运行条件或观察能力不足时保留限制，影响基础充分性才要求补充材料，不能把源码或模拟成功当成真实后端证据。
+参考资料按本阶段所需段落加载，已读且仍适用的规则和工具返回引用沿用，不把参考目录一次性全部展开。读取 [输入分析](../../references/input-analysis.md)，按目录和相关主题覆盖 PRD/HLD、旧项目历史、实际补充输入及未读面，复用已有有效读取。历史用途、稀疏条目、实例匹配及有限澄清以该参考为准。目录原型及已有观察按 [原型输入](../../references/prototype-inputs.md) 登记资源、实际观察和附件；观察目标与路径由本主session决定，复用已有适用记录。运行条件或观察能力不足时保留限制，影响基础充分性才要求补充材料，不能把源码或模拟成功当成真实后端证据。
 
 在本请求 work 中形成 `analysis.json` 及简短 `input-review.md`：必要依据与主题、稀疏 as-is、业务/技术/交付三类本期 gap、外部责任/排除、已读和未读范围、输入问题及覆盖。登记工具保存不可变分析。由 Agent 判断目标、基础方案、责任是否足以继续；读取完成或 Schema 通过本身不表示充分。
 

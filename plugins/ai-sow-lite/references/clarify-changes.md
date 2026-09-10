@@ -53,7 +53,9 @@ resolved 的 resolution 精确含 decision_id/request_id/summary，并有覆盖�
 
 ## 用有限编辑形成可审阅方案
 
-只写 `edit-draft.json`：schema_version、plan_id、revision、base_version_id、edits、read_selectors、read_boundary、conditions、unresolved_items、change_summary、additional_refs。plan_id 用一次 UUID4，revision 表示专业方案，从1到最多2；base_version_id 是保存的原 current.version_id。机械保存尝试与专业修订分开，原 r1/r2 工件不重编号。
+只写 `edit-draft.json`：schema_version、plan_id、revision、base_version_id、edits、read_selectors、read_boundary、conditions、unresolved_items、change_summary、additional_refs。change_summary 是字符串，多项摘要用换行连接。plan_id 用一次 UUID4，revision 表示专业方案，从1到最多2；base_version_id 是保存的原 current.version_id。机械保存尝试与专业修订分开，原 r1/r2 工件不重编号。
+
+首次稿在字段结构检查时即被拒绝、且 checkpoint 中没有 clarify_draft_ref/candidate_path、也没有 plans 工件时，尚未形成可返修候选。保留失败稿与响应，只修正已定位的结构错误，另存新稿，沿原 request_id/plan_id/revision 重交一次，不添加 repair，不占用专业修订；再次失败则保留退出。若已有保存尝试或状态不明，不能使用这条路径，按下述绑定返修或原恢复规则处理。
 
 机械返修保持 revision，编辑稿增加 `repair={"draft_ref":<上一不可变编辑稿文件引用>,"operation":"<同一操作/根因的固定标识>","reason":"<实际诊断及有限修法>"}`。引用取构造目录的 edit-draft.json；构造未完成时从 checkpoint.clarify_draft_ref 续接。工具在固定 repair 子目录保留新尝试，同一候选最多一次、请求最多两个自动返修批次、同一 operation 最多一次；与其他返修共用 checkpoint 计数。工具已扣此批，外层复读后不能重复扣除。相同稿复用同一保存位置；失败稿不删除，不通过新 plan_id/request_id 或改根因名称刷新额度。是否仍属原专业方案的机械修正由 Agent 负责，字段标记不能把新业务值伪装为修法。
 

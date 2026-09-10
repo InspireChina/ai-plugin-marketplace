@@ -1,5 +1,5 @@
 {
-  "scope": "开发期真实消费者评估；不是产品完整E2E或提速对照",
+  "scope": "开发期真实消费者、有限改稿配对与修复后串联；非生产SLA，活动token及纯模型时间未知",
   "semantic_consumers": [
     {
       "evaluation": "I7.1-first-consumer",
@@ -182,5 +182,1495 @@
     ],
     "counter_errors": [],
     "activity_token_attribution": "unknown"
+  },
+  "clarify_adopt_m_after_routing": {
+    "response_count": 24,
+    "counts": {
+      "total_tokens": 1647543,
+      "input_tokens": 1629364,
+      "output_tokens": 18179,
+      "cached_input_tokens": 1542400,
+      "reasoning_output_tokens": 5446,
+      "cache_write_input_tokens": 0
+    },
+    "source_sha256": "217f2e846fdd4e3079d363be232cc48897eeccb5957e7995fc9f017e1c814015",
+    "turns": [
+      {
+        "stage": "proposal",
+        "counts": {
+          "total_tokens": 984267,
+          "input_tokens": 972683,
+          "output_tokens": 11584,
+          "cached_input_tokens": 907008,
+          "reasoning_output_tokens": 3390,
+          "cache_write_input_tokens": 0
+        },
+        "processing_ms": 401088,
+        "response_count": 17,
+        "peak_input_tokens": 83646,
+        "settings": {
+          "model": "gpt-6-astra",
+          "effort": "xhigh",
+          "service_tier": null
+        }
+      },
+      {
+        "stage": "confirmation_delivery",
+        "counts": {
+          "total_tokens": 663276,
+          "input_tokens": 656681,
+          "output_tokens": 6595,
+          "cached_input_tokens": 635392,
+          "reasoning_output_tokens": 2056,
+          "cache_write_input_tokens": 0
+        },
+        "processing_ms": 222627,
+        "response_count": 7,
+        "peak_input_tokens": 103775,
+        "settings": {
+          "model": "gpt-6-astra",
+          "effort": "xhigh",
+          "service_tier": null
+        }
+      }
+    ],
+    "counter_errors": [],
+    "activity_token_attribution": "unknown"
+  },
+  "final_e2e": {
+    "status": "complete_with_recorded_limits",
+    "stages": {
+      "G1": {
+        "native_source_sha256": "200aa8093d3a276f5516134a280a97b47ebf9b0fe4ddcadbecde8cba88e1ea44",
+        "native_counter_errors": [],
+        "counts": {
+          "total_tokens": 4044421,
+          "input_tokens": 4000612,
+          "output_tokens": 43809,
+          "cached_input_tokens": 3849472,
+          "reasoning_output_tokens": 10404,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 151140,
+        "response_count": 39,
+        "native_processing_duration_ms": 1449382,
+        "max_response_input_tokens": 161507,
+        "tool_operations": {
+          "check": {
+            "count": 6,
+            "duration_ms": 362.37812599999995,
+            "failed": 0
+          },
+          "inspect": {
+            "count": 47,
+            "duration_ms": 298.8384610000001,
+            "failed": 0
+          },
+          "render": {
+            "count": 2,
+            "duration_ms": 5639.562584,
+            "failed": 1
+          },
+          "ingest": {
+            "count": 5,
+            "duration_ms": 225.599083,
+            "failed": 0
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 1347.57625,
+            "failed": 0
+          }
+        },
+        "activity_tokens": "unknown",
+        "pure_model_duration": "unknown",
+        "turns": [
+          {
+            "turn_id": "01a08baa-ad5b-7751-b104-fbd44caa5b7a",
+            "response_count": 3,
+            "counts": {
+              "total_tokens": 93802,
+              "input_tokens": 92354,
+              "output_tokens": 1448,
+              "cached_input_tokens": 80256,
+              "reasoning_output_tokens": 516,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 55631,
+            "start": "2026-09-10T14:13:33.703Z",
+            "end": "2026-09-10T14:14:29.297Z"
+          },
+          {
+            "turn_id": "01a08bab-f153-7be3-840c-77c274aea5e5",
+            "response_count": 18,
+            "counts": {
+              "total_tokens": 1353867,
+              "input_tokens": 1338656,
+              "output_tokens": 15211,
+              "cached_input_tokens": 1258240,
+              "reasoning_output_tokens": 2938,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 519926,
+            "start": "2026-09-10T14:14:56.600Z",
+            "end": "2026-09-10T14:23:36.503Z"
+          },
+          {
+            "turn_id": "01a08bb4-cd18-7a32-b7b2-e6e7350b8be6",
+            "response_count": 18,
+            "counts": {
+              "total_tokens": 2596752,
+              "input_tokens": 2569602,
+              "output_tokens": 27150,
+              "cached_input_tokens": 2510976,
+              "reasoning_output_tokens": 6950,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 873825,
+            "start": "2026-09-10T14:24:37.157Z",
+            "end": "2026-09-10T14:39:10.975Z"
+          }
+        ],
+        "marked_activities": [
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "65301a9f-956c-483a-bfe8-8c98877c447e"
+            ],
+            "starts": [
+              "2026-09-10T14:15:54.406611Z"
+            ],
+            "ends": [
+              "2026-09-10T14:21:59.377214Z"
+            ],
+            "marked_utc_seconds": 364.970603,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "67e007e7-5da9-46f3-b611-01b287855098"
+            ],
+            "starts": [
+              "2026-09-10T14:26:33.277984Z"
+            ],
+            "ends": [
+              "2026-09-10T14:26:33.557034Z"
+            ],
+            "marked_utc_seconds": 0.27905,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "outline",
+            "activity_ids": [
+              "2c8d9d64-a4c3-485b-87a7-3eb0def02733"
+            ],
+            "starts": [
+              "2026-09-10T14:26:33.557812Z"
+            ],
+            "ends": [
+              "2026-09-10T14:27:38.948972Z"
+            ],
+            "marked_utc_seconds": 65.39116,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "ef826042-dd82-430b-a1d4-c6b8afe7c43f"
+            ],
+            "starts": [
+              "2026-09-10T14:27:38.952106Z"
+            ],
+            "ends": [
+              "2026-09-10T14:29:18.624164Z"
+            ],
+            "marked_utc_seconds": 99.672058,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "1a19f173-a90b-4d85-b306-ecdd24c3839e"
+            ],
+            "starts": [
+              "2026-09-10T14:29:18.737737Z"
+            ],
+            "ends": [
+              "2026-09-10T14:30:48.092056Z"
+            ],
+            "marked_utc_seconds": 89.354319,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "6505fc6b-2544-4b2f-ab87-8213352b535e"
+            ],
+            "starts": [
+              "2026-09-10T14:30:48.203316Z"
+            ],
+            "ends": [
+              "2026-09-10T14:31:57.213324Z"
+            ],
+            "marked_utc_seconds": 69.010008,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "c7ba5ee4-b8dd-483b-8463-89f201b44c4d"
+            ],
+            "starts": [
+              "2026-09-10T14:31:57.322745Z"
+            ],
+            "ends": [
+              "2026-09-10T14:33:16.564213Z"
+            ],
+            "marked_utc_seconds": 79.241468,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "merge",
+            "activity_ids": [
+              "10aaaff2-5136-4849-8f5d-dfb97d19a487"
+            ],
+            "starts": [
+              "2026-09-10T14:33:16.674790Z"
+            ],
+            "ends": [
+              "2026-09-10T14:34:45.934356Z"
+            ],
+            "marked_utc_seconds": 89.259566,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "export",
+            "activity_ids": [
+              "2e040df0-1252-4c18-a17c-6892f025c74a"
+            ],
+            "starts": [
+              "2026-09-10T14:34:45.937003Z"
+            ],
+            "ends": [
+              "2026-09-10T14:37:36.425542Z"
+            ],
+            "marked_utc_seconds": 170.488539,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          }
+        ],
+        "model_settings": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        ],
+        "version_id": "6cdfd30b-9b29-448f-8419-49629c0ea525",
+        "workbook_sha256": "b21e2a880ab45612fd6e42ce444aa20b3cd4fc26fc20d69bb030ae306015fede",
+        "native_collector_gaps": [
+          "CLOCK_UNALIGNED"
+        ]
+      },
+      "G2": {
+        "native_source_sha256": "b9d9b36c64d651de2d443b9f0b812f1b0c72ab4b0085720b3d1670527f159a98",
+        "native_counter_errors": [],
+        "counts": {
+          "total_tokens": 2743999,
+          "input_tokens": 2710375,
+          "output_tokens": 33624,
+          "cached_input_tokens": 2579712,
+          "reasoning_output_tokens": 8343,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 130663,
+        "response_count": 30,
+        "native_processing_duration_ms": 1118004,
+        "max_response_input_tokens": 146257,
+        "tool_operations": {
+          "inspect": {
+            "count": 33,
+            "duration_ms": 250.48300400000002,
+            "failed": 0
+          },
+          "ingest": {
+            "count": 5,
+            "duration_ms": 129.996165,
+            "failed": 0
+          },
+          "check": {
+            "count": 5,
+            "duration_ms": 853.6373749999999,
+            "failed": 2
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 1771.683834,
+            "failed": 0
+          },
+          "render": {
+            "count": 1,
+            "duration_ms": 6589.288667,
+            "failed": 0
+          }
+        },
+        "activity_tokens": "unknown",
+        "pure_model_duration": "unknown",
+        "turns": [
+          {
+            "turn_id": "01a08bc2-f2d2-7de2-a28e-b85ef6859980",
+            "response_count": 16,
+            "counts": {
+              "total_tokens": 1031524,
+              "input_tokens": 1017016,
+              "output_tokens": 14508,
+              "cached_input_tokens": 945920,
+              "reasoning_output_tokens": 4005,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 491256,
+            "start": "2026-09-10T14:40:04.432Z",
+            "end": "2026-09-10T14:48:15.565Z"
+          },
+          {
+            "turn_id": "01a08bca-74a5-7232-8dc5-d6f3d116d077",
+            "response_count": 5,
+            "counts": {
+              "total_tokens": 506478,
+              "input_tokens": 500597,
+              "output_tokens": 5881,
+              "cached_input_tokens": 477568,
+              "reasoning_output_tokens": 1231,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 189271,
+            "start": "2026-09-10T14:48:16.300Z",
+            "end": "2026-09-10T14:51:25.581Z"
+          },
+          {
+            "turn_id": "01a08bcd-dd7a-7601-8529-272771976214",
+            "response_count": 9,
+            "counts": {
+              "total_tokens": 1205997,
+              "input_tokens": 1192762,
+              "output_tokens": 13235,
+              "cached_input_tokens": 1156224,
+              "reasoning_output_tokens": 3107,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 437477,
+            "start": "2026-09-10T14:51:59.748Z",
+            "end": "2026-09-10T14:59:17.221Z"
+          }
+        ],
+        "marked_activities": [
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "8c561e6b-c463-49f5-832e-9109e07c0b8a"
+            ],
+            "starts": [
+              "2026-09-10T14:40:59.604213Z"
+            ],
+            "ends": [
+              "2026-09-10T14:42:53.264315Z"
+            ],
+            "marked_utc_seconds": 113.660102,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "1e013cfe-4a16-4a18-893a-f1bed2b731a7"
+            ],
+            "starts": [
+              "2026-09-10T14:52:45.076423Z"
+            ],
+            "ends": [
+              "2026-09-10T14:55:02.539304Z"
+            ],
+            "marked_utc_seconds": 137.462881,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "export",
+            "activity_ids": [
+              "cc4edf79-718e-40a5-91c3-c0bdefd2a7cd"
+            ],
+            "starts": [
+              "2026-09-10T14:57:32.007919Z"
+            ],
+            "ends": [
+              "2026-09-10T14:59:03.159504Z"
+            ],
+            "marked_utc_seconds": 91.151585,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          }
+        ],
+        "model_settings": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        ],
+        "version_id": "56129ee2-382b-4dfd-b917-9e9326630256",
+        "workbook_sha256": "7be48e4c07a80466076af7cfb5c0d35d7f9edd1355cefa3ebba6d68bbd8fe686",
+        "native_collector_gaps": [
+          "CLOCK_UNALIGNED",
+          "LIFECYCLE_INCOMPLETE"
+        ]
+      },
+      "AC-fix": {
+        "native_source_sha256": "b8ddfe7e70f24d0b52622ef9a91cd817dd47d89e5b7fe936dc3da5569f7cd64f",
+        "native_counter_errors": [],
+        "counts": {
+          "total_tokens": 1496474,
+          "input_tokens": 1478927,
+          "output_tokens": 17547,
+          "cached_input_tokens": 1372928,
+          "reasoning_output_tokens": 3703,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 105999,
+        "response_count": 17,
+        "native_processing_duration_ms": 584217,
+        "max_response_input_tokens": 123398,
+        "tool_operations": {
+          "inspect": {
+            "count": 36,
+            "duration_ms": 323.20770600000003,
+            "failed": 0
+          },
+          "check": {
+            "count": 2,
+            "duration_ms": 678.776001,
+            "failed": 0
+          },
+          "render": {
+            "count": 1,
+            "duration_ms": 6560.386292,
+            "failed": 0
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 1854.747167,
+            "failed": 0
+          },
+          "ingest": {
+            "count": 3,
+            "duration_ms": 86.473375,
+            "failed": 0
+          }
+        },
+        "activity_tokens": "unknown",
+        "pure_model_duration": "unknown",
+        "turns": [
+          {
+            "turn_id": "01a08bd5-4fef-7e40-a163-e68494719a4b",
+            "response_count": 12,
+            "counts": {
+              "total_tokens": 893774,
+              "input_tokens": 880207,
+              "output_tokens": 13567,
+              "cached_input_tokens": 783104,
+              "reasoning_output_tokens": 3202,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 448252,
+            "start": "2026-09-10T15:00:07.877Z",
+            "end": "2026-09-10T15:07:36.045Z"
+          },
+          {
+            "turn_id": "01a08bdd-36c4-7f52-a5d8-cf83976c9f25",
+            "response_count": 5,
+            "counts": {
+              "total_tokens": 602700,
+              "input_tokens": 598720,
+              "output_tokens": 3980,
+              "cached_input_tokens": 589824,
+              "reasoning_output_tokens": 501,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 135965,
+            "start": "2026-09-10T15:08:45.645Z",
+            "end": "2026-09-10T15:11:01.610Z"
+          }
+        ],
+        "marked_activities": [
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "969d8798-eb37-4c33-9fae-8374a5f4391e"
+            ],
+            "starts": [
+              "2026-09-10T15:01:03.140152Z"
+            ],
+            "ends": [
+              "2026-09-10T15:03:33.557166Z"
+            ],
+            "marked_utc_seconds": 150.417014,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "export",
+            "activity_ids": [
+              "4e564035-9828-437a-8181-5d759034014b"
+            ],
+            "starts": [
+              "2026-09-10T15:09:19.962606Z"
+            ],
+            "ends": [
+              "2026-09-10T15:10:54.949845Z"
+            ],
+            "marked_utc_seconds": 94.987239,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          }
+        ],
+        "model_settings": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        ],
+        "version_id": "c461c878-5cc7-43f0-894e-24588c10a9fb",
+        "workbook_sha256": "f8a62ea6e598bda47527aaf7b5b6def355570eaf0d107517b7ca07e15e41447a",
+        "native_collector_gaps": [
+          "CLOCK_UNALIGNED"
+        ]
+      },
+      "B1": {
+        "native_source_sha256": "ec380e6eab3ab2081dea88f7771f59819698456d94898313a144b37e8d921ebb",
+        "native_counter_errors": [],
+        "counts": {
+          "total_tokens": 3836408,
+          "input_tokens": 3810624,
+          "output_tokens": 25784,
+          "cached_input_tokens": 3677056,
+          "reasoning_output_tokens": 5221,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 133568,
+        "response_count": 36,
+        "native_processing_duration_ms": 892641,
+        "max_response_input_tokens": 147705,
+        "tool_operations": {
+          "inspect": {
+            "count": 40,
+            "duration_ms": 1590.8300799999997,
+            "failed": 0
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 2343.4105,
+            "failed": 0
+          },
+          "check": {
+            "count": 6,
+            "duration_ms": 3696.695458,
+            "failed": 0
+          },
+          "ingest": {
+            "count": 3,
+            "duration_ms": 668.4531659999999,
+            "failed": 0
+          },
+          "render": {
+            "count": 1,
+            "duration_ms": 6998.745083,
+            "failed": 0
+          }
+        },
+        "activity_tokens": "unknown",
+        "pure_model_duration": "unknown",
+        "turns": [
+          {
+            "turn_id": "01a08bd4-5b54-73a3-b195-e9a837ee48ee",
+            "response_count": 33,
+            "counts": {
+              "total_tokens": 3395367,
+              "input_tokens": 3371044,
+              "output_tokens": 24323,
+              "cached_input_tokens": 3240832,
+              "reasoning_output_tokens": 4933,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 841264,
+            "start": "2026-09-10T14:59:05.208Z",
+            "end": "2026-09-10T15:13:06.435Z"
+          },
+          {
+            "turn_id": "01a08be1-849e-7193-9963-f7bbe7cb02d8",
+            "response_count": 3,
+            "counts": {
+              "total_tokens": 441041,
+              "input_tokens": 439580,
+              "output_tokens": 1461,
+              "cached_input_tokens": 436224,
+              "reasoning_output_tokens": 288,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 51377,
+            "start": "2026-09-10T15:13:27.719Z",
+            "end": "2026-09-10T15:14:19.095Z"
+          }
+        ],
+        "marked_activities": [
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "d516ecd1-c051-476b-a33e-f6b2fc2041a6"
+            ],
+            "starts": [
+              "2026-09-10T15:00:00.809679Z"
+            ],
+            "ends": [
+              "2026-09-10T15:04:46.129867Z"
+            ],
+            "marked_utc_seconds": 285.320188,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "outline",
+            "activity_ids": [
+              "1046c393-919d-450d-8fb4-c4da890d4837"
+            ],
+            "starts": [
+              "2026-09-10T15:04:58.560818Z"
+            ],
+            "ends": [
+              "2026-09-10T15:05:35.109014Z"
+            ],
+            "marked_utc_seconds": 36.548196,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "916a86c5-ebb7-4246-b346-c61725b97e2c"
+            ],
+            "starts": [
+              "2026-09-10T15:05:35.112085Z"
+            ],
+            "ends": [
+              "2026-09-10T15:07:29.562498Z"
+            ],
+            "marked_utc_seconds": 114.450413,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "58a1ecc6-6721-4b8b-b6e5-45dcba03afe0"
+            ],
+            "starts": [
+              "2026-09-10T15:07:29.563567Z"
+            ],
+            "ends": [
+              "2026-09-10T15:08:15.416576Z"
+            ],
+            "marked_utc_seconds": 45.853009,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "d2df2334-8f3d-4740-b19b-341c49ebc0de"
+            ],
+            "starts": [
+              "2026-09-10T15:08:15.417568Z"
+            ],
+            "ends": [
+              "2026-09-10T15:08:58.621104Z"
+            ],
+            "marked_utc_seconds": 43.203536,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "5ca376a9-630f-4a75-a223-18908ad343c3"
+            ],
+            "starts": [
+              "2026-09-10T15:08:58.621967Z"
+            ],
+            "ends": [
+              "2026-09-10T15:09:39.790372Z"
+            ],
+            "marked_utc_seconds": 41.168405,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "generation",
+            "activity_ids": [
+              "71e57275-6d2c-4c92-b56e-ae768fca3030"
+            ],
+            "starts": [
+              "2026-09-10T15:09:39.791574Z"
+            ],
+            "ends": [
+              "2026-09-10T15:10:17.713841Z"
+            ],
+            "marked_utc_seconds": 37.922267,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "merge",
+            "activity_ids": [
+              "48193215-480c-4fd9-b22c-ae21e472cc71"
+            ],
+            "starts": [
+              "2026-09-10T15:10:17.714745Z"
+            ],
+            "ends": [
+              "2026-09-10T15:11:13.919537Z"
+            ],
+            "marked_utc_seconds": 56.204792,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "export",
+            "activity_ids": [
+              "fe5dd272-07eb-4047-9786-3bda48ae87e6"
+            ],
+            "starts": [
+              "2026-09-10T15:11:13.922541Z"
+            ],
+            "ends": [
+              "2026-09-10T15:11:52.987810Z"
+            ],
+            "marked_utc_seconds": 39.065269,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          }
+        ],
+        "model_settings": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        ],
+        "version_id": "e08122fb-6067-4f1b-b284-60d2ecd75149",
+        "workbook_sha256": "fbb0399f22e48f931db771d1ce627ccdb219d326d7905148c7ee3b7e6ef26a44",
+        "native_collector_gaps": [
+          "CLOCK_UNALIGNED"
+        ]
+      },
+      "B2": {
+        "native_source_sha256": "b90324d56ecf6a9203ed7435bec6401564ecf7030128db6e666e9a16733bc4ab",
+        "native_counter_errors": [],
+        "counts": {
+          "total_tokens": 3711819,
+          "input_tokens": 3682988,
+          "output_tokens": 28831,
+          "cached_input_tokens": 3554048,
+          "reasoning_output_tokens": 8782,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 128940,
+        "response_count": 34,
+        "native_processing_duration_ms": 1037696,
+        "max_response_input_tokens": 147521,
+        "tool_operations": {
+          "ingest": {
+            "count": 4,
+            "duration_ms": 63.574125,
+            "failed": 0
+          },
+          "render": {
+            "count": 2,
+            "duration_ms": 9548.802584000001,
+            "failed": 1
+          },
+          "check": {
+            "count": 5,
+            "duration_ms": 5962.429166,
+            "failed": 0
+          },
+          "inspect": {
+            "count": 37,
+            "duration_ms": 259.37929299999996,
+            "failed": 0
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 2485.427583,
+            "failed": 0
+          }
+        },
+        "activity_tokens": "unknown",
+        "pure_model_duration": "unknown",
+        "turns": [
+          {
+            "turn_id": "01a08be2-33a0-7d00-8eec-ef5ad2e677e6",
+            "response_count": 13,
+            "counts": {
+              "total_tokens": 936102,
+              "input_tokens": 923917,
+              "output_tokens": 12185,
+              "cached_input_tokens": 837376,
+              "reasoning_output_tokens": 2379,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 443874,
+            "start": "2026-09-10T15:14:12.554Z",
+            "end": "2026-09-10T15:21:36.388Z"
+          },
+          {
+            "turn_id": "01a08be9-99d6-7be2-ad84-ecd8f8dbef19",
+            "response_count": 13,
+            "counts": {
+              "total_tokens": 1623219,
+              "input_tokens": 1610670,
+              "output_tokens": 12549,
+              "cached_input_tokens": 1579520,
+              "reasoning_output_tokens": 5667,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 434051,
+            "start": "2026-09-10T15:22:17.439Z",
+            "end": "2026-09-10T15:29:31.488Z"
+          },
+          {
+            "turn_id": "01a08bf0-90bb-78d2-a6ab-4be5eecfafac",
+            "response_count": 8,
+            "counts": {
+              "total_tokens": 1152498,
+              "input_tokens": 1148401,
+              "output_tokens": 4097,
+              "cached_input_tokens": 1137152,
+              "reasoning_output_tokens": 736,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 159771,
+            "start": "2026-09-10T15:29:53.867Z",
+            "end": "2026-09-10T15:32:33.637Z"
+          }
+        ],
+        "marked_activities": [
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "c7f092dc-1062-49c4-881a-56ba1341b456"
+            ],
+            "starts": [
+              "2026-09-10T15:15:31.743172Z"
+            ],
+            "ends": [
+              "2026-09-10T15:18:09.198022Z"
+            ],
+            "marked_utc_seconds": 157.45485,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "4abab605-5865-4e29-b0f2-21434c6bb816"
+            ],
+            "starts": [
+              "2026-09-10T15:23:01.052978Z"
+            ],
+            "ends": [
+              "2026-09-10T15:23:01.196207Z"
+            ],
+            "marked_utc_seconds": 0.143229,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "export",
+            "activity_ids": [
+              "03db0329-6cbe-4bcb-9742-baaaa4b0daa2"
+            ],
+            "starts": [
+              "2026-09-10T15:24:18.012773Z"
+            ],
+            "ends": [
+              "2026-09-10T15:26:53.056754Z"
+            ],
+            "marked_utc_seconds": 155.043981,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "7cd0d41e-3f7a-4e40-8b22-08ca4ce1ead8"
+            ],
+            "starts": [
+              "2026-09-10T15:30:32.253901Z"
+            ],
+            "ends": [
+              "2026-09-10T15:30:32.435442Z"
+            ],
+            "marked_utc_seconds": 0.181541,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "export",
+            "activity_ids": [
+              "0dde834a-d7ee-4eaa-aa68-246d495abcb0"
+            ],
+            "starts": [
+              "2026-09-10T15:30:32.436257Z"
+            ],
+            "ends": [
+              "2026-09-10T15:32:23.248081Z"
+            ],
+            "marked_utc_seconds": 110.811824,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          }
+        ],
+        "model_settings": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        ],
+        "version_id": "1b434cf6-a72d-46c5-ba00-65872a95a29b",
+        "workbook_sha256": "a0b86131ada7b6ae7e92e45309728cd4e5fdea055faf67b43df11bb2e141988f",
+        "native_collector_gaps": [
+          "CLOCK_UNALIGNED"
+        ]
+      },
+      "B3": {
+        "native_source_sha256": "240c72763d985c20415aa2cd2ab33e96810bd6016adab4c29ca1ae26d09e1b39",
+        "native_counter_errors": [],
+        "counts": {
+          "total_tokens": 607893,
+          "input_tokens": 605116,
+          "output_tokens": 2777,
+          "cached_input_tokens": 597632,
+          "reasoning_output_tokens": 959,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 7484,
+        "response_count": 4,
+        "native_processing_duration_ms": 103993,
+        "max_response_input_tokens": 154353,
+        "tool_operations": {
+          "inspect": {
+            "count": 5,
+            "duration_ms": 45.085165999999994,
+            "failed": 0
+          }
+        },
+        "activity_tokens": "unknown",
+        "pure_model_duration": "unknown",
+        "turns": [
+          {
+            "turn_id": "01a08bf3-c17f-7b40-8351-77cac9745e76",
+            "response_count": 4,
+            "counts": {
+              "total_tokens": 607893,
+              "input_tokens": 605116,
+              "output_tokens": 2777,
+              "cached_input_tokens": 597632,
+              "reasoning_output_tokens": 959,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 103993,
+            "start": "2026-09-10T15:33:22.951Z",
+            "end": "2026-09-10T15:35:06.943Z"
+          }
+        ],
+        "marked_activities": [
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "88361cd5-b755-4f48-9da3-57f6371fec57"
+            ],
+            "starts": [
+              "2026-09-10T15:34:21.608314Z"
+            ],
+            "ends": [
+              "2026-09-10T15:34:58.809207Z"
+            ],
+            "marked_utc_seconds": 37.200893,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          }
+        ],
+        "model_settings": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        ],
+        "version_id": "1b434cf6-a72d-46c5-ba00-65872a95a29b",
+        "workbook_sha256": "a0b86131ada7b6ae7e92e45309728cd4e5fdea055faf67b43df11bb2e141988f",
+        "native_collector_gaps": [
+          "CLOCK_UNALIGNED"
+        ],
+        "separation": "B2完成后新增response/turn/operation ID的互斥集合；B2B3仅一个primary绑定，汇总不重复加计"
+      },
+      "AC-fix-B": {
+        "native_source_sha256": "228377520d7810e031d4df228f8107b7a48016c4607edefd3d8144a5460fee97",
+        "native_counter_errors": [],
+        "counts": {
+          "total_tokens": 2992730,
+          "input_tokens": 2958248,
+          "output_tokens": 34482,
+          "cached_input_tokens": 2819840,
+          "reasoning_output_tokens": 9906,
+          "cache_write_input_tokens": 0
+        },
+        "uncached_input_tokens": 138408,
+        "response_count": 30,
+        "native_processing_duration_ms": 1135878,
+        "max_response_input_tokens": 148385,
+        "tool_operations": {
+          "inspect": {
+            "count": 29,
+            "duration_ms": 322.88133500000004,
+            "failed": 0
+          },
+          "apply": {
+            "count": 1,
+            "duration_ms": 2826.218458,
+            "failed": 0
+          },
+          "render": {
+            "count": 1,
+            "duration_ms": 7808.45425,
+            "failed": 0
+          },
+          "check": {
+            "count": 3,
+            "duration_ms": 2372.208583,
+            "failed": 0
+          },
+          "ingest": {
+            "count": 5,
+            "duration_ms": 110.580792,
+            "failed": 0
+          }
+        },
+        "activity_tokens": "unknown",
+        "pure_model_duration": "unknown",
+        "turns": [
+          {
+            "turn_id": "01a08bf6-25a4-7a41-8c74-53be2f73a250",
+            "response_count": 16,
+            "counts": {
+              "total_tokens": 1119903,
+              "input_tokens": 1102258,
+              "output_tokens": 17645,
+              "cached_input_tokens": 1002112,
+              "reasoning_output_tokens": 4425,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 585070,
+            "start": "2026-09-10T15:35:59.686Z",
+            "end": "2026-09-10T15:45:44.723Z"
+          },
+          {
+            "turn_id": "01a08c00-28fe-7093-ac40-67b87093087b",
+            "response_count": 7,
+            "counts": {
+              "total_tokens": 869115,
+              "input_tokens": 857323,
+              "output_tokens": 11792,
+              "cached_input_tokens": 834560,
+              "reasoning_output_tokens": 3789,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 372303,
+            "start": "2026-09-10T15:46:55.879Z",
+            "end": "2026-09-10T15:53:08.180Z"
+          },
+          {
+            "turn_id": "01a08c0b-3de5-7c61-808b-db9fc88d46bb",
+            "response_count": 7,
+            "counts": {
+              "total_tokens": 1003712,
+              "input_tokens": 998667,
+              "output_tokens": 5045,
+              "cached_input_tokens": 983168,
+              "reasoning_output_tokens": 1692,
+              "cache_write_input_tokens": 0
+            },
+            "duration_ms": 178505,
+            "start": "2026-09-10T15:59:02.123Z",
+            "end": "2026-09-10T16:02:00.626Z"
+          }
+        ],
+        "marked_activities": [
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "96ea8ebe-5b3b-4494-bf0c-6faec577aa36"
+            ],
+            "starts": [
+              "2026-09-10T15:37:26.544107Z"
+            ],
+            "ends": [
+              "2026-09-10T15:39:58.491390Z"
+            ],
+            "marked_utc_seconds": 151.947283,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "e7ded8dd-e976-44f4-bfda-0eb5627c80c9"
+            ],
+            "starts": [
+              "2026-09-10T15:47:55.342573Z"
+            ],
+            "ends": [
+              "2026-09-10T15:48:54.860975Z"
+            ],
+            "marked_utc_seconds": 59.518402,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "input_analysis",
+            "activity_ids": [
+              "f337bcb0-cd97-4bb3-a01a-090808a926c6"
+            ],
+            "starts": [
+              "2026-09-10T15:59:59.029954Z"
+            ],
+            "ends": [
+              "2026-09-10T15:59:59.658310Z"
+            ],
+            "marked_utc_seconds": 0.628356,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          },
+          {
+            "name": "export",
+            "activity_ids": [
+              "f0b96e70-cb5c-4c4e-99b3-62f22b290b90"
+            ],
+            "starts": [
+              "2026-09-10T16:00:28.854151Z"
+            ],
+            "ends": [
+              "2026-09-10T16:01:51.366604Z"
+            ],
+            "marked_utc_seconds": 82.512453,
+            "coverage": "Agent所写标记间隔，不自动证明已覆盖整个语义步骤；token unknown"
+          }
+        ],
+        "model_settings": [
+          {
+            "model": "gpt-6-astra",
+            "effort": "xhigh",
+            "service_tier": null
+          }
+        ],
+        "version_id": "f0b43cf2-952c-49af-b8f9-5f0de26ae111",
+        "workbook_sha256": "cd0da47b90046e70e775cbf46ad36917e4393d50a26cd60f534efc0a3a32ff58",
+        "native_collector_gaps": [
+          "CLOCK_UNALIGNED"
+        ]
+      }
+    },
+    "core_total": {
+      "stages": [
+        "G1",
+        "G2",
+        "B1",
+        "B2",
+        "B3"
+      ],
+      "response_count": 143,
+      "counts": {
+        "total_tokens": 14944540,
+        "input_tokens": 14809715,
+        "output_tokens": 134825,
+        "cached_input_tokens": 14257920,
+        "reasoning_output_tokens": 33709,
+        "cache_write_input_tokens": 0
+      },
+      "uncached_input_tokens": 551795,
+      "native_processing_duration_ms": 4601716,
+      "max_response_input_tokens": 161507,
+      "duration_semantics": "处理时间累计，含失败/续接/工具；不是含并行评审或用户等待的墙钟"
+    },
+    "additional_review_feedback_total": {
+      "stages": [
+        "AC-fix",
+        "AC-fix-B"
+      ],
+      "response_count": 47,
+      "counts": {
+        "total_tokens": 4489204,
+        "input_tokens": 4437175,
+        "output_tokens": 52029,
+        "cached_input_tokens": 4192768,
+        "reasoning_output_tokens": 13609,
+        "cache_write_input_tokens": 0
+      },
+      "uncached_input_tokens": 244407,
+      "native_processing_duration_ms": 1720095,
+      "max_response_input_tokens": 148385,
+      "duration_semantics": "处理时间累计，含失败/续接/工具；不是含并行评审或用户等待的墙钟"
+    },
+    "performance_claim": "none",
+    "method": "原生响应累计核对；G2末回合含修订与确认续接，不强行按业务步骤拆分。B1文本交付更正、G2失败/开发干预、B2布局修订成本保留。额外AC反馈与核心五段分列。",
+    "limitations": [
+      "用户/控制器等待及准备未完整精确分离",
+      "活动token、纯模型时间、物理调用次数未知",
+      "原型运行观察受宿主URL策略限制",
+      "G2提前展示/等待标记不可靠；保留LIFECYCLE_INCOMPLETE",
+      "G1补答input_analysis仅0.27905秒，主要包住分析登记；此前读答与编写未完整覆盖，不能代表该步骤耗时"
+    ],
+    "obligations": {
+      "status": "complete_with_recorded_limits",
+      "checks": [
+        {
+          "id": "G01",
+          "status": "PASS",
+          "basis": "实际开场复用已有身份/材料；仅缺项询问"
+        },
+        {
+          "id": "G02",
+          "status": "PASS",
+          "basis": "CRM/ERP与生产责任合批澄清，实际答复后采用"
+        },
+        {
+          "id": "G03",
+          "status": "PASS",
+          "basis": "三业务目标、三个API实际实例；专业评审认可必要契约字段"
+        },
+        {
+          "id": "G04",
+          "status": "PASS_AFTER_FIX",
+          "basis": "首份选项/返回边界失败，后续三条AC实际定点修正并复核"
+        },
+        {
+          "id": "G05",
+          "status": "PASS",
+          "basis": "公共包一次，三个API及补发实际审计消费，日志平台不重建"
+        },
+        {
+          "id": "G06",
+          "status": "PASS",
+          "basis": "CRM单向外部集成一个单位，可靠外发内含，客户接收侧排除"
+        },
+        {
+          "id": "G07",
+          "status": "PASS_AFTER_FIX",
+          "basis": "首份迁移类别缺失，唯一布局修正时明确，独立定点复核"
+        },
+        {
+          "id": "G08",
+          "status": "PASS",
+          "basis": "未知量M+准确问题，无生产/正式UAT/培训增项或虚构数量"
+        },
+        {
+          "id": "G09",
+          "status": "PASS_WITH_LIMIT",
+          "basis": "已登记静态原型，URL策略限制明确；动态行为未验证"
+        },
+        {
+          "id": "G10",
+          "status": "PASS_AFTER_FIX",
+          "basis": "G2结构/错误repair失败保留，真实方案修订后默认双状态并采用M，问题resolved且数量未知"
+        },
+        {
+          "id": "G11",
+          "status": "PASS",
+          "basis": "确认前current不变，应用后八个叶字段与问题/决定变化，所有模式/复杂度保持"
+        },
+        {
+          "id": "B01",
+          "status": "PASS",
+          "basis": "实际G2 Excel同哈希传入B1，仅二期材料与历史Excel，无一期JSON/聊天"
+        },
+        {
+          "id": "B02",
+          "status": "PASS",
+          "basis": "稀疏历史与HLD已验收事实形成gap，不照搬旧范围/标准/问题"
+        },
+        {
+          "id": "B03",
+          "status": "PASS",
+          "basis": "同实例队列与列表调整，不重复建设创建功能/一期迁移"
+        },
+        {
+          "id": "B04",
+          "status": "PASS_AFTER_FIX",
+          "basis": "初稿保留独立接口与旧实例候选；B2确认同实例调整/S，最终四AC定点复核通过，错误正文限制与可观察身份边界明确"
+        },
+        {
+          "id": "B05",
+          "status": "PASS",
+          "basis": "新事件/接收方独立新外发，不改旧TicketOpened"
+        },
+        {
+          "id": "B06",
+          "status": "PASS",
+          "basis": "既有审计不重建；新改接口和补发实际消费有归属"
+        },
+        {
+          "id": "B07",
+          "status": "PASS",
+          "basis": "单实体迁移M+数量问题；既有发布文档调整，客户生产责任"
+        },
+        {
+          "id": "B08",
+          "status": "PASS_AFTER_FIX",
+          "basis": "实际两组首计划→选择接口子集→布局失败→一次r2重新确认后应用；员工行为保留"
+        },
+        {
+          "id": "B09",
+          "status": "PASS",
+          "basis": "接口调整/S原因及决定有实际答复，复用问题resolved；迁移M且问题open"
+        },
+        {
+          "id": "B10",
+          "status": "PASS",
+          "basis": "模型只十一叶字段变，迁移Task/问题与其他字段等值，旧版本字节不变"
+        },
+        {
+          "id": "B11",
+          "status": "PASS",
+          "basis": "实际重复反馈五次inspect，check/render/apply零，新版本零"
+        },
+        {
+          "id": "X01",
+          "status": "PASS",
+          "basis": "全部实际交付含最终AC版均四表、D列全文、无外部MD/UUID阅读指引，原生100%及机械复读通过"
+        },
+        {
+          "id": "X02",
+          "status": "PARTIAL",
+          "basis": "实际目标问题/校验及有据责任正确；G1详情notes仍重复AC的投影来源/排除，低优先级待精简"
+        },
+        {
+          "id": "X03",
+          "status": "PASS",
+          "basis": "非新建/非M原因与准确open目标显示；关闭问题不残留，Task不自动上卷"
+        },
+        {
+          "id": "X04",
+          "status": "PASS",
+          "basis": "原模板不变，真实Office/缓存/1304公式及只读SIT/UAT核验；不计算金额"
+        },
+        {
+          "id": "X05",
+          "status": "PASS_AFTER_FIX",
+          "basis": "保留G1/B2真实溢出；最终r2正文不变，v9仅减少可选留白，经真实公开check/render/apply及原生首尾查看"
+        },
+        {
+          "id": "R01",
+          "status": "PASS_WITH_LIMIT",
+          "basis": "原生响应累计核对与单绑定重复采集；B2/B3互斥分组；活动token保持unknown"
+        },
+        {
+          "id": "R02",
+          "status": "PARTIAL",
+          "basis": "处理与工具有真实记录；G1补答标记漏前段、G2展示/等待错位，准备与等待未完整精确分离，不宣称性能达标"
+        }
+      ],
+      "q_ac": [
+        {
+          "id": "Q-AC01",
+          "status": "PASS",
+          "basis": "一期同次/独立/冲突及重试前态；内部事务保留HLD"
+        },
+        {
+          "id": "Q-AC02",
+          "status": "PASS_AFTER_FIX",
+          "basis": "一期选择/返回隐私与二期错误正文/身份How均经实际局部反馈、应用和独立定点复核；首次失败保留"
+        },
+        {
+          "id": "Q-AC03",
+          "status": "PASS",
+          "basis": "公共建设与实际消费有唯一归属，所有17项Task标准/边界审查通过"
+        },
+        {
+          "id": "Q-AC04",
+          "status": "PASS_AFTER_FIX",
+          "basis": "两期迁移可检查判据保留，二期内部次序移出AC，HLD与既有Task和生产责任保持"
+        },
+        {
+          "id": "Q-AC05",
+          "status": "PASS_AFTER_FIX",
+          "basis": "未补猜数量/次数/时限；既有性能条件与重试前态保持，二期三类失败共同序列已独立复核"
+        },
+        {
+          "id": "Q-AC06",
+          "status": "PASS",
+          "basis": "成果/场景拆解，无条数门禁、分号包或AC逐Task计量"
+        },
+        {
+          "id": "Q-AC07",
+          "status": "PASS",
+          "basis": "一期文字改稿10Task不变；B2实际用户决定仅接口；最终二期四AC正文和引用共8叶字段变化，7Task/其他24AC/pending/decisions不变"
+        }
+      ],
+      "summary": {
+        "checks": {
+          "PASS": 19,
+          "PASS_AFTER_FIX": 6,
+          "PASS_WITH_LIMIT": 2,
+          "PARTIAL": 2
+        },
+        "q_ac": {
+          "PASS": 4,
+          "PASS_AFTER_FIX": 3
+        }
+      },
+      "scope": "首份完整评审加实际差异的定点复验；不是最终指引冻结后的又一次fresh全量首稿，也不是语义评分",
+      "limits": [
+        "X02: 一期一处备注重复AC，未扩大本轮文字修正范围",
+        "R02: 补答/展示活动标记覆盖不足，等待与准备未完全分离",
+        "性能未达标；产品流程未增加独立审查阶段"
+      ]
+    },
+    "integrity": {
+      "frozen_input_count": 10,
+      "frozen_inputs_unchanged": true,
+      "all_prior_version_files_unchanged": true,
+      "history_handoff_unchanged": true,
+      "final_workbook_unchanged_after_native_view": true,
+      "final_workbook_sha256": "cd0da47b90046e70e775cbf46ad36917e4393d50a26cd60f534efc0a3a32ff58"
+    },
+    "final_lite_tests": {
+      "passed": 885,
+      "skipped": 12,
+      "duration_seconds": 690.53,
+      "scope": "完整Lite检查，含真实Office独立副本；跳过平台条件，不代表所有平台已验证"
+    }
+  },
+  "development_review": {
+    "G1": {
+      "counts": {
+        "total_tokens": 3422480,
+        "input_tokens": 3384154,
+        "output_tokens": 38326,
+        "cached_input_tokens": 3214336,
+        "reasoning_output_tokens": 4323,
+        "cache_write_input_tokens": 0
+      },
+      "response_count": 27,
+      "processing_duration_ms": 1251767,
+      "counter_errors": [],
+      "scope": "独立开发语义评审，和产品执行存在时间重叠，不加到产品墙钟"
+    },
+    "G1_complete": {
+      "response_count": 32,
+      "counts": {
+        "total_tokens": 4456554,
+        "input_tokens": 4411735,
+        "output_tokens": 44819,
+        "cached_input_tokens": 4048384,
+        "reasoning_output_tokens": 5162,
+        "cache_write_input_tokens": 0
+      },
+      "native_processing_duration_ms": 1532096,
+      "counter_errors": [],
+      "source_sha256": "f85d76e772b435e244499628045fad8fca5417cf262d2eca498d98b4b7ca4294",
+      "scope": "首份完整审查加一次定点复核；与G1 first条目有重叠，不能再次相加；不计产品串行处理"
+    },
+    "B1_complete": {
+      "status": "unknown",
+      "reason": "开发审查来源出现大于512KiB的单帧，固定边界读取器拒绝；未扩大边界或估算缺失值",
+      "product_consumer_metrics_affected": false
+    }
   }
 }

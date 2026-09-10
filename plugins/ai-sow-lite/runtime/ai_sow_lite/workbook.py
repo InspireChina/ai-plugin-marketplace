@@ -25,7 +25,7 @@ LEGACY_TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0
 SUPPORTED_TEMPLATE_HASHES = (TEMPLATE_HASH, INLINE_TEMPLATE_HASH, LEGACY_TEMPLATE_HASH)
 PROJECTOR_VERSION = 'lite-projection-v1'
 # Render retry identity is separate from the unchanged projection data contract.
-RENDER_IMPLEMENTATION_VERSION = 'lite-render-v8'
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v9'
 AC_COLUMN_WIDTH = 88
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
@@ -822,7 +822,12 @@ def _required_height(value,width,*,acceptance=False):
         wrapped=max(1,math.ceil(units/usable))
         spare=int(units>usable and bool(re.search(r'\s',paragraph))) if acceptance else 1
         lines+=wrapped+spare
-    return lines*16+12 if acceptance else lines*18+28
+    if acceptance:
+        content_height=lines*16
+        # Optional bottom padding must not reject text whose full wrap reserve
+        # fits the row. Content beyond the limit still reaches _fit_height.
+        return min(content_height+12,409) if content_height<=409 else content_height+12
+    return lines*18+28
 
 
 def _fit_height(cell,value,identity,field):

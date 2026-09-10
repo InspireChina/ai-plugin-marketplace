@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- I7.6：入口按阶段读取参考，已具备前提的确认后机械操作可连续调用；补清首次结构拒绝但尚未保存候选时的一次更正路径，未增加运行时门禁。专业规则保留页面/响应/失败状态边界及重试适用关系。render v9只减少AC可选底部留白的误拒绝，正文超高仍拒绝，模板不改。真实串联保留首次缺陷与局部修正，采用M、部分采纳和重复意见有实际交付证据；最终885通过/12条件跳过。配对未证明提速，活动计量及首稿质量仍有明确限制。见 [最终串联](docs/validation/I7-final-e2e.md) 与 [I7 验证](docs/validation/I7-quality-and-performance.md)。
+
 - I7.5：增加同输入版本的实际区域到 use_regions 的机械助手，保持真实 locator/read_id 和现有 ingest 合同；编写示例复用 source_ref，文本/XLSX 示例通过公开接口。没有材料分类器或编排层；当前真实有限样本未证明性能收益。见 [I7 验证](docs/validation/I7-quality-and-performance.md)。
 
 - I7.4：已有可信身份的协议或调度拒绝请求也记录真实失败计时，未知身份的这些拒绝形式不创建遥测目录；复用原 Schema/调度条件、保持业务诊断。活动标记覆盖实际跨工具编写，单一原生来源收集与重放一致；精确活动 token 仍未知。见 [I7 验证](docs/validation/I7-quality-and-performance.md)。

@@ -21,6 +21,38 @@ def recheck(case, result):
         candidate_path=result['candidate_ref']['path'], plan_path=result['plan_ref']['path'], scope='full'))
 
 
+def test_schema_rejected_first_draft_can_be_corrected_before_candidate_exists(clarify_case):
+    case = clarify_case
+    project = case['project']
+    area = project / '.ai-sow-lite/work/clarify' / case['request_id']
+    draft = edit_draft(case, [dict(op='replace', collection='stories',
+        object_id=case['ids']['S-01'], field='notes', value='保留已有验收范围')])
+    draft['change_summary'] = ['仅修改备注', '保持其余验收范围']
+    rejected_path = area / 'rejected.json'
+    write_json(rejected_path, draft)
+    original = rejected_path.read_bytes()
+    pointer = (project / '.ai-sow-lite/current.json').read_bytes()
+    rejected = run_request(project, case['request_id'], 'check', dict(
+        edit_path=str(rejected_path.relative_to(project)), scope='full'))
+    assert not rejected['ok']
+    assert rejected['diagnostics'][0]['code'] == 'CANDIDATE_INVALID'
+    checkpoint = read_json(area / 'checkpoint.json')
+    assert not checkpoint.get('clarify_draft_ref')
+    assert checkpoint['candidate_path'] is None
+    assert not (area / 'plans').exists()
+    draft['change_summary'] = '\n'.join(draft['change_summary'])
+    corrected_path = area / 'corrected.json'
+    write_json(corrected_path, draft)
+    accepted = run_request(project, case['request_id'], 'check', dict(
+        edit_path=str(corrected_path.relative_to(project)), scope='full'))
+    assert accepted['ok'], accepted
+    plan = read_json(project / accepted['result']['plan_ref']['path'])
+    assert (plan['plan_id'], plan['revision']) == (draft['plan_id'], 1)
+    assert read_json(area / 'checkpoint.json')['repair_batches'] == 0
+    assert rejected_path.read_bytes() == original
+    assert (project / '.ai-sow-lite/current.json').read_bytes() == pointer
+
+
 def test_public_check_edits_builds_only_requested_notes_change(clarify_case):
     case = clarify_case
     project, ids = case['project'], case['ids']
@@ -386,9 +418,26 @@ def test_checked_confirmation_bytes_cannot_change_before_apply(prepared_case):
 
 
 @pytest.mark.office
-def test_newly_checked_confirmation_reuses_the_old_prepared_result(prepared_case, monkeypatch):
+@pytest.mark.parametrize('old_implementation', [None, 'lite-render-v8'])
+def test_newly_checked_confirmation_reuses_the_old_prepared_result(prepared_case, monkeypatch, old_implementation):
     from ai_sow_lite import office, workbook
+    from ai_sow_lite.contracts import semantic_digest
     case = prepared_case
+    if old_implementation:
+        result=case['result']; project=case['project']
+        attempt_path=(project/result['candidate_ref']['path']).with_name('render-attempt.json')
+        attempt=read_json(attempt_path)
+        payload=dict(candidate_path=result['candidate_ref']['path'],check_path=result['check_ref']['path'],expected_current=case['current'])
+        attempt.update(implementation_version=old_implementation,signature=semantic_digest(dict(
+            check=read_json(project/payload['check_path']),payload=payload,projector_version='lite-projection-v1',
+            engine=office.selection_fingerprint(),implementation_version=old_implementation)))
+        write_json(attempt_path,attempt)
+    verified=[]
+    original=workbook.verify_prepared
+    def verify(*args):
+        verified.append(True)
+        return original(*args)
+    monkeypatch.setattr(workbook,'verify_prepared',verify)
     checked = check_confirmation(case)
     def unexpected_office(*args, **kwargs):
         pytest.fail('Unchanged candidate/plan must reuse its actual prepared workbook, not call Office again')
@@ -396,6 +445,8 @@ def test_newly_checked_confirmation_reuses_the_old_prepared_result(prepared_case
     rendered = workbook.render_candidate(case['project'], case['request_id'], dict(
         candidate_path=checked['candidate_ref']['path'], check_path=checked['check_ref']['path'], expected_current=case['current']))
     assert rendered['prepared_ref'] == case['prepared_ref']
+    assert verified==[True]
+    assert read_json(case['project']/'.ai-sow-lite/work/clarify'/case['request_id']/'checkpoint.json')['repair_batches']==0
 
 
 @pytest.mark.office

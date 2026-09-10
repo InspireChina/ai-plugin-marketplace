@@ -178,7 +178,7 @@ def test_visible_layout_overflow_names_its_original_object_and_cell(tmp_path, ta
     assert not (tmp_path/'projected.xlsx').exists()
 
 
-@pytest.mark.parametrize('case', ['long_acs', 'overflow_acs'])
+@pytest.mark.parametrize('case', ['long_acs', 'overflow_acs', 'padding_boundary_acs', 'above_padding_boundary_acs'])
 def test_real_consumer_acceptance_layout_preserves_text_or_diagnoses_overflow(tmp_path, case):
     from .support.fixtures import FIXTURES,read_json,PLUGIN
     m,p,d=bundle()
@@ -187,7 +187,7 @@ def test_real_consumer_acceptance_layout_preserves_text_or_diagnoses_overflow(tm
     story=m['stories'][0]
     story['acs']=[dict(id=str(uuid4()),text=text,evidence_refs=story['evidence_refs']) for text in texts]
     expected='\n'.join(f'{i}. {text}' for i,text in enumerate(texts,1))
-    if case=='overflow_acs':
+    if case in ('overflow_acs', 'above_padding_boundary_acs'):
         with pytest.raises(StorageError) as caught: project(tmp_path,m,p,d)
         assert caught.value.diagnostics[0]['code']=='WORKBOOK_LAYOUT_OVERFLOW'
         assert caught.value.diagnostics[0]['target']['object_id']==story['id']
@@ -199,6 +199,8 @@ def test_real_consumer_acceptance_layout_preserves_text_or_diagnoses_overflow(tm
         assert cell.value==expected and cell.alignment.vertical=='top' and cell.alignment.wrap_text
         assert w['01-需求故事'].column_dimensions['D'].width==88
         assert w['01-需求故事'].row_dimensions[5].height<=409
+        if case=='padding_boundary_acs':
+            assert w['01-需求故事'].row_dimensions[5].height==409
         assert copy(cell.font)==copy(openpyxl.load_workbook(PLUGIN/'assets/sow-template.xlsx')['01-需求故事']['D5'].font)
         assert w['01-需求故事']['F5'].protection.locked
     assert (PLUGIN/'assets/sow-template.xlsx').read_bytes()==before

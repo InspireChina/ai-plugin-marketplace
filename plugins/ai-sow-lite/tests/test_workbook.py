@@ -340,7 +340,7 @@ def test_registered_xlsx_and_judgment_sources_render_before_office(tmp_path,monk
     assert not (case.project/'.ai-sow-lite/current.json').exists()
 
 
-@pytest.mark.parametrize('previous_version', [None, 'lite-render-v2'])
+@pytest.mark.parametrize('previous_version', [None, 'lite-render-v2', 'lite-render-v8'])
 def test_renderer_implementation_fix_retries_legacy_failure_without_reset(tmp_path,monkeypatch,previous_version):
     from .support.excel import prepare_case
     from .support.fixtures import write_json
@@ -353,7 +353,7 @@ def test_renderer_implementation_fix_retries_legacy_failure_without_reset(tmp_pa
     signature_inputs=dict(check=check,payload=payload,projector_version='lite-projection-v1',engine=office.selection_fingerprint())
     if previous_version is not None: signature_inputs['implementation_version']=previous_version
     legacy=semantic_digest(signature_inputs)
-    attempt=case.file('render-attempt.json');write_json(attempt,dict(signature=legacy,prepared_ref=None))
+    attempt=case.file('render-attempt.json');write_json(attempt,dict(signature=legacy,prepared_ref=None,implementation_version=previous_version))
     checkpoint=read_json(case.file('checkpoint.json'));checkpoint['repair_batches']=1
     write_json(case.file('checkpoint.json'),checkpoint)
     preserved=case.file('render-previous-failure');preserved.mkdir()

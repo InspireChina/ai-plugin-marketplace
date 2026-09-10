@@ -1,6 +1,6 @@
 # E2E 后修复与优化方案
 
-状态：方案已形成，尚未实施。依据为 `bbe138a` 的[首轮实测](../validation/E2E-greenfield-brownfield.md)以及用户追加的 AC 质量要求。实施拆分见 [P05](implementation/P05-quality-and-performance.md)。本方案不会改写冻结输入、oracle、旧 Excel 或首轮计量。
+状态：I7.1—I7.6 本轮实施与验证完成，性能未达标，备注精简与活动计量覆盖仍有部分通过项。依据为 `bbe138a` 的[首轮实测](../validation/E2E-greenfield-brownfield.md)以及用户追加的 AC 质量要求。实施拆分见 [P05](implementation/P05-quality-and-performance.md)，实际选择和验证结果见 [I7 验证](../validation/I7-quality-and-performance.md)。下文保留实施前的方案及候选参数；冻结输入、oracle、旧 Excel 和首轮计量不改写。
 
 ## 1. 调整结论与优先级
 
@@ -123,4 +123,4 @@ I7.3/I7.4 后建立新的“质量修复后基线”，性能优化与该基线�
 
 ## 6. 本轮自主取舍
 
-本轮只新增方案和实施任务，同步历史报告的追加评审提示；不修改产品 Skill、运行时、模板或实际 Excel。将 AC 质量提升为 P0；保留单主 session、现有模型和数据合同，不引入 AC 评分服务、IR、额外技术实体或 token 预算门禁。后续每一项机制都必须服务具体反例，而不是新增一套精细流程。
+规划提交只新增方案和实施任务，同步历史报告的追加评审提示；当时未修改产品 Skill、运行时、模板或实际 Excel。后续实施按 P05 分阶段提交。将 AC 质量提升为 P0；保留单主 session、现有模型和数据合同，不引入 AC 评分服务、IR、额外技术实体或 token 预算门禁。每一项机制都必须服务具体反例，而不是新增一套精细流程。
