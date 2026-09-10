@@ -2,9 +2,9 @@
 
 [设计总览](README.md) · [详细设计目录](detailed/README.md) · [实施计划目录](implementation/README.md)
 
-当前设计已按用户决定收口：**同一人串行使用；金额交给既有模板计算，插件不改模板。** [13 自检结论与已定边界](13-self-review-and-decisions.md) 记录决定及成本取舍；P00/D07/P03 已补齐有限编辑到完整候选的机械构造入口。设计收口已提交为 `311fee2`。I1.1 已完成实现与独立审阅；I1.2 文本/分析登记、定向读取和版本存储接缝已实现，测试及审阅状态见 [I1 验证](../validation/I1-reliable-delivery.md)。以下第6—9节保留设计期记录。
+当前设计已按用户决定收口：**同一人串行使用；金额交给既有模板计算；本次仅窄改校验原型/A2 说明。** [13 自检结论与已定边界](13-self-review-and-decisions.md) 记录决定及成本取舍；P00/D07/P03 已补齐有限编辑到完整候选的机械构造入口。设计收口已提交为 `311fee2`。I1.1 已完成实现与独立审阅；I1.2 文本/分析登记、定向读取和版本存储接缝已实现，测试及审阅状态见 [I1 验证](../validation/I1-reliable-delivery.md)。以下第6—9节保留设计期记录。
 
-当前 Excel 阅读边界按用户最新要求更新：原四表及计算不变，输出增加可见的待确认和完整说明表，正文及内部链接均在工作簿内；Markdown 只承担兼容/归档用途。详见 [D06](detailed/D06-excel-projection-and-delivery.md) 和 [I6.1 增量](implementation/P01-reliable-delivery.md#i61--excel-独立可读增量)。下文历史阶段及提交记录不据此重写为新要求已通过。
+当前 Excel 边界按 [D06](detailed/D06-excel-projection-and-delivery.md) 的 v6 原四表原列合同；专业提示与证据限制见 [AD33](13-self-review-and-decisions.md#ad33--四表原列与验收成果)。[I6.1 增量](implementation/P01-reliable-delivery.md#i61--excel-独立可读增量) 保留 v5 两张说明表的过去状态及实测，历史阶段及提交记录不据此重写为新要求已通过。
 
 ## 1. 建议的 Review 顺序
 

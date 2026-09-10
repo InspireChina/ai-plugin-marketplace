@@ -58,21 +58,15 @@ def test_representative_exact_columns_pending_and_unchanged_template(tmp_path):
         '1. 依约定条件查询并显示结果、空结果或失败。\n2. 本页失败提示一致，支持手动重试，迟到响应不覆盖新查询。']
     assert [t.cell(5, c).value for c in range(1, 7)] == ['资料查询', '资料查询页及公共客户端接入', '信息展示与查询页面', '新建', 'M', None]
     assert t['E10'].value == 'M'
-    assert "'04-待确认事项'!D5" in t['G10'].value
-    assert '使用 公共查询客户端' in s['E5'].value
-    assert '交付前提 资料承接' in s['E5'].value
+    assert t['G10'].value.startswith('待确认：')
+    assert (s['E5'].value or '') == bundle()[0]['stories'][0]['notes']
     assert isinstance(s['H5'].value, ArrayFormula) and s['H5'].value.ref == 'H5'
     assert t['J5'].value == '=IF(OR(NOT(ISNUMBER($H5)),NOT(ISNUMBER($I5))),"",ROUND($H5*$I5,1))'
     assert book['90-估算标准']['Q4'].value == 'SIT适用'
     assert book['90-估算标准']['R4'].value == 'UAT适用'
     assert book['03-工作量汇总']['B5'].value == '=SUM(TaskTable[任务人天])'
-    assert book.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准', '04-待确认事项', '05-完整说明']
-    # Short-input rows may need full task lists even in the small fixture.
-    details=(tmp_path/'details.md').read_text()
-    assert result['details'] and all(d['field']=='task_list' for d in result['details'])
-    for d in result['details']:
-        assert d['anchor'] in details
-        assert "'05-完整说明'!D" in s[d['cells'][0]['cell']].value
+    assert book.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准']
+    assert result['details'] == [] and not (tmp_path/'details.md').exists()
     assert result['objects'][0]['kind'] == 'epic'
     ac = next(o for o in result['objects'] if o['object_id'].endswith('000024'))
     assert ac['fields'] == [{'field': 'text', 'cells': [{'sheet': '01-需求故事', 'cell': 'D5', 'entry': 1}]}]
@@ -80,7 +74,7 @@ def test_representative_exact_columns_pending_and_unchanged_template(tmp_path):
     text = (tmp_path / 'pending-items.md').read_text()
     assert result['version_id'] in text and '条数未知' in text
     assert (PLUGIN / 'assets/sow-template.xlsx').read_bytes() == before
-    assert hashlib.sha256(before).hexdigest() == '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
+    assert hashlib.sha256(before).hexdigest() == '7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919'
 
 
 @pytest.mark.parametrize('stories,tasks,last_s,last_t', [(0,0,64,204),(1,1,64,204),(60,200,64,204),(61,201,65,205)])
@@ -126,23 +120,18 @@ def test_aliases_are_stable_unique_case_unicode_and_criteria_safe():
     assert all(updated[k] == v for k,v in aliases.items())
 
 
-def test_long_text_has_one_complete_anchor_and_literal_notes(tmp_path):
-    m,p,d=bundle(); original='验收原文😀\n' * 6000
+def test_long_text_stays_inline_with_literal_notes_and_alias_original(tmp_path):
+    m,p,d=bundle(); original='验收原文😀\n' * 1200
     m['stories'][0]['title']='查询*?~订单'
     m['stories'][0]['acs'][0]['text']=original
     m['tasks'][0]['notes']='=SUM(A1:A9)'
     result=project(tmp_path,m,p,d)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx'); s=w['01-需求故事']; t=w['02-任务清单']
-    assert s['C5'].value.startswith('S-') and t['A5'].value==s['C5'].value
-    assert '查询*?~订单' in s['E5'].value
+    assert original in s['D5'].value
+    assert '原名：查询*?~订单' in s['E5'].value
     assert t['G5'].value=='=SUM(A1:A9)' and t['G5'].data_type=='s'
-    details=(tmp_path/'details.md').read_text()
-    assert details.count(original)==1
-    detail=next(x for x in result['details'] if x['object_id']==m['stories'][0]['id'] and x['field']=='acs')
-    assert detail['anchor'] in details
-    assert "'05-完整说明'!D" in s['D5'].value
-    assert len(s['D5'].value)<32767
-    assert w['01-需求故事']['H5'].data_type=='f'
+    assert result['details']==[] and not (tmp_path/'details.md').exists()
+    assert s['H5'].data_type=='f'
 
 
 def test_invalid_xml_literal_and_changed_template_are_diagnosed(tmp_path):
@@ -175,7 +164,7 @@ def test_public_packet_real_render_apply_recover_and_no_repeat_office(tmp_path,m
     assert 'projection_version' not in projection
     assert projection['version_id']==prepared['version_id']==output['version_id']
     assert projection['workbook_hash']==output['workbook_ref']['sha256']
-    assert output['pending_count']==1 and output['details_ref'] is not None
+    assert output['pending_count']==1 and output['details_ref'] is None
     assert not (case.project/'.ai-sow-lite/current.json').exists()
     # Prior successful text signatures reuse the same genuinely calculated bytes.
     attempt=read_json(case.file('render-attempt.json'))
@@ -386,13 +375,13 @@ def test_renderer_implementation_fix_retries_legacy_failure_without_reset(tmp_pa
     assert not (case.project/'.ai-sow-lite/current.json').exists()
 
 
-def test_long_crlf_keeps_original_once_and_has_reachable_full_text(tmp_path):
+def test_crlf_is_displayed_inline_with_normalized_excel_newlines(tmp_path):
     model,pending,decisions=bundle(); original='第一行\r\n第二行\r\n'
     model['tasks'][0]['notes']=original
     project(tmp_path,model,pending,decisions)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
-    assert "'05-完整说明'!D" in w['02-任务清单']['G5'].value
-    assert original.encode() in (tmp_path/'details.md').read_bytes()
+    assert w['02-任务清单']['G5'].value == original.replace('\r\n','\n')
+    assert not (tmp_path/'details.md').exists()
 
 
 @pytest.mark.office
@@ -434,9 +423,14 @@ def test_checked_partial_classification_and_unestimated_targets_keep_original_fo
     assert w['01-需求故事']['H6'].data_type=='f'
     projection=read_json(case.project/out['projection_ref']['path'])
     gap_mapping=next(x for x in projection['pending_items'] if x['pending_item_id']==gap['id'])
-    assert gap_mapping['targets'][0]['cells']==[] and gap_mapping['targets'][1]['cells']
+    assert gap_mapping['targets'][0]['cells'] and gap_mapping['targets'][1]['cells']
     note=(case.project/out['pending_items_ref']['path']).read_text()
-    assert '无工作簿行' in note and '未拆明业务工作：是' in note and gap['id'] in note
+    assert '无工作簿行' not in note and '未拆明业务工作：是' in note and gap['id'] in note
+    cached=openpyxl.load_workbook(case.project/out['workbook_ref']['path'],data_only=True)
+    scope_row=next(o['rows'][0] for o in projection['objects'] if o['object_id']==orphan['id'])
+    assert cached['01-需求故事'][f'J{scope_row}'].value=='待确认'
+    assert all(cached['01-需求故事'][f'{col}{scope_row}'].value is None for col in ('C','D','I'))
+    assert cached['02-任务清单']['L5'].value==cached['02-任务清单']['L7'].value=='待确认'
     assert out['pending_count']==7
     assert (case.project/out['prepared_ref']['path']).parent.joinpath('model.json').read_bytes()==case.file('model.json').read_bytes()
 
@@ -503,38 +497,37 @@ def test_apply_rechecks_original_sources_after_delivery_verifier(tmp_path,monkey
 def test_native_clipped_rows_get_actual_column_width_and_cjk_margin(tmp_path):
     project(tmp_path)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
-    # Excel16.112.3 independently clipped E5 at 78.75pt, D7 at the old
-    # fixed-width estimate, and the UUID references in G10. These minima leave
-    # room for the final target/AC line without changing template widths/fonts.
-    assert 120 <= w['01-需求故事'].row_dimensions[5].height <=409
+    # Reserve room for AC, the formula task list and the inline question using
+    # actual template widths. No generated reference filler is needed.
+    assert 90 <= w['01-需求故事'].row_dimensions[5].height <=409
     assert 100 <= w['01-需求故事'].row_dimensions[7].height <=409
-    assert 240 <= w['02-任务清单'].row_dimensions[10].height <=409
+    assert 180 <= w['02-任务清单'].row_dimensions[10].height <=409
     assert w['01-需求故事'].column_dimensions['E'].width==30
     assert w['02-任务清单'].column_dimensions['G'].width==36
 
 
-def test_layout_overflow_uses_details_instead_of_clamping_hidden_full_text(tmp_path):
+def test_layout_overflow_keeps_full_cell_with_excel_row_height_cap(tmp_path):
     model,pending,decisions=bundle()
     model['stories'][0]['notes']='甲'*700
     project(tmp_path,model,pending,decisions)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
     cell=w['01-需求故事']['E5']
-    assert "'05-完整说明'!D" in cell.value
-    assert '甲'*700 in (tmp_path/'details.md').read_text()
-    assert len(cell.value)<700 and w['01-需求故事'].row_dimensions[5].height<=409
+    assert cell.value == '甲'*700
+    assert not (tmp_path/'details.md').exists()
+    assert w['01-需求故事'].row_dimensions[5].height<=409
 
 
-def test_narrow_parent_title_preview_remains_readable_with_full_text_anchor(tmp_path):
+def test_narrow_parent_title_is_not_truncated(tmp_path):
     m,p,d=bundle();m['epics'][0]['title']='窄列完整标题'*600
     project(tmp_path,m,p,d)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
-    assert "'05-完整说明'!D" in w['01-需求故事']['A5'].value
-    assert m['epics'][0]['title'] in (tmp_path/'details.md').read_text()
+    assert w['01-需求故事']['A5'].value == m['epics'][0]['title']
+    assert not (tmp_path/'details.md').exists()
     assert w['01-需求故事'].row_dimensions[5].height<=409
 
 
 @pytest.mark.office
-def test_medium_task_list_has_readable_row_or_complete_details_after_office(tmp_path):
+def test_medium_task_list_expands_row_without_filling_notes_after_office(tmp_path):
     import shutil
     if not shutil.which('soffice') and not shutil.which('libreoffice'):
         pytest.skip('Real Office engine unavailable')
@@ -547,17 +540,14 @@ def test_medium_task_list_has_readable_row_or_complete_details_after_office(tmp_
     names=[f'测试任务长名称用于检验故事任务列表可读性{i}' for i in range(3)]
     assert all(name in text for name in names)
     assert isinstance(ws['H5'].value,ArrayFormula) and ws['H5'].value.ref=='H5'
-    # Actual cached text needs 244pt under the existing conservative estimator;
-    # the old row was 63.75pt, with neither note nor full-text artifact.
-    if ws.row_dimensions[5].height<244:
-        assert "'05-完整说明'!D" in (ws['E5'].value or '')
-        details=(case.project/output['details_ref']['path']).read_text()
-        assert all(name in details for name in names)
+    assert ws.row_dimensions[5].height>=243.75  # Office stores heights in 0.75pt steps.
+    assert ws['E5'].value is None
+    assert output['details_ref'] is None
     assert ws.row_dimensions[5].height<=409
     assert module().formula_cache_inventory(path)==module().formula_cache_inventory(path.with_name('sow.office-raw.xlsx'))
 
 
-def test_medium_list_anchor_survives_notes_and_pending_reference_overflow(tmp_path):
+def test_medium_list_notes_and_pending_remain_complete_inline(tmp_path):
     from .support.excel import medium_list_model
     model,pending,decisions=bundle();model=medium_list_model(model)
     story=model['stories'][0];story['notes']='甲'*700
@@ -565,10 +555,8 @@ def test_medium_list_anchor_survives_notes_and_pending_reference_overflow(tmp_pa
     item['current_handling']='保留全部待确认处理说明。'*100
     result=project(tmp_path,model,pending,decisions)
     w=openpyxl.load_workbook(tmp_path/'projected.xlsx');notes=w['01-需求故事']['E5'].value
-    mapping=next(d for d in result['details'] if d['field']=='task_list')
-    assert "'05-完整说明'!D" in notes
-    assert mapping['anchor'] in (tmp_path/'details.md').read_text()
-    details=(tmp_path/'details.md').read_text()
-    assert story['notes'] in details and item['current_handling'] in details
-    assert all(t['name'] in details for t in model['tasks'])
+    assert result['details']==[]
+    assert notes.startswith('待确认：')
+    assert story['notes'] in notes and item['current_handling'] in notes
+    assert all(w['02-任务清单'].cell(row,2).value==t['name'] for row,t in enumerate(model['tasks'],5))
     assert w['01-需求故事'].row_dimensions[5].height<=409

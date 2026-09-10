@@ -14,7 +14,7 @@
 
 - 所有代码和资产位于 Lite 插件，项目输出位于显式项目的 `.ai-sow-lite/`；不依赖 checkout cwd 或旧插件运行时。
 - 迁入 D00 指定提交 `2fc8588` 的机械能力；不迁入旧业务 Schema、Owner/Reviewer 门禁、隐藏辅助列或阶段运行器。
-- 原模板资产和既有表/列/公式语义保持不变；原四表只填可写输入，超容量按已有原型扩行。输出新增可见的 04-待确认事项、05-完整说明，正文和实际采用答复在工作簿内完整续行，主表内部链接；Markdown 保留归档，不加金额保护公式。
+- 当前按 D06 的 v6 四表原列合同投影；模板仅窄改校验原型/A2 说明，单旧模板内存兼容，实际项目模板/hash 保留。AC 全文与 open 目标备注/范围行复读，计算口径不变；不加金额保护公式。
 - 未明复杂度 M+问题；类型等真实未知留空；未拆明工作明确列为业务待确认。SIT/UAT、人天及汇总全部让原模板计算，插件不判断金额完整性或添加部分汇总。
 - 每个请求的修复/重试与恢复计数执行 D04B；观测不作为预算门禁。
 - 以下路径相对 Lite 插件；命令从仓库根执行。尚未实现的命令不能计作本轮验证。
@@ -91,7 +91,7 @@ def replace_current(root: Path, pointer: dict) -> None:
 
 ## I1.3 · 模板投影、真实计算与最终复读
 
-以下勾选项保留 I1.3 当时的四表/Markdown 实现及验证归属，不表示 I6.1 的工作簿独立可读要求已通过；当前增量见文末。
+以下勾选项保留 I1.3 当时的四表/Markdown 实现及验证归属，不表示后续输出要求已通过；当前活动合同见 D06。
 
 **Files:** 新建 runtime/ai_sow_lite/{workbook,office}.py、tests/{test_workbook,test_office}.py；扩展 cli/validation、excel 夹具；保留 assets/sow-template.xlsx 与 tests/test_template_uat.py。
 
@@ -180,9 +180,11 @@ def test_first_delivery_and_retry(case):
 
 ## I6.1 · Excel 独立可读增量
 
-按用户最新要求覆盖 I1.3 的四表输出限制；不改原模板资产、四表结构及公式/计算规则，保留 lite-projection-v1 和归档 path/anchor，渲染实现修订为 lite-render-v5。本增量逐项验证如下，不沿用历史通过结论；实际过程与限制见 [I6.1 验证](../../validation/I6-self-contained.md)。
+以下保留 I6.1 当时的实现及实测：当时按用户要求覆盖 I1.3 的四表输出限制；不改原模板资产、四表结构及公式/计算规则，保留 lite-projection-v1 和归档 path/anchor，渲染实现修订为 lite-render-v5。本增量当时的逐项验证如下，不能证明当前 v6 或新提示效果；实际过程与限制见 [I6.1 验证](../../validation/I6-self-contained.md)。
 
 - [x] TDD 覆盖两张可见说明表及空态；短字段直填，长标题/AC/备注/任务列表逐字有序可读续行，主表内部位置和可点击链接，不用 Markdown 外链或 UUID 问题标签。
 - [x] 核对问题原文、当前处理、状态、全部目标、既有来源定位及实际已采用答复；续行不增加语义实体、不改变 AC/Task 或公式，文本安全规则保持。
 - [x] 复读正文完整性、顺序、内部链接、可见布局及原四表保存；旧 applied 原样保留，旧 prepared/预览不能绕过新核验，有限返修历史和额度不重置。
 - [x] 完成真实 Office 往返、只读渲染及最终代码复读；Lite 全量 737 passed / 12 skipped，补齐 I6.1 验证与 AD32。原生 Excel 打开/保存未可靠完成，未计为本次通过证据。
+
+当前反馈实施边界见 [D06](../detailed/D06-excel-projection-and-delivery.md) 与 [AD33](../13-self-review-and-decisions.md#ad33--四表原列与验收成果)。新旧模板兼容需用旧模板测试夹具核对，仅内存复制新版校验列 prototype/A2，原项目模板字节和 hash 不变，prepared/projection 仍绑定实际项目 hash；不修改上面历史勾选及实测值。

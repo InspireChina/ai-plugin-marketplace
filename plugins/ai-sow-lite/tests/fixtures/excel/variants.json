@@ -3,7 +3,7 @@
   "variants": [
     {
       "id": "long-text",
-      "description": "超过 Excel 单元格容量的文字保存在独立 details.md。"
+      "description": "长文字完整写入原单元格；超过 Excel 单元格容量时返回字段定向诊断，不截断或分流到说明表。"
     },
     {
       "id": "duplicate-wildcard",

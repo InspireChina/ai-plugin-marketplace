@@ -6,7 +6,7 @@
 
 ## 1. 文件和协议版本
 
-- 首个 `protocol_version`、交付/方案/工件 `schema_version` 均使用字符串 `"1.0"`；摘要格式为 `json-v1`，投影适配为 `lite-projection-v1`。I6.1 保留这些数据字段及 Markdown path/anchor，只将渲染实现修订为 `lite-render-v5`，两张可见说明表按 D06 生成。插件包版本另由交付元数据维护，不与这些版本号混用。
+- 首个 `protocol_version`、交付/方案/工件 `schema_version` 均使用字符串 `"1.0"`；摘要格式为 `json-v1`，投影适配为 `lite-projection-v1`。当前数据字段合同保持；渲染实现为 `lite-render-v6`，原四表原列按 D06 投影，新输出 details=[]、details_ref=null，无 details.md，旧 applied 归档不变。插件包版本另由交付元数据维护，不与这些版本号混用。
 - JSON Schema 使用 Draft 2020-12；未知协议/Schema/投影版本拒绝，未知业务字段拒绝。观测信息缺失可降级，非法业务字段不能按观测异常忽略。
 - 稳定 ID 使用本地 UUID4；设计例中的 T-06 等只作可读映射。单个逻辑请求持续复用 request_id；工具生成 execution/operation/attempt/version ID，不能以换 ID 重置次数。
 - `contracts/model.schema.json`、`pending-items.schema.json`、`decisions.schema.json`、`evidence.schema.json` 分别落实 D02。`protocol.schema.json` 管调用；`artifacts.schema.json` 用 `$defs` 管 project、candidate、manifest、reading、analysis、checkpoint、检查/投影报告；I3 的 `change-plan.schema.json` 管方案。不要为每个内部字典再建一份 Schema。
@@ -53,7 +53,7 @@ I1.4 为已进入执行的工具结果增加非业务 `result.observation`：`re
 | inspect | `view`、`selector`、`limit`、`cursor` | selected_version、items 或 content_ref、matched_count、returned_count、remaining_count、next_cursor、coverage、report_ref（不适用为 null） |
 | check / candidate | `candidate_path`、`scope`（slice/full）、`plan_path`（无则 null） | check_ref、candidate_ref、plan_ref、review_ref、candidate_digest、valid_for_render、unknowns_count；无计划时 plan_ref/review_ref 为 null；slice 通过仍不能 render |
 | check / edits | `edit_path`、`scope="full"`；与 candidate_path/plan_path 互斥 | 同上；先在 work 机械构造候选与具体计划，再检查；不改变 current、不代确认 |
-| render | candidate_path、`check_path`、`expected_current`（指针对象或 null） | prepared_ref、version_id、workbook_ref、projection_ref、summary_ref、pending_items_ref、details_ref（无长内容为 null）、office_identity、verification_ref、pending_count；不激活、不返回金额状态 |
+| render | candidate_path、`check_path`、`expected_current`（指针对象或 null） | prepared_ref、version_id、workbook_ref、projection_ref、summary_ref、pending_items_ref、details_ref（新输出为 null）、office_identity、verification_ref、pending_count；不激活、不返回金额状态 |
 | apply | `entrypoint`、`prepared_path`、expected_current、plan_path（generate 为 null） | applied_version、manifest_ref、workbook_ref、idempotent、current_version；原请求已应用优先返回 |
 | recover | `target_request_id` | state（applied/draft/cancelled/incompatible）、applied_version、preserved_paths、diagnostics_ref；只查事实，不激活孤立版本 |
 
@@ -75,7 +75,7 @@ I2.1 的 XLSX `regions` 查询省略 locator 时返回结构目录；指定区�
 
 候选语义摘要覆盖以上实际内容、所用依据身份/内容、模板和基线；对象数组顺序保留，不能为了“同样内容”重排业务展示顺序。check 报告绑定实际文件字节、依赖摘要、Schema/验证器版本和 scope。检查缓存只能由程序生成并复核，不接纳 agent 写的 valid 标志。
 
-render 分配本次准备的 version_id，保存 `prepared.json`：schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref。files 含最终 model/pending/decisions/projection/sow/summary、可读 pending-items.md 及按需 details.md；manifest 在 apply 之前完成。summary 只写范围、变化、待确认与当前观测快照，不计算、解释或标记金额完整性；输出文件被绑定后不能为补最终 usage 改写。
+render 分配本次准备的 version_id，保存 `prepared.json`：schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref。files 含最终 model/pending/decisions/projection/sow/summary、可读 pending-items.md；新输出无 details.md，prepared/projection 绑定实际项目模板 hash；manifest 在 apply 之前完成。summary 只写范围、变化、待确认与当前观测快照，不计算、解释或标记金额完整性；输出文件被绑定后不能为补最终 usage 改写。
 
 prepared.json 是候选准备记录，不是已经应用的收据。apply 复核实际字节与有效检查记录；current 指针 `{version_id, manifest_hash}` 原子替换才生效。manifest 采用 D07 字段并列出所有可达输入/分析/观察附件/历史版本依赖。读取器选定一个 current 后始终读取该版。
 
@@ -164,7 +164,7 @@ I1 创建 `tests/__init__.py`、`tests/conftest.py` 与 `tests/support/fixtures.
 | 夹具目录 | 真实文件/变体 | 独立判定依据 |
 |---|---|---|
 | `tests/fixtures/generate/` | EX01 的 prd.md、hld.md、answers.md；candidate JSON；新增三类义务 expectations.json | 三类责任、公共单计、来源 AC、默认 M；期待义务不是固定生成措辞 |
-| `tests/fixtures/excel/` | EX04/EX07 的候选变体描述、长文本、同名/通配符、未知分类、未拆明工作、无 gap | 原四表填值/公式/结构保留、两张可见说明表及空态、逐字续行/内部链接、实际采用答复、Office 正常往返；旧 prepared 不绕过新核验；不增加估算完整性断言 |
+| `tests/fixtures/excel/` | EX04/EX07 的候选变体描述、长文本、同名/通配符、未知分类、未拆明工作、无 gap | 原四表原列全文、正常备注空、open 目标备注/范围行、校验优先级、单格物理超限、旧模板仅内存兼容、Office 正常往返；旧 prepared 不绕过新核验；不增加估算完整性断言 |
 | `tests/fixtures/history/` | 合成 XLSX：无 AC/无 Task、API/事件候选、明确实例、不同用途区域 | 稀疏 as-is 可用，类型不等于实例，零匹配可受新来源影响 |
 | `tests/fixtures/clarify/` | EX05 反馈、方案及独立预期 diff；真实基线由 I1 构建 | 具体确认、有限影响、历史去向、无关数据保留 |
 | `tests/fixtures/telemetry/` | EX06 的增量/累计、跨活动、重复/迟到、时钟重启/损坏事件 | 不重计、不伪造粒度，未知与零不同 |

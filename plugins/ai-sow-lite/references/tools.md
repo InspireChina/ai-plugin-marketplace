@@ -170,7 +170,7 @@ cursor 绑定查询、实际来源/索引/所读版本和续读位置。绑定�
 - 准备/候选/检查/文件结构或实际摘要不一致：协议、候选或依据诊断；已有非预期 current：BASE_STALE。
 - 其余准备包：`workbook.verify_prepared` 复核实际投影、Office 记录、原始产物和最终工作簿；不符返回 WORKBOOK_INVALID，target.field=verification_ref。自填 `valid=true` 无效；没有 skip/force/failpoint 等生产绕过参数。
 
-I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志；当前核验还须验证两张可见说明表、完整正文/续行和内部链接，外部 Markdown 完整不能替代。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，另可有 details.md；verification_ref 独立指向核验记录。
+I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonObject) -> JsonObject`，成功必须返回 `{"diagnostics": []}`，失败返回同结构的标准诊断列表。它是实际 Python 核验实现，须独立复核最终工作簿、投影、真实 Office 核验记录及候选/模板/version_id/最终字节绑定；不能只读取成功标志；当前核验还须验证原四表原列全文、目标行 open 备注、范围行和校验优先级，外部 Markdown 完整不能替代。此调用在锁外执行，只核验、不重算、不激活。prepared 的固定字段为 schema_version、version_id、candidate_ref、check_ref、expected_current、files、template_hash、projection_version、office_identity、verification_ref；引用指向本请求 work。files 至少包含 model.json、pending-items.json、decisions.json、projection.json、sow.xlsx、summary.md、pending-items.md，新输出不含 details.md；verification_ref 独立指向核验记录。
 
 公共入口在重新执行完整候选检查并通过实际 I1.3 核验后，冻结业务 JSON 和输入记录快照，将可达输入/分析/读取附件列入 manifest；不把可变 inputs/index 或 work 当稳定依赖，再交给 `_commit_version` 存储内核。`application.json` 绑定原应用调用，`intent.json` 在应用候选进入保存时封存意图，讨论/分析登记不会提前封存。
 
@@ -184,21 +184,21 @@ I1.3 已接入函数为 `workbook.verify_prepared(project: Path, prepared: JsonO
 
 `render` payload 必须为 candidate_path、check_path、expected_current。首版 Generate 的期望指针为 null。工具重新执行 full check，并与指定检查文件完整比较；slice、候选/来源字节变化、自填通过标志均不能作为导出依据。候选和检查文件必须属于本请求 work，原业务 JSON 逐字节复制。
 
-版本 ID 在 render 分配。返回 prepared_ref、version_id、workbook_ref、projection_ref、summary_ref、pending_items_ref、details_ref（无全文文件为 null）、office_identity、verification_ref、pending_count（仅 open）。引用均为项目相对 `{path, sha256}`，不返回金额结论。
+版本 ID 在 render 分配。返回 prepared_ref、version_id、workbook_ref、projection_ref、summary_ref、pending_items_ref、details_ref（新输出为 null）、office_identity、verification_ref、pending_count（仅 open）。引用均为项目相对 `{path, sha256}`，不返回金额结论。
 
-`render-<version_id>/` 保留 projected.xlsx（Office 前输入）、sow.office-raw.xlsx（Office 原始输出）、最终 sow.xlsx 和同版 JSON/Markdown。失败保留工作目录及可得 raw，failure.json 记录诊断，不产生成功 prepared，不切换 current。正式文件集合仍是 model/pending-items/decisions/projection JSON、sow.xlsx、summary.md、pending-items.md，按需增加 details.md；apply 另保存 verification 和输入索引快照。raw/投影输入只用于 work 核验，不成为不可变版本的 work 依赖。
+`render-<version_id>/` 保留 projected.xlsx（Office 前输入）、sow.office-raw.xlsx（Office 原始输出）、最终 sow.xlsx 和同版 JSON/Markdown。失败保留工作目录及可得 raw，failure.json 记录诊断，不产生成功 prepared，不切换 current。正式文件集合仍是 model/pending-items/decisions/projection JSON、sow.xlsx、summary.md、pending-items.md，新输出不生成 details.md；apply 另保存 verification 和输入索引快照。raw/投影输入只用于 work 核验，不成为不可变版本的 work 依赖。
 
-模板 SHA 固定为 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`。Story A:E、Task A:G 是输入；Story D 是 AC，F:J 和 Task H:L 保留原公式。标准 Q/R 分别为 SIT/UAT。容量内保留 Story 5—64、Task 5—204；超容量仅按模板原型追加，保留样式、保护、数组公式 ref、Table/filter 与计算列元数据。当前固定模板使用结构化跨表引用、整列 DV/条件格式和数据表空 print_area，扩行无需改写这些范围或公式。未知模板字节/原型返回 VERSION_INCOMPATIBLE。
+新模板 SHA 为 `7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919`。唯一兼容旧 SHA 为 `6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332`：在内存从新版资产仅复制校验列 prototype/A2 说明，再按原项目模板投影；不改旧项目模板字节和 hash，prepared/projection 仍绑定实际项目 hash。其余模板拒绝，不自动重建项目。Story A:E、Task A:G 是输入；Story D 是 AC，F:I 和 Task H:K 保留原公式；Story J / Task L 校验使用新版模板原型，空行空、待确认优先、否则原校验，不改人天/金额/SIT/UAT 规则。标准 Q/R 分别为 SIT/UAT。容量内保留 Story 5—64、Task 5—204；超容量仅按模板原型追加，保留样式、保护、数组公式 ref、Table/filter 与计算列元数据。当前固定模板使用结构化跨表引用、整列 DV/条件格式和数据表空 print_area，扩行无需改写这些范围或公式。未知模板字节/原型返回 VERSION_INCOMPATIBLE。
 
-业务字符串由 write_literal 强制写为字符串，不加单引号。Story/Task 名分别按 NFC、casefold 和 trim 比较键检查碰撞；安全原名保留。通配符、criteria 运算符、数值/布尔/错误码形名称、换行和超过120个 UTF-16 单元的名称使用稳定 ID 别名；原文在备注或工作簿完整说明中保留，模型名称不改。
+业务字符串由 write_literal 强制写为字符串，不加单引号。Story/Task 名分别按 NFC、casefold 和 trim 比较键检查碰撞；安全原名保留。通配符、criteria 运算符、数值/布尔/错误码形名称、换行和超过120个 UTF-16 单元的名称使用稳定 ID 别名；原文完整保留在对应备注，模型名称不改。
 
-I6.1 的当前输出要求：原四张表结构和计算不变，生成结果增加始终可见的 `04-待确认事项`、`05-完整说明`，没有问题/长文时也保留并显示空态。短字段直接填写；长标题、AC、备注、Task 列表及问题相关长字段按原顺序逐字放入可读续行，保留空白、AC 顺序和任务关系，Excel 将 CRLF/CR 显示为 LF，项目映射继续保留 AC ID，归档保留原始换行字节。续行标记与原文分开，不形成新业务实体或投影 Schema。主表使用本工作簿位置及可点击内部 hyperlink/location，不生成 HYPERLINK 公式，不出现 details.md#... 或 pending-items.md#... 外部入口，也不用 UUID 标签替代实际问题。
+当前 v6 输出只含原四表。完整 AC 在 Story D，正常 Story E / Task G 备注为空；仅投影必要责任例外、安全别名原名及 open 问题。open 的真实 question + current_handling 以“待确认：”开始写在目标行；AC 指明哪条，父项问题落实际受影响的 Story，Task 问题只落 Task 行。无 Story 的未拆明 Epic/Feature 在 01 表末尾追加范围行，仅实际父项和问题，Story/AC/人天空。resolved/superseded 不在 Excel，只留项目 JSON/MD 历史；依赖、分类依据、Task 清单、证据 ID 和外部路径不自动写备注。
 
-待确认表包含问题原文、当前处理、状态、全部目标、已有 evidence_refs 的实际来源定位，以及存在时真正已采用的答复正文；决定 ID 或“已解决”不能代替答案。任务列表 H 保持原公式及 Office 原样结果，可能超出本行可读高度时从 Story E 链接完整清单。两张说明表按可读列宽/行高续行，不把长文塞进另一个超高单元格或无限缩小字体。原四张表仅调整必要输入行高，不改列宽/字体或计算列。
+长文保存在原列，行高最多 409 点；最终单格文本超过 32767 UTF-16 单元时返回对象/字段定向 diagnostic 并沿既有有界修复，不摘要、不截断或另起说明表。任务列表 H 保留原公式、数组属性和 Office 原样结果，全部任务在 TaskTable，不复制到备注。
 
-projection.json 使用 **projector_version**；prepared/manifest 继续使用既有 **projection_version**，均为 lite-projection-v1，不接受双别名。projection 还含 schema_version、version_id、template_hash、model_hash、pending_items_hash、decisions_hash、workbook_hash、objects、pending_items、details。objects 记录 object_id/kind/sheet/table/rows/display_name/fields；单行也使用 rows 数组，无行父项使用空数组。fields 为 `{field,cells}`；cell 为 `{sheet,cell}`，AC 增加1起始 entry。AC 自身 ID 保留，正文不复制进映射。问题 targets 含 object_id/field/cells。问题与全文的既有 path/anchor 继续指向同版 pending-items.md/details.md，保留兼容、机器处理和项目归档用途；正文哈希仍由 prepared/files 和 manifest 绑定。这些归档文件无需随 Excel 分享，工作簿内部链接由渲染器生成并核验，不把原 path/anchor 改成另一套坐标合同。
+projection.json 使用 **projector_version**；prepared/manifest 使用既有 **projection_version**，均为 lite-projection-v1，不接受双别名。projection 仍含 schema_version、version_id、template_hash、model_hash、pending_items_hash、decisions_hash、workbook_hash、objects、pending_items、details。objects 为 object_id/kind/sheet/table/rows/display_name/fields；单行使用 rows 数组，未拆明父项含实际范围行。fields 为 `{field,cells}`，cell 为 `{sheet,cell}`；AC 增加1起始 entry，保留自身 ID。问题 targets 为 object_id/field/cells，历史问题 cells 为空。pending path/anchor 继续指向项目 pending-items.md；新输出 details=[]、details_ref=null，不生成 details.md。历史 v1 字段合同和旧 applied 文件不变。
 
-Excel 可独立阅读、评审和分享，后续 clarify 仍需完整项目 JSON、依据及版本目录；独立可读不等于支持无损回导。I1.3 及后续历史测试只证明各阶段原范围，新增检查见 [I6.1 验证](../docs/validation/I6-self-contained.md)。
+Excel 可单独查看与分享，clarify 仍需完整项目 JSON、依据及版本目录。 [I6.1](../docs/validation/I6-self-contained.md) 保留 v5 实测状态，不证明本次提示效果；当前活动设计见 [D06](../docs/design/detailed/D06-excel-projection-and-delivery.md)。
 
 ### 引擎与最终封存
 
@@ -216,9 +216,9 @@ verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏�
 
 ### 复用、变动与测试入口
 
-render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。Generate沿用请求目录的记录；Clarify将记录放在既有不可变候选槽内，首次预览r1/r2/严格子集不算故障重试，返回旧槽复用已成功包。槽位仍由原有限构造约束控制；失败后有条件变化的重试继续消耗全请求共享额度。实现修订 `implementation_version=lite-render-v5` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2/v3/v4 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。旧失败收据没有候选身份时保守继承其失败历史，改变引擎签名不能证明是独立新槽；原预算耗尽即退出。旧 applied 版本保留原成功事实及内容，不就地升级。修复前成功 prepared/预览的旧签名只有在相同检查/指针/引擎且通过当前完整复核时才可复用；旧成功收据、相同 Schema 或历史验证器不能绕过 v5 的两张可见说明表、完整续行和内部链接核验。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
+render-attempt.json 记录具体输入、检查、期望指针、投影器和引擎选择摘要。Generate沿用请求目录的记录；Clarify将记录放在既有不可变候选槽内，首次预览r1/r2/严格子集不算故障重试，返回旧槽复用已成功包。槽位仍由原有限构造约束控制；失败后有条件变化的重试继续消耗全请求共享额度。实现修订 `implementation_version=lite-render-v6` 另计入 attempt 签名，交付数据合同继续为 `lite-projection-v1`。修复前未含实现修订或为 lite-render-v2/v3/v4/v5 的失败 attempt 可以在原请求中按新实现重试一次，保留旧目录并消耗原 D04B 返修额度；不删除 attempt 或归零计数。旧失败收据没有候选身份时保守继承其失败历史，改变引擎签名不能证明是独立新槽；原预算耗尽即退出。旧 applied 版本保留原成功事实及内容，不就地升级。修复前成功 prepared/预览的旧签名只有在相同检查/指针/引擎且通过当前完整复核时才可复用；旧成功收据、相同 Schema 或历史验证器不能绕过 v6 的四表原列全文、目标行备注、范围行和校验优先级核验。完全相同的有效 prepared 只复读复用；损坏不重算。失败后相同输入/环境/实现不重试；有具体变化才允许一次 render 重试，同时消耗 D04B 请求 repair_batches。检查点未知、次数到限、取消或 current 变化分别退出，不自动重建基线。apply 核验后再核对原候选/来源字节，继承 I1.2 的原子生效与幂等恢复。
 
-待确认正文的来源标签按真实 locator 显示：文本保留文件名和起止行，XLSX 使用文件名、Sheet 和 range；judgment 沿 basis_refs 回溯相同来源标签，不猜文本行号。此显示修复不改候选、模板、标准或公式。
+项目 pending-items.md 的来源标签按真实 locator 显示：文本保留文件名和起止行，XLSX 使用文件名、Sheet 和 range；judgment 沿 basis_refs 回溯相同来源标签，不猜文本行号。此显示修复不改候选、模板、标准或公式。
 
 测试命令：
 

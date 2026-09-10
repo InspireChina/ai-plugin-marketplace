@@ -37,7 +37,7 @@ Agent 可在本请求 work 目录写草案；版本目录由工具独占生成�
 
 `check` 不调用模型做语义修复；`render` 不生成 Story 或计算另一个人天版本。两者可以复用内容摘要完全一致的检查结果，`apply` 核对实际字节后接纳，避免重复全量解析。不能只信 agent 写下的 `valid=true`。
 
-[D06](D06-excel-projection-and-delivery.md) 定义按原模板填值、工作簿内待确认/完整正文及同版归档文件和投影合同。正常一次 Office 重算、最终文件复读；不默认额外生成参考工作簿。result 只返回文件定位/摘要、引擎身份及问题/诊断，不返回分费用完整性或金额标签。模板自己计算，工具不改公式、不补金额、不按业务待确认项控制汇总。输入变化会使旧缓存失效；合法缺值不等于 Office 运行或文件写入失败。
+[D06](D06-excel-projection-and-delivery.md) 定义按原模板填值、工作簿内待确认/完整正文及同版归档文件和投影合同。正常一次 Office 重算、最终文件复读；不默认额外生成参考工作簿。result 只返回文件定位/摘要、引擎身份及问题/诊断，不返回分费用完整性或金额标签。模板自己计算，工具仅采用 D06 授权校验原型/A2 说明，不改人天/金额/SIT/UAT 公式、不补金额、不按业务待确认项控制汇总。输入变化会使旧缓存失效；合法缺值不等于 Office 运行或文件写入失败。
 
 分片候选检查与完整交付检查的范围必须区分并记录：局部检查可以指出仍待其他片提供身份的关联建议，但不能把片内通过当作完整引用闭合。D04 的主 agent 负责将这些建议绑定到正式对象；render/apply 只接纳全部必要引用合法的完整模型。[分片与上下文设计](D04-generate-and-context.md) 同时限定 worker 写各自尝试目录，公共索引、合并与生效由单一整合者处理。
 
@@ -78,7 +78,6 @@ Agent 可在本请求 work 目录写草案；版本目录由工具独占生成�
     projection.json
     sow.xlsx
     pending-items.md
-    details.md  # 仅有超长内容时
     summary.md
     manifest.json
   current.json
@@ -95,9 +94,9 @@ Agent 可在本请求 work 目录写草案；版本目录由工具独占生成�
 
 `project.json` 保持项目身份及少量设置。材料登记、候选检查和工作保存不是新一套有效业务版本；generate 成功才产生首个完整版本，clarify 讨论只写 work。
 
-`projection.json` 保留 D02/D06 的 ID/行/名称、字段及 Markdown path/anchor，继续使用 lite-projection-v1，供机器定位和项目归档。lite-render-v5 输出的 Excel 增加可见的 04-待确认事项、05-完整说明，完整正文与内部链接按 D06 核验；原四张表及计算规则不变。manifest 仍绑定 Office 身份、文件版本和最终检查记录，pending-items.md 与按需 details.md 仍随完整项目包保存，但阅读、评审、分享 Excel 无需携带它们。Clarify 仍依赖项目 JSON/依据/版本文件，独立查看不代表支持回导。临时 Office 文件和可重建预览不是稳定业务结果。
+`projection.json` 保留 D02/D06 的 ID/行/名称、字段及历史 path/anchor，数据合同仍为 lite-projection-v1；当前 lite-render-v6 新输出 details=[]、details_ref=null，无 details.md。原四表的 AC 原列全文、open 目标行备注与范围行按 D06 核验；resolved/superseded 仅留 JSON/MD 历史。manifest 绑定 Office 身份、文件版本和最终核验记录，prepared/projection 绑定实际项目模板 hash；唯一旧模板只在内存适配校验原型/A2。Excel 分享无需附项目归档，clarify 仍依赖项目 JSON/依据/版本文件。
 
-旧 applied 版本按原成功事实恢复并保持不变；旧 prepared/预览的复用与 apply 必须通过当前完整核验，不能靠旧签名或相同 projection Schema 放行缺少说明表的文件。实现版本变化不清除原失败历史或重置 D04B 额度。
+旧 applied 版本按原成功事实恢复并保持不变；旧 prepared/预览的复用与 apply 必须通过当前完整核验，不能靠旧签名或相同 projection Schema 放行不满足当前四表原列合同的文件。实现版本变化不清除原失败历史或重置 D04B 额度。
 
 历史匹配保留实际 as-is 主题/区域、候选范围及所读版本；“未匹配”也有来源范围。用户在后续串行请求提供新历史材料时，Agent 只对有关 gap/模式复核，不沿用旧零匹配结论或使全项目失效。这里不需要跨请求并发失效图。
 

@@ -55,7 +55,7 @@
 | model | 层级、来源 AC、Task 六项专业内容、关系与证据引用、字段留空原因 | 稳定对象身份和关系可校验 |
 | pending-items | 当前问题、现行处理、影响与应用关系 | 生成工作簿内完整待确认表与备注内部链接，同版 pending-items.md 保留兼容归档 |
 | decisions | 已应用事实与决定、来源及适用范围 | 讨论草案不提前写成生效决定 |
-| sow / summary / pending-items.md / details.md | 可独立阅读的 Excel，以及同版摘要和 Markdown 归档 | 与模型及待确认项属于同一版本 |
+| sow / summary / pending-items.md | 可独立阅读的 Excel，以及同版摘要和 Markdown 归档 | 与模型及待确认项属于同一版本 |
 | projection | 对象 ID 与同版 Excel 的行、表、实际显示名映射 | 工具派生，用于反馈定位和关联核验，不承载第二份业务模型或计算权威 |
 | manifest / current | 完整版本的身份及当前选择 | 只有完整且通过必要检查的版本可以成为 current |
 | work | generate 的骨架、覆盖索引和各片候选；clarify 的讨论方案、修改候选与确认记录；各自的恢复信息 | 不作为当前业务事实；允许放弃和恢复 |

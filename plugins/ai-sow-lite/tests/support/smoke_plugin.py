@@ -85,7 +85,7 @@ def verify_delivery(case, prepared, applied, *, confirmation_path=None, previous
         version_id=version, manifest_hash=applied['manifest_ref']['sha256'])
     files = {Path(ref['path']).name: bound(ref) for ref in manifest['files']}
     expected_files = {'model.json', 'pending-items.json', 'decisions.json', 'projection.json', 'sow.xlsx',
-            'summary.md', 'pending-items.md', 'details.md', 'verification.json', 'input-records.json'}
+            'summary.md', 'pending-items.md', 'verification.json', 'input-records.json'}
     if clarify:
         expected_files.update({'plan.json', 'shown-plan.json', 'candidate.json', 'prepared.json', 'confirmation.json'})
     assert expected_files == files.keys()
@@ -95,7 +95,6 @@ def verify_delivery(case, prepared, applied, *, confirmation_path=None, previous
     assert files['sow.xlsx'].read_bytes() == bound(prepared['workbook_ref']).read_bytes()
     assert version in files['summary.md'].read_text(encoding='utf-8')
     assert version in files['pending-items.md'].read_text(encoding='utf-8')
-    assert version in files['details.md'].read_text(encoding='utf-8')
     assert prepared['pending_count'] == 1
     projection = read_json(files['projection.json'])
     assert projection['version_id'] == version
@@ -186,24 +185,22 @@ def verify_delivery(case, prepared, applied, *, confirmation_path=None, previous
     workbook = openpyxl.load_workbook(files['sow.xlsx'])
     cached = openpyxl.load_workbook(files['sow.xlsx'], data_only=True)
     try:
-        assert workbook.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准', '04-待确认事项', '05-完整说明']
+        assert workbook.sheetnames == ['01-需求故事', '02-任务清单', '03-工作量汇总', '90-估算标准']
         assert workbook['01-需求故事']['C5'].value == '资料查询'
         assert workbook['02-任务清单']['E10'].value == 'M'
         assert workbook['02-任务清单']['F5'].value is None
         assert workbook['02-任务清单']['J5'].data_type == 'f'
         assert cached['02-任务清单']['J5'].value is not None
         assert all(workbook[name].protection.sheet for name in workbook.sheetnames[:4])
-        for name in workbook.sheetnames[4:]:
-            assert workbook[name].sheet_state == 'visible'
-            assert not workbook[name].protection.sheet
-            assert all(cell.data_type != 'f' for row in workbook[name] for cell in row)
+        assert cached['02-任务清单']['L10'].value == '待确认'
+        assert workbook['02-任务清单']['G10'].value.startswith('待确认：')
         assert sum(len(sheet.tables) for sheet in workbook) == 5
     finally:
         workbook.close()
         cached.close()
     return dict(template_hash=case.template_hash, dependency_counts=dict(counts),
                 confirmation='registered-source-bound' if clarify else None,
-                pending_count=prepared['pending_count'], details=True, office=receipt['engine'],
+                pending_count=prepared['pending_count'], details=prepared['details_ref'] is not None, office=receipt['engine'],
                 office_elapsed_ms=receipt['elapsed_ms'])
 
 
@@ -222,7 +219,7 @@ def run_clarify_delivery(original):
     base = project / '.ai-sow-lite/versions' / current['version_id']
     # Actual offline files are read before discussion and the controller's confirmation.
     old_model = read_json(base / 'model.json')
-    assert '资料查询' in (base / 'details.md').read_text(encoding='utf-8')
+    assert old_model['stories'][0]['title'] == '资料查询'
     request_id = str(uuid4())
     ensure_request(project, request_id, 'clarify')
     case = dict(project=project, ids=original.ids, request_id=request_id, current=current)

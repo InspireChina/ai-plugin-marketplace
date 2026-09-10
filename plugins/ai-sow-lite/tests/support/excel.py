@@ -41,7 +41,7 @@ def prepare_case(project, variant='representative', *, render=True):
             model['stories'].append(story)
         names=['查询~*?订单','CASE','case','é','e\u0301','=SUM(A1:A9)','😀'*61]
         for story,name in zip(model['stories'],names): story['title']=name
-        model['stories'][0]['acs'][0]['text']='完整验收条件😀\n'*6000
+        model['stories'][0]['acs'][0]['text']='完整验收条件😀\n'*1200
         for story in model['stories']:
             if not any(t['story_id']==story['id'] for t in model['tasks']):
                 model['tasks'].append(dict(deepcopy(task),id=str(uuid4()),story_id=story['id'],name=f'扩展任务 {len(model["tasks"])+1}'))
@@ -49,7 +49,7 @@ def prepare_case(project, variant='representative', *, render=True):
             model['tasks'].append(dict(deepcopy(task),id=str(uuid4()),story_id=model['stories'][0]['id'],name=f'任务清单长文本 {len(model["tasks"])+1}'))
         model['tasks'][0]['name']='=SUM(A1:A9)'
         model['tasks'][0]['notes']='=SUM(A1:A9)'
-        model['tasks'][1]['notes']='保留完整备注\n'*6000
+        model['tasks'][1]['notes']='保留完整备注\n'*1200
         write_json(case.file('model.json'),model)
     elif variant=='medium-list':
         model=medium_list_model(read_json(case.file('model.json')))

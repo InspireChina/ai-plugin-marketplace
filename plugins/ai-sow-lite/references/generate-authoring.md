@@ -161,6 +161,6 @@ request/end记录发生在最终答复用量到达之前，报告可为partial�
 
 ## 有效交付
 
-full check 通过后采用返回 check_ref；候选或依赖字节改变则旧检查失效。render 负责真实计算和复读，成功后把返回 prepared_ref.path 传给 apply，首版两者 expected_current 都是 null。apply 保存的 `.ai-sow-lite/versions/<version_id>/` 包含同版 sow.xlsx、summary.md、pending-items.md 及业务/投影 JSON，必要时有 details.md；以 apply 返回为准链接这些文件，不能把 work 中预览冒充已生效版本。
+full check 通过后采用返回 check_ref；候选或依赖字节改变则旧检查失效。render 负责真实计算和复读，成功后把返回 prepared_ref.path 传给 apply，首版两者 expected_current 都是 null。apply 保存的 `.ai-sow-lite/versions/<version_id>/` 包含同版 sow.xlsx、summary.md、pending-items.md 及业务/投影 JSON，新输出不生成 details.md；以 apply 返回为准链接这些文件，不能把 work 中预览冒充已生效版本。
 
 current 已有版本或同一请求结果不明时先用 inspect/recover 核实。已有结果可直接返回；首版入口不执行版本修改，不能删除 current 或换 request_id 重生成。对现版的解释和有限修改交给 [Clarify](../skills/clarify/SKILL.md)。

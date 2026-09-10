@@ -696,3 +696,33 @@ def test_explicit_reference_and_obligation_errors_remain_diagnostics(clarify_cas
     assert not reply['ok'], reply
     assert reply['diagnostics'] and 'INTERNAL_ERROR' not in {d['code'] for d in reply['diagnostics']}
     assert (case['project'] / '.ai-sow-lite/current.json').read_bytes() == pointer
+
+
+@pytest.mark.office
+def test_superseded_layout_preview_reprojects_once_without_erasing_old_files(prepared_case,monkeypatch):
+    from ai_sow_lite import office,workbook
+    from ai_sow_lite.contracts import semantic_digest
+    from ai_sow_lite.project import StorageError
+    case=prepared_case;project=case['project'];result=case['result']
+    candidate=project/result['candidate_ref']['path']
+    attempt_path=candidate.with_name('render-attempt.json')
+    attempt=read_json(attempt_path)
+    payload=dict(candidate_path=result['candidate_ref']['path'],check_path=result['check_ref']['path'],expected_current=case['current'])
+    attempt.update(implementation_version='lite-render-v5',signature=semantic_digest(dict(
+        check=read_json(project/payload['check_path']),payload=payload,projector_version='lite-projection-v1',
+        engine=office.selection_fingerprint(),implementation_version='lite-render-v5')))
+    write_json(attempt_path,attempt)
+    old_dir=(project/attempt['prepared_ref']['path']).parent
+    old_files={p:p.read_bytes() for p in old_dir.iterdir() if p.is_file()}
+    class OfficeBoundaryReached(Exception):pass
+    def stop(source,destination):
+        import openpyxl
+        assert openpyxl.load_workbook(source).sheetnames==list(workbook.SHEETS)
+        raise OfficeBoundaryReached
+    monkeypatch.setattr(office,'recalculate',stop)
+    with pytest.raises(OfficeBoundaryReached):workbook.render_candidate(project,case['request_id'],payload)
+    assert all(p.read_bytes()==raw for p,raw in old_files.items())
+    checkpoint=read_json(project/'.ai-sow-lite/work/clarify'/case['request_id']/'checkpoint.json')
+    assert checkpoint['operation_retries']['render']==1
+    with pytest.raises(StorageError,match='LOOP_LIMIT_REACHED'):workbook.render_candidate(project,case['request_id'],payload)
+    assert read_json(project/'.ai-sow-lite/current.json')==case['current']

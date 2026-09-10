@@ -410,7 +410,7 @@ def test_real_cli_revision_preserves_aliases_and_delivers_bound_change_summary(c
     old = baseline(case)
     before = {p.name: p.read_bytes() for p in old.iterdir() if p.is_file()}
     template = case['project'] / '.ai-sow-lite/template' / workbook.TEMPLATE_HASH / 'sow-template.xlsx'
-    assert file_sha256(template) == '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
+    assert file_sha256(template) == '7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919'
     draft = complexity_draft(case, 'S')
     collision, story, task = collision_draft(case, 'story')
     task['name'] = read_json(old / 'model.json')['tasks'][0]['name']

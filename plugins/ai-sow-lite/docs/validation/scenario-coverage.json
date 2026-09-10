@@ -1365,7 +1365,10 @@
         "docs/validation/I4-inputs-and-changes.md",
         "docs/validation/I4.1-input-observations.json",
         "tests/test_workbook.py",
-        "tests/test_contracts.py"
+        "tests/test_contracts.py",
+        "docs/validation/I6-inline-acceptance.md",
+        "tests/test_workbook_inline.py",
+        "tests/test_template_pending.py"
       ],
       "limitation": "I1受控完整包投影已知值/合法空值/M及unestimated_work；I2/I4局部未知真实交付。两类证据分别有效，不宣称一个自然案例同时覆盖全部未知组合。"
     },
@@ -1418,13 +1421,16 @@
         "tests/test_workbook.py",
         "tests/test_workbook_sources.py",
         "docs/validation/I6-self-contained.md",
-        "tests/test_workbook_self_contained.py"
+        "tests/test_workbook_self_contained.py",
+        "docs/validation/I6-inline-acceptance.md",
+        "tests/test_workbook_inline.py",
+        "tests/test_template_pending.py"
       ],
-      "limitation": "I6工作簿自包含投影的最终检查见增量记录：长AC/备注/任务列表在05完整说明中有序续行；主表内部链接。历史I1/I4证据仍只代表其原范围，未穷尽字体、显示器或任意长文布局。",
+      "limitation": "I6.2 全部AC/备注直接保留在原单元格，不加说明表。单格物理容量失败有字段诊断，显示行高最多409pt；不保证任意长文在一屏完整显示。历史I1/I4/I6.1证据仅代表其原范围。",
       "mechanism_refs": [
         {
           "id": "M06-projection",
-          "applicability": "完整原文保存在details.md并由既有单元格引用，预览不能替换原文或错绑对象。"
+          "applicability": "原单元格保留完整文字，不生成摘要、外部正文入口或附表；超过单格容量返回定位明确的诊断。"
         }
       ]
     },
@@ -1441,13 +1447,16 @@
         "docs/validation/I4.2-change-observations.json",
         "tests/test_workbook.py",
         "docs/validation/I6-self-contained.md",
-        "tests/test_workbook_self_contained.py"
+        "tests/test_workbook_self_contained.py",
+        "docs/validation/I6-inline-acceptance.md",
+        "tests/test_workbook_inline.py",
+        "tests/test_template_pending.py"
       ],
-      "limitation": "I6新增04待确认事项，保存同版问题、处理、目标与实际答复；内部链接和正文复读见增量记录。旧I1/I3/I4证据不替代新范围；Excel独立阅读不等于单文件可回导clarify。",
+      "limitation": "I6.2 open问题及当前处理直接填目标行备注，校验公式显示待确认；已关闭问题仅保留项目历史。未拆明父项在原表范围行展示，不伪造Story。Excel独立阅读不等于单文件可回导clarify。",
       "mechanism_refs": [
         {
           "id": "M06-projection",
-          "applicability": "同一候选投影问题/备注/Excel并验证定位，包括零问题说明。"
+          "applicability": "同一候选投影问题与对应行，多个/重叠目标去重，空问题不生成说明行或附表。"
         },
         {
           "id": "M08-prepared",

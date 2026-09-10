@@ -19,23 +19,20 @@ from openpyxl.worksheet.formula import ArrayFormula
 
 from .project import StorageError, atomic_bytes
 
-TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
+TEMPLATE_HASH = '7b96f9d2d6f6f6175c4d99d875ee3cf0743df3d6884d64258271993432299919'
+LEGACY_TEMPLATE_HASH = '6abc55d44bc66476a60c2251e18c0dfdb66709e07539c246dfdec3a0373f5332'
+SUPPORTED_TEMPLATE_HASHES = (TEMPLATE_HASH, LEGACY_TEMPLATE_HASH)
 PROJECTOR_VERSION = 'lite-projection-v1'
 # Render retry identity is separate from the unchanged projection data contract.
-RENDER_IMPLEMENTATION_VERSION = 'lite-render-v5'
+RENDER_IMPLEMENTATION_VERSION = 'lite-render-v6'
 STORY_SHEET, TASK_SHEET = '01-需求故事', '02-任务清单'
 SHEETS = (STORY_SHEET, TASK_SHEET, '03-工作量汇总', '90-估算标准')
-PENDING_SHEET, DETAILS_SHEET = '04-待确认事项', '05-完整说明'
-OUTPUT_SHEETS = (*SHEETS, PENDING_SHEET, DETAILS_SHEET)
-# Display policy, not model limits or calculation rules.
-TEXT_LIMIT = 800
-PREVIEW_LIMIT = 180
 XML_BAD = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]')
 
 
 def write_literal(cell, value: str) -> None:
     if not isinstance(value, str) or XML_BAD.search(value) or len(value.encode('utf-16-le')) // 2 > 32767:
-        raise StorageError('WORKBOOK_INVALID', '文字无法无损写入单元格；请检查 XML 字符或全文入口。')
+        raise StorageError('WORKBOOK_INVALID', '文字无法完整写入单元格；请检查 XML 字符或 Excel 单元格容量。')
     cell.value = value
     cell.data_type = 's'
 
@@ -89,7 +86,8 @@ def formula_text(value):
 
 
 def _template(path):
-    if hashlib.sha256(Path(path).read_bytes()).hexdigest() != TEMPLATE_HASH:
+    digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    if digest not in SUPPORTED_TEMPLATE_HASHES:
         raise StorageError('VERSION_INCOMPATIBLE', '模板字节或公式原型不属于本投影器支持的版本。')
     book = load_workbook(path)
     expected = {
@@ -106,6 +104,19 @@ def _template(path):
             if metadata.calculatedColumnFormula:
                 if cell.data_type != 'f' or metadata.calculatedColumnFormula.text != formula_text(cell.value)[1:]:
                     raise StorageError('VERSION_INCOMPATIBLE', 'Table 计算列原型不一致。')
+    if digest == LEGACY_TEMPLATE_HASH:
+        # The user-authorized validation display update applies to the one known
+        # previous template too. Its project bytes/hash and all estimate formulas
+        # remain intact. Read the actual shipped prototypes, never reimplement them.
+        current = _template(Path(__file__).resolve().parents[2] / 'assets/sow-template.xlsx')
+        for sheet, column in [(STORY_SHEET, 10), (TASK_SHEET, 12)]:
+            ws, source = book[sheet], current[sheet]
+            ws['A2'].value = source['A2'].value
+            for row in range(5, ws.max_row + 1):
+                ws.cell(row, column).value = source.cell(row, column).value
+            table, prototype = next(iter(ws.tables.values())), next(iter(source.tables.values()))
+            table.tableColumns[column - 1].calculatedColumnFormula = copy(prototype.tableColumns[column - 1].calculatedColumnFormula)
+        current.close()
     return book
 
 
@@ -146,38 +157,8 @@ def _block(text):
     return f'{fence}text\n{text}\n{fence}\n'
 
 
-def _text_sheets(book):
-    """Visible, formula-free reading space; original template sheets stay intact."""
-    for name in (PENDING_SHEET, DETAILS_SHEET):
-        ws = book.create_sheet(name)
-        for row in (1, 4):
-            for col in range(1, 5):
-                ws.cell(row, col)._style = copy(book[STORY_SHEET].cell(row, col)._style)
-        write_literal(ws['A1'], name[3:])
-        for col, title in enumerate(('关联位置 / 事项', '内容', '分段', '完整正文'), 1):
-            write_literal(ws.cell(4, col), title)
-        for col, width in zip('ABCD', (28, 18, 8, 100)):
-            ws.column_dimensions[col].width = width
-        ws.row_dimensions[1].height = 30
-        ws.row_dimensions[4].height = 30
-        ws.freeze_panes = 'D5'
-        ws.print_title_rows = '1:4'
-
-
-def _reading_chunks(raw):
-    # Excel displays CR/LF as a line break. Archive bytes retain original endings.
-    text = raw.replace('\r\n', '\n').replace('\r', '\n')
-    if XML_BAD.search(text):
-        _fail('完整正文含无法保存的 XML 字符。')
-    while text:
-        end = min(len(text), 800)
-        while _required_height(text[:end], 100) > 280:
-            end = max(1, end // 2)
-        yield text[:end]
-        text = text[end:]
-
-
 def _projection(model, pending, decisions, version_id, evidence=None, previous=None, *, layout):
+    """Project authored acceptance and open questions into the original tables."""
     stories = [s for e in model['epics'] for f in model['features'] if f['epic_id'] == e['id']
                for s in model['stories'] if s['feature_id'] == f['id']]
     tasks = [t for s in stories for t in model['tasks'] if t['story_id'] == s['id']]
@@ -185,221 +166,115 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
         raise StorageError('WORKBOOK_INVALID', '对象父关系无法投影。')
     sn = allocate_aliases(stories, 'title', 'S', (previous or {}).get('stories'))
     tn = allocate_aliases(tasks, 'name', 'T', (previous or {}).get('tasks'))
-    objects, details, inputs, detail_text = [], {}, {}, {}
-    cell_links = {}
-    def connect(cells, location):
-        if location:
-            for cell in cells:
-                cell_links.setdefault((cell['sheet'], cell['cell']), location)
-    _text_sheets(layout)
-    next_rows = {PENDING_SHEET: 5, DETAILS_SHEET: 5}
-    def reading(sheet, label, field, raw, back=None, forward=None):
-        start = next_rows[sheet]
-        for part, text in enumerate(_reading_chunks(raw or '（无）'), 1):
-            row = next_rows[sheet]
-            if row > 1048576:
-                _fail('完整正文超出工作表容量。')
-            for col, value in zip('ABCD', (label, field, str(part), text)):
-                cell = layout[sheet][f'{col}{row}']
-                cell._style = copy(layout[STORY_SHEET]['D5']._style)
-                inputs[(sheet, cell.coordinate)] = value
-            if back:
-                connect([_cell(sheet, f'A{row}')], back)
-            next_rows[sheet] += 1
-        connect([_cell(sheet, f'D{start}')], forward)
-        return f"'{sheet}'!D{start}"
-    labels = dict(title='名称', text='验收条件', acs='全部验收条件', notes='备注',
-                  references='相关说明', task_list='完整任务列表')
-    detail_locations = {}
+    objects, inputs, notes = [], {}, {}
     story_rows = {s['id']: 5 + i for i, s in enumerate(stories)}
-    def detail(identity, field, raw, cells, forward=None):
-        key = (identity, field)
-        anchor = f'detail-{identity}-{field}'
-        if key not in details:
-            details[key] = dict(object_id=identity, field=field, path='details.md', anchor=anchor, cells=[])
-            detail_text[key] = raw
-            first = cells[0] if cells else None
-            back = f"'{first['sheet']}'!{first['cell']}" if first else None
-            detail_locations[key] = reading(DETAILS_SHEET,
-                f"{first['sheet']}!{first['cell']}" if first else '范围说明', labels.get(field, field), raw, back, forward)
-        elif detail_text[key] != raw:
-            raise StorageError('WORKBOOK_INVALID', '同一全文锚点出现不同原文。')
-        for cell in cells:
-            if cell not in details[key]['cells']:
-                details[key]['cells'].append(cell)
-        connect(cells, detail_locations[key])
-        return detail_locations[key]
-    def display(identity, field, raw, cells, forward=None):
-        if XML_BAD.search(raw):
-            error = StorageError('WORKBOOK_INVALID', '业务字段含无法保存的 XML 字符。')
+    # A known but undivided scope still needs a visible place for its question.
+    # These rows carry only actual Epic/Feature titles, never invented Stories.
+    scope_rows = []
+    open_targets = {t['object_id'] for p in pending['items'] if p['status']=='open' for t in p['targets']}
+    for epic in model['epics']:
+        features = [f for f in model['features'] if f['epic_id'] == epic['id']]
+        for feature in features:
+            if not any(s['feature_id'] == feature['id'] for s in stories) and open_targets.intersection((epic['id'], feature['id'])):
+                scope_rows.append((epic['id'], feature['id']))
+        if not features and epic['id'] in open_targets:
+            scope_rows.append((epic['id'], None))
+
+    def text_value(value, identity, field):
+        value = value.replace('\r\n', '\n').replace('\r', '\n')
+        if XML_BAD.search(value) or len(value.encode('utf-16-le')) // 2 > 32767:
+            error = StorageError('WORKBOOK_INVALID', '字段无法完整写入 Excel 单元格；请处理非法字符或精简该字段，保留验收边界。')
             error.diagnostics[0]['target'].update(object_id=identity, field=field)
             raise error
-        width=min((_column_width(layout[c['sheet']],c['cell']) for c in cells),default=30)
-        if len(raw.encode('utf-16-le')) // 2 <= TEXT_LIMIT and _required_height(raw,width)<=300 and '\r' not in raw:
-            connect(cells, forward)
-            return raw
-        link = detail(identity, field, raw, cells, forward)
-        # Folding a generated reference hides its inner address from the main
-        # cell. Follow the visible outer section; retain an earlier notes link.
-        if forward:
-            for cell in cells:
-                key = (cell['sheet'], cell['cell'])
-                if cell_links.get(key) == forward:
-                    cell_links[key] = link
-        preview = ''.join(raw[:80].splitlines(keepends=True)[:2]) if '\r' not in raw else raw.split('\r',1)[0][:80]
-        return f'{preview}\n〔原文片段；全文见 {link}〕'
-    def put(sheet, row, column, value):
+        return value
+
+    def put(sheet, row, column, value, identity, field):
         if value not in ('', None):
-            inputs[(sheet, f'{column}{row}')] = value
+            inputs[(sheet, f'{column}{row}')] = text_value(value, identity, field)
+
+    note_sources = {}
+
+    def note_source(key, identity, field, value):
+        # A composed note still needs a repairable source field, including when
+        # the row is only an Epic/Feature scope or the text is an alias original.
+        size = len(text_value(value, identity, field))
+        if key not in note_sources or size > note_sources[key][0]:
+            note_sources[key] = (size, identity, field)
+
     def obj_record(obj, kind, sheet, table, rows, name, fields):
-        record = dict(object_id=obj['id'], kind=kind, sheet=sheet, table=table,
-                      rows=rows, display_name=name, fields=fields)
-        objects.append(record)
-        return record
+        objects.append(dict(object_id=obj['id'], kind=kind, sheet=sheet, table=table,
+                            rows=rows, display_name=name, fields=fields))
+
     for kind, collection, column in [('epic','epics','A'),('feature','features','B')]:
         for obj in model[collection]:
             features = {f['id'] for f in model['features'] if f['epic_id'] == obj['id']} if kind == 'epic' else {obj['id']}
             rows = [story_rows[s['id']] for s in stories if s['feature_id'] in features]
+            rows += [5 + len(stories) + i for i, (epic, feature) in enumerate(scope_rows)
+                     if (epic if kind == 'epic' else feature) == obj['id']]
             cells = [_cell(STORY_SHEET, f'{column}{r}') for r in rows]
-            value = display(obj['id'], 'title', obj['title'], cells)
-            for r in rows: put(STORY_SHEET, r, column, value)
+            for row in rows:
+                put(STORY_SHEET, row, column, obj['title'], obj['id'], 'title')
             obj_record(obj, kind, STORY_SHEET, 'SOWStoryTable', rows, None, [dict(field='title',cells=cells)])
-    for s in stories:
-        row = story_rows[s['id']]
-        ac_lines = []
-        for index, ac in enumerate(s['acs'], 1):
-            cells = [_cell(STORY_SHEET, f'D{row}', index)]
-            if XML_BAD.search(ac['text']):
-                _fail('验收条件含无法保存的 XML 字符。')
-            ac_lines.append(f'{index}. {ac["text"]}')
-            obj_record(ac, 'ac', STORY_SHEET, 'SOWStoryTable', [row], None, [dict(field='text',cells=cells)])
-        ac_text = '\n'.join(ac_lines)
-        if len(ac_text.encode('utf-16-le')) // 2 > TEXT_LIMIT or '\r' in ac_text or _required_height(ac_text,_column_width(layout[STORY_SHEET],f'D{row}'))>409:
-            link = detail(s['id'], 'acs', ac_text, [_cell(STORY_SHEET,f'D{row}')])
-            preview = ''.join(ac_text.replace('\r\n', '\n').replace('\r', '\n').splitlines(keepends=True)[:2])[:80]
-            ac_text = f'{preview}\n〔原文片段；全部 AC 见 {link}〕'
-        put(STORY_SHEET,row,'C',sn[s['id']]); put(STORY_SHEET,row,'D',ac_text)
+    for story in stories:
+        row = story_rows[story['id']]
+        for index, ac in enumerate(story['acs'], 1):
+            obj_record(ac, 'ac', STORY_SHEET, 'SOWStoryTable', [row], None,
+                       [dict(field='text',cells=[_cell(STORY_SHEET, f'D{row}', index)])])
+        ac_text = '\n'.join(f'{i}. {ac["text"]}' for i, ac in enumerate(story['acs'], 1))
+        put(STORY_SHEET, row, 'C', sn[story['id']], story['id'], 'title')
+        put(STORY_SHEET, row, 'D', ac_text, story['id'], 'acs')
         fields = [dict(field=f,cells=[_cell(STORY_SHEET,f'{c}{row}')]) for f,c in [('title','C'),('acs','D'),('notes','E')]]
-        obj_record(s,'story',STORY_SHEET,'SOWStoryTable',[row],sn[s['id']],fields)
-    for row,t in enumerate(tasks,5):
+        obj_record(story, 'story', STORY_SHEET, 'SOWStoryTable', [row], sn[story['id']], fields)
+    for row, task in enumerate(tasks, 5):
         columns = [('story_id','A'),('name','B'),('work_type_name','C'),('work_mode','D'),('complexity','E'),('integration_type','F'),('notes','G')]
-        for field,col in columns[:-1]:
-            value = sn[t['story_id']] if field=='story_id' else tn[t['id']] if field=='name' else t[field]
-            put(TASK_SHEET,row,col,value)
-        obj_record(t,'task',TASK_SHEET,'TaskTable',[row],tn[t['id']],
+        for field, col in columns[:-1]:
+            value = sn[task['story_id']] if field == 'story_id' else tn[task['id']] if field == 'name' else task[field]
+            put(TASK_SHEET, row, col, value, task['id'], field)
+        obj_record(task, 'task', TASK_SHEET, 'TaskTable', [row], tn[task['id']],
                    [dict(field=f,cells=[_cell(TASK_SHEET,f'{c}{row}')]) for f,c in columns])
     by_id = {o['object_id']:o for o in objects}
-    target_names = {obj['id']: f'{label}：{obj[field]}'
-                    for collection, field, label in [('epics','title','需求'), ('features','title','子需求'),
-                                                     ('stories','title','故事'), ('tasks','name','任务')]
-                    for obj in model[collection]}
-    for story in stories:
-        for entry, ac in enumerate(story['acs'], 1):
-            target_names[ac['id']] = f'故事：{story["title"]} / 第 {entry} 条 AC'
     mappings = []
-    pending_locations = {}
-    ordered_pending = sorted(pending['items'],key=lambda p:({'open':0,'resolved':1,'superseded':2}[p['status']],p['id']))
-    pending_labels = {item['id']:f'事项 {i}' for i,item in enumerate(ordered_pending,1)}
-    for item in ordered_pending:
-        targets=[]
+    for item in pending['items']:
+        targets, affected = [], {}
         for target in item['targets']:
-            obj=by_id.get(target['object_id'])
-            cells = [c for f in obj['fields'] if f['field']==target['field'] for c in f['cells']] if obj else []
-            # Object-wide targets have all mapped field positions, or no row.
-            if obj and target['field'] is None:
-                cells=[c for f in obj['fields'] for c in f['cells']]
-            targets.append(dict(target,cells=cells))
-        mappings.append(dict(pending_item_id=item['id'],path='pending-items.md',anchor=f'pending-{item["id"]}',targets=targets))
-        label = pending_labels[item['id']]
-        state = {'open':'待确认','resolved':'已解决','superseded':'已替代'}[item['status']]
-        pending_locations[item['id']] = reading(PENDING_SHEET,label,'状态',state)
-        reading(PENDING_SHEET,label,'问题',item['question'])
-        reading(PENDING_SHEET,label,'当前处理',item['current_handling'])
-        for target in targets:
-            positions = '、'.join(f"{c['sheet']}!{c['cell']}" for c in target['cells']) or '本期范围（无对应数据行）'
-            name = target_names.get(target['object_id'], f'历史对象：{target["object_id"]}')
-            field = '整个对象' if target['field'] is None else f'字段：{target["field"]}'
-            reading(PENDING_SHEET,label,'关联位置',f'{name}；{field}；{positions}')
-        if item['unestimated_work']:
-            reading(PENDING_SHEET,label,'未拆明工作','有尚未拆明的业务工作，范围与处理见本事项。')
-        for identity in item['evidence_refs']:
-            if (evidence or {}).get(identity):
-                reading(PENDING_SHEET,label,'依据',(evidence or {})[identity])
-        adopted = None
-        if item['resolution']:
-            resolution = item['resolution']
-            reading(PENDING_SHEET,label,'处理记录',resolution.get('summary') or resolution.get('reason') or '')
-            replacements = [pending_labels[i] for i in resolution.get('replacement_item_ids',[]) if i in pending_labels]
-            if replacements:
-                reading(PENDING_SHEET,label,'后续事项','、'.join(replacements))
-            for decision in decisions['items']:
-                if resolution.get('decision_id') == decision['id']:
-                    adopted = decision
-                    reading(PENDING_SHEET,label,'已采用答复',decision['text'])
-                    for identity in decision['evidence_refs']:
-                        if (evidence or {}).get(identity):
-                            reading(PENDING_SHEET,label,'答复依据',evidence[identity])
-        if adopted is None:
-            reading(PENDING_SHEET,label,'已采用答复','尚无已采用答复')
-    for collection, sheet, note_col, names, name_field in [(stories,STORY_SHEET,'E',sn,'title'),(tasks,TASK_SHEET,'G',tn,'name')]:
+            obj = by_id.get(target['object_id'])
+            cells = [c for f in obj['fields'] if target['field'] in (None, f['field']) for c in f['cells']] if obj else []
+            targets.append(dict(target, cells=cells))
+            if obj:
+                for row in obj['rows']:
+                    key = (obj['sheet'], row)
+                    affected.setdefault(key, [])
+                    if obj['kind'] == 'ac':
+                        label = f"第 {obj['fields'][0]['cells'][0]['entry']} 条 AC"
+                        if label not in affected[key]: affected[key].append(label)
+        mappings.append(dict(pending_item_id=item['id'], path='pending-items.md',
+                             anchor=f'pending-{item["id"]}', targets=targets))
+        if item['status'] == 'open':
+            if not affected:
+                error = StorageError('WORKBOOK_INVALID', '待确认事项没有可展示的关联对象。')
+                error.diagnostics[0]['target'].update(object_id=item['id'], field='targets')
+                raise error
+            for key, labels in affected.items():
+                for field in ('question', 'current_handling'):
+                    note_source(key, item['id'], field, item[field])
+                context = ('（' + '、'.join(labels) + '）') if labels else ''
+                text = f'待确认：{context}{item["question"]}\n当前处理：{item["current_handling"]}'
+                if item['unestimated_work']: text += '\n未拆明工作，尚未估算。'
+                notes.setdefault(key, []).append(text)
+    # Only authored exceptions, alias originals, and current questions belong in
+    # notes. Dependencies and classification rationale remain structured data.
+    for collection, sheet, names, name_field in [(stories,STORY_SHEET,sn,'title'), (tasks,TASK_SHEET,tn,'name')]:
         for obj in collection:
-            row=by_id[obj['id']]['rows'][0]; cells=[_cell(sheet,f'{note_col}{row}')]
-            original=display(obj['id'],'notes',obj.get('notes',''),cells)
-            additions=[]
-            reference_link = None
+            key = (sheet, by_id[obj['id']]['rows'][0])
+            if obj.get('notes'):
+                note_source(key, obj['id'], 'notes', obj['notes'])
+                notes.setdefault(key, []).append(obj['notes'])
             if names[obj['id']] != obj[name_field]:
-                additions.append('原名：'+display(obj['id'],name_field,obj[name_field],cells))
-                reference_link = detail_locations.get((obj['id'], name_field))
-            if sheet == STORY_SHEET:
-                for dep in model['dependencies']:
-                    if dep['from_story_id']==obj['id']:
-                        label='使用' if dep['kind']=='uses' else '交付前提'
-                        additions.append(f'{label} {sn[dep["to_story_id"]]}；{dep.get("notes", "")}')
-            for item in pending['items']:
-                if any(t['object_id']==obj['id'] or (sheet==STORY_SHEET and any(ac['id']==t['object_id'] for ac in obj['acs'])) for t in item['targets']):
-                    state = {'open':'待确认','resolved':'已解决','superseded':'已替代'}[item['status']]
-                    additions.append(f'{state}（{pending_labels[item["id"]]}），见 {pending_locations[item["id"]]}；当前处理：{item["current_handling"]}')
-                    reference_link = reference_link or pending_locations[item['id']]
-            # Keep original notes and every generated reference. If the reference
-            # section is long, its complete contents have their own single anchor.
-            if additions:
-                section=display(obj['id'],'references','\n'.join(additions),cells,reference_link)
-                original += ('\n' if original else '') + '——相关引用——\n' + section
-            list_link=''
-            if sheet == STORY_SHEET:
-                children=[t for t in tasks if t['story_id']==obj['id']]
-                task_list='\n'.join(f'{i}. {t["name"]}' for i,t in enumerate(children,1))
-                # Bound the visible list using names plus classification text and
-                # an ID-sized margin. This is layout, not formula evaluation.
-                list_bound='\n'.join(' '.join([t['id'],tn[t['id']],*(t[f] or '' for f in
-                    ('work_type_name','work_mode','complexity','integration_type'))]) for t in children)
-                heights=[layout[sheet].row_dimensions[row].height or 15]
-                heights += [_required_height(value,_column_width(layout[sheet],coordinate))
-                            for (sn,coordinate),value in inputs.items() if sn==sheet and int(coordinate[1:])==row]
-                note_height=_required_height(original,_column_width(layout[sheet],f'E{row}'))
-                if note_height<=409: heights.append(note_height)
-                available=min(409,max(heights))
-                if (len(task_list.encode('utf-16-le'))//2 > TEXT_LIMIT
-                    or _required_height(list_bound,_column_width(layout[sheet],f'H{row}'))>int(available/.75)*.75):
-                    list_link='完整任务列表见 '+detail(obj['id'],'task_list',task_list,cells)
-                    original += ('\n' if original else '') + list_link
-            if _required_height(original,_column_width(layout[sheet],f'{note_col}{row}'))>409:
-                note_link=detail(obj['id'],'notes',obj.get('notes',''),cells)
-                original='原备注全文见 '+note_link
-                cell_links[(sheet, f'{note_col}{row}')] = note_link
-                if additions:
-                    ref_link=detail(obj['id'],'references','\n'.join(additions),cells,reference_link)
-                    original+='\n问题、原名和相关引用见 '+ref_link
-                if list_link: original+='\n'+list_link
-            put(sheet,row,note_col,original)
-    for sheet, message in ((PENDING_SHEET,'无待确认事项'), (DETAILS_SHEET,'完整内容已在主表直接展示，无需续页。')):
-        if next_rows[sheet] == 5:
-            reading(sheet,'说明','内容',message)
-    # Destinations come only from rendered sections, never from business text.
-    # Each cell has one primary jump; other generated addresses remain readable.
-    from openpyxl.worksheet.hyperlink import Hyperlink
-    for (sheet, coordinate), location in cell_links.items():
-        layout[sheet][coordinate].hyperlink = Hyperlink(ref=coordinate, location=location)
+                note_source(key, obj['id'], name_field, obj[name_field])
+                notes.setdefault(key, []).append('原名：' + obj[name_field])
+    for (sheet, row), parts in notes.items():
+        _, identity, field = note_sources[(sheet, row)]
+        put(sheet, row, 'E' if sheet == STORY_SHEET else 'G', '\n'.join(parts), identity, field)
     pending_lines=[f'# 待确认事项\n\nversion_id: {version_id}\n']
     item_by_id={p['id']:p for p in pending['items']}
     for mapping in mappings:
@@ -421,11 +296,8 @@ def _projection(model, pending, decisions, version_id, evidence=None, previous=N
                 pending_lines.append('已采用答复：\n'+_block(canonical_json_bytes(decision).decode()))
     if not mappings: pending_lines.append('无待确认事项\n')
     docs={'pending-items.md':'\n'.join(pending_lines)}
-    if details:
-        docs['details.md']=f'# 完整正文\n\nversion_id: {version_id}\n\n'+'\n'.join(
-            f'<a id="{value["anchor"]}"></a>\n\n## {key[0]} / {key[1]}\n\n'+_block(detail_text[key]) for key,value in details.items())
     projection=dict(schema_version='1.0',version_id=version_id,projector_version=PROJECTOR_VERSION,
-                    template_hash=TEMPLATE_HASH,objects=objects,pending_items=mappings,details=list(details.values()))
+                    template_hash=TEMPLATE_HASH,objects=objects,pending_items=mappings,details=[])
     return projection,inputs,docs
 
 
@@ -433,9 +305,11 @@ def project_workbook(template, model, pending, decisions, version_id, directory,
     """Write a pre-Office workbook and accompanying text; caller supplies checked data."""
     book=_template(template)
     projection,inputs,docs=_projection(model,pending,decisions,version_id,evidence,previous,layout=book)
-    _extend(book,STORY_SHEET,'SOWStoryTable',len(model['stories']))
+    _extend(book,STORY_SHEET,'SOWStoryTable',max((r - 4 for obj in projection['objects'] if obj['sheet']==STORY_SHEET for r in obj['rows']),default=0))
     _extend(book,TASK_SHEET,'TaskTable',len(model['tasks']))
     _fill_inputs(book,inputs)
+    _fit_task_lists(book,model,projection)
+    projection['template_hash']=hashlib.sha256(Path(template).read_bytes()).hexdigest()
     directory=Path(directory); directory.mkdir(parents=True,exist_ok=True)
     book.save(directory/'projected.xlsx'); book.close()
     for name,content in docs.items():
@@ -592,7 +466,7 @@ def audit_workbook(path, expected, *, allow_omissions=False, caches=True):
         _,xml_sheets=_xml_package(path)
         actual=load_workbook(path,data_only=False)
         cached=load_workbook(path,data_only=True) if caches else None
-        if tuple(actual.sheetnames) not in (SHEETS,OUTPUT_SHEETS) or actual.sheetnames!=source.sheetnames: _fail('Sheet 集合或顺序变化。')
+        if tuple(actual.sheetnames)!=SHEETS or actual.sheetnames!=source.sheetnames: _fail('Sheet 集合或顺序变化。')
         changes=[]; formulas=[]
         for original in source:
             ws=actual[original.title]; raw=xml_sheets[original.title][1]
@@ -894,10 +768,26 @@ def _baseline_aliases(project,candidate,checked):
 def _expected_book(template,model,pending,decisions,version,evidence,previous=None):
     book=_template(template)
     projection,inputs,docs=_projection(model,pending,decisions,version,evidence,previous,layout=book)
-    _extend(book,STORY_SHEET,'SOWStoryTable',len(model['stories']))
+    _extend(book,STORY_SHEET,'SOWStoryTable',max((r - 4 for obj in projection['objects'] if obj['sheet']==STORY_SHEET for r in obj['rows']),default=0))
     _extend(book,TASK_SHEET,'TaskTable',len(model['tasks']))
     _fill_inputs(book,inputs)
+    _fit_task_lists(book,model,projection)
+    projection['template_hash']=hashlib.sha256(Path(template).read_bytes()).hexdigest()
     return book,projection,docs
+
+
+def _fit_task_lists(book, model, projection):
+    # Names and qualitative labels reserve wrap space for the template's H
+    # formula. This is layout only; the task table contains every actual Task.
+    names = {o['object_id']:o['display_name'] for o in projection['objects'] if o['kind']=='task'}
+    rows = {o['object_id']:o['rows'][0] for o in projection['objects'] if o['kind']=='story'}
+    for story in model['stories']:
+        row = rows[story['id']]
+        lines = [' '.join([names[t['id']], *(t[f] or '' for f in ('work_type_name','work_mode','complexity','integration_type'))])
+                 for t in model['tasks'] if t['story_id']==story['id']]
+        height = _required_height('\n'.join(lines), _column_width(book[STORY_SHEET], f'H{row}'))
+        dimensions = book[STORY_SHEET].row_dimensions[row]
+        dimensions.height = min(409, max(dimensions.height or 15, height))
 
 
 def _column_width(sheet,coordinate):
@@ -926,9 +816,7 @@ def _fill_inputs(book,inputs):
         write_literal(cell,value)
         if cell.alignment.wrap_text:
             height=_required_height(value,_column_width(book[sheet],coordinate))
-            if height>409:
-                raise StorageError('WORKBOOK_INVALID','投影文字超过可读行高，需完整正文入口。')
-            book[sheet].row_dimensions[cell.row].height=max(book[sheet].row_dimensions[cell.row].height or 15,height)
+            book[sheet].row_dimensions[cell.row].height=min(409,max(book[sheet].row_dimensions[cell.row].height or 15,height))
 
 
 def verify_prepared(project,prepared):
@@ -959,8 +847,8 @@ def verify_prepared(project,prepared):
             if file_sha256(safe_path(project,candidate[key]))!=files[name]['sha256']: _fail('交付 JSON 不是候选原字节。')
             bundles.append(load_json(safe_path(project,files[name]['path'])))
         model,pending,decisions=bundles
-        if prepared['projection_version']!=PROJECTOR_VERSION or prepared['template_hash']!=TEMPLATE_HASH: _fail('准备记录模板或投影器不匹配。')
-        template=safe_path(project,f'.ai-sow-lite/template/{TEMPLATE_HASH}/sow-template.xlsx')
+        if prepared['projection_version']!=PROJECTOR_VERSION or prepared['template_hash'] not in SUPPORTED_TEMPLATE_HASHES: _fail('准备记录模板或投影器不匹配。')
+        template=safe_path(project,f".ai-sow-lite/template/{prepared['template_hash']}/sow-template.xlsx")
         expected,projection,docs=_expected_book(template,model,pending,decisions,prepared['version_id'],
             _evidence_labels(project,candidate),_baseline_aliases(project,candidate,checked))
         projection.update(model_hash=files['model.json']['sha256'],pending_items_hash=files['pending-items.json']['sha256'],
@@ -1070,7 +958,10 @@ def render_candidate(project: Path,request_id: str,payload):
         if file_ref(project,old_path)!=previous['prepared_ref']: _fail('已准备记录字节变化。')
         old_prepared=checked_json(project,previous['prepared_ref']['path'],'prepared',area)
         old_check=checked_json(project,old_prepared['check_ref']['path'],'check',area)
-        reusable=(old_prepared['candidate_ref']==file_ref(project,candidate_path)
+        # v4/v5 projected appendices or external text. Keep the old package, but
+        # spend the existing bounded retry to prepare the current inline layout.
+        reusable=(previous.get('implementation_version') not in ('lite-render-v4','lite-render-v5')
+                  and old_prepared['candidate_ref']==file_ref(project,candidate_path)
                   and old_prepared['expected_current']==expected
                   and old_prepared['template_hash']==candidate['template_hash']
                   and old_check.get('plan_digest')==report.get('plan_digest'))
@@ -1100,7 +991,7 @@ def render_candidate(project: Path,request_id: str,payload):
             atomic_bytes(directory/name,source.read_bytes(),immutable=True)
             bundle.append(load_json(directory/name))
         model,pending,decisions=bundle
-        template=safe_path(project,f'.ai-sow-lite/template/{TEMPLATE_HASH}/sow-template.xlsx')
+        template=safe_path(project,f".ai-sow-lite/template/{candidate['template_hash']}/sow-template.xlsx")
         projection=project_workbook(template,model,pending,decisions,version,directory,
             evidence=_evidence_labels(project,candidate),previous=_baseline_aliases(project,candidate,checked))
         audit_workbook(directory/'projected.xlsx',directory/'projected.xlsx',caches=False)
@@ -1119,7 +1010,7 @@ def render_candidate(project: Path,request_id: str,payload):
         names=['model.json','pending-items.json','decisions.json','projection.json','sow.xlsx','summary.md','pending-items.md']
         if (directory/'details.md').exists(): names.append('details.md')
         prepared=dict(schema_version='1.0',version_id=version,candidate_ref=file_ref(project,candidate_path),check_ref=file_ref(project,check_path),
-                      expected_current=payload['expected_current'],files=[file_ref(project,directory/n) for n in names],template_hash=TEMPLATE_HASH,
+                      expected_current=payload['expected_current'],files=[file_ref(project,directory/n) for n in names],template_hash=candidate['template_hash'],
                       projection_version=PROJECTOR_VERSION,office_identity=receipt['office_identity'],verification_ref=file_ref(project,directory/'verification.json'))
         verified=verify_prepared(project,prepared)
         if verified['diagnostics']:

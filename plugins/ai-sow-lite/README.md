@@ -28,11 +28,11 @@ Python 安装不写用户 bin 或注册表，只使用本插件副本的 managed
 
 `.venv`、`.ai-sow-tools` 及其 `bin`、`cache`、`python` 根目录必须是本副本的真实目录；若为符号链接或 Windows 重解析点（包括悬空链接/junction），bootstrap 在任何目录创建、安装或环境重建前返回 `BOOTSTRAP_PATH_UNSAFE`，保留链接和外部目标。`python` 内部的 managed 版本别名不受此限制。
 
-交付保存在项目 `.ai-sow-lite/versions/<version_id>/`，含 `sow.xlsx`、`summary.md`、`pending-items.md` 和同版 JSON；必要时另有 `details.md`。`.ai-sow-lite/work/` 保留未完成分析和可恢复候选。输入、工作文件和工作簿可能含客户衍生资料，共享或提交前按项目隐私要求检查；不要把它们复制进插件包。
+交付保存在项目 `.ai-sow-lite/versions/<version_id>/`，含 `sow.xlsx`、`summary.md`、`pending-items.md` 和同版 JSON。`.ai-sow-lite/work/` 保留未完成分析和可恢复候选。输入、工作文件和工作簿可能含客户衍生资料，共享或提交前按项目隐私要求检查；不要把它们复制进插件包。
 
-当前 Excel 交付要求为单文件可读：保留原模板四张表的结构、公式和计算规则，生成结果另加可见的 `04-待确认事项`、`05-完整说明`，即使为空也保留。问题表展示实际问题、当前处理、状态、目标、已有来源定位及实际已采用答复；短字段直接填写，长标题、AC、备注和任务列表按原顺序完整续行，主表提供工作簿内部位置及可点击链接。阅读、评审和分享 Excel 无需附带 Markdown 文件，不能用外部路径或 UUID 问题标签代替正文。
+Excel 只保留原四张表，完整验收条件直接放在“验收条件”列，正常备注为空。尚未解决的问题与当前处理写在实际受影响的行上，以“待确认：”开头，校验列显示“待确认”；已解决或已被替代的问题留在项目历史中。尚未拆明且没有 Story 的范围保留实际 Epic/Feature 与问题，不虚构工作。Excel 可单独阅读和分享。
 
-Markdown、JSON 和既有 projection 路径/锚点仍用于兼容、机器处理及项目归档。后续 clarify 需保留原项目目录，Excel 独立可读不代表支持无损回导。投影数据合同仍为 `lite-projection-v1`，渲染实现修订为 `lite-render-v5`；旧已应用版本保持原样，旧准备包不能绕过新核验。本增量的实现与检查见 [I6.1 验证](docs/validation/I6-self-contained.md)，规则见 [Excel 投影合同](docs/design/detailed/D06-excel-projection-and-delivery.md)。
+既有项目可以继续使用，仍需保留项目文件供后续 clarify 定位和修改。具体兼容规则、长内容限制见 [Excel 投影合同](docs/design/detailed/D06-excel-projection-and-delivery.md)，本次验证进展与限制见 [原列验收记录](docs/validation/I6-inline-acceptance.md)。
 
 工具耗时和大活动标记保存在项目的独立资源报告中。原生 token 采集只接已验证版本、明确选定且属于本次请求的来源；无法确定的调用次数或活动归属保留未知，不按文件大小估算 token，也不设置 token 预算门禁。观测失败不重做业务交付，迟到用量只更新资源报告。当前真实粒度与性能基线见 [宿主观测](docs/validation/host-support.md) 和 [性能记录](docs/validation/performance.md)。
 
