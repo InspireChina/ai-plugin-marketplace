@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "0fd39e5f7823538c83d91643f58a8052d11b1aa2",
+  "frozen_at": "2026-09-10T10:59:01.413553+00:00",
+  "files": {
+    "README.md": "5ba640ed92439be2aa9ce99f2dfed49f00837abacbbc8cd006ceab7befbcf480",
+    "controller/oracle.json": "9c30050ca0d1f45f4128127acc62a3dd80d5f2ed521221c03fc2818282196b1d",
+    "controller/user-script.md": "c427a9cb4f3d7a83ceb184a1d373ce8973bc6a8906388c886879bd5351dfd05d",
+    "phase1/HLD.md": "3acbe8633409dc4800ae04019c9d0f56914e55a333fe55c63ad7f589215c612c",
+    "phase1/PRD.md": "9cfdfd6880a288ee6e02f1c6c12b989538ce4e5b1b2b496306442174a6aac1a1",
+    "phase1/prototype/app.js": "30b771db2939c7849972f6c23b5ff94a51a38aaf95635dcd36ebc2f880ac3cb3",
+    "phase1/prototype/index.html": "c489af31256bca945c6cda10e4d05243d8f2c9a71010ec3d6db9681c2ed914d1",
+    "phase1/prototype/style.css": "52324191656309cf2a9741eb34e411916e10038edf80d7547fb7f7669ef4457b",
+    "phase2/HLD.md": "fe1c28a894668747f28129dbd3b81eb86b52814ab1c8ca79ea2d2704596b55d4",
+    "phase2/PRD.md": "1f59733c2c06ddb059ce814f3ecfc4a440d761d6096d109797bcad0697d17db8",
+    "phase2/prototype/app.js": "72b8aa4c5910ced235f878de92722682b3c238713e506aeb969cfbd9a0f975b9",
+    "phase2/prototype/index.html": "9855342a69edcb6ebc3a68ba88cf95313c52e2bd5cdcca33256bc5c2f01bea39",
+    "phase2/prototype/style.css": "52324191656309cf2a9741eb34e411916e10038edf80d7547fb7f7669ef4457b"
+  }
+}

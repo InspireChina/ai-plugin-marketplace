@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="澄川门店售后工单平台一期静态交互演示">
+  <title>澄川工单｜一期离线原型</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <p class="eyebrow">澄川门店售后工单平台 · 一期</p>
+    <h1>报修受理与只读跟踪</h1>
+    <nav aria-label="页面切换">
+      <a href="#/tickets/new">门店新建报修</a>
+      <a href="#/tickets">客服工单队列</a>
+      <a href="#/tickets/CC-DEMO-106">客服详情示例</a>
+    </nav>
+  </header>
+  <aside class="notice">
+    静态合成演示数据，无网络、后端或真实账号。页面切换用 # 模拟业务路由。
+    表单只做本地校验，不保存、不发送事件，也不证明后端实现或权限生效。
+    为便于观察翻页，原型每页展示 2 条，实际业务按每页 20 或 50 条。
+  </aside>
+  <main id="app" tabindex="-1"></main>
+  <noscript>请启用 JavaScript 查看本地交互。此原型无需联网。</noscript>
+  <footer>全部门店与人物均为虚构 · 刷新后回到静态样本 · <a href="../PRD.md">一期需求</a></footer>
+</body>
+</html>

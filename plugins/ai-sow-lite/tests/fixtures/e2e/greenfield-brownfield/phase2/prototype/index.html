@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="澄川门店售后工单平台二期静态交互演示">
+  <title>澄川工单｜二期离线原型</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <p class="eyebrow">澄川门店售后工单平台 · 二期</p>
+    <h1>优先级队列与服务商查询</h1>
+    <nav aria-label="页面切换">
+      <a href="#/tickets">客服优先级队列</a>
+      <a href="#/partner/tickets/CC-DEMO-206">服务商详情示例</a>
+      <a href="#/partner/tickets/CC-DEMO-205">其他服务商工单示例</a>
+    </nav>
+  </header>
+  <aside class="notice">
+    静态合成数据，仅展示本期变化；使用 # 模拟业务路由，无网络和后端。
+    沿用一期最后确认的列表默认筛选；下方样本只用于优先级交互，不推定一期默认状态范围。
+    演示每页 2 条，实际每页 20 或 50 条。前端演示裁剪不构成后端权限或保存已实现的证据。
+  </aside>
+  <main id="app" tabindex="-1"></main>
+  <noscript>请启用 JavaScript 查看本地交互。此原型无需联网。</noscript>
+  <footer>全部组织与人物均为虚构 · <a href="../PRD.md">二期需求</a></footer>
+</body>
+</html>
