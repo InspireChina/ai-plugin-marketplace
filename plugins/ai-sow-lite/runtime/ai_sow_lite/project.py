@@ -615,7 +615,7 @@ def apply_prepared(project: Path, request_id: str, payload):
     if confirmation:
         dependencies.extend(confirmation['dependencies'])
     for entry in adopted_inputs:
-        relative = str(Path(entry['relative_path']).parent / 'reading-ref.json')
+        relative = (Path(entry['relative_path']).parent / 'reading-ref.json').as_posix()
         if safe_path(project, relative).exists():
             reading_ref = checked_json(project, relative, 'file_ref')
             dependencies.append(reading_ref)

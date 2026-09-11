@@ -57,8 +57,26 @@ def _environment(root):
     return env
 
 
+def _engine_candidates():
+    """Windows ships the console entry point as soffice.com and never sets PATH."""
+    found=[os.environ.get('AI_SOW_LITE_OFFICE_BIN'),shutil.which('soffice'),shutil.which('libreoffice')]
+    if os.name!='nt': return found
+    resolved=[]
+    for candidate in found:
+        if not candidate: continue
+        # soffice.exe is a GUI subsystem binary: --version never answers on a pipe.
+        console=Path(candidate).with_suffix('.com')
+        if console.is_file(): resolved.append(str(console))
+        resolved.append(candidate)
+    for root in (os.environ.get('ProgramFiles'),os.environ.get('ProgramFiles(x86)')):
+        if not root: continue
+        default=Path(root)/'LibreOffice'/'program'/'soffice.com'
+        if default.is_file(): resolved.append(str(default))
+    return resolved
+
+
 def discover_engine():
-    candidates=[os.environ.get('AI_SOW_LITE_OFFICE_BIN'),shutil.which('soffice'),shutil.which('libreoffice')]
+    candidates=_engine_candidates()
     seen=set()
     for candidate in candidates:
         if not candidate or candidate in seen: continue
@@ -85,8 +103,13 @@ def recalculate(source: Path, destination: Path):
     original_hash=file_sha256(source)
     started=time.monotonic_ns()
     destination.parent.mkdir(parents=True,exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='.office-',dir=destination.parent) as temporary:
-        root=Path(temporary); incoming=root/'input'; outgoing=root/'converted'; profile=root/'profile'
+    with tempfile.TemporaryDirectory(prefix='.office-',dir=destination.parent,
+                                     ignore_cleanup_errors=True) as temporary, \
+         tempfile.TemporaryDirectory(prefix='ai-sow-lo-',ignore_cleanup_errors=True) as profile_root:
+        root=Path(temporary); incoming=root/'input'; outgoing=root/'converted'
+        # Keep the Office profile off the project tree: LibreOffice aborts with
+        # STACK_BUFFER_OVERRUN once its bundled extension registry exceeds MAX_PATH.
+        profile=Path(profile_root)/'p'
         for directory in (incoming,outgoing,profile): directory.mkdir()
         isolated=incoming/'candidate.xlsx'; atomic_bytes(isolated,source.read_bytes(),immutable=True)
         if file_sha256(isolated)!=original_hash:
@@ -108,6 +131,6 @@ def recalculate(source: Path, destination: Path):
 
 def selection_fingerprint():
     """Path-free reuse key, without launching Office for repeated render/apply."""
-    candidates=[os.environ.get('AI_SOW_LITE_OFFICE_BIN'),shutil.which('soffice'),shutil.which('libreoffice')]
+    candidates=_engine_candidates()
     return [dict(binary_sha256=file_sha256(Path(p).expanduser().resolve()),platform=platform.system())
             for p in dict.fromkeys(candidates) if p and Path(p).expanduser().is_file()]

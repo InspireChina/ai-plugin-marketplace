@@ -28,10 +28,18 @@ def mutate_zip(source, destination, change):
             dst.writestr(name,change(name,src.read(name)))
 
 
+def _engine_available():
+    """Use the adapter's own discovery: Windows never puts LibreOffice on PATH."""
+    try:
+        office().discover_engine()
+        return True
+    except StorageError:
+        return False
+
+
 @pytest.mark.office
 def test_real_office_normalizes_only_known_omissions_then_readonly_seals(tmp_path):
-    if not shutil.which('soffice') and not shutil.which('libreoffice'):
-        pytest.skip('Real Office engine unavailable')
+    if not _engine_available(): pytest.skip('Real Office engine unavailable')
     project(tmp_path)
     source=tmp_path/'projected.xlsx'; before=source.read_bytes()
     target=tmp_path/'sow.xlsx'
@@ -62,7 +70,7 @@ def test_real_office_normalizes_only_known_omissions_then_readonly_seals(tmp_pat
 @pytest.mark.office
 @pytest.mark.parametrize('damage',['formula','cache','table','protection','validation_rule','validation_range','table_formula'])
 def test_raw_damage_cannot_be_repaired_by_compatibility_adapter(tmp_path,damage):
-    if not shutil.which('soffice') and not shutil.which('libreoffice'): pytest.skip('Real Office engine unavailable')
+    if not _engine_available(): pytest.skip('Real Office engine unavailable')
     project(tmp_path); office().recalculate(tmp_path/'projected.xlsx',tmp_path/'sow.xlsx')
     ns={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
     def change(name,raw):
@@ -95,12 +103,15 @@ def test_raw_damage_cannot_be_repaired_by_compatibility_adapter(tmp_path,damage)
 def test_missing_engine_does_not_write_output(tmp_path,monkeypatch):
     adapter=office(); monkeypatch.delenv('AI_SOW_LITE_OFFICE_BIN',raising=False)
     monkeypatch.setattr(adapter.shutil,'which',lambda _:None)
+    # Windows also probes the default install location; absence must be total.
+    for variable in ('ProgramFiles','ProgramFiles(x86)'): monkeypatch.delenv(variable,raising=False)
     project(tmp_path)
     with pytest.raises(StorageError,match='OFFICE_ENGINE_UNAVAILABLE'):
         adapter.recalculate(tmp_path/'projected.xlsx',tmp_path/'sow.xlsx')
     assert not (tmp_path/'sow.xlsx').exists()
 
 
+@pytest.mark.skipif(os.name=='nt',reason='os.kill(pid,0) liveness probe is POSIX-only')
 def test_timeout_cleans_only_owned_process_tree(tmp_path):
     adapter=office()
     child_pid=tmp_path/'child.pid'
@@ -117,8 +128,10 @@ def test_timeout_cleans_only_owned_process_tree(tmp_path):
     else: pytest.fail('Owned child survived timeout')
 
 
+@pytest.mark.skipif(os.name=='nt',reason='Shebang + chmod fake engine is POSIX-only')
 def test_exit_zero_without_output_is_failure_and_cleans_profile(tmp_path,monkeypatch):
     adapter=office(); project(tmp_path)
+    for variable in ('ProgramFiles','ProgramFiles(x86)'): monkeypatch.delenv(variable,raising=False)
     script=tmp_path/'fake-office'
     script.write_text('#!'+sys.executable+'\nimport sys\nif "--version" in sys.argv: print("LibreOffice 0.0 test")\n')
     script.chmod(0o700)
@@ -132,7 +145,7 @@ def test_exit_zero_without_output_is_failure_and_cleans_profile(tmp_path,monkeyp
 @pytest.mark.office
 @pytest.mark.parametrize('story_count,task_count,last_s,last_t,formulas',[(0,0,64,204,1304),(1,1,64,204,1304),(60,200,64,204,1304),(61,201,65,205,1314)])
 def test_real_office_capacity_inputs_array_refs_and_cached_storage(tmp_path,story_count,task_count,last_s,last_t,formulas):
-    if not shutil.which('soffice') and not shutil.which('libreoffice'): pytest.skip('Real Office engine unavailable')
+    if not _engine_available(): pytest.skip('Real Office engine unavailable')
     from .test_workbook import bundle
     from copy import deepcopy
     from uuid import uuid4
@@ -175,8 +188,7 @@ def test_style_tint_damage_cannot_pass_metadata_reread(tmp_path):
 @pytest.mark.office
 @pytest.mark.parametrize('damage',['hidden_row','font_name','font_scheme','font_vertical','font_charset','collapsed_row'])
 def test_raw_display_damage_is_rejected_without_restoration(tmp_path,damage):
-    if not shutil.which('soffice') and not shutil.which('libreoffice'):
-        pytest.skip('Real Office engine unavailable')
+    if not _engine_available(): pytest.skip('Real Office engine unavailable')
     project(tmp_path)
     office().recalculate(tmp_path/'projected.xlsx',tmp_path/'sow.xlsx')
     raw=tmp_path/'sow.office-raw.xlsx'; bad=tmp_path/'unreadable.xlsx'
@@ -206,8 +218,7 @@ def test_raw_display_damage_is_rejected_without_restoration(tmp_path,damage):
 @pytest.mark.office
 @pytest.mark.parametrize('damage',['business_pair','other_a2_pair','a2_italic','a2_text','a2_theme'])
 def test_instructional_font_fallback_cannot_admit_other_display_changes(tmp_path,damage):
-    if not shutil.which('soffice') and not shutil.which('libreoffice'):
-        pytest.skip('Real Office engine unavailable')
+    if not _engine_available(): pytest.skip('Real Office engine unavailable')
     project(tmp_path)
     office().recalculate(tmp_path/'projected.xlsx',tmp_path/'sow.xlsx')
     raw=tmp_path/'sow.office-raw.xlsx';bad=tmp_path/'bad-fallback.xlsx'

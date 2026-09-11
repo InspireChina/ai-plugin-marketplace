@@ -280,13 +280,13 @@ def _save_attempt(project, area, draft, checkpoint):
     if previous_ref is None and checkpoint['candidate_path']:
         # Existing r1/r2 captures retain their original identity and digest.
         previous_ref = file_ref(project, safe_path(project,
-            str(Path(checkpoint['candidate_path']).with_name('edit-draft.json')), area))
+            Path(checkpoint['candidate_path']).with_name('edit-draft.json').as_posix(), area))
     previous = None
     if previous_ref:
         _verify_refs(project, [previous_ref])
         previous = load_json(safe_path(project, previous_ref['path'], area))
         if draft == previous:
-            return str(Path(previous_ref['path']).parent), previous_ref
+            return Path(previous_ref['path']).parent.as_posix(), previous_ref
         if draft['plan_id'] != previous['plan_id']:
             raise StorageError('SCOPE_EXCEEDED', '同一请求不能换方案身份刷新额度。')
     elif safe_path(project, area + '/plans').exists():
@@ -302,15 +302,15 @@ def _save_attempt(project, area, draft, checkpoint):
         retries = checkpoint.get('operation_retries', {})
         if checkpoint['repair_batches'] >= 2 or retries.get(repair['operation'], 0):
             raise StorageError('LOOP_LIMIT_REACHED', '请求返修或同操作/根因重试已到限。')
-        directory = str(Path(previous_ref['path']).parent / 'repair')
+        directory = (Path(previous_ref['path']).parent / 'repair').as_posix()
     elif 'subset_of' in draft:
         if (previous is None or previous.get('subset_of')
                 or draft['revision'] != previous['revision']):
             raise StorageError('LOOP_LIMIT_REACHED', '每份专业方案只机械提取一次明确子集，不嵌套或重开。')
-        shown = file_ref(project, safe_path(project, str(Path(previous_ref['path']).with_name('plan.json')), area))
+        shown = file_ref(project, safe_path(project, Path(previous_ref['path']).with_name('plan.json').as_posix(), area))
         if draft['subset_of'] != shown:
             raise StorageError('SCOPE_EXCEEDED', '子集必须引用上一份具体展示计划。')
-        directory = str(Path(previous_ref['path']).parent / 'subset')
+        directory = (Path(previous_ref['path']).parent / 'subset').as_posix()
     elif draft['revision'] != (previous['revision'] + 1 if previous else 1):
         raise StorageError('SCOPE_EXCEEDED', '专业方案从 1 开始，变化须沿原身份递增；机械返修须明确来源。')
 
@@ -335,7 +335,7 @@ def _subset_source(project, ref, area):
     shown = load_json(path)
     if list(schema_validator('change-plan').iter_errors(shown)) or 'subset_of' in shown:
         raise StorageError('SCOPE_EXCEEDED', '子集来源须为原具体方案，不能嵌套子集。')
-    construction = checked_json(project, str(path.with_name('construction.json').relative_to(project)),
+    construction = checked_json(project, path.with_name('construction.json').relative_to(project).as_posix(),
                                 'edit_construction', area)
     if construction['plan_ref'] != ref:
         raise StorageError('SCOPE_EXCEEDED', '子集来源不是构造时的具体展示计划。')

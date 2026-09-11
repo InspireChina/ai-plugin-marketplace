@@ -390,7 +390,7 @@ def ingest_analysis(project: Path, request_id: str, payload):
             stored = checked_json(project, relative, 'analysis', '.ai-sow-lite/analysis/topics')
             if stored['topics'] != [topic]:
                 raise StorageError('IDENTITY_CONFLICT', '已有主题目录不能绑定不同分析内容。')
-            provenance = checked_json(project, str(Path(relative).parent / 'registration-ref.json'), 'file_ref')
+            provenance = checked_json(project, (Path(relative).parent / 'registration-ref.json').as_posix(), 'file_ref')
             original = safe_path(project, provenance['path'], '.ai-sow-lite/analysis/registrations')
             if file_ref(project, original) != provenance:
                 raise StorageError('EVIDENCE_MISSING', '已有主题的来源原字节与绑定摘要不同。')
@@ -427,7 +427,7 @@ def ingest_analysis(project: Path, request_id: str, payload):
             ref = file_ref(project, existing)
         else:
             ref = write_json(project, relative, record, immutable=True)
-            write_json(project, str(Path(relative).parent / 'registration-ref.json'), file_ref(project, registration), immutable=True)
+            write_json(project, (Path(relative).parent / 'registration-ref.json').as_posix(), file_ref(project, registration), immutable=True)
         refs.append(ref)
         write_json(project, '.ai-sow-lite/analysis/index.json', dict(schema_version='1.0', items=refs))
     return dict(analysis_ref=file_ref(project, registration), evidence_ids=[e['id'] for e in analysis['evidence']],
