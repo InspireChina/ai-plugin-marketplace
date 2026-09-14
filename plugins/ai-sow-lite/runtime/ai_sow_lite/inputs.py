@@ -354,10 +354,12 @@ def _committed_topic(project, directory):
     topic = stored['topics'][0]
     if topic not in registered['topics']:
         raise StorageError('EVIDENCE_MISSING', '主题内容不属于其声明的登记来源。')
-    if not {r['sha256'] for r in stored['observations']} <= {r['sha256'] for r in registered['observations']}:
-        raise StorageError('EVIDENCE_MISSING', '主题观察摘要不属于原始登记来源。')
+    # The expected observation set comes from the immutable registration, never from
+    # the record under test. A subset check would accept a record whose observations
+    # were deleted, and rebuilding `bound` from its own bytes proves nothing.
+    from ._prototype import registered_observations
     bound = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'],
-                 observations=stored['observations'])
+                 observations=registered_observations(project, registered, topic))
     if record.read_bytes() != canonical_json_bytes(bound):
         raise StorageError('EVIDENCE_MISSING', '主题原字节与登记来源不同。')
     return file_ref(project, record)
@@ -413,7 +415,7 @@ def ingest_analysis(project: Path, request_id: str, payload):
     from .contracts import strict_json_loads
     analysis = strict_json_loads(raw)
     from .contracts import schema_validator
-    from ._prototype import register_observations, topic_observations
+    from ._prototype import register_observations, registered_observations, topic_observations
     if list(schema_validator('artifacts', 'analysis').iter_errors(analysis)):
         raise StorageError('CANDIDATE_INVALID', '分析字段不符合当前 Schema。')
     adopted_inputs = {i for t in analysis['topics'] for i in t['input_version_ids']}
@@ -456,9 +458,10 @@ def ingest_analysis(project: Path, request_id: str, payload):
             if file_ref(project, original) != provenance:
                 raise StorageError('EVIDENCE_MISSING', '已有主题的来源原字节与绑定摘要不同。')
             registered = checked_json(project, provenance['path'], 'analysis', '.ai-sow-lite/analysis/registrations')
-            if not {r['sha256'] for r in stored['observations']} <= {r['sha256'] for r in registered['observations']}:
-                raise StorageError('EVIDENCE_MISSING', '已有主题的观察摘要不属于原始登记来源。')
-            bound_record = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'], observations=stored['observations'])
+            # Same rule as recovery: derive the expected observations from the
+            # registration, so a record with its observations deleted is refused.
+            bound_record = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'],
+                                observations=registered_observations(project, registered, topic))
             if topic not in registered['topics'] or safe_path(project, relative).read_bytes() != canonical_json_bytes(bound_record):
                 raise StorageError('EVIDENCE_MISSING', '已有主题原字节与登记来源不同。')
             if not any(ref['path'] == relative for ref in refs) and provenance != candidate_ref:

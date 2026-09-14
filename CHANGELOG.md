@@ -8,7 +8,7 @@
 
 - **Windows 平台修复：** 项目相对引用统一为 POSIX 分隔符，修复 Windows 上 generate/clarify 因自身安全检查被拒（PATH_UNSAFE）；LibreOffice 私有 profile 移出项目树，避免深路径下引擎崩溃；复读接受整表一致的平台列宽换算与已验证的字体回退，单列变化或不一致缩放仍判为篡改；引擎发现支持 Windows 控制台入口 soffice.com 与默认安装目录。
 - **引导：** uv 改为直接下载锁定版本压缩包并用 .NET ZipFile 解压，不再依赖 Get-ExecutionPolicy；bootstrap.sh 在 Windows shell 下直接指向 bootstrap.ps1。
-- **可恢复性：** analysis 登记先绑定来源再写主题记录，索引一次性提交；索引丢失时仅由写入操作在逐字节重证出处后重建，查询保持只读。
+- **可恢复性：** analysis 登记先绑定来源再写主题记录，索引一次性提交；索引丢失时仅由写入操作在逐字节重证出处后重建，查询保持只读。期望观察集合完全由不可变登记独立推导，不取用待验证记录自身的 observations，删除观察的记录不能再取得新索引。
 - **存储：** Windows 上 os.replace 遇到瞬时文件锁时有界重试，消除偶发 INPUT_UNAVAILABLE。
 - **可选引擎准备：** 新增 `scripts/lite.py --provision-office`，在插件目录内解包锁定版本 LibreOffice；免管理员、不注册到系统、不自动触发，用户自有安装始终优先。
 

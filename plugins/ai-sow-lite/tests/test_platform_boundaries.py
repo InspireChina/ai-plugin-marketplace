@@ -13,11 +13,15 @@ import pytest
 
 from ai_sow_lite import inputs
 from ai_sow_lite.cli import execute
-from ai_sow_lite.project import StorageError
+from ai_sow_lite.contracts import PLUGIN_ROOT, canonical_json_bytes
+from ai_sow_lite.project import StorageError, initialize
 from ai_sow_lite.workbook import audit_workbook
 
 from .support.fixtures import build_ingested_case, read_json, write_json
+from .support.observed import seed_observed_topic
 from .test_workbook import project as build_workbook_project
+
+TEMPLATE = PLUGIN_ROOT / "assets/sow-template.xlsx"
 
 NAMESPACE = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
@@ -44,7 +48,7 @@ def only_topic(case):
     return case.project / read_json(index_of(case))["items"][0]["path"]
 
 
-@pytest.mark.parametrize("damage", ["evidence_text", "evidence_dropped", "observations", "topic_title"])
+@pytest.mark.parametrize("damage", ["evidence_text", "evidence_dropped", "topic_title"])
 def test_recovery_refuses_records_that_contradict_their_registration(tmp_path, damage):
     """A lost index must never mint a fresh trusted digest for altered bytes."""
     case = build_ingested_case(tmp_path / "corruption")
@@ -54,8 +58,6 @@ def test_recovery_refuses_records_that_contradict_their_registration(tmp_path, d
         record["evidence"][0]["text"] = "修改后的依据，不属于登记原文。"
     elif damage == "evidence_dropped":
         record["evidence"] = []
-    elif damage == "observations":
-        record["observations"] = []
     else:
         record["topics"][0]["title"] = "改写后的主题标题"
     write_json(topic_path, record)
@@ -69,6 +71,45 @@ def test_recovery_refuses_records_that_contradict_their_registration(tmp_path, d
     replay = execute(registration_request(case))
     assert not replay["ok"], "registration adopted a record that contradicts its source"
     assert not index_of(case).exists()
+
+
+def test_deleting_a_topics_observations_is_refused_by_recovery(tmp_path):
+    """The expected observation set comes from the registration, not from the record.
+
+    A subset comparison passes trivially once the observations are gone, and
+    rebuilding the expected bytes out of the record under test proves nothing. The
+    record is rewritten with canonical bytes so only the missing observation, and
+    not an incidental formatting difference, can cause the refusal.
+    """
+    project = tmp_path / "observation-deleted"
+    project.mkdir()
+    initialize(project, "new", TEMPLATE)
+    case = seed_observed_topic(project)
+    record = read_json(case["record"])
+    assert len(record["observations"]) == 1, "fixture must carry a real observation"
+
+    record["observations"] = []
+    case["record"].write_bytes(canonical_json_bytes(record))
+    case["index"].unlink()
+
+    with pytest.raises(StorageError, match="EVIDENCE_MISSING"):
+        inputs.recover_analysis_index(project)
+    assert not case["index"].exists(), "a record missing its observations was granted an index"
+
+
+def test_healthy_observed_topic_still_recovers(tmp_path):
+    """The independent derivation must accept the bytes registration actually wrote."""
+    project = tmp_path / "observation-healthy"
+    project.mkdir()
+    initialize(project, "new", TEMPLATE)
+    case = seed_observed_topic(project, observations=2)
+    expected = read_json(case["index"])
+    case["index"].unlink()
+
+    inputs.recover_analysis_index(project)
+
+    assert read_json(case["index"])["items"] == expected["items"]
+    assert len(read_json(case["record"])["observations"]) == 2
 
 
 @pytest.mark.parametrize("state", ["healthy", "corrupt"])
