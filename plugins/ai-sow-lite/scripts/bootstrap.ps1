@@ -6,7 +6,6 @@ $PluginRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $ToolsRoot = Join-Path $PluginRoot ".ai-sow-tools"
 $ToolsBin = Join-Path $ToolsRoot "bin"
 $LocalUv = Join-Path $ToolsBin "uv.exe"
-$Installer = Join-Path $ToolsRoot "install-uv.ps1"
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 [Console]::OutputEncoding = $OutputEncoding
 $env:PYTHONUTF8 = "1"
@@ -66,14 +65,31 @@ if ($null -eq $UvBin) {
     }
 }
 if ($null -eq $UvBin) {
+    # Fetch the pinned archive directly. The official install.ps1 calls
+    # Get-ExecutionPolicy, which fails outright when PSModulePath resolves
+    # Microsoft.PowerShell.Security to a newer side-by-side PowerShell.
+    $Archive = Join-Path $ToolsRoot "uv-$UvVersion.zip"
+    $Staging = Join-Path $ToolsRoot "uv-$UvVersion-unpack"
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -UseBasicParsing -Uri "https://astral.sh/uv/0.11.7/install.ps1" -OutFile $Installer
-        $env:UV_UNMANAGED_INSTALL = $ToolsBin
-        & $Installer *> $null
-    } catch { Stop-Bootstrap "UV_INSTALL_FAILED" "uv 官方安装失败。" }
-    finally { Remove-Item -LiteralPath $Installer -Force -ErrorAction SilentlyContinue }
-    if (-not (Test-Path -LiteralPath $LocalUv -PathType Leaf)) { Stop-Bootstrap "UV_INSTALL_INVALID" "uv 安装后仍无法执行。" }
+        $Platform = if ([Environment]::Is64BitOperatingSystem) { "x86_64" } else { "i686" }
+        Invoke-WebRequest -UseBasicParsing -OutFile $Archive -Uri `
+            "https://github.com/astral-sh/uv/releases/download/$UvVersion/uv-$Platform-pc-windows-msvc.zip"
+        Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue
+        # The ZipFile API needs no module lookup, unlike Expand-Archive.
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [IO.Compression.ZipFile]::ExtractToDirectory($Archive, $Staging)
+        $Extracted = Get-ChildItem -LiteralPath $Staging -Filter "uv.exe" -Recurse -File | Select-Object -First 1
+        if ($null -eq $Extracted) { throw "uv.exe missing from archive" }
+        Move-Item -LiteralPath $Extracted.FullName -Destination $LocalUv -Force
+    } catch { Stop-Bootstrap "UV_INSTALL_FAILED" "uv 下载或解压失败；可手动将 uv $UvVersion 的 uv.exe 放入 .ai-sow-tools/bin/ 后重试。" }
+    finally {
+        Remove-Item -LiteralPath $Archive -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if (-not (Test-Path -LiteralPath $LocalUv -PathType Leaf)) {
+        Stop-Bootstrap "UV_INSTALL_INVALID" "uv 安装后仍无法执行；可手动将 uv $UvVersion 的 uv.exe 放入 .ai-sow-tools/bin/ 后重试。"
+    }
     $UvBin = $LocalUv
 }
 $Probe = Invoke-Native $UvBin @("--version")

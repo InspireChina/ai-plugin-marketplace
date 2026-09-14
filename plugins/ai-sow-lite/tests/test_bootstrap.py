@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -79,12 +80,38 @@ def test_python_install_disables_host_registration(script):
     assert "--no-bin" in install and "--no-registry" in install
 
 
+def _reparse_target(path):
+    """A Windows junction is not a symlink: is_symlink() returns False for it."""
+    try:
+        return os.readlink(path)
+    except OSError:
+        return None
+
+
+def _is_reparse_point(path):
+    """Covers a dangling junction too: it reports is_dir() False, is_symlink() False."""
+    if os.name != "nt":
+        return False
+    try:
+        return bool(os.lstat(path).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    except OSError:
+        return False
+
+
 def tree_state(root):
     """Capture only a test-owned tree, including names and original file bytes."""
     if not root.exists():
         return None
-    return {str(path.relative_to(root)): (os.readlink(path) if path.is_symlink()
-            else None if path.is_dir() else path.read_bytes()) for path in root.rglob("*")}
+    state = {}
+    for path in root.rglob("*"):
+        key = str(path.relative_to(root))
+        if path.is_symlink() or _is_reparse_point(path):
+            state[key] = _reparse_target(path)
+        elif path.is_dir():
+            state[key] = None
+        else:
+            state[key] = path.read_bytes()
+    return state
 
 
 @pytest.mark.parametrize("platform", ["bash", "powershell"])

@@ -26,7 +26,7 @@ Windows PowerShell 首次调用：
 "<plugin-root>/.venv/bin/python" "<plugin-root>/scripts/lite.py" --request "<request-file>"
 ```
 
-Windows 对应 `& "<plugin-root>/.venv/Scripts/python.exe" "<plugin-root>/scripts/lite.py" --request "<request-file>"`。bootstrap 准备 uv 0.11.7、Python 3.12 和锁定依赖；首次可联网下载到插件副本。Office 由已有 `soffice/libreoffice` 或当前执行环境的 `AI_SOW_LITE_OFFICE_BIN` 发现，缺引擎时报诊断，不代装宿主工具。
+Windows 对应 `& "<plugin-root>/.venv/Scripts/python.exe" "<plugin-root>/scripts/lite.py" --request "<request-file>"`。bootstrap 准备 uv 0.11.7、Python 3.12 和锁定依赖；首次可联网下载到插件副本。Office 由已有 `soffice/libreoffice`、当前执行环境的 `AI_SOW_LITE_OFFICE_BIN`，或 Windows 默认安装目录发现；缺引擎时报诊断并给出准备方式，不静默改动宿主。用户明确要求时可执行 `scripts/lite.py --provision-office`，在插件目录内解包一份引擎（免管理员、不注册到系统），用户自有安装始终优先。
 
 隔离环境就绪后，连续操作优先用 [Python 调用助手](python-client.md)，沿用以下 payload 和返回字段；只输出本轮需要的结果，保留实际引用。
 

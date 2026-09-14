@@ -19,7 +19,69 @@ from .project import StorageError, atomic_bytes
 
 PROBE_TIMEOUT = 10
 RECALCULATION_TIMEOUT = 120
+PROVISION_TIMEOUT = 1800
 ARGUMENTS = ['-env:UserInstallation=PROFILE_DIR','--headless','--convert-to','xlsx','--outdir','OUTPUT_DIR','INPUT_XLSX']
+# Pinned to the validated engine. An administrative unpack (msiexec /a) needs no
+# elevation and writes only inside the plugin copy; the host install is untouched.
+PROVISION_VERSION = '26.8.0'
+PROVISION_URL = ('https://download.documentfoundation.org/libreoffice/stable/'
+                 f'{PROVISION_VERSION}/win/x86_64/LibreOffice_{PROVISION_VERSION}_Win_x86-64.msi')
+
+
+def managed_root():
+    from .contracts import PLUGIN_ROOT
+    return Path(PLUGIN_ROOT) / '.ai-sow-tools' / 'libreoffice' / PROVISION_VERSION
+
+
+def managed_engine():
+    """The plugin-local console entry point, when a previous provision succeeded."""
+    candidate = managed_root() / 'program' / 'soffice.com'
+    return candidate if candidate.is_file() else None
+
+
+def provision_engine(*, timeout=PROVISION_TIMEOUT):
+    """Unpack the pinned LibreOffice into this plugin copy. Windows only.
+
+    Opt-in: callers reach here only after discovery failed and the operator asked
+    for it. Nothing is registered with the OS, no elevation is requested, and the
+    user's own LibreOffice (if any) keeps priority in discover_engine().
+    """
+    if os.name != 'nt':
+        raise StorageError('OPERATION_UNSUPPORTED', '仅 Windows 支持插件内置引擎准备；其他平台请自行安装 LibreOffice。')
+    existing = managed_engine()
+    if existing:
+        return existing
+    import urllib.error
+    import urllib.request
+    root = managed_root()
+    root.parent.mkdir(parents=True, exist_ok=True)
+    staging = root.with_name(root.name + '-unpack')
+    installer = root.with_name(root.name + '.msi')
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        try:
+            with urllib.request.urlopen(PROVISION_URL, timeout=120) as response, installer.open('wb') as stream:
+                shutil.copyfileobj(response, stream)
+        except (urllib.error.URLError, OSError) as error:
+            raise StorageError('OFFICE_ENGINE_UNAVAILABLE',
+                               f'下载 LibreOffice {PROVISION_VERSION} 失败；请检查网络或自行安装。') from error
+        # /a is an administrative install: it expands the payload, it does not
+        # register the product, and it does not require elevation.
+        code, _, _ = _run(['msiexec.exe', '/a', str(installer), '/qn', f'TARGETDIR={staging}'],
+                          timeout=timeout, environment=dict(os.environ))
+        unpacked = staging / 'program' / 'soffice.com'
+        if code != 0 or not unpacked.is_file():
+            raise StorageError('OFFICE_ENGINE_UNAVAILABLE',
+                               'LibreOffice 解包未完成；请自行安装后重试。')
+        shutil.rmtree(root, ignore_errors=True)
+        staging.replace(root)
+    finally:
+        installer.unlink(missing_ok=True)
+        shutil.rmtree(staging, ignore_errors=True)
+    engine = managed_engine()
+    if engine is None:
+        raise StorageError('OFFICE_ENGINE_UNAVAILABLE', '解包后仍找不到可用引擎；请自行安装 LibreOffice。')
+    return engine
 
 
 def _run(arguments, *, timeout, environment):
@@ -72,6 +134,10 @@ def _engine_candidates():
         if not root: continue
         default=Path(root)/'LibreOffice'/'program'/'soffice.com'
         if default.is_file(): resolved.append(str(default))
+    # A previously provisioned plugin-local copy ranks last: the user's own
+    # installation always wins when both are present.
+    managed=managed_engine()
+    if managed: resolved.append(str(managed))
     return resolved
 
 
@@ -89,6 +155,10 @@ def discover_engine():
         if code==0 and re.fullmatch(r'LibreOffice [^/\\\r\n]+',version):
             return path,dict(name='LibreOffice',version=version,binary_sha256=file_sha256(path),
                              platform=platform.system(),arguments=ARGUMENTS)
+    if os.name == 'nt':
+        raise StorageError('OFFICE_ENGINE_UNAVAILABLE',
+            '未找到可用于重算的 LibreOffice；可运行 scripts/lite.py --provision-office '
+            '在插件目录内准备引擎（无需管理员，不改动系统），或自行安装 LibreOffice 后重试。')
     raise StorageError('OFFICE_ENGINE_UNAVAILABLE','未找到可用于重算的 LibreOffice。')
 
 

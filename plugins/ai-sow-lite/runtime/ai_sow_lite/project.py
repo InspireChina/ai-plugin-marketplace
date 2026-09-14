@@ -11,6 +11,7 @@ import hashlib
 import os
 from pathlib import Path
 import stat
+import time
 from uuid import UUID, uuid4
 
 from .contracts import canonical_json_bytes, file_sha256, load_json, schema_validator
@@ -70,6 +71,23 @@ def fsync_directory(path):
     return True
 
 
+def _replace_with_retry(temp, path):
+    """os.replace is atomic but not immune to a concurrent opportunistic open.
+
+    On Windows an antivirus or search indexer can briefly hold the destination,
+    which surfaces as PermissionError/WinError 5 on an otherwise valid rename.
+    The operation stays atomic; only the attempt is repeated, briefly.
+    """
+    for attempt in range(10):
+        try:
+            os.replace(temp, path)
+            return
+        except PermissionError:
+            if os.name != 'nt' or attempt == 9:
+                raise
+            time.sleep(0.02 * (attempt + 1))
+
+
 def atomic_bytes(path, raw, *, immutable=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.parent / ('.' + path.name + '-' + str(uuid4()) + '.tmp')
@@ -85,7 +103,7 @@ def atomic_bytes(path, raw, *, immutable=False):
                 if path.read_bytes() != raw:
                     raise StorageError('IDENTITY_CONFLICT', '不可变身份已有不同内容；保留原件。') from None
         else:
-            os.replace(temp, path)
+            _replace_with_retry(temp, path)
         fsync_directory(path.parent)
     finally:
         temp.unlink(missing_ok=True)

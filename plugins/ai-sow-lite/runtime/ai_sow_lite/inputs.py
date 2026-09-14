@@ -326,14 +326,49 @@ def ingest_sources(project: Path, request_id: str, payload):
                 failures=failures, checkpoint_ref=file_ref(project, checkpoint))
 
 
+def _recoverable_topic(project, directory):
+    """A topic directory is committed only if it fully describes its own origin.
+
+    Returns its file_ref when the stored bytes, the bound registration and the
+    declared topic identity all agree, otherwise None.
+    """
+    relative = f'.ai-sow-lite/analysis/topics/{directory.name}/analysis.json'
+    provenance_relative = f'.ai-sow-lite/analysis/topics/{directory.name}/registration-ref.json'
+    try:
+        if not safe_path(project, relative).exists() or not safe_path(project, provenance_relative).exists():
+            return None
+        stored = checked_json(project, relative, 'analysis', '.ai-sow-lite/analysis/topics')
+        provenance = checked_json(project, provenance_relative, 'file_ref')
+        registration = safe_path(project, provenance['path'], '.ai-sow-lite/analysis/registrations')
+        if file_ref(project, registration) != provenance:
+            return None
+        registered = checked_json(project, provenance['path'], 'analysis', '.ai-sow-lite/analysis/registrations')
+    except StorageError:
+        return None
+    if len(stored['topics']) != 1 or stored['topics'][0]['topic_version_id'] != directory.name:
+        return None
+    if stored['topics'][0] not in registered['topics']:
+        return None
+    return file_ref(project, safe_path(project, relative))
+
+
 def _analysis_records(project):
     path = safe_path(project, '.ai-sow-lite/analysis/index.json')
     if not path.exists():
-        # No analyses have been registered yet; a missing index after registration is corruption.
+        # No analyses registered yet. A missing index with topics present means an
+        # earlier registration died mid-write; rebuild it when every topic still
+        # proves its own origin, so the project stays usable instead of wedged.
         topics = safe_path(project, '.ai-sow-lite/analysis/topics')
-        if topics.exists() and any(topics.iterdir()):
-            raise StorageError('EVIDENCE_MISSING', '已有分析文件但索引缺失，不能当作空分析。')
-        return [], []
+        directories = sorted(topics.iterdir()) if topics.exists() else []
+        if directories:
+            rebuilt = [_recoverable_topic(project, directory)
+                       for directory in directories if directory.is_dir()]
+            if not all(rebuilt):
+                raise StorageError('EVIDENCE_MISSING', '已有分析文件但索引缺失且内容不自洽，不能当作空分析。')
+            write_json(project, '.ai-sow-lite/analysis/index.json',
+                       dict(schema_version='1.0', items=rebuilt))
+        else:
+            return [], []
     index = checked_json(project, '.ai-sow-lite/analysis/index.json', 'analysis_index')
     records = []
     for ref in index['items']:
@@ -426,10 +461,13 @@ def ingest_analysis(project: Path, request_id: str, payload):
             # Preflight proved this is the same candidate with only its index member missing.
             ref = file_ref(project, existing)
         else:
+            # Bind provenance before the topic record: a topic that exists without
+            # its registration-ref cannot be recovered, but the reverse can.
+            write_json(project, (Path(relative).parent / 'registration-ref.json').as_posix(),
+                       file_ref(project, registration), immutable=True)
             ref = write_json(project, relative, record, immutable=True)
-            write_json(project, (Path(relative).parent / 'registration-ref.json').as_posix(), file_ref(project, registration), immutable=True)
         refs.append(ref)
-        write_json(project, '.ai-sow-lite/analysis/index.json', dict(schema_version='1.0', items=refs))
+    write_json(project, '.ai-sow-lite/analysis/index.json', dict(schema_version='1.0', items=refs))
     return dict(analysis_ref=file_ref(project, registration), evidence_ids=[e['id'] for e in analysis['evidence']],
                 topic_version_ids=[t['topic_version_id'] for t in analysis['topics']])
 

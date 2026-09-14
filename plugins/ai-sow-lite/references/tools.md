@@ -240,7 +240,7 @@ Excel 可单独查看与分享；Clarify 仍需完整项目 JSON、依据及版�
 
 ### 引擎与最终封存
 
-`office.recalculate(source, destination)` 从 AI_SOW_LITE_OFFICE_BIN 或 PATH 的 soffice/libreoffice 发现引擎；探测10秒、单次重算120秒。每次使用独立输入、输出、配置目录与所属进程组；超时清理所属进程树和临时目录，不接管桌面 Excel，不安装宿主工具，无内部二次重算。Office 不存在为 OFFICE_ENGINE_UNAVAILABLE，超时/非零退出/退出0却无文件为 CALCULATION_FAILED，实际文件/缓存/保护损坏为 WORKBOOK_INVALID。
+`office.recalculate(source, destination)` 从 AI_SOW_LITE_OFFICE_BIN、PATH 的 soffice/libreoffice、Windows 默认安装目录或插件内已准备的引擎发现（Windows 用控制台入口 soffice.com）；探测10秒、单次重算120秒。每次使用独立输入、输出、配置目录与所属进程组；超时清理所属进程树和临时目录，不接管桌面 Excel，不安装宿主工具，无内部二次重算。Office 不存在为 OFFICE_ENGINE_UNAVAILABLE，超时/非零退出/退出0却无文件为 CALCULATION_FAILED，实际文件/缓存/保护损坏为 WORKBOOK_INVALID。
 
 raw 先经公式视图、data_only、OOXML 与元数据核验，再只允许两项变换：已有 Table 身份、列和 ref 完全一致时补缺失的 calculatedColumnFormula 子节点；DV 规则未变且 sqref 精确符合已观察到的占用末行+1000裁切时恢复原范围。不整段替换 Table/保护，不改任何单元格、公式、缓存或保护。变换前后公式/cache 清单哈希一致，最终路径再次只读核验。Office 保存后不调用 openpyxl.save。
 

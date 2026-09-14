@@ -15,6 +15,15 @@ blocked() {
 uv_version_matches() {
   case "$1" in "uv $UV_VERSION"|"uv $UV_VERSION "*) return 0 ;; *) return 1 ;; esac
 }
+# This script assumes POSIX layout (.venv/bin, forward-slash uv output). Under
+# Git Bash / MSYS the Windows uv.exe reports backslash paths and the venv lives
+# in .venv/Scripts, so fail with the actionable entry point instead of a
+# misleading "managed Python does not belong to this copy" further down.
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    blocked "BOOTSTRAP_HOST_UNSUPPORTED" "Windows 请改用 scripts/bootstrap.ps1 -Request <request-file>。"
+    ;;
+esac
 # Check only owned write roots before mkdir/install/clear/sync; version aliases below python are valid.
 for RUNTIME_ROOT in .venv .ai-sow-tools .ai-sow-tools/bin .ai-sow-tools/cache .ai-sow-tools/python; do
   if [ -L "$PLUGIN_ROOT/$RUNTIME_ROOT" ]; then
