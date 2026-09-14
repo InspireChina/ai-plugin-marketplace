@@ -1,5 +1,19 @@
 # 版本说明
 
+## 未发布
+
+### Windows 支持
+
+- generate 全链路（ingest → check → render → apply）与 clarify 有限修改已在 Windows 11 验证。
+- 启动入口为 `scripts/bootstrap.ps1`；Windows PowerShell 5.1 与 PowerShell 7 均已验证。在 Git Bash 等 Windows shell 下运行 `bootstrap.sh` 会直接返回 BOOTSTRAP_HOST_UNSUPPORTED 并指向 ps1。
+- Excel 重算自动使用 Windows 控制台入口 `soffice.com` 并探测默认安装目录；未安装时可执行 `scripts/lite.py --provision-office` 在插件目录内准备（免管理员、不注册到系统、不自动触发）。
+- 原型目录输入依赖 POSIX 目录 fd 能力，Windows 不支持，返回 OPERATION_UNSUPPORTED。
+
+### 可靠性
+
+- analysis 登记中断后可用同一请求重放补完；索引丢失只由写入操作在逐字节重证出处后重建，查询保持只读。
+- Windows 上原子替换遇到瞬时文件锁时有界重试。
+
 ## 0.1.0-alpha.1 — 2026-09-11
 
 首个 AI SOW Lite 试用版。Lite 独立安装，提供 `generate` 与 `clarify` 两个入口。可从远端 marketplace 安装；发布与安装验证记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。

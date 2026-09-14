@@ -10,6 +10,13 @@ from .test_inputs import sources_payload
 
 SENTINEL = b'OUTSIDE_PACKAGE_SENTINEL'
 
+# Prototype ingest needs POSIX directory-fd / no-follow reads; Windows Python
+# exposes none of them, so the runtime refuses with OPERATION_UNSUPPORTED and
+# these boundary cases have nothing to exercise.
+pytestmark = pytest.mark.skipif(
+    not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    reason="Prototype directory ingest requires POSIX fd/no-follow support")
+
 
 def package_case(tmp_path):
     package = tmp_path / 'package'

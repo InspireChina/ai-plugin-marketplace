@@ -326,49 +326,72 @@ def ingest_sources(project: Path, request_id: str, payload):
                 failures=failures, checkpoint_ref=file_ref(project, checkpoint))
 
 
-def _recoverable_topic(project, directory):
-    """A topic directory is committed only if it fully describes its own origin.
+def _committed_topic(project, directory):
+    """Return a fully committed topic's file_ref, or None when it is unwritten.
 
-    Returns its file_ref when the stored bytes, the bound registration and the
-    declared topic identity all agree, otherwise None.
+    Applies the same binding proof as a fresh registration: the record bytes must
+    equal the canonical record rebuilt from the registration it names. Anything
+    that contradicts its own source raises; only an interrupted write returns None.
     """
     relative = f'.ai-sow-lite/analysis/topics/{directory.name}/analysis.json'
     provenance_relative = f'.ai-sow-lite/analysis/topics/{directory.name}/registration-ref.json'
-    try:
-        if not safe_path(project, relative).exists() or not safe_path(project, provenance_relative).exists():
-            return None
-        stored = checked_json(project, relative, 'analysis', '.ai-sow-lite/analysis/topics')
-        provenance = checked_json(project, provenance_relative, 'file_ref')
-        registration = safe_path(project, provenance['path'], '.ai-sow-lite/analysis/registrations')
-        if file_ref(project, registration) != provenance:
-            return None
-        registered = checked_json(project, provenance['path'], 'analysis', '.ai-sow-lite/analysis/registrations')
-    except StorageError:
+    record, provenance_path = safe_path(project, relative), safe_path(project, provenance_relative)
+    if not provenance_path.exists():
+        if record.exists():
+            raise StorageError('EVIDENCE_MISSING', '主题缺少来源绑定，无法证明其登记出处。')
         return None
+    if not record.exists():
+        # Interrupted between the provenance binding and the record itself.
+        return None
+    provenance = checked_json(project, provenance_relative, 'file_ref')
+    registration = safe_path(project, provenance['path'], '.ai-sow-lite/analysis/registrations')
+    if not registration.exists() or file_ref(project, registration) != provenance:
+        raise StorageError('EVIDENCE_MISSING', '主题绑定的来源原件缺失或字节已变化。')
+    registered = checked_json(project, provenance['path'], 'analysis', '.ai-sow-lite/analysis/registrations')
+    stored = checked_json(project, relative, 'analysis', '.ai-sow-lite/analysis/topics')
     if len(stored['topics']) != 1 or stored['topics'][0]['topic_version_id'] != directory.name:
-        return None
-    if stored['topics'][0] not in registered['topics']:
-        return None
-    return file_ref(project, safe_path(project, relative))
+        raise StorageError('EVIDENCE_MISSING', '主题文件与其目录身份不一致。')
+    topic = stored['topics'][0]
+    if topic not in registered['topics']:
+        raise StorageError('EVIDENCE_MISSING', '主题内容不属于其声明的登记来源。')
+    if not {r['sha256'] for r in stored['observations']} <= {r['sha256'] for r in registered['observations']}:
+        raise StorageError('EVIDENCE_MISSING', '主题观察摘要不属于原始登记来源。')
+    bound = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'],
+                 observations=stored['observations'])
+    if record.read_bytes() != canonical_json_bytes(bound):
+        raise StorageError('EVIDENCE_MISSING', '主题原字节与登记来源不同。')
+    return file_ref(project, record)
+
+
+def recover_analysis_index(project):
+    """Rebuild an index lost mid-registration. Write path only; never a query.
+
+    Each surviving topic must re-prove its own origin byte for byte. Topics whose
+    write was interrupted before the record exists are left for the caller to
+    complete; corrupted ones raise instead of being adopted.
+    """
+    if safe_path(project, '.ai-sow-lite/analysis/index.json').exists():
+        return
+    topics = safe_path(project, '.ai-sow-lite/analysis/topics')
+    if not topics.exists():
+        return
+    refs = [ref for ref in (_committed_topic(project, directory)
+                            for directory in sorted(topics.iterdir()) if directory.is_dir()) if ref]
+    if refs:
+        write_json(project, '.ai-sow-lite/analysis/index.json', dict(schema_version='1.0', items=refs))
 
 
 def _analysis_records(project):
     path = safe_path(project, '.ai-sow-lite/analysis/index.json')
     if not path.exists():
-        # No analyses registered yet. A missing index with topics present means an
-        # earlier registration died mid-write; rebuild it when every topic still
-        # proves its own origin, so the project stays usable instead of wedged.
+        # Read-only: a missing index is reported, never repaired here. Only a
+        # directory holding an actual record counts as an existing analysis; one
+        # left with just its provenance binding is an unfinished write.
         topics = safe_path(project, '.ai-sow-lite/analysis/topics')
-        directories = sorted(topics.iterdir()) if topics.exists() else []
-        if directories:
-            rebuilt = [_recoverable_topic(project, directory)
-                       for directory in directories if directory.is_dir()]
-            if not all(rebuilt):
-                raise StorageError('EVIDENCE_MISSING', '已有分析文件但索引缺失且内容不自洽，不能当作空分析。')
-            write_json(project, '.ai-sow-lite/analysis/index.json',
-                       dict(schema_version='1.0', items=rebuilt))
-        else:
-            return [], []
+        if topics.exists() and any((directory / 'analysis.json').exists()
+                                   for directory in topics.iterdir() if directory.is_dir()):
+            raise StorageError('EVIDENCE_MISSING', '已有分析文件但索引缺失，不能当作空分析。')
+        return [], []
     index = checked_json(project, '.ai-sow-lite/analysis/index.json', 'analysis_index')
     records = []
     for ref in index['items']:
@@ -401,6 +424,9 @@ def ingest_analysis(project: Path, request_id: str, payload):
         error = StorageError('CANDIDATE_INVALID', '分析来源或结构无效。', payload['analysis_path'])
         error.diagnostics = issues
         raise error
+    # Write path: an index lost to an interrupted registration is rebuilt here,
+    # from re-proved sources, so the same request can be replayed to completion.
+    recover_analysis_index(project)
     refs, old_records = _analysis_records(project)
     evidence, topics = {}, {}
     for record in old_records:

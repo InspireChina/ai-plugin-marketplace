@@ -1,4 +1,5 @@
 """Real registered prototype sources reach the workbook consumer, stopping before Office."""
+import os
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,12 @@ from .test_inputs import inspect
 from .test_prototype_records import (
     analysis_for, check_empty_candidate, observation_draft, ref, registered, submit,
 )
+
+# Every case here starts from a registered prototype package, which needs POSIX
+# directory-fd / no-follow reads; Windows refuses with OPERATION_UNSUPPORTED.
+pytestmark = pytest.mark.skipif(
+    not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    reason="Prototype directory ingest requires POSIX fd/no-follow support")
 
 
 @pytest.mark.parametrize('kind', ['static', 'observation', 'judgment'])

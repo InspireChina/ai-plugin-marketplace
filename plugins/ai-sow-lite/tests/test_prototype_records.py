@@ -1,5 +1,6 @@
 """Mechanical package/observation consumers; no browser or semantic acceptance claims."""
 import hashlib
+import os
 import json
 from pathlib import Path
 import shutil
@@ -11,6 +12,13 @@ from ai_sow_lite.contracts import canonical_json_bytes, schema_validator
 from .support.cli import run_request
 from .support.fixtures import read_json, write_json
 from .test_inputs import sources_payload, inspect
+
+# Prototype ingest needs POSIX directory-fd / no-follow reads; Windows Python
+# exposes none of them, so the runtime refuses with OPERATION_UNSUPPORTED and
+# these boundary cases have nothing to exercise.
+pytestmark = pytest.mark.skipif(
+    not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    reason="Prototype directory ingest requires POSIX fd/no-follow support")
 
 
 def ref(project, path):
@@ -175,7 +183,7 @@ def test_all_resources_and_observation_attachments_are_real_check_dependencies(t
     assert checked['ok'], checked
     report = read_json(project / checked['result']['check_ref']['path'])
     deps = {r['path']: r['sha256'] for r in report['dependencies']}
-    area = str(Path(entry['relative_path']).parent)
+    area = Path(entry['relative_path']).parent.as_posix()
     for name in ['index.html', 'assets/app.js', 'assets/state.bin']:
         actual = project / f'{area}/resources/{name}'
         assert deps[actual.relative_to(project).as_posix()] == hashlib.sha256(actual.read_bytes()).hexdigest()

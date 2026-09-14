@@ -444,10 +444,30 @@ def _effective_cell(sheet,coordinate,root):
     return cell
 
 
-def _width_matches(actual,expected):
-    """LibreOffice rescales column widths by the platform default character width."""
-    if not expected: return actual==expected
-    return abs(actual-expected)<=.1 or abs(actual/expected-1)<=.12
+def _column_scale(original,actual):
+    """Resolve the single scale factor Office applied to every column, or None.
+
+    LibreOffice re-expresses widths in its own default character width, so a real
+    platform conversion rescales the whole sheet by one ratio. A per-column
+    tolerance would also admit an isolated layout edit, so the ratios must agree
+    with each other, not merely stay close to 1.
+    """
+    from openpyxl.utils import column_index_from_string
+    ratios=[]
+    for key,dim in original.column_dimensions.items():
+        col=dim.min or column_index_from_string(key)
+        matches=[x for x in actual.column_dimensions.values() if (x.min or col)<=col<=(x.max or col)]
+        if len(matches)!=1 or bool(matches[0].hidden)!=bool(dim.hidden): return None
+        if not dim.width:
+            if matches[0].width!=dim.width: return None
+            continue
+        ratios.append(matches[0].width/dim.width)
+    if not ratios: return 1.0
+    # One conversion for the whole sheet: every column agrees within rounding,
+    # and the factor stays inside the range observed from real Office output.
+    if max(ratios)-min(ratios)>.002: return None
+    scale=sum(ratios)/len(ratios)
+    return scale if abs(scale-1)<=.002 or .88<=scale<=1.0 else None
 
 
 # LibreOffice substitutes a platform font for the pinned Calibri on the three
@@ -596,11 +616,8 @@ def audit_workbook(path, expected, *, allow_omissions=False, caches=True):
                 actual_height=after_row.height
                 if height is not None and (actual_height not in (height, int(height / .75) * .75)):
                     _fail(f'行高变化：{ws.title} / {row[0].row}。')
-            for key,dim in original.column_dimensions.items():
-                col=dim.min or __import__('openpyxl').utils.column_index_from_string(key)
-                matches=[x for x in ws.column_dimensions.values() if (x.min or col)<=col<=(x.max or col)]
-                if len(matches)!=1 or not _width_matches(matches[0].width,dim.width) or bool(matches[0].hidden)!=bool(dim.hidden):
-                    _fail(f'列宽或可见性变化：{ws.title} / {key}。')
+            if _column_scale(original,ws) is None:
+                _fail(f'列宽或可见性变化：{ws.title}。')
         inventory=formula_cache_inventory(path) if caches else dict(formula_count=len(formulas))
         return dict(inventory,formula_hash=hashlib.sha256(canonical_json_bytes(formulas)).hexdigest(),compatibility_changes=changes)
     except (KeyError,IndexError,AttributeError,ValueError,TypeError,ET.ParseError,zipfile.BadZipFile) as error:
