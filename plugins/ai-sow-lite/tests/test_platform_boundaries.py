@@ -8,13 +8,14 @@ conversion must be one factor for the whole sheet rather than a per-column band.
 import shutil
 import xml.etree.ElementTree as ET
 import zipfile
+from uuid import uuid4
 
 import pytest
 
-from ai_sow_lite import inputs
+from ai_sow_lite import _prototype, inputs
 from ai_sow_lite.cli import execute
 from ai_sow_lite.contracts import PLUGIN_ROOT, canonical_json_bytes
-from ai_sow_lite.project import StorageError, initialize
+from ai_sow_lite.project import StorageError, file_ref, initialize
 from ai_sow_lite.workbook import audit_workbook
 
 from .support.fixtures import build_ingested_case, read_json, write_json
@@ -110,6 +111,61 @@ def test_healthy_observed_topic_still_recovers(tmp_path):
 
     assert read_json(case["index"])["items"] == expected["items"]
     assert len(read_json(case["record"])["observations"]) == 2
+
+
+@pytest.mark.parametrize("operation", ["check", "recover"])
+@pytest.mark.parametrize("adopted", [False, True])
+@pytest.mark.parametrize("damage", ["missing_record", "changed_record", "missing_ref", "invalid_ref"])
+def test_topic_proof_depends_only_on_registered_observations(tmp_path, operation, adopted, damage):
+    """Unrelated incomplete/corrupt observations are not a healthy topic's dependencies.
+
+    The adopted controls ensure ignoring an ineligible lookup candidate never
+    turns a missing required observation into a successful proof.
+    """
+    project = tmp_path / "observation-boundary"
+    project.mkdir()
+    initialize(project, "new", TEMPLATE)
+    case = seed_observed_topic(project, observations=2)
+    analysis = read_json(case["record"])
+    version = case["topic"]["topic_version_id"]
+    expected_index = case["index"].read_bytes()
+    assert len(_prototype.topic_dependencies(project, version, analysis)) == 3
+    observation = project / case["observation_refs"][0]["path"]
+    if not adopted:
+        # An independent observation; it never belongs to this registration.
+        record = read_json(observation)
+        record["observation_id"], record["input_version_id"] = str(uuid4()), str(uuid4())
+        observation = observation.parent.parent / record["observation_id"] / "observation.json"
+        observation.parent.mkdir()
+        observation.write_bytes(canonical_json_bytes(record))
+        write_json(observation.with_name("registration-ref.json"), file_ref(project, observation))
+
+    if damage == "missing_record":
+        observation.unlink()
+    elif damage == "changed_record":
+        observation.write_bytes(b"changed observation bytes")
+    elif damage == "missing_ref":
+        observation.with_name("registration-ref.json").unlink()
+    else:
+        observation.with_name("registration-ref.json").write_bytes(b"invalid registration bytes")
+
+    if operation == "recover":
+        case["index"].unlink()
+
+    def prove():
+        if operation == "check":
+            return _prototype.topic_dependencies(project, version, analysis)
+        inputs.recover_analysis_index(project)
+        return read_json(case["index"])["items"]
+
+    if adopted:
+        with pytest.raises(StorageError, match="EVIDENCE_MISSING"):
+            prove()
+        if operation == "recover":
+            assert not case["index"].exists()
+    else:
+        assert prove()
+        assert case["index"].read_bytes() == expected_index
 
 
 @pytest.mark.parametrize("state", ["healthy", "corrupt"])

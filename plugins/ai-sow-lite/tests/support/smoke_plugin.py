@@ -24,8 +24,8 @@ def install_read_audit():
     workspace = Path(os.environ['LITE_SMOKE_WORKSPACE']).resolve()
     roots = [('plugin', PLUGIN), ('project', workspace / '项目 with spaces'),
              ('temporary', workspace), ('python', Path(sys.base_prefix).resolve())]
-    engines = {Path(p).expanduser().resolve() for p in [os.environ.get('AI_SOW_LITE_OFFICE_BIN'),
-               shutil.which('soffice'), shutil.which('libreoffice')] if p}
+    from ai_sow_lite.office import _engine_candidates
+    engines = {Path(p).expanduser().resolve() for p in _engine_candidates() if p}
     system_files = {Path(p).resolve() for p in mimetypes.knownfiles}
     counts = Counter()
     report = dict(read_counts=counts, violations=0, office_conversions=0, pid=os.getpid(),
@@ -39,7 +39,7 @@ def install_read_audit():
                 report['office_conversions'] += 1
         if event != 'open' or isinstance(args[0], int):
             return
-        if args[2] & os.O_ACCMODE == os.O_WRONLY:
+        if args[2] & (os.O_WRONLY | os.O_RDWR) == os.O_WRONLY:
             return
         path = Path(os.fsdecode(args[0])).resolve()
         category = next((name for name, root in roots if path.is_relative_to(root)), None)
@@ -305,6 +305,7 @@ def run_delivery(project):
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8', errors='strict')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--copy-plugin', action='store_true', help='在独立副本创建锁定环境并验收交付')
     parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
@@ -329,14 +330,15 @@ def main():
         uv = shutil.which('uv')
         assert uv, 'uv is required for the locked smoke environment'
         synced = subprocess.run([uv, 'sync', '--project', str(plugin), '--locked'], cwd=workspace,
-                                env=environment, capture_output=True, text=True, timeout=120)
+                                env=environment, capture_output=True, text=True, encoding='utf-8', timeout=120)
         assert synced.returncode == 0, synced.stderr
         audit = workspace / 'audit'
         audit.mkdir()
         (audit / 'sitecustomize.py').write_text(
             'from tests.support.smoke_plugin import install_read_audit\ninstall_read_audit()\n', encoding='utf-8')
         environment.update(PYTHONPATH=os.pathsep.join(map(str, [audit, plugin / 'runtime', plugin])),
-                           PYTHONDONTWRITEBYTECODE='1', PYTHONNOUSERSITE='1', LITE_SMOKE_WORKSPACE=str(workspace))
+                           PYTHONDONTWRITEBYTECODE='1', PYTHONNOUSERSITE='1', PYTHONIOENCODING='utf-8',
+                           LITE_SMOKE_WORKSPACE=str(workspace))
         python = plugin / '.venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
         # Import beside this script: the coordinator need not have plugin runtime on sys.path.
         from process_audit import reconcile_audits, run_process

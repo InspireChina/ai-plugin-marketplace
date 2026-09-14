@@ -202,22 +202,22 @@ def test_bootstrap_directory_symlink_preserves_external_bytes_with_real_uv(tmp_p
 
 @pytest.mark.parametrize("platform", ["bash", "powershell"])
 @pytest.mark.parametrize("foreign_venv", [False, True], ids=["fresh-copy", "recover-foreign-venv"])
-def test_bootstrap_reuses_isolated_environment_and_forwards_utf8_request(tmp_path, platform, foreign_venv, python_seed):
+def test_bootstrap_reuses_isolated_environment_and_forwards_utf8_request(tmp_path, platform, foreign_venv):
     pwsh = shutil.which("pwsh")
     if platform == "powershell" and pwsh is None:
         pytest.skip("PowerShell is unavailable; Windows execution is not verified")
     if platform == "bash" and os.name != "posix":
         pytest.skip("Bash execution requires POSIX")
     # Both copies execute real uv/bootstrap; all possible user-bin links are captured.
-    uv, seed = python_seed
+    uv = shutil.which("uv")
+    assert uv and subprocess.check_output([uv, "--version"], text=True).startswith("uv 0.11.7")
     first_plugin = tmp_path / "第一份 插件"
     plugin = tmp_path / "第二份 插件 with spaces"
     for destination in (first_plugin, plugin):
         shutil.copytree(PLUGIN, destination, ignore=shutil.ignore_patterns(
             ".venv", ".ai-sow-tools", "__pycache__", ".pytest_cache", "tests"))
-    copy_managed_python(seed, first_plugin)
-    if foreign_venv:
-        copy_managed_python(seed, plugin)
+    # Let bootstrap create each managed install through its real public path.
+    # Copying a seed was only an optimization and assumed uv's platform layout.
     project = tmp_path / ("中文项目-" * 12) / "用户项目"
     project.mkdir(parents=True)
     request = tmp_path / "请求 信封.json"

@@ -351,6 +351,7 @@ def registered_observations(project, registration, topic):
     """
     if not registration['observations']:
         return []
+    required = {ref['sha256'] for ref in registration['observations']}
     store = safe_path(project, '.ai-sow-lite/analysis/observations')
     owned = {}
     if store.exists():
@@ -358,7 +359,14 @@ def registered_observations(project, registration, topic):
             if not directory.is_dir():
                 continue
             area = f'.ai-sow-lite/analysis/observations/{directory.name}'
-            held = checked_json(project, area + '/registration-ref.json', 'file_ref', area)
+            try:
+                held = checked_json(project, area + '/registration-ref.json', 'file_ref', area)
+            except (OSError, ValueError):
+                # An unfinished/invalid lookup entry cannot establish provenance.
+                # Any required digest still missing below will refuse the proof.
+                continue
+            if held['sha256'] not in required:
+                continue
             if held['path'] != area + '/observation.json':
                 raise StorageError('EVIDENCE_MISSING', '观察登记引用与其身份目录不一致。')
             record = _observation(_ref_bytes(project, held, area, MAX_OBSERVATION_BYTES))

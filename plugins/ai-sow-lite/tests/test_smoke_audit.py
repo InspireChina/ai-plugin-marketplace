@@ -54,6 +54,18 @@ def test_actual_cli_receipts_reconcile_and_one_missing_receipt_fails(tmp_path):
         reconcile_audits(workspace)
 
 
+def test_read_audit_works_without_posix_access_mode_constant(tmp_path):
+    from .support.process_audit import reconcile_audits
+    startup = ('import os\n'
+               'if hasattr(os, "O_ACCMODE"): del os.O_ACCMODE\n'
+               'from tests.support.smoke_plugin import install_read_audit\n'
+               'install_read_audit()\n')
+    workspace, environment = audit_environment(tmp_path, startup)
+    invoke_current(workspace, environment)
+    result = reconcile_audits(workspace)
+    assert result['read_counts']['plugin'] > 0 and result['violations'] == 0
+
+
 def test_sitecustomize_failure_cannot_be_hidden_by_a_successful_cli_exit(tmp_path):
     from .support.process_audit import reconcile_audits
     workspace, environment = audit_environment(tmp_path, 'raise RuntimeError("synthetic audit startup fault")\n')

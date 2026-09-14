@@ -50,10 +50,11 @@ def test_first_delivery_and_retry(tmp_path):
 @pytest.mark.office
 def test_copy_smoke_delivers_and_removes_its_temporary_workspace(tmp_path):
     # Copy smoke must execute from its own locked venv, audit child reads, and clean up.
-    environment = dict(os.environ, TMPDIR=str(tmp_path), TMP=str(tmp_path), TEMP=str(tmp_path))
+    environment = dict(os.environ, TMPDIR=str(tmp_path), TMP=str(tmp_path), TEMP=str(tmp_path),
+                       PYTHONIOENCODING='gbk')  # The JSON producer must explicitly select UTF-8.
     process = subprocess.run([sys.executable, str(fixtures.PLUGIN / 'tests/support/smoke_plugin.py'),
                               '--copy-plugin'], cwd=tmp_path, env=environment,
-                             capture_output=True, text=True, timeout=240)
+                             capture_output=True, text=True, encoding='utf-8', timeout=240)
     assert process.returncode == 0, (process.stdout, process.stderr)
     result = json.loads(process.stdout)
     assert result['ok'] and result['copied'] and result['locked_environment']
@@ -201,9 +202,10 @@ def test_copy_read_audit_rejects_external_file_and_symlink(tmp_path):
     alias = workspace / 'linked-runtime.py'
     alias.symlink_to(outside)
     script = '''
-import sys
+import os, sys
 from pathlib import Path
 from tests.support.smoke_plugin import install_read_audit
+if hasattr(os, 'O_ACCMODE'): del os.O_ACCMODE
 install_read_audit()
 for path in sys.argv[1:]:
     try:
@@ -212,7 +214,8 @@ for path in sys.argv[1:]:
         continue
     raise AssertionError('Audit allowed an external read')
 '''
-    environment = dict(os.environ, LITE_SMOKE_WORKSPACE=str(workspace), PYTHONPATH=str(fixtures.PLUGIN))
+    environment = dict(os.environ, LITE_SMOKE_WORKSPACE=str(workspace),
+                       PYTHONPATH=os.pathsep.join(map(str, [fixtures.PLUGIN, fixtures.PLUGIN / 'runtime'])))
     result = subprocess.run([sys.executable, '-c', script, str(outside), str(alias)],
                             cwd=workspace, env=environment, capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
