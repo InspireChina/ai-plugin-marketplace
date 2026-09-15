@@ -257,3 +257,26 @@ def test_width_audit_accepts_the_observed_platform_rescale(tmp_path):
     columns = {str(index): (lambda width: f"{width * 0.91:.2f}") for index in range(1, 40)}
     rewrite_widths(source, rescaled, columns)
     assert audit_workbook(rescaled, source, caches=False)["formula_count"]
+
+
+def test_atomic_write_survives_a_deep_but_legal_project_path(tmp_path):
+    """The sibling temp name must not be what pushes a write past MAX_PATH.
+
+    Windows rejects paths at 260 characters unless long paths are enabled. A
+    project directory can legally sit deep enough that the target file fits but
+    '.<name>-<uuid4>.tmp' does not, which surfaced as an opaque IO_FAILED during
+    render rather than as anything the caller could act on.
+    """
+    from ai_sow_lite.project import atomic_bytes
+
+    target = tmp_path
+    while len(str(target)) < 200:
+        target = target / "深层目录"
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / "candidate.xlsx"
+    assert len(str(path)) < 260, "the target itself must be legal for this to test the temp name"
+
+    atomic_bytes(path, b"deep write")
+
+    assert path.read_bytes() == b"deep write"
+    assert not list(target.glob(".*tmp")), "the temporary sibling must not be left behind"

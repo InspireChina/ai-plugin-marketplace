@@ -90,7 +90,11 @@ def _replace_with_retry(temp, path):
 
 def atomic_bytes(path, raw, *, immutable=False):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.parent / ('.' + path.name + '-' + str(uuid4()) + '.tmp')
+    # The sibling temp must not push the write past Windows' 260-character limit:
+    # '.<name>-<uuid4>.tmp' added 42 characters and made deep but legal project
+    # paths fail with IO_FAILED. 'x' open below still guarantees exclusivity, so
+    # a short random suffix is enough to keep concurrent writers distinct.
+    temp = path.parent / ('.' + path.name + '-' + uuid4().hex[:8] + '.tmp')
     try:
         with temp.open('xb') as stream:
             stream.write(raw)

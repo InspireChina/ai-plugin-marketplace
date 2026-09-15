@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 
 PLUGIN = Path(__file__).resolve().parents[2]
 
@@ -28,14 +29,26 @@ def install_read_audit():
     engines = {Path(p).expanduser().resolve() for p in _engine_candidates() if p}
     system_files = {Path(p).resolve() for p in mimetypes.knownfiles}
     counts = Counter()
+    # On Windows a venv's python.exe is a launcher that CreateProcess-es the real
+    # interpreter, so the pid the parent observed is this process's parent, not
+    # os.getpid(). Record both so the receipt can still prove which launch it
+    # belongs to without weakening the check to "any pid".
     report = dict(read_counts=counts, violations=0, office_conversions=0, pid=os.getpid(),
+                  parent_pid=os.getppid(),
                   invocation_id=os.environ.get('LITE_SMOKE_INVOCATION'),
                   operation=os.environ.get('LITE_SMOKE_OPERATION'))
 
     def audit(event, args):
         if event == 'subprocess.Popen':
+            # Windows reports the joined command line as a string; POSIX reports the
+            # argument sequence. Recognise the conversion in both forms, or the
+            # count silently stays at zero on Windows.
             arguments = args[1]
-            if isinstance(arguments, (list, tuple)) and '--convert-to' in arguments:
+            if isinstance(arguments, (list, tuple)):
+                converting = '--convert-to' in [os.fsdecode(a) for a in arguments]
+            else:
+                converting = arguments is not None and '--convert-to' in os.fsdecode(arguments)
+            if converting:
                 report['office_conversions'] += 1
         if event != 'open' or isinstance(args[0], int):
             return
@@ -356,7 +369,11 @@ def main():
                               delivery=delivery, audit=observed), ensure_ascii=False, indent=2))
         return 0
     except Exception as error:
-        print(json.dumps(dict(ok=False, retained_path=str(workspace), error=str(error)), ensure_ascii=False))
+        # A bare assert carries no message; report the type and location too, or the
+        # retained workspace is the only evidence of what actually failed.
+        detail = str(error) or traceback.format_exc().strip().splitlines()[-2:]
+        print(json.dumps(dict(ok=False, retained_path=str(workspace),
+                              error=f'{type(error).__name__}: {detail}'), ensure_ascii=False))
         return 1
 
 

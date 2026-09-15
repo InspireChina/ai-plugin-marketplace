@@ -52,9 +52,13 @@ def test_copy_smoke_delivers_and_removes_its_temporary_workspace(tmp_path):
     # Copy smoke must execute from its own locked venv, audit child reads, and clean up.
     environment = dict(os.environ, TMPDIR=str(tmp_path), TMP=str(tmp_path), TEMP=str(tmp_path),
                        PYTHONIOENCODING='gbk')  # The JSON producer must explicitly select UTF-8.
+    # A locked venv plus two real Office recalculations measures ~170s on Windows,
+    # against ~50s on macOS, so the shared 240s budget has almost no headroom under
+    # suite load. Keep POSIX unchanged and give the slower platform room.
     process = subprocess.run([sys.executable, str(fixtures.PLUGIN / 'tests/support/smoke_plugin.py'),
                               '--copy-plugin'], cwd=tmp_path, env=environment,
-                             capture_output=True, text=True, encoding='utf-8', timeout=240)
+                             capture_output=True, text=True, encoding='utf-8',
+                             timeout=600 if os.name == 'nt' else 240)
     assert process.returncode == 0, (process.stdout, process.stderr)
     result = json.loads(process.stdout)
     assert result['ok'] and result['copied'] and result['locked_environment']
