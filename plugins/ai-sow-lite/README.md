@@ -2,7 +2,7 @@
 
 从 PRD、高阶设计和往期 SOW 生成本期工作量估算，再根据反馈作局部修改。交付为可独立阅读的 Excel，覆盖业务、技术和交付工作。
 
-当前版本：**0.1.0-alpha.1，首个 Alpha 试用版**（[发布记录](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)）。已验证 macOS 本地目录中的 Codex 使用流程，以及 Windows 11 上的完整生成与修改链路；Excel 导出需要 LibreOffice（可自行安装，或让插件在自身目录内准备）。完整边界见 [支持与限制](docs/support.md)。
+当前版本：**0.1.0-alpha.2，Windows 兼容与可靠性预发布**（[发布记录](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)）。已验证 macOS 本地目录中的 Codex 使用流程，以及 Windows 11 上的完整生成与修改链路；Excel 导出需要 LibreOffice（可自行安装，或让插件在自身目录内准备）。完整边界见 [支持与限制](docs/support.md)。
 
 ## 安装与准备
 

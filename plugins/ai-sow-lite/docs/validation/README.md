@@ -1,6 +1,19 @@
 # 验证摘要
 
-面向 `0.1.0-alpha.1`，业务实现基线为 `08f01ef`，发布文档整理基线为 `d5cde4f`。这是验证入口，不是插件运行步骤。安装、生成、局部改稿和 Excel 已有实际证据；最终发布提交、发布前回归与远端安装结果统一记录在 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。
+面向 `0.1.0-alpha.2`，Windows 兼容与可靠性基线为 `8f05418`，合并提交为 `16df55e`。这是验证入口，不是插件运行步骤。安装、生成、局部改稿和 Excel 已有实际证据；最终发布提交、发布前回归与远端安装结果统一记录在 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)。首个 Alpha 的业务与文档基线分别为 `08f01ef`、`d5cde4f`，历史结果保持原执行归属。
+
+## Windows 兼容与 macOS 回归
+
+2026-09-15，PR #10 的同一运行时提交 `8f05418` 完成两端验收，合并后的文件树相同：
+
+| 环境 | Lite 完整套件 | 证据与边界 |
+|---|---|---|
+| Windows 11、Python 3.12.13、PowerShell 7.6.5、LibreOffice 26.8.0.3 | 846 通过、86 条件跳过，0 失败/错误 | [Windows 实机报告](https://github.com/InspireChina/ai-plugin-marketplace/pull/10#issuecomment-5677442113)；跳过为 POSIX 原型目录、符号链接权限及 Bash 分支，PowerShell 和真实 Office 已执行 |
+| macOS 26.5.2 arm64、Python 3.12.13、uv 0.11.7、LibreOffice 26.8.0.3 | 920 通过、12 条件跳过，0 失败/错误 | [macOS 复验](https://github.com/InspireChina/ai-plugin-marketplace/pull/10#issuecomment-5677709075)；12 项均因未安装 PowerShell，真实 Office 独立副本生成与改稿已执行 |
+
+两端根测试、仓库验证器和 163 条场景台账结构检查通过；macOS 的旧 AI SOW 全量为 539 通过、4 条件跳过，独立复制 smoke 通过。原有 6 项缺陷复现在 macOS 均通过。本次是脚本与合成消费者验证，不扩大模型业务质量或性能承诺。
+
+`alpha.2` 的发布收尾只同步版本元数据、校验测试和文档，不修改上述已验收的运行时、启动脚本、Skill、模板或业务合同。发布提交的本机回归与远端安装检查记录于本版本 Release，Windows 验证沿用上述实机证据。
 
 ## 验证结果与边界
 
@@ -30,7 +43,7 @@
 
 ## 自动检查与覆盖解释
 
-产品基线最近完整回归记录为 Lite **888 通过、12 条件跳过**；根测试 52 项、旧插件回归 388 通过/4 条件跳过及独立复制 smoke 通过，详情见 [I11](../archive/validation/I11-estimation-relevance.md)。这些数字保留其原执行归属，不当作每次文档整理新跑的结果。
+首个 Alpha 的产品基线回归记录为 Lite **888 通过、12 条件跳过**；根测试 52 项、旧插件回归 388 通过/4 条件跳过及独立复制 smoke 通过，详情见 [I11](../archive/validation/I11-estimation-relevance.md)。这些数字保留其原执行归属，不当作每次文档整理新跑的结果。
 
 2026-09-11 发布文档整理后重新执行：Lite **888 通过、12 条件跳过**（692.05 秒），旧插件整个目录 **539 通过、4 条件跳过**（53.28 秒），根测试 **52 项通过**（4.657 秒），独立复制 smoke 成功。两插件锁定依赖同步、仓库验证器、场景台账及 diff 检查通过；809 条相对文档链接有效，12 份原始指标 JSON 保持原字节。导航/合同与场景的定向检查另有 41 项通过；本次没有调用模型重跑业务 E2E，也没有扩大平台支持。
 

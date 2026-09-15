@@ -1,6 +1,6 @@
 # 支持与限制
 
-适用于首个 Alpha 试用版 `0.1.0-alpha.1`；以下区分已验证能力和未验证范围。远端发布与安装验证记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。
+适用于 Alpha 试用版 `0.1.0-alpha.2`；以下区分已验证能力和未验证范围。远端发布与安装验证记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)。
 
 ## 运行环境
 

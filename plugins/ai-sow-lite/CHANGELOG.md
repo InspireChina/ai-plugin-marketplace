@@ -1,6 +1,8 @@
 # 版本说明
 
-## 未发布
+## 0.1.0-alpha.2 — 2026-09-15
+
+Windows 兼容与可靠性预发布，包含 [PR #10](https://github.com/InspireChina/ai-plugin-marketplace/pull/10) 的修复。运行时、模板和业务合同沿用两端已验收的提交 `8f05418`；本次发布收尾同步插件版本、校验器和文档。验证边界见 [验证摘要](docs/validation/README.md)，发布与安装记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)。
 
 ### Windows 支持
 
@@ -20,6 +22,7 @@
 
 - 复制插件的读取审计使用跨平台访问模式标记，并与运行时共用 Office 候选发现；复制消费者和场景检查器固定输出 UTF-8 JSON，避免 Windows 默认编码造成误报。
 - bootstrap 隔离与离线重试测试由真实入口准备两份运行时，取消依赖 Python 种子目录布局的预复制优化，保留全部隔离和无宿主污染断言。
+- 进程审计兼容 Windows venv 启动器的父子 PID，Office 转换计数兼容字符串命令行；超长输入测试保留原数据并使用短用例 ID，避免触及环境变量长度上限。
 
 ## 0.1.0-alpha.1 — 2026-09-11
 

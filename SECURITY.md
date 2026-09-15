@@ -2,12 +2,12 @@
 
 ## 支持版本
 
-安全修复面向以下已公开预发布版本（2026-09-11）：
+安全修复面向以下已公开预发布版本（2026-09-15 更新）：
 
 | 插件 | 当前支持版本 |
 | --- | --- |
 | AI SOW | [0.1.0-beta.1](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-v0.1.0-beta.1) |
-| AI SOW Lite | [0.1.0-alpha.1](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1) |
+| AI SOW Lite | [0.1.0-alpha.2](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2) |
 
 两者均为试用版本，支持与限制分别见各插件 README。不维护首次公开预发布前内部原型的数据迁移或兼容层。
 
