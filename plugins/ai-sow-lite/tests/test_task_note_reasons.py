@@ -66,7 +66,13 @@ def test_only_applicable_non_default_reasons_are_displayed(tmp_path, mode, compl
     book.close()
 
 
-@pytest.mark.parametrize('rationale', ['😀' * 17000, '原因\x00正文'])
+# pytest exports the test id in an environment variable; the raw 17000-character
+# value makes it exceed Windows' 32767-character limit and the case errors in
+# setup. Naming the parameters keeps the same inputs with a short id.
+@pytest.mark.parametrize('rationale', [
+    pytest.param('😀' * 17000, id='oversized_rationale'),
+    pytest.param('原因\x00正文', id='control_character_rationale'),
+])
 def test_unwritable_reason_points_to_classification_basis(tmp_path, rationale):
     model, pending, decisions = bundle()
     task = model['tasks'][0]

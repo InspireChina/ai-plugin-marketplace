@@ -194,7 +194,7 @@ def clone_prepared(prepared_seed, project):
         work = case['project'] / '.ai-sow-lite/work/clarify' / case['request_id']
         for name in ('application.json', 'intent.json'):
             (work / name).unlink(missing_ok=True)
-    case['confirmed_path'] = str(Path(case['result']['plan_ref']['path']).with_name('confirmed-plan.json'))
+    case['confirmed_path'] = Path(case['result']['plan_ref']['path']).with_name('confirmed-plan.json').as_posix()
     return case
 
 

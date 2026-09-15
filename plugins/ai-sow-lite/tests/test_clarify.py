@@ -33,7 +33,7 @@ def test_schema_rejected_first_draft_can_be_corrected_before_candidate_exists(cl
     original = rejected_path.read_bytes()
     pointer = (project / '.ai-sow-lite/current.json').read_bytes()
     rejected = run_request(project, case['request_id'], 'check', dict(
-        edit_path=str(rejected_path.relative_to(project)), scope='full'))
+        edit_path=rejected_path.relative_to(project).as_posix(), scope='full'))
     assert not rejected['ok']
     assert rejected['diagnostics'][0]['code'] == 'CANDIDATE_INVALID'
     checkpoint = read_json(area / 'checkpoint.json')
@@ -44,7 +44,7 @@ def test_schema_rejected_first_draft_can_be_corrected_before_candidate_exists(cl
     corrected_path = area / 'corrected.json'
     write_json(corrected_path, draft)
     accepted = run_request(project, case['request_id'], 'check', dict(
-        edit_path=str(corrected_path.relative_to(project)), scope='full'))
+        edit_path=corrected_path.relative_to(project).as_posix(), scope='full'))
     assert accepted['ok'], accepted
     plan = read_json(project / accepted['result']['plan_ref']['path'])
     assert (plan['plan_id'], plan['revision']) == (draft['plan_id'], 1)

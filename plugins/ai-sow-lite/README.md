@@ -2,14 +2,14 @@
 
 从 PRD、高阶设计和往期 SOW 生成本期工作量估算，再根据反馈作局部修改。交付为可独立阅读的 Excel，覆盖业务、技术和交付工作。
 
-当前版本：**0.1.0-alpha.1，首个 Alpha 试用版**（[发布记录](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)）。已验证 macOS 本地目录中的 Codex 使用流程；Excel 导出需要已安装的 LibreOffice。完整边界见 [支持与限制](docs/support.md)。
+当前版本：**0.1.0-alpha.1，首个 Alpha 试用版**（[发布记录](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)）。已验证 macOS 本地目录中的 Codex 使用流程，以及 Windows 11 上的完整生成与修改链路；Excel 导出需要 LibreOffice（可自行安装，或让插件在自身目录内准备）。完整边界见 [支持与限制](docs/support.md)。
 
 ## 安装与准备
 
 Lite 是独立插件，不需要安装 AI SOW。先准备：
 
-- 支持插件安装的 Codex；已验证版本见支持说明。
-- 可用的 LibreOffice，用于 Excel 公式重算；Microsoft Excel 可用于查看交付。
+- 支持插件安装的 Codex 或 Claude Code；已验证版本见支持说明。Windows 请用 `scripts/bootstrap.ps1` 启动。
+- 可用的 LibreOffice，用于 Excel 公式重算；Microsoft Excel 可用于查看交付。Windows 上若未安装，可执行 `scripts/lite.py --provision-office` 由插件在自身目录内准备（免管理员、不注册到系统）。
 - 首次使用时允许访问工具链下载源。插件自动准备隔离的 Python 和依赖，用户无需手工配置 Python/uv。
 
 从远端 marketplace 安装：

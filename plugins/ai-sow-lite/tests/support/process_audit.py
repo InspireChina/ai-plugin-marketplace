@@ -56,7 +56,11 @@ def reconcile_audits(workspace):
     counts = Counter()
     for identity, receipt in actual.items():
         invocation = expected[identity]
-        assert receipt['pid'] == invocation['pid'], 'Audit receipt PID mismatch'
+        # The observed pid is the launched process. Where that launch is a Windows
+        # venv trampoline, the interpreter writing the receipt is its direct child,
+        # so the observed pid is the receipt's parent. Accept exactly those two
+        # identities -- an unrelated process still fails.
+        assert invocation['pid'] in (receipt['pid'], receipt.get('parent_pid')), 'Audit receipt PID mismatch'
         assert receipt['operation'] == invocation['operation'], 'Audit receipt operation mismatch'
         counts.update(receipt['read_counts'])
     return dict(processes=len(receipts), invocations=len(invocations),

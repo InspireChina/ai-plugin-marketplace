@@ -17,10 +17,10 @@
 
 | 插件 | 宿主与平台 | Excel 条件 |
 | --- | --- | --- |
-| AI SOW Lite | 已验证 macOS 普通本地目录中的 Codex 安装、生成与改稿；其他组合见 [支持说明](plugins/ai-sow-lite/docs/support.md)。 | 导出需要已安装的 LibreOffice；Microsoft Excel 可用于查看结果。 |
+| AI SOW Lite | 已验证 macOS 普通本地目录中的 Codex 安装、生成与改稿；Windows 11 已验证 generate 全链路与 clarify 有限修改；其他组合见 [支持说明](plugins/ai-sow-lite/docs/support.md)。 | 导出需要已安装的 LibreOffice；Windows 未安装时可用 `scripts/lite.py --provision-office` 在插件目录内按需准备（免管理员、不注册到系统）。Microsoft Excel 可用于查看结果。 |
 | AI SOW | 提供 Codex、Claude Code 入口，支持 macOS、Linux、Windows 11 x64；Windows 项目路径要求见 [前置条件](plugins/ai-sow/README.md#前置条件)。 | 插件保留模板公式，计算结果需在兼容的表格软件中复核。 |
 
-Lite 的 Claude Code 完整业务执行、Windows/Linux、同步盘和网络盘暂未验证；当前也没有速度或 token 达标承诺。验证范围分别记录在两个版本的 Release 和 [Lite 验证摘要](plugins/ai-sow-lite/docs/validation/README.md)中。
+Lite 的 Claude Code 完整业务执行、Linux、同步盘和网络盘暂未验证；Windows 11 已验证 generate 全链路与 clarify 有限修改（入口为 `scripts/bootstrap.ps1`），原型目录输入在 Windows 不支持；当前也没有速度或 token 达标承诺。验证范围分别记录在两个版本的 Release 和 [Lite 验证摘要](plugins/ai-sow-lite/docs/validation/README.md)中。
 
 ## 安装
 

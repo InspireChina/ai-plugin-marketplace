@@ -1,5 +1,26 @@
 # 版本说明
 
+## 未发布
+
+### Windows 支持
+
+- generate 全链路（ingest → check → render → apply）与 clarify 有限修改已在 Windows 11 验证。
+- 启动入口为 `scripts/bootstrap.ps1`；Windows PowerShell 5.1 与 PowerShell 7 均已验证。在 Git Bash 等 Windows shell 下运行 `bootstrap.sh` 会直接返回 BOOTSTRAP_HOST_UNSUPPORTED 并指向 ps1。
+- Excel 重算自动使用 Windows 控制台入口 `soffice.com` 并探测默认安装目录；未安装时可执行 `scripts/lite.py --provision-office` 在插件目录内准备（免管理员、不注册到系统、不自动触发）。
+- 原型目录输入依赖 POSIX 目录 fd 能力，Windows 不支持，返回 OPERATION_UNSUPPORTED。
+
+### 可靠性
+
+- analysis 登记中断后可用同一请求重放补完；索引丢失只由写入操作在逐字节重证出处后重建，查询保持只读。
+- 主题记录的期望观察集合改为完全从不可变登记独立推导，不再取用待验证记录自身的 observations：删除观察的记录不能再通过重证而取得新索引。
+- 观察来源核验仅依赖当前登记声明的观察；无关登记中断或损坏不再阻断健康主题的重放、检查和索引恢复，所需观察缺失仍拒绝。
+- Windows 上原子替换遇到瞬时文件锁时有界重试；临时文件名改用短随机后缀，避免深层合法项目路径因 `.<名称>-<uuid4>.tmp` 超过 260 字符而失败。
+
+### 验证工具
+
+- 复制插件的读取审计使用跨平台访问模式标记，并与运行时共用 Office 候选发现；复制消费者和场景检查器固定输出 UTF-8 JSON，避免 Windows 默认编码造成误报。
+- bootstrap 隔离与离线重试测试由真实入口准备两份运行时，取消依赖 Python 种子目录布局的预复制优化，保留全部隔离和无宿主污染断言。
+
 ## 0.1.0-alpha.1 — 2026-09-11
 
 首个 AI SOW Lite 试用版。Lite 独立安装，提供 `generate` 与 `clarify` 两个入口。可从远端 marketplace 安装；发布与安装验证记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.1)。

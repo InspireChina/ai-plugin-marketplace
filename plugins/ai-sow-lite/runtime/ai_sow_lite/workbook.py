@@ -444,6 +444,38 @@ def _effective_cell(sheet,coordinate,root):
     return cell
 
 
+def _column_scale(original,actual):
+    """Resolve the single scale factor Office applied to every column, or None.
+
+    LibreOffice re-expresses widths in its own default character width, so a real
+    platform conversion rescales the whole sheet by one ratio. A per-column
+    tolerance would also admit an isolated layout edit, so the ratios must agree
+    with each other, not merely stay close to 1.
+    """
+    from openpyxl.utils import column_index_from_string
+    ratios=[]
+    for key,dim in original.column_dimensions.items():
+        col=dim.min or column_index_from_string(key)
+        matches=[x for x in actual.column_dimensions.values() if (x.min or col)<=col<=(x.max or col)]
+        if len(matches)!=1 or bool(matches[0].hidden)!=bool(dim.hidden): return None
+        if not dim.width:
+            if matches[0].width!=dim.width: return None
+            continue
+        ratios.append(matches[0].width/dim.width)
+    if not ratios: return 1.0
+    # One conversion for the whole sheet: every column agrees within rounding,
+    # and the factor stays inside the range observed from real Office output.
+    if max(ratios)-min(ratios)>.002: return None
+    scale=sum(ratios)/len(ratios)
+    return scale if abs(scale-1)<=.002 or .88<=scale<=1.0 else None
+
+
+# LibreOffice substitutes a platform font for the pinned Calibri on the three
+# instructional cells. Only the fallbacks observed on validated platforms are
+# admitted; any other substitution stays a real display change.
+INSTRUCTIONAL_FALLBACKS = {('Arial Unicode MS', None), ('Noto Sans SC', None)}
+
+
 def _dv_rule(dv):
     value=dict(dv)
     value.pop('sqref',None)
@@ -571,7 +603,7 @@ def audit_workbook(path, expected, *, allow_omissions=False, caches=True):
                         # equivalence and changes no workbook data or font metadata.
                         if (ws.title in SHEETS[:3] and cell.coordinate=='A2'
                             and (cell.font.name,cell.font.scheme)==('Calibri','minor')
-                            and (effective.font.name,effective.font.scheme)==('Arial Unicode MS',None)
+                            and (effective.font.name,effective.font.scheme) in INSTRUCTIONAL_FALLBACKS
                             and _theme_typefaces(source,'minor')==_theme_typefaces(actual,'minor')):
                             after_style=(before_style[0][:3]+after_style[0][3:],*after_style[1:])
                         if after_style!=before_style:
@@ -584,11 +616,8 @@ def audit_workbook(path, expected, *, allow_omissions=False, caches=True):
                 actual_height=after_row.height
                 if height is not None and (actual_height not in (height, int(height / .75) * .75)):
                     _fail(f'行高变化：{ws.title} / {row[0].row}。')
-            for key,dim in original.column_dimensions.items():
-                col=dim.min or __import__('openpyxl').utils.column_index_from_string(key)
-                matches=[x for x in ws.column_dimensions.values() if (x.min or col)<=col<=(x.max or col)]
-                if len(matches)!=1 or abs(matches[0].width-dim.width)>.1 or bool(matches[0].hidden)!=bool(dim.hidden):
-                    _fail(f'列宽或可见性变化：{ws.title} / {key}。')
+            if _column_scale(original,ws) is None:
+                _fail(f'列宽或可见性变化：{ws.title}。')
         inventory=formula_cache_inventory(path) if caches else dict(formula_count=len(formulas))
         return dict(inventory,formula_hash=hashlib.sha256(canonical_json_bytes(formulas)).hexdigest(),compatibility_changes=changes)
     except (KeyError,IndexError,AttributeError,ValueError,TypeError,ET.ParseError,zipfile.BadZipFile) as error:
@@ -730,7 +759,7 @@ def _legacy_prepared(project,prepared):
     from .contracts import load_json
     from .project import safe_path,file_ref
     area='/'.join(Path(prepared['candidate_ref']['path']).parts[:4])
-    path=safe_path(project,str(Path(prepared['candidate_ref']['path']).with_name('render-attempt.json')),area)
+    path=safe_path(project,Path(prepared['candidate_ref']['path']).with_name('render-attempt.json').as_posix(),area)
     if not path.exists():
         path=safe_path(project,area+'/render-attempt.json',area)
     if not path.exists():

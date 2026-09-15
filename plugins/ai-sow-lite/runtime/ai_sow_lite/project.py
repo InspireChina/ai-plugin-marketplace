@@ -11,6 +11,7 @@ import hashlib
 import os
 from pathlib import Path
 import stat
+import time
 from uuid import UUID, uuid4
 
 from .contracts import canonical_json_bytes, file_sha256, load_json, schema_validator
@@ -70,9 +71,30 @@ def fsync_directory(path):
     return True
 
 
+def _replace_with_retry(temp, path):
+    """os.replace is atomic but not immune to a concurrent opportunistic open.
+
+    On Windows an antivirus or search indexer can briefly hold the destination,
+    which surfaces as PermissionError/WinError 5 on an otherwise valid rename.
+    The operation stays atomic; only the attempt is repeated, briefly.
+    """
+    for attempt in range(10):
+        try:
+            os.replace(temp, path)
+            return
+        except PermissionError:
+            if os.name != 'nt' or attempt == 9:
+                raise
+            time.sleep(0.02 * (attempt + 1))
+
+
 def atomic_bytes(path, raw, *, immutable=False):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.parent / ('.' + path.name + '-' + str(uuid4()) + '.tmp')
+    # The sibling temp must not push the write past Windows' 260-character limit:
+    # '.<name>-<uuid4>.tmp' added 42 characters and made deep but legal project
+    # paths fail with IO_FAILED. 'x' open below still guarantees exclusivity, so
+    # a short random suffix is enough to keep concurrent writers distinct.
+    temp = path.parent / ('.' + path.name + '-' + uuid4().hex[:8] + '.tmp')
     try:
         with temp.open('xb') as stream:
             stream.write(raw)
@@ -85,7 +107,7 @@ def atomic_bytes(path, raw, *, immutable=False):
                 if path.read_bytes() != raw:
                     raise StorageError('IDENTITY_CONFLICT', '不可变身份已有不同内容；保留原件。') from None
         else:
-            os.replace(temp, path)
+            _replace_with_retry(temp, path)
         fsync_directory(path.parent)
     finally:
         temp.unlink(missing_ok=True)
@@ -615,7 +637,7 @@ def apply_prepared(project: Path, request_id: str, payload):
     if confirmation:
         dependencies.extend(confirmation['dependencies'])
     for entry in adopted_inputs:
-        relative = str(Path(entry['relative_path']).parent / 'reading-ref.json')
+        relative = (Path(entry['relative_path']).parent / 'reading-ref.json').as_posix()
         if safe_path(project, relative).exists():
             reading_ref = checked_json(project, relative, 'file_ref')
             dependencies.append(reading_ref)

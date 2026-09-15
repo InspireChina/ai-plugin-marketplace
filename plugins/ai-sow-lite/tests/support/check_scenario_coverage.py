@@ -283,6 +283,8 @@ def _reject_json_constant(value: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    import sys
+    sys.stdout.reconfigure(encoding='utf-8', errors='strict')
     parser = argparse.ArgumentParser(description="只读核对场景 ledger 结构及包内引用，不验证业务语义。")
     parser.add_argument("--plugin-root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--ledger", required=True, help="相对 plugin-root 的 POSIX JSON 文件路径")

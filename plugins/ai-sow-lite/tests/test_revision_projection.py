@@ -197,8 +197,10 @@ def test_only_recorded_old_success_can_reuse_legacy_summary(clarify_case, offlin
     prepared_path = case['project'] / output['prepared_ref']['path']
     prepared = read_json(prepared_path)
     summary_path = case['project'] / output['summary_ref']['path']
-    old_text = (baseline(case) / 'summary.md').read_text()
-    summary_path.write_text(old_text.replace(case['current']['version_id'], output['version_id']))
+    old_text = (baseline(case) / 'summary.md').read_bytes().decode('utf-8')
+    # Byte-exact rewrite: the runtime writes LF bytes, so no newline translation.
+    summary_path.write_text(old_text.replace(case['current']['version_id'], output['version_id']),
+                            encoding='utf-8', newline='')
     for ref in prepared['files']:
         if Path(ref['path']).name == 'summary.md':
             ref['sha256'] = file_sha256(summary_path)

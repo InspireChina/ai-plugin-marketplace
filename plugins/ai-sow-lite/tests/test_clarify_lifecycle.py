@@ -222,7 +222,7 @@ def registered_dependencies(project, manifest):
         assert hashlib.sha256((project / source['relative_path']).read_bytes()).hexdigest() == source['content_hash']
     for entry in inputs:
         paths.add(entry['relative_path'])
-        reading_ref = read_json(project / str(Path(entry['relative_path']).parent / 'reading-ref.json'))
+        reading_ref = read_json(project / Path(entry['relative_path']).parent / 'reading-ref.json')
         paths.add(reading_ref['path'])
         reading = read_json(project / reading_ref['path'])
         paths.update(item['file_ref']['path'] for item in reading['excerpts'])
@@ -338,7 +338,7 @@ def test_two_delivered_serial_changes_keep_history_and_reject_stale_and_changed_
     assert repeated['ok'] and repeated['result']['idempotent'], repeated
     assert repeated['result']['current_version'] == chain['final_current']['version_id']
     changed = deepcopy(first['payload'])
-    changed['plan_path'] = str(Path(changed['plan_path']).with_name('plan.json'))
+    changed['plan_path'] = Path(changed['plan_path']).with_name('plan.json').as_posix()
     conflict = invoke(one, 'apply', changed)
     assert not conflict['ok'] and 'REQUEST_ID_CONFLICT' in {d['code'] for d in conflict['diagnostics']}
     assert (project / '.ai-sow-lite/current.json').read_bytes() == current_bytes

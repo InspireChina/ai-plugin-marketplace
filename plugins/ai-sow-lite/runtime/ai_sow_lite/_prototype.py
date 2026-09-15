@@ -341,6 +341,48 @@ def topic_observations(project, refs, topic):
         project, ref, '.ai-sow-lite/analysis/observations', MAX_OBSERVATION_BYTES))['input_version_id'] in topic['input_version_ids']]
 
 
+def registered_observations(project, registration, topic):
+    """Expected observation refs of a topic, derived only from its registration.
+
+    Never reads the record being verified. The observation store is keyed by
+    observation_id, which the observation bytes themselves carry, so a content
+    digest names exactly one immutable copy; selection then applies the same
+    adopted-input rule registration applied when it split the topic.
+    """
+    if not registration['observations']:
+        return []
+    required = {ref['sha256'] for ref in registration['observations']}
+    store = safe_path(project, '.ai-sow-lite/analysis/observations')
+    owned = {}
+    if store.exists():
+        for directory in sorted(store.iterdir()):
+            if not directory.is_dir():
+                continue
+            area = f'.ai-sow-lite/analysis/observations/{directory.name}'
+            try:
+                held = checked_json(project, area + '/registration-ref.json', 'file_ref', area)
+            except (OSError, ValueError):
+                # An unfinished/invalid lookup entry cannot establish provenance.
+                # Any required digest still missing below will refuse the proof.
+                continue
+            if held['sha256'] not in required:
+                continue
+            if held['path'] != area + '/observation.json':
+                raise StorageError('EVIDENCE_MISSING', '观察登记引用与其身份目录不一致。')
+            record = _observation(_ref_bytes(project, held, area, MAX_OBSERVATION_BYTES))
+            if record['observation_id'] != directory.name:
+                raise StorageError('EVIDENCE_MISSING', '观察副本与其身份目录不一致。')
+            owned[held['sha256']] = (held, record['input_version_id'])
+    expected = []
+    for ref in registration['observations']:
+        if ref['sha256'] not in owned:
+            raise StorageError('EVIDENCE_MISSING', '登记声明的观察缺少对应不可变副本。')
+        stable, input_version = owned[ref['sha256']]
+        if input_version in topic['input_version_ids'] and stable not in expected:
+            expected.append(stable)
+    return expected
+
+
 def topic_dependencies(project, version, analysis):
     """Bind stored split topics to the original registration without retaining a mutable index."""
     area = f'.ai-sow-lite/analysis/topics/{version}'
@@ -355,9 +397,11 @@ def topic_dependencies(project, version, analysis):
         original = strict_json_loads(_ref_bytes(project, registration, '.ai-sow-lite/analysis/registrations'))
         if list(schema_validator('artifacts', 'analysis').iter_errors(original)):
             raise ValueError('analysis schema')
+        # The observation set is derived from the registration, never taken from the
+        # record under test: a subset check accepts a record with observations removed.
         if (analysis['evidence'] != original['evidence'] or len(analysis['topics']) != 1 or
                 analysis['topics'][0] not in original['topics'] or
-                not {ref['sha256'] for ref in analysis['observations']} <= {ref['sha256'] for ref in original['observations']}):
+                analysis['observations'] != registered_observations(project, original, analysis['topics'][0])):
             raise ValueError('split provenance')
         return [refs[0], registration, file_ref(project, safe_path(project, registration_path, area))]
     except (OSError, ValueError, KeyError):

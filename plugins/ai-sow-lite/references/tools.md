@@ -145,7 +145,9 @@ artifacts.clarify_confirmation 的 confirmation.json；后者用版本内可达�
 
 `ingest/analysis` payload：`kind="analysis"`、entrypoint、analysis_path。文件必须在本请求 work 内。共用候选的来源、摘要、依据图与主题校验后，保存实际输入分析字节至 `analysis/registrations/<sha256>/analysis.json`，按 topic_version_id 拆存分析并登记 `analysis/index.json`。各主题保存 registration-ref.json 以回查原始登记候选。返回 analysis_ref、evidence_ids、topic_version_ids；同依据/主题版本冲突拒绝；新依据须由新的主题版本实际承载，不能通过重复旧主题返回未保存的依据身份。observations 可引用本请求 work 中的真实观察或已登记观察，核对后保留不可变记录和附件；每个主题仅保留其输入相关观察。不支持的 locator 明确拒绝。登记不代表当前 SOW 已采用。
 
-复用已有主题前核对索引成员及摘要、主题实际字节和 registration-ref 绑定的原始候选。若现存有效索引仅缺本主题一项，且主题与来源已完整保存、来源绑定与本次候选原字节完全相同，重试只补缺失索引项，不重写主题或来源。主题/来源损坏、ref 缺失或冲突、候选字节不同均不据此返回成功；整个索引丢失时不重建，不提供通用恢复层。
+复用已有主题前核对索引成员及摘要、主题实际字节和 registration-ref 绑定的原始候选。若现存有效索引仅缺本主题一项，且主题与来源已完整保存、来源绑定与本次候选原字节完全相同，重试只补缺失索引项，不重写主题或来源。主题/来源损坏、ref 缺失或冲突、候选字节不同均不据此返回成功。整个索引丢失时，只有 `ingest/analysis` 这一写入操作会尝试重建：每个残留主题必须逐字节重证其出处——主题原字节须等于按其 registration-ref 指向的登记重算出的规范记录，其中期望观察集合完全由该登记独立推导（按登记声明的观察摘要定位各自不可变副本，再按本主题采用的 input_version_ids 筛选），绝不取用待验证记录自身的 observations。因此删除观察会使字节不符而被拒绝，子集关系不作为通过条件。任一主题与来源不符即整体拒绝，不重建。查询不触发重建，也不提供通用恢复层。
+
+观察来源查找仅校验本登记声明的摘要及其不可变副本。其他登记留下的未完成或损坏观察不成为当前主题的依赖；本登记需要的任何摘要无法取得有效副本时仍整体拒绝，不重建索引。
 
 `inspect` payload 为 view、selector；limit 默认20、最大100，cursor 默认 null。只读，不修改索引、current 或业务文件。选择器如下；表外组合和字段拒绝：
 
@@ -240,13 +242,13 @@ Excel 可单独查看与分享；Clarify 仍需完整项目 JSON、依据及版�
 
 ### 引擎与最终封存
 
-`office.recalculate(source, destination)` 从 AI_SOW_LITE_OFFICE_BIN 或 PATH 的 soffice/libreoffice 发现引擎；探测10秒、单次重算120秒。每次使用独立输入、输出、配置目录与所属进程组；超时清理所属进程树和临时目录，不接管桌面 Excel，不安装宿主工具，无内部二次重算。Office 不存在为 OFFICE_ENGINE_UNAVAILABLE，超时/非零退出/退出0却无文件为 CALCULATION_FAILED，实际文件/缓存/保护损坏为 WORKBOOK_INVALID。
+`office.recalculate(source, destination)` 从 AI_SOW_LITE_OFFICE_BIN、PATH 的 soffice/libreoffice、Windows 默认安装目录或插件内已准备的引擎发现（Windows 用控制台入口 soffice.com）；探测10秒、单次重算120秒。每次使用独立输入、输出、配置目录与所属进程组；超时清理所属进程树和临时目录，不接管桌面 Excel，不安装宿主工具，无内部二次重算。Office 不存在为 OFFICE_ENGINE_UNAVAILABLE，超时/非零退出/退出0却无文件为 CALCULATION_FAILED，实际文件/缓存/保护损坏为 WORKBOOK_INVALID。
 
 raw 先经公式视图、data_only、OOXML 与元数据核验，再只允许两项变换：已有 Table 身份、列和 ref 完全一致时补缺失的 calculatedColumnFormula 子节点；DV 规则未变且 sqref 精确符合已观察到的占用末行+1000裁切时恢复原范围。不整段替换 Table/保护，不改任何单元格、公式、缓存或保护。变换前后公式/cache 清单哈希一致，最终路径再次只读核验。Office 保存后不调用 openpyxl.save。
 
-只读比较承认的等价表示包括引号外 TRUE→TRUE()；缺省保护属性的解码值；空白单元格的有效行/列样式继承；Table part ID/样式 ID 重编号；未指定打印项显式化；list/custom 规则不适用的默认 operator 与 formula2；单条条件规则的优先级编号及同色 differential fill 表示；行高向下量化到0.75pt。这些不触发写入修复。其余范围、规则、已指定打印设置、有效样式/锁定、原公式及数组 ref 均核对。行 hidden/collapsed/outlineLevel、声明字体和实际主题字体（含 CJK）、charset/family 默认值、上标/下标及其他字体显示属性也纳入复读。
+只读比较承认的等价表示包括引号外 TRUE→TRUE()；缺省保护属性的解码值；空白单元格的有效行/列样式继承；Table part ID/样式 ID 重编号；未指定打印项显式化；list/custom 规则不适用的默认 operator 与 formula2；单条条件规则的优先级编号及同色 differential fill 表示；行高向下量化到0.75pt；整表列宽按同一比例的平台换算（Office 以自身默认字符宽度重新表达，各列比例需彼此一致，Windows 实测约 0.91；单列或不一致的宽度变化仍判为篡改）；三个固定说明单元格在主题字体一致时的平台字体回退（仅限已验证平台的具名回退字体）。这些不触发写入修复。其余范围、规则、已指定打印设置、有效样式/锁定、原公式及数组 ref 均核对。行 hidden/collapsed/outlineLevel、声明字体和实际主题字体（含 CJK）、charset/family 默认值、上标/下标及其他字体显示属性也纳入复读。
 
-唯一字体例外限定为三个固定说明格：01-需求故事/02-任务清单/03-工作量汇总 的 A2，模板 Calibri/minor → raw Arial Unicode MS/无 scheme。文本、其余字体属性及原 minor 主题字体必须不变；这是观察到的 fallback，不是相同主题或有效字体。业务格、其他位置或字体对、主题/文本/样式变动和隐藏行仍拒绝。此例外只影响只读比较，不恢复字体或修改 OOXML。
+唯一字体例外限定为三个固定说明格：01-需求故事/02-任务清单/03-工作量汇总 的 A2，模板 Calibri/minor → raw Arial Unicode MS/无 scheme 或 Noto Sans SC/无 scheme（后者为 Windows 实测的同类 fallback）。只接受这两个具名字体，其余名称仍拒绝。文本、其余字体属性及原 minor 主题字体必须不变；这是观察到的 fallback，不是相同主题或有效字体。业务格、其他位置或字体对、主题/文本/样式变动和隐藏行仍拒绝。此例外只影响只读比较，不恢复字体或修改 OOXML。
 
 verification 绑定版本、候选摘要和 Office 记录：真实路径脱敏的引擎名/版本、可执行文件 hash、平台、固定参数、退出码、实际单调时钟毫秒、Office 输入/raw/最终字节 hash，以及实际公式/缓存清单与兼容变换记录。office_identity 是引擎记录的稳定 sha256 字符串。它是本地执行记录，不是签名执行证明；不能抵御有权重写整个项目与全部收据的攻击者。程序仍从模板/候选重新构造预期映射并读取实际文件，不信任自填 valid 标志，不用 Python 验算金额。
 

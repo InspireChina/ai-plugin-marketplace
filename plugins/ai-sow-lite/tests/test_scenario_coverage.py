@@ -253,8 +253,11 @@ class ScenarioCoverageTests(unittest.TestCase):
         ledger_path = self.root / "docs/validation/synthetic-ledger.json"
         ledger_path.parent.mkdir(parents=True, exist_ok=True)
         ledger_path.write_bytes(payload)
+        # Emulate a legacy Windows stdout even on macOS; the CLI owns its JSON encoding.
+        launcher = ("import runpy,sys; sys.stdout.reconfigure(encoding='gbk'); "
+                    "sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')")
         return subprocess.run(
-            [sys.executable, "-I", "-S", "-B", str(script), "--ledger", reference],
+            [sys.executable, "-I", "-S", "-B", "-c", launcher, str(script), "--ledger", reference],
             cwd=self.root.parent, capture_output=True, text=True, encoding="utf-8", timeout=10,
         )
 

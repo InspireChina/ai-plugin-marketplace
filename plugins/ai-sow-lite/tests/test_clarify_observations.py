@@ -1,4 +1,5 @@
 """A newly observed prototype can support a bounded revision after actual registration."""
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -8,6 +9,12 @@ from .support.clarify import clarify_case, delivered_baseline, edit_draft, check
 from .support.cli import run_request
 from .support.fixtures import read_json, write_json
 from .test_prototype_records import package, ref, analysis_for
+
+# Each case registers a real prototype package first, which needs POSIX
+# directory-fd / no-follow reads; Windows refuses with OPERATION_UNSUPPORTED.
+pytestmark = pytest.mark.skipif(
+    not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    reason="Prototype directory ingest requires POSIX fd/no-follow support")
 
 
 def observed_revision(case, tmp_path):

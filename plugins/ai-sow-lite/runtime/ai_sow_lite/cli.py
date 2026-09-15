@@ -212,19 +212,44 @@ class _Parser(argparse.ArgumentParser):
         raise ValueError('invalid CLI arguments')
 
 
+def _provision_office(request):
+    """Explicit, operator-triggered engine preparation; never implicit."""
+    from .office import discover_engine, provision_engine
+    from .project import StorageError
+    try:
+        engine, identity = discover_engine()
+        return _response(request, ok=True, result=dict(
+            engine_path=str(engine), version=identity['version'], provisioned=False))
+    except StorageError:
+        pass
+    try:
+        engine = provision_engine()
+        _, identity = discover_engine()
+        return _response(request, ok=True, result=dict(
+            engine_path=str(engine), version=identity['version'], provisioned=True))
+    except StorageError as error:
+        return _response(request, diagnostics=error.diagnostics)
+
+
 def main(argv=None):
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8', errors='strict')
     parser = _Parser(add_help=False)
-    parser.add_argument('--request', required=True)
+    parser.add_argument('--request')
+    parser.add_argument('--provision-office', action='store_true')
     request = None
     try:
         args = parser.parse_args(argv)
-        request = load_json(Path(args.request))
-        response = execute(request)
+        if args.provision_office:
+            response = _provision_office(dict(request_id=None, operation='provision_office'))
+        elif args.request:
+            request = load_json(Path(args.request))
+            response = execute(request)
+        else:
+            raise ValueError('invalid CLI arguments')
     except OSError:
         response = _failure(request, 'IO_FAILED', '请求文件不可读取。')
     except (ValueError, UnicodeError):
-        response = _failure(request, 'PROTOCOL_INVALID', '需要 --request 和严格 UTF-8 JSON 请求文件。')
+        response = _failure(request, 'PROTOCOL_INVALID', '需要 --request 和严格 UTF-8 JSON 请求文件，或 --provision-office。')
     print(canonical_json_bytes(response).decode('utf-8'))
     return exit_code(response)

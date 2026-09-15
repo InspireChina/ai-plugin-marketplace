@@ -1,5 +1,6 @@
 """Mechanical package/observation consumers; no browser or semantic acceptance claims."""
 import hashlib
+import os
 import json
 from pathlib import Path
 import shutil
@@ -11,6 +12,13 @@ from ai_sow_lite.contracts import canonical_json_bytes, schema_validator
 from .support.cli import run_request
 from .support.fixtures import read_json, write_json
 from .test_inputs import sources_payload, inspect
+
+# Prototype ingest needs POSIX directory-fd / no-follow reads; Windows Python
+# exposes none of them, so the runtime refuses with OPERATION_UNSUPPORTED and
+# these boundary cases have nothing to exercise.
+pytestmark = pytest.mark.skipif(
+    not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    reason="Prototype directory ingest requires POSIX fd/no-follow support")
 
 
 def ref(project, path):
@@ -175,7 +183,7 @@ def test_all_resources_and_observation_attachments_are_real_check_dependencies(t
     assert checked['ok'], checked
     report = read_json(project / checked['result']['check_ref']['path'])
     deps = {r['path']: r['sha256'] for r in report['dependencies']}
-    area = str(Path(entry['relative_path']).parent)
+    area = Path(entry['relative_path']).parent.as_posix()
     for name in ['index.html', 'assets/app.js', 'assets/state.bin']:
         actual = project / f'{area}/resources/{name}'
         assert deps[actual.relative_to(project).as_posix()] == hashlib.sha256(actual.read_bytes()).hexdigest()
@@ -319,6 +327,51 @@ def test_split_topics_retain_only_their_adopted_input_observations(tmp_path):
     assert checked['ok'], checked
     report = read_json(project / checked['result']['check_ref']['path'])
     assert not any(second_entry['input_version_id'] in d['path'] for d in report['dependencies'])
+
+
+def test_interrupted_unrelated_observation_keeps_existing_topic_usable(tmp_path, monkeypatch):
+    from ai_sow_lite import _prototype
+    from ai_sow_lite.cli import execute
+
+    project, request, source_dir, entry, payload = registered(tmp_path)
+    path, _, _, source = observation_draft(project, request, entry)
+    first_path = path.with_name('first-observation.json')
+    path.rename(first_path)
+    first = analysis_for(entry, source, [ref(project, first_path)])
+    assert submit(project, request, first)['ok']
+    assert check_empty_candidate(project, request, entry, first)['ok']
+    protected = {p: p.read_bytes() for p in (project / '.ai-sow-lite/analysis').rglob('*') if p.is_file()}
+
+    (source_dir / 'index.html').write_bytes(b'<p>independent second input</p>\n')
+    second_entry = run_request(project, request, 'ingest', payload)['result']['input_refs'][0]
+    assert second_entry['input_version_id'] != entry['input_version_id']
+    path, _, record, source = observation_draft(project, request, second_entry)
+    second = analysis_for(second_entry, source, [ref(project, path)])
+    second_path = path.with_name('second-analysis.json')
+    write_json(second_path, second)
+    target = f".ai-sow-lite/analysis/observations/{record['observation_id']}/registration-ref.json"
+    original_write = _prototype.write_json
+
+    def interrupt(project, relative, *args, **kwargs):
+        if relative == target:
+            raise OSError('interrupted after observation bytes, before registration-ref')
+        return original_write(project, relative, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(_prototype, 'write_json', interrupt)
+        failed = execute(dict(protocol_version='1.0', request_id=request, project_path=str(project),
+                              operation='ingest', payload=dict(kind='analysis', entrypoint='generate',
+                              analysis_path=second_path.relative_to(project).as_posix())))
+    assert not failed['ok'] and failed['diagnostics'][0]['code'] == 'IO_FAILED'
+    assert (project / target).with_name('observation.json').is_file()
+    assert not (project / target).exists()
+    assert all(p.read_bytes() == raw for p, raw in protected.items())
+
+    replay = submit(project, request, first)
+    assert replay['ok'], replay
+    checked = check_empty_candidate(project, request, entry, first)
+    assert checked['ok'], checked
+    assert all(p.read_bytes() == raw for p, raw in protected.items())
 
 
 def test_executable_reference_consumer_roundtrip(tmp_path):

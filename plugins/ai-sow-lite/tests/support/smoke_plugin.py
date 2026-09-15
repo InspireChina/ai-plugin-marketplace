@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 
 PLUGIN = Path(__file__).resolve().parents[2]
 
@@ -24,22 +25,34 @@ def install_read_audit():
     workspace = Path(os.environ['LITE_SMOKE_WORKSPACE']).resolve()
     roots = [('plugin', PLUGIN), ('project', workspace / '项目 with spaces'),
              ('temporary', workspace), ('python', Path(sys.base_prefix).resolve())]
-    engines = {Path(p).expanduser().resolve() for p in [os.environ.get('AI_SOW_LITE_OFFICE_BIN'),
-               shutil.which('soffice'), shutil.which('libreoffice')] if p}
+    from ai_sow_lite.office import _engine_candidates
+    engines = {Path(p).expanduser().resolve() for p in _engine_candidates() if p}
     system_files = {Path(p).resolve() for p in mimetypes.knownfiles}
     counts = Counter()
+    # On Windows a venv's python.exe is a launcher that CreateProcess-es the real
+    # interpreter, so the pid the parent observed is this process's parent, not
+    # os.getpid(). Record both so the receipt can still prove which launch it
+    # belongs to without weakening the check to "any pid".
     report = dict(read_counts=counts, violations=0, office_conversions=0, pid=os.getpid(),
+                  parent_pid=os.getppid(),
                   invocation_id=os.environ.get('LITE_SMOKE_INVOCATION'),
                   operation=os.environ.get('LITE_SMOKE_OPERATION'))
 
     def audit(event, args):
         if event == 'subprocess.Popen':
+            # Windows reports the joined command line as a string; POSIX reports the
+            # argument sequence. Recognise the conversion in both forms, or the
+            # count silently stays at zero on Windows.
             arguments = args[1]
-            if isinstance(arguments, (list, tuple)) and '--convert-to' in arguments:
+            if isinstance(arguments, (list, tuple)):
+                converting = '--convert-to' in [os.fsdecode(a) for a in arguments]
+            else:
+                converting = arguments is not None and '--convert-to' in os.fsdecode(arguments)
+            if converting:
                 report['office_conversions'] += 1
         if event != 'open' or isinstance(args[0], int):
             return
-        if args[2] & os.O_ACCMODE == os.O_WRONLY:
+        if args[2] & (os.O_WRONLY | os.O_RDWR) == os.O_WRONLY:
             return
         path = Path(os.fsdecode(args[0])).resolve()
         category = next((name for name, root in roots if path.is_relative_to(root)), None)
@@ -305,6 +318,7 @@ def run_delivery(project):
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8', errors='strict')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--copy-plugin', action='store_true', help='在独立副本创建锁定环境并验收交付')
     parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
@@ -329,14 +343,15 @@ def main():
         uv = shutil.which('uv')
         assert uv, 'uv is required for the locked smoke environment'
         synced = subprocess.run([uv, 'sync', '--project', str(plugin), '--locked'], cwd=workspace,
-                                env=environment, capture_output=True, text=True, timeout=120)
+                                env=environment, capture_output=True, text=True, encoding='utf-8', timeout=120)
         assert synced.returncode == 0, synced.stderr
         audit = workspace / 'audit'
         audit.mkdir()
         (audit / 'sitecustomize.py').write_text(
             'from tests.support.smoke_plugin import install_read_audit\ninstall_read_audit()\n', encoding='utf-8')
         environment.update(PYTHONPATH=os.pathsep.join(map(str, [audit, plugin / 'runtime', plugin])),
-                           PYTHONDONTWRITEBYTECODE='1', PYTHONNOUSERSITE='1', LITE_SMOKE_WORKSPACE=str(workspace))
+                           PYTHONDONTWRITEBYTECODE='1', PYTHONNOUSERSITE='1', PYTHONIOENCODING='utf-8',
+                           LITE_SMOKE_WORKSPACE=str(workspace))
         python = plugin / '.venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
         # Import beside this script: the coordinator need not have plugin runtime on sys.path.
         from process_audit import reconcile_audits, run_process
@@ -354,7 +369,11 @@ def main():
                               delivery=delivery, audit=observed), ensure_ascii=False, indent=2))
         return 0
     except Exception as error:
-        print(json.dumps(dict(ok=False, retained_path=str(workspace), error=str(error)), ensure_ascii=False))
+        # A bare assert carries no message; report the type and location too, or the
+        # retained workspace is the only evidence of what actually failed.
+        detail = str(error) or traceback.format_exc().strip().splitlines()[-2:]
+        print(json.dumps(dict(ok=False, retained_path=str(workspace),
+                              error=f'{type(error).__name__}: {detail}'), ensure_ascii=False))
         return 1
 
 

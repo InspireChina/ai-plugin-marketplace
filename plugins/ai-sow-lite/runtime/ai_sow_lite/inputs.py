@@ -326,12 +326,72 @@ def ingest_sources(project: Path, request_id: str, payload):
                 failures=failures, checkpoint_ref=file_ref(project, checkpoint))
 
 
+def _committed_topic(project, directory):
+    """Return a fully committed topic's file_ref, or None when it is unwritten.
+
+    Applies the same binding proof as a fresh registration: the record bytes must
+    equal the canonical record rebuilt from the registration it names. Anything
+    that contradicts its own source raises; only an interrupted write returns None.
+    """
+    relative = f'.ai-sow-lite/analysis/topics/{directory.name}/analysis.json'
+    provenance_relative = f'.ai-sow-lite/analysis/topics/{directory.name}/registration-ref.json'
+    record, provenance_path = safe_path(project, relative), safe_path(project, provenance_relative)
+    if not provenance_path.exists():
+        if record.exists():
+            raise StorageError('EVIDENCE_MISSING', '主题缺少来源绑定，无法证明其登记出处。')
+        return None
+    if not record.exists():
+        # Interrupted between the provenance binding and the record itself.
+        return None
+    provenance = checked_json(project, provenance_relative, 'file_ref')
+    registration = safe_path(project, provenance['path'], '.ai-sow-lite/analysis/registrations')
+    if not registration.exists() or file_ref(project, registration) != provenance:
+        raise StorageError('EVIDENCE_MISSING', '主题绑定的来源原件缺失或字节已变化。')
+    registered = checked_json(project, provenance['path'], 'analysis', '.ai-sow-lite/analysis/registrations')
+    stored = checked_json(project, relative, 'analysis', '.ai-sow-lite/analysis/topics')
+    if len(stored['topics']) != 1 or stored['topics'][0]['topic_version_id'] != directory.name:
+        raise StorageError('EVIDENCE_MISSING', '主题文件与其目录身份不一致。')
+    topic = stored['topics'][0]
+    if topic not in registered['topics']:
+        raise StorageError('EVIDENCE_MISSING', '主题内容不属于其声明的登记来源。')
+    # The expected observation set comes from the immutable registration, never from
+    # the record under test. A subset check would accept a record whose observations
+    # were deleted, and rebuilding `bound` from its own bytes proves nothing.
+    from ._prototype import registered_observations
+    bound = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'],
+                 observations=registered_observations(project, registered, topic))
+    if record.read_bytes() != canonical_json_bytes(bound):
+        raise StorageError('EVIDENCE_MISSING', '主题原字节与登记来源不同。')
+    return file_ref(project, record)
+
+
+def recover_analysis_index(project):
+    """Rebuild an index lost mid-registration. Write path only; never a query.
+
+    Each surviving topic must re-prove its own origin byte for byte. Topics whose
+    write was interrupted before the record exists are left for the caller to
+    complete; corrupted ones raise instead of being adopted.
+    """
+    if safe_path(project, '.ai-sow-lite/analysis/index.json').exists():
+        return
+    topics = safe_path(project, '.ai-sow-lite/analysis/topics')
+    if not topics.exists():
+        return
+    refs = [ref for ref in (_committed_topic(project, directory)
+                            for directory in sorted(topics.iterdir()) if directory.is_dir()) if ref]
+    if refs:
+        write_json(project, '.ai-sow-lite/analysis/index.json', dict(schema_version='1.0', items=refs))
+
+
 def _analysis_records(project):
     path = safe_path(project, '.ai-sow-lite/analysis/index.json')
     if not path.exists():
-        # No analyses have been registered yet; a missing index after registration is corruption.
+        # Read-only: a missing index is reported, never repaired here. Only a
+        # directory holding an actual record counts as an existing analysis; one
+        # left with just its provenance binding is an unfinished write.
         topics = safe_path(project, '.ai-sow-lite/analysis/topics')
-        if topics.exists() and any(topics.iterdir()):
+        if topics.exists() and any((directory / 'analysis.json').exists()
+                                   for directory in topics.iterdir() if directory.is_dir()):
             raise StorageError('EVIDENCE_MISSING', '已有分析文件但索引缺失，不能当作空分析。')
         return [], []
     index = checked_json(project, '.ai-sow-lite/analysis/index.json', 'analysis_index')
@@ -355,7 +415,7 @@ def ingest_analysis(project: Path, request_id: str, payload):
     from .contracts import strict_json_loads
     analysis = strict_json_loads(raw)
     from .contracts import schema_validator
-    from ._prototype import register_observations, topic_observations
+    from ._prototype import register_observations, registered_observations, topic_observations
     if list(schema_validator('artifacts', 'analysis').iter_errors(analysis)):
         raise StorageError('CANDIDATE_INVALID', '分析字段不符合当前 Schema。')
     adopted_inputs = {i for t in analysis['topics'] for i in t['input_version_ids']}
@@ -366,6 +426,9 @@ def ingest_analysis(project: Path, request_id: str, payload):
         error = StorageError('CANDIDATE_INVALID', '分析来源或结构无效。', payload['analysis_path'])
         error.diagnostics = issues
         raise error
+    # Write path: an index lost to an interrupted registration is rebuilt here,
+    # from re-proved sources, so the same request can be replayed to completion.
+    recover_analysis_index(project)
     refs, old_records = _analysis_records(project)
     evidence, topics = {}, {}
     for record in old_records:
@@ -390,14 +453,15 @@ def ingest_analysis(project: Path, request_id: str, payload):
             stored = checked_json(project, relative, 'analysis', '.ai-sow-lite/analysis/topics')
             if stored['topics'] != [topic]:
                 raise StorageError('IDENTITY_CONFLICT', '已有主题目录不能绑定不同分析内容。')
-            provenance = checked_json(project, str(Path(relative).parent / 'registration-ref.json'), 'file_ref')
+            provenance = checked_json(project, (Path(relative).parent / 'registration-ref.json').as_posix(), 'file_ref')
             original = safe_path(project, provenance['path'], '.ai-sow-lite/analysis/registrations')
             if file_ref(project, original) != provenance:
                 raise StorageError('EVIDENCE_MISSING', '已有主题的来源原字节与绑定摘要不同。')
             registered = checked_json(project, provenance['path'], 'analysis', '.ai-sow-lite/analysis/registrations')
-            if not {r['sha256'] for r in stored['observations']} <= {r['sha256'] for r in registered['observations']}:
-                raise StorageError('EVIDENCE_MISSING', '已有主题的观察摘要不属于原始登记来源。')
-            bound_record = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'], observations=stored['observations'])
+            # Same rule as recovery: derive the expected observations from the
+            # registration, so a record with its observations deleted is refused.
+            bound_record = dict(schema_version='1.0', topics=[topic], evidence=registered['evidence'],
+                                observations=registered_observations(project, registered, topic))
             if topic not in registered['topics'] or safe_path(project, relative).read_bytes() != canonical_json_bytes(bound_record):
                 raise StorageError('EVIDENCE_MISSING', '已有主题原字节与登记来源不同。')
             if not any(ref['path'] == relative for ref in refs) and provenance != candidate_ref:
@@ -426,10 +490,13 @@ def ingest_analysis(project: Path, request_id: str, payload):
             # Preflight proved this is the same candidate with only its index member missing.
             ref = file_ref(project, existing)
         else:
+            # Bind provenance before the topic record: a topic that exists without
+            # its registration-ref cannot be recovered, but the reverse can.
+            write_json(project, (Path(relative).parent / 'registration-ref.json').as_posix(),
+                       file_ref(project, registration), immutable=True)
             ref = write_json(project, relative, record, immutable=True)
-            write_json(project, str(Path(relative).parent / 'registration-ref.json'), file_ref(project, registration), immutable=True)
         refs.append(ref)
-        write_json(project, '.ai-sow-lite/analysis/index.json', dict(schema_version='1.0', items=refs))
+    write_json(project, '.ai-sow-lite/analysis/index.json', dict(schema_version='1.0', items=refs))
     return dict(analysis_ref=file_ref(project, registration), evidence_ids=[e['id'] for e in analysis['evidence']],
                 topic_version_ids=[t['topic_version_id'] for t in analysis['topics']])
 
