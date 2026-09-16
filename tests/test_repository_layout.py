@@ -125,17 +125,17 @@ class RepositoryLayoutTests(unittest.TestCase):
                      for relative in (".codex-plugin/plugin.json", ".claude-plugin/plugin.json")]
         for manifest in manifests:
             self.assertEqual(manifest["name"], "ai-sow-lite")
-            self.assertEqual(manifest["version"], "0.1.0-alpha.2")
+            self.assertEqual(manifest["version"], "0.1.0-alpha.3")
             self.assertEqual(manifest["license"], "Apache-2.0")
         for field in ("name", "version", "description", "author"):
             self.assertEqual(manifests[0][field], manifests[1][field])
         project = tomllib.loads((plugin_root / "pyproject.toml").read_text(encoding="utf-8"))
         lock = tomllib.loads((plugin_root / "uv.lock").read_text(encoding="utf-8"))
         self.assertEqual(project["project"]["name"], "ai-sow-lite-runtime")
-        self.assertEqual(project["project"]["version"], "0.1.0a2")
+        self.assertEqual(project["project"]["version"], "0.1.0a3")
         packages = [p for p in lock["package"] if p["name"] == "ai-sow-lite-runtime"]
         self.assertEqual(len(packages), 1)
-        self.assertEqual(packages[0]["version"], "0.1.0a2")
+        self.assertEqual(packages[0]["version"], "0.1.0a3")
         self.assertEqual(packages[0]["source"], {"virtual": "."})
 
     def test_marketplaces_append_ai_sow_lite_without_replacing_ai_sow(self) -> None:

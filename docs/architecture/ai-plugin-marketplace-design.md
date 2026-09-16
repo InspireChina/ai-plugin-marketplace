@@ -1,11 +1,11 @@
 # AI Plugin Marketplace 设计规格
 
 日期：2026-08-20
-发布状态同步：2026-09-15
+发布状态同步：2026-09-16
 
 ## 目标
 
-以单仓库发布自包含插件包，支持持续添加插件和从安装副本独立运行。当前已公开预发布 AI SOW `0.1.0-beta.1`（SOW 标准 `1.3`）与 AI SOW Lite `0.1.0-alpha.2`；AI SOW 稳定版 `0.1.0` 仍是后续目标。
+以单仓库发布自包含插件包，支持持续添加插件和从安装副本独立运行。当前已公开预发布 AI SOW `0.1.0-beta.1`（SOW 标准 `1.3`）与 AI SOW Lite `0.1.0-alpha.3`；AI SOW 稳定版 `0.1.0` 仍是后续目标。
 
 ## 标识
 
@@ -20,7 +20,7 @@
 - 安装策略：`AVAILABLE`
 - 鉴权策略：`ON_INSTALL`
 
-插件名称、插件目录和 manifest 的 `name` 必须始终一致。AI SOW 条目的 `source.path` 为 `./plugins/ai-sow`；独立预发布条目 AI SOW Lite 使用 `./plugins/ai-sow-lite`，名称为 `ai-sow-lite`、版本为 `0.1.0-alpha.2`。两宿主目录分别核对每个插件，不能以一个插件的版本覆盖另一个。
+插件名称、插件目录和 manifest 的 `name` 必须始终一致。AI SOW 条目的 `source.path` 为 `./plugins/ai-sow`；独立预发布条目 AI SOW Lite 使用 `./plugins/ai-sow-lite`，名称为 `ai-sow-lite`、版本为 `0.1.0-alpha.3`。两宿主目录分别核对每个插件，不能以一个插件的版本覆盖另一个。
 
 版本 tag 按插件区分：AI SOW 使用 `ai-sow-v<version>`，Lite 使用 `ai-sow-lite-v<version>`。已发布 tag 保持固定；发布状态、能力摘要及安装入口以 [变更日志](../../CHANGELOG.md)和各版本 GitHub Release 为准。
 

@@ -2,7 +2,9 @@
 
 所有重要的用户可见变更都记录在此。
 
-## 未发布 — AI SOW Lite
+## AI SOW Lite 0.1.0-alpha.3 - 2026-09-16
+
+修复 Windows 真实数据运行反馈的 #11–#15，包含 [PR #16](https://github.com/InspireChina/ai-plugin-marketplace/pull/16)。维护者已确认 Windows 复跑通过；发布收尾同步版本元数据和文档，运行代码沿用复跑基线 `b1e2376`。验证与发布记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.3)。AI SOW 保持 `0.1.0-beta.1`。
 
 - 修复历史 XLSX 因声明维度或空样式范围膨胀被误拒的问题，保留实际内容上限和既有证据兼容。
 - 完整检查前置工作簿布局预检，合批报告超限行，减少逐行返修。

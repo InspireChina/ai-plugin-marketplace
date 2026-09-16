@@ -1,8 +1,16 @@
 # 验证摘要
 
-面向 `0.1.0-alpha.2`，Windows 兼容与可靠性基线为 `8f05418`，合并提交为 `16df55e`。这是验证入口，不是插件运行步骤。安装、生成、局部改稿和 Excel 已有实际证据；最终发布提交、发布前回归与远端安装结果统一记录在 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)。首个 Alpha 的业务与文档基线分别为 `08f01ef`、`d5cde4f`，历史结果保持原执行归属。
+面向 `0.1.0-alpha.3`，真实数据问题修复基线为 `b1e2376`（[PR #16](https://github.com/InspireChina/ai-plugin-marketplace/pull/16)）。这是验证入口，不是插件运行步骤。安装、生成、局部改稿和 Excel 已有实际证据；最终发布提交及发布前回归统一记录在 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.3)。首个 Alpha 的业务与文档基线分别为 `08f01ef`、`d5cde4f`，历史结果保持原执行归属。
 
-## Windows 兼容与 macOS 回归
+## 真实数据问题修复与复跑
+
+2026-09-16，维护者在本次开发会话确认 PR #16 的 Windows 复跑通过并同意合并。本次确认没有附加 Windows 自动测试计数或环境版本，因此不将下方历史报告的数字计入本次结果。
+
+`b1e2376` 在 macOS 的 Lite 完整套件为 **941 通过、12 条件跳过**；跳过项均因未安装 PowerShell，真实 Office 与独立副本消费者已执行。根测试 52 项通过，旧 AI SOW 全目录 539 通过、4 条件跳过，独立复制 smoke 通过；两插件锁定依赖、仓库验证器和 163 条场景台账结构检查通过。另对 20 组旧/新 XLSX 观察结果及 21 组布局预检/正式投影诊断完成一致性检查。
+
+`alpha.3` 发布收尾只更新版本元数据、仓库校验测试和文档，保持上述 Windows 复跑基线的运行时、启动脚本、Skill、模板及业务合同原字节。发布提交另跑本机全量回归，结果见本版本 Release；GitHub 三平台 CI 覆盖仓库检查和旧 AI SOW，不替代 Lite 的 Windows 真实数据复跑。
+
+## 历史：Windows 兼容与 macOS 回归（alpha.2）
 
 2026-09-15，PR #10 的同一运行时提交 `8f05418` 完成两端验收，合并后的文件树相同：
 
@@ -13,7 +21,7 @@
 
 两端根测试、仓库验证器和 163 条场景台账结构检查通过；macOS 的旧 AI SOW 全量为 539 通过、4 条件跳过，独立复制 smoke 通过。原有 6 项缺陷复现在 macOS 均通过。本次是脚本与合成消费者验证，不扩大模型业务质量或性能承诺。
 
-`alpha.2` 的发布收尾只同步版本元数据、校验测试和文档，不修改上述已验收的运行时、启动脚本、Skill、模板或业务合同。发布提交的本机回归与远端安装检查记录于本版本 Release，Windows 验证沿用上述实机证据。
+`alpha.2` 的发布收尾只同步版本元数据、校验测试和文档，不修改上述已验收的运行时、启动脚本、Skill、模板或业务合同。其发布提交的本机回归与远端安装检查记录于 [alpha.2 Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)，Windows 验证沿用上述实机证据。
 
 ## 验证结果与边界
 

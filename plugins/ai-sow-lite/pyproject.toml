@@ -1,6 +1,6 @@
 [project]
 name = "ai-sow-lite-runtime"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "Self-contained mechanical runtime for AI SOW Lite"
 requires-python = ">=3.12,<3.13"
 dependencies = ["jsonschema==4.26.0", "openpyxl==3.1.5"]
