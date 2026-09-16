@@ -192,11 +192,32 @@ XLSX 首次区域请求的 `read_id` 使用目录查询返回的 `selected_versi
 {"view":"regions","selector":{"input_version_id":"<input-version-id>","locator":{"kind":"xlsx_range","sheet":"历史范围","range":"A1:C8","read_id":"<directory-read-id>"}},"limit":20,"cursor":null}
 ```
 
-工具随后生成区域 reading；证据使用返回的 `coverage.locator` 和 `coverage.excerpt_hash`，不能沿用请求中的目录 ID 充当区域证据。可由 [source_ref 助手](generate-authoring.md#登记读取和分析) 直接映射。
+工具随后生成区域 reading。Python 调用必须用 `source_ref(region_result)` 生成证据，见 [区域结果与证据引用](python-client.md#区域结果与证据引用)。纯 CLI 调用按以下字段对照映射；以下是响应 `result.coverage` 中与引用有关的完整字段片段，身份和哈希为占位符：
+
+```json
+{
+  "selector": {
+    "input_version_id": "<input-version-id>",
+    "locator": {"kind":"xlsx_range","sheet":"历史范围","range":"A1:C8","read_id":"<directory-read-id>"}
+  },
+  "locator": {"kind":"xlsx_range","sheet":"历史范围","range":"A1:C8","read_id":"<region-read-id>"},
+  "excerpt_hash": "<region-excerpt-sha256>"
+}
+```
+
+| 字段路径 | 含义与用途 |
+|---|---|
+| `coverage.selector.locator.read_id` | 请求原样回显；此例仍是目录的 `<directory-read-id>`，不能作为已读区域证据 |
+| `coverage.locator.read_id` | 实际区域的 `<region-read-id>`，随整个 `coverage.locator` 放进 `source_ref.locator` |
+| `coverage.selector.input_version_id`、`coverage.excerpt_hash` | 分别放进 `source_ref.input_version_id`、`source_ref.excerpt_hash` |
+
+错误示例是把 `coverage.selector.locator` 整体复制为 XLSX 的证据 locator；这样会把目录 read_id 与区域范围混用，analysis 登记会拒绝。文本行证据不分配区域 read_id，可沿用实际查询的 `coverage.selector.locator`；助手已处理两种分支。字段名和响应结构保持不变。
 
 返回默认 20 项，最多 100 项，完整信封最多 64 KiB（正文预留信封空间）；大正文通过返回附件定位，超大单项不能靠反复翻页解决。游标绑定查询/来源/版本；改变 selector 或来源时以 cursor=null 显式开始新查询，零进展不继续循环。
 
 XLSX 解析硬边界：原件 50 MiB；ZIP 最多 2048 项、解压合计 200 MiB、压缩比 100；最多 64 Sheet，每表 100000 行、512 列、100 万单元格，全簿 200 万单元格；单格 32767 字符、全文 1000 万字符。拒绝 XML 实体扩展；图形、媒体、嵌入对象或外链等不支持内容记录未读限制，不执行或静默认为不存在。原型资源上限另见 [原型合同](prototype-inputs.md)。
+
+声明维度或纯样式空单元格范围超过单表读取上限时，改按实际内容边界检查：值（含 0、false、空字符串）、公式（含缺失缓存）、合并、附注及 Table 均计入边界。仅无 `v`/`f`/`is` 子元素的单元格可视为纯样式。实际边界仍超限则拒绝整个读取，不返回部分成功；可以降级时在 `limitations` 说明忽略的外围样式和所用范围，不改写原件。原先可接受的范围和摘录字节保持，避免使既有 `lite-xlsx-v1` 证据哈希失效；本次不把所有历史文件统一收缩为最小范围。
 
 ## 检查点、应用与恢复边界
 
@@ -234,7 +255,11 @@ XLSX 解析硬边界：原件 50 MiB；ZIP 最多 2048 项、解压合计 200 Mi
 
 当前输出只含原四表。完整 AC 在 Story D，Story E 通常为空；Task G 另展示非新建工作方式、非 M 复杂度的既有 rationale，按 fields 选取并合并相同正文，classification_basis 映射到 G。必要责任例外、安全别名原名及 open 问题仍保留。open 的真实 question + current_handling 以“待确认：”开始写在目标行；AC 指明哪条，父项问题落实际受影响的 Story，Task 问题只落 Task 行。无 Story 的未拆明 Epic/Feature 在 01 表末尾追加范围行，仅实际父项和问题，Story/AC/人天空。resolved/superseded 不在 Excel，只留项目 JSON/MD 历史；依赖、Task 清单、证据 ID 和外部路径不自动写备注。
 
+Task G 会合并待确认问题与当前处理、非默认分类的判断原因、Task 自身 notes；应按最终组合正文控制重复表述，不能只看每一段的长度。[Task 分类提交前自检](generate-authoring.md#task-分类提交前自检)说明字段依据要求，Excel 未展示某条理由不代表候选可省略该依据。
+
 长文保存在原列，新输出 D 列宽 88、顶对齐/换行、字号不变，原模板不修改。预计超过 409 点可见高度返回 WORKBOOK_LAYOUT_OVERFLOW，定位原对象/字段和 Sheet/单元格；派生 H 任务列表定位所属 Story、field=null。保留候选和 current，不生成裁切文件、不调用 Office；最终单格文本超过 32767 UTF-16 单元时返回对象/字段定向 diagnostic 并沿既有有界修复，不摘要、不截断或另起说明表。任务列表 H 保留原公式、数组属性和 Office 原样结果，全部任务在 TaskTable，不复制到备注。
+
+`check scope=full` 在业务与引用检查通过后，使用同一投影正文、真实模板列宽和样式预检布局，一次返回全部可见高度超限的对象/字段/单元格，`valid_for_render=false`；`scope=slice` 不宣称通过此检查。预检不扩展公式、不保存工作簿、不启动 Office。`render` 复查和实际投影同样聚合超限诊断，便于在原有限返修中合批处理；不截断正文，也不增加或清零 `repair_batches`。
 
 projection.json 使用 **projector_version**；prepared/manifest 使用既有 **projection_version**，均为 lite-projection-v1，不接受双别名。projection 仍含 schema_version、version_id、template_hash、model_hash、pending_items_hash、decisions_hash、workbook_hash、objects、pending_items、details。objects 为 object_id/kind/sheet/table/rows/display_name/fields；单行使用 rows 数组，未拆明父项含实际范围行。fields 为 `{field,cells}`，cell 为 `{sheet,cell}`；AC 增加1起始 entry，保留自身 ID。问题 targets 为 object_id/field/cells，历史问题 cells 为空。pending path/anchor 继续指向项目 pending-items.md；新输出 details=[]、details_ref=null，不生成 details.md。历史 v1 字段合同和旧 applied 文件不变。
 

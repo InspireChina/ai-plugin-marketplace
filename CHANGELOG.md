@@ -2,6 +2,12 @@
 
 所有重要的用户可见变更都记录在此。
 
+## 未发布 — AI SOW Lite
+
+- 修复历史 XLSX 因声明维度或空样式范围膨胀被误拒的问题，保留实际内容上限和既有证据兼容。
+- 完整检查前置工作簿布局预检，合批报告超限行，减少逐行返修。
+- 补齐 Task 分类依据、Windows Python 路径和 XLSX 区域证据指引，改进相应诊断；详见 [Lite 版本说明](plugins/ai-sow-lite/CHANGELOG.md)。
+
 ## AI SOW Lite 0.1.0-alpha.2 - 2026-09-15
 
 Windows 兼容与可靠性预发布，包含 [PR #10](https://github.com/InspireChina/ai-plugin-marketplace/pull/10)。运行时已完成 Windows 实机验证与 macOS 回归；发布与安装记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)。AI SOW 保持 `0.1.0-beta.1`。

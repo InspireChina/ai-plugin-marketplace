@@ -26,6 +26,44 @@ client = Client(project, request_id, entrypoint, observation_context=observation
 
 业务内容由 Agent 编写。每个工具操作仍单独校验和记录时间；连续、已确定的机械操作可放同一 Python 调用中，减少模型往返。遇到需要解释或决策的结果就读必要字段再继续；OperationError 不自动重试。保存必要引用供下一轮续接；完整正文只在本轮需要时输出。
 
+## Windows 路径与 CLI 子进程
+
+连续操作优先调用同进程 `Client.call`，减少子进程启动、命令行引号和 shell 路径转换环节。`Client` 仍需要调用方提供当前 Python 能识别的正确路径，并不会修复错误路径。
+
+原生 Windows Python 中，`plugin`、`project`、请求文件及原件的绝对路径用 `C:/work/...` 或 `C:\work\...`；Python 字符串中的反斜杠用 raw string，例如 `Path(r"C:\work\project")`。Git Bash 的 `/c/work/...` 属于 shell 路径语法，不能直接沿用到原生 Python 的 `Path` 或 `subprocess.run` 参数。`Path.resolve()` 不会把 `/c/...` 自动转换为盘符路径；应在进入 Python 前确定真实原生路径，不按字母或目录存在性猜测盘符。
+
+确需调用 CLI 时，从本插件的隔离 Python 启动当前脚本，使用 `sys.executable` 和参数列表，保留已有命令合同：
+
+```python
+import subprocess
+import sys
+from pathlib import Path
+
+# plugin 和 request_file 已是当前系统可识别的真实绝对路径。
+completed = subprocess.run(
+    [sys.executable, str(Path(plugin) / "scripts" / "lite.py"),
+     "--request", str(Path(request_file))],
+    capture_output=True, text=True, encoding="utf-8", check=True,
+)
+```
+
+参数列表无需为含空格路径额外嵌入引号，也无需 `shell=True`；它不会触发 Git Bash 的路径转换。项目内已保存工件引用仍沿用工具返回的相对 POSIX 路径，不改成 Windows 绝对路径。
+
+## 区域结果与证据引用
+
+Python 构造 `source_refs`、`covered_regions` 或确认答复引用时，统一调用 `source_ref(region_result)`；参数是成功区域查询的 **result**，CLI 响应需先取 `response["result"]`，`Client.call` 已返回这一层。目录读取仅用于选区域，不能充当区域证据。
+
+| 字段 | 文本区域结果 | XLSX 区域结果 |
+| --- | --- | --- |
+| `coverage.selector.locator` | 请求中的行定位，作为证据 locator | 请求回显，可能包含选区时使用的目录 read_id；不能替代实际区域 locator |
+| `coverage.locator` | 不按 XLSX 形状推取 | 实际区域 locator，含本次区域读取的 read_id；证据采用此处 |
+| `coverage.selector.input_version_id` | 实际输入版本 | 实际输入版本 |
+| `coverage.excerpt_hash` | 实际文本摘录哈希 | 实际区域摘录哈希 |
+
+纯 CLI 调用者可按上表手工构造 `{input_version_id, locator, excerpt_hash}`；逐字保留实际返回值。XLSX 即使 sheet/range 相同，目录与区域 read_id 的证据含义也不同，不能互换或自行生成。助手处理两种定位形状并复制真实引用，不增加响应字段，也不替代实际读取。
+
+## 连续执行已确认的修改
+
 例如用户已经明确执行刚展示的具体方案，实际答复已登记并读取后，Agent 可显式连续调用：
 
 ```python

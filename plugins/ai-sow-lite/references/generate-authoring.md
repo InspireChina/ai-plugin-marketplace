@@ -28,7 +28,7 @@ Windows PowerShell 首次调用：
 
 Windows 对应 `& "<plugin-root>/.venv/Scripts/python.exe" "<plugin-root>/scripts/lite.py" --request "<request-file>"`。bootstrap 准备 uv 0.11.7、Python 3.12 和锁定依赖；首次可联网下载到插件副本。Office 由已有 `soffice/libreoffice`、当前执行环境的 `AI_SOW_LITE_OFFICE_BIN`，或 Windows 默认安装目录发现；缺引擎时报诊断并给出准备方式，不静默改动宿主。用户明确要求时可执行 `scripts/lite.py --provision-office`，在插件目录内解包一份引擎（免管理员、不注册到系统），用户自有安装始终优先。
 
-隔离环境就绪后，连续操作优先用 [Python 调用助手](python-client.md)，沿用以下 payload 和返回字段；只输出本轮需要的结果，保留实际引用。
+隔离环境就绪后，连续操作优先用同进程 [Python 调用助手](python-client.md)，沿用以下 payload 和返回字段；只输出本轮需要的结果，保留实际引用。Windows 原生 Python 使用 `C:/...` 或 `C:\...` 绝对路径；Git Bash 的 `/c/...` 不能直接传给 Python 或其 subprocess，具体边界见 [Windows 路径与 CLI 子进程](python-client.md#windows-路径与-cli-子进程)。
 
 ## 登记、读取和分析
 
@@ -63,11 +63,11 @@ Windows 对应 `& "<plugin-root>/.venv/Scripts/python.exe" "<plugin-root>/script
 
 `<work>` 表示 `.ai-sow-lite/work/generate/<request-id>`，不是实际 token。工具 stdout 为单个 `ok/request_id/operation/result/diagnostics` JSON；保存响应文件，读取必要 result/诊断即可，不把整份工具输出当业务来源。失败保留已成功引用；检查错误、原件变化或真实 Office 失败必须按有界返修处理。
 
-以下映射可直接执行：`region_result` 是成功的**区域查询**响应的 `result`（不是目录），`standard_row` 是 Agent 已选标准查询的 `result.items` 中一项。文本定位取 `coverage.selector.locator`，XLSX 定位取 `coverage.locator` 以保留实际区域 read_id；两者摘要均取 `coverage.excerpt_hash`。标准返回的精确键为 `工作类型 ID` 和 `工作类型`。
+以下映射可直接执行：`region_result` 是成功的**区域查询**响应的 `result`（不是目录），`standard_row` 是 Agent 已选标准查询的 `result.items` 中一项。Python 证据引用统一用 `source_ref(region_result)`，由助手处理文本与 XLSX 的定位差异。XLSX 的 `coverage.selector.locator` 是请求回显，可能仍带目录 read_id；证据须用 `coverage.locator` 中的实际区域 read_id。标准返回的精确键为 `工作类型 ID` 和 `工作类型`；CLI 手工映射及字段对照见 [区域结果与证据引用](python-client.md#区域结果与证据引用)。
 
 ```python
-from ai_sow_lite.authoring import source_ref as observed_source_ref
-source_ref = observed_source_ref(region_result)
+from ai_sow_lite.authoring import source_ref
+evidence_source_ref = source_ref(region_result)
 standard_id = standard_row["工作类型 ID"]
 work_type_name = standard_row["工作类型"]
 ```
@@ -101,7 +101,7 @@ work_type_name = standard_row["工作类型"]
 | Feature | `id, epic_id, title, evidence_refs` |
 | Story | `id, feature_id, title, acs, notes, evidence_refs`；AC 内嵌，每项 `id, text, evidence_refs` |
 | Task | `id, story_id, name, work_type_name, work_mode, complexity, integration_type, notes, not_applicable_fields, evidence_refs, classification_basis` |
-| classification_basis 项 | `fields, evidence_refs, standard_id, rationale`；fields 为分类字段数组，standard_id 取所选 standards 行的 `工作类型 ID`，rationale 说明已选事实与该规则的关系 |
+| classification_basis 项 | `fields, evidence_refs, standard_id, rationale`；fields 为分类字段数组，standard_id 取当前工作类型的 standards 行中 `工作类型 ID`，每项 rationale 必须非空，说明已选事实或当前估算口径与规则的关系 |
 | Dependency | `id, from_story_id, to_story_id, kind, notes, evidence_refs`；kind 为 uses/delivery_precondition，由消费/依赖方指向提供/前提方 |
 | [pending-items](../contracts/pending-items.schema.json) | `schema_version="1.0", items`；每项 `id, revision, question, targets, evidence_refs, current_handling, unestimated_work, status, resolution` |
 | [decisions](../contracts/decisions.schema.json) | `schema_version="1.0", items`；每项 `id, kind, text, evidence_refs, applies_to`，kind 为 fact/scope_decision；首次可无决定 |
@@ -109,7 +109,18 @@ work_type_name = standard_row["工作类型"]
 
 业务 ID 使用 UUID4，在请求内保存在小型 ID 映射中复用；语义改变不复用旧 ID。candidate 的三个文件路径和 candidate 自身均在同请求 work 中；所采用输入/主题/依据采用登记返回的真实 ID，template_hash 读取项目身份。文件引用 `{path,sha256}` 的 sha256 是实际文件字节 SHA-256；不要自填工具报告、prepared 或版本 manifest。
 
-Task 的 work_type_name 精确采用标准名；work_mode 为该标准允许的新建/调整/接入复用或 null，complexity 为 S/M/L，integration_type 为内部集成/外部集成或 null。非集成类型明确不适用时 `not_applicable_fields=["integration_type"]` 且该字段为 null；其他情况不放入这个数组。四个分类字段的有效值和明确不适用都需要 classification_basis 覆盖，可以由同一依据项覆盖多个字段；未知类型时 standard_id=null。
+### Task 分类提交前自检
+
+保存片内或合并候选前，逐 Task 核对下表。四个分类字段的有效值和明确不适用均须由 `classification_basis[].fields` 覆盖；同一依据项可覆盖多个字段。每项都须有非空 `evidence_refs` 和 `rationale`，新建、M 和不适用也不例外。已知工作类型时，所有依据项的 `standard_id` 均取 `inspect/standards` 中该类型对应行的 `工作类型 ID`；类型尚未匹配才用 null，不从名称推造 ID。
+
+| 字段 | 有效值与依据覆盖 | 未知或不适用的处理 |
+| --- | --- | --- |
+| `work_type_name` | 精确采用所选行的 `工作类型`；`fields` 含 `work_type_name` | 未匹配时为 null，所有依据项 `standard_id=null`，open 问题精确指向此字段 |
+| `work_mode` | 仅选当前标准允许的新建/调整/接入复用；`fields` 含 `work_mode`，新建也要解释当前口径 | 有具体历史候选而实例未明：新建 + 此字段的 open 问题；其他合法未知为 null + 此字段问题 |
+| `complexity` | S/M/L；`fields` 含 `complexity`，M 同样须有理由 | 无法识别立即 M + 此字段的 open 问题；理由说明默认 M 及缺少的定档事实，不写成已证明满足 M，不用 null/X |
+| `integration_type` | 集成工作选内部集成/外部集成，`fields` 含 `integration_type` | 非集成工作明确不适用：null + `not_applicable_fields=["integration_type"]` + 依据覆盖；仍未知：null + 精确 open 问题，不能标不适用 |
+
+分类错误诊断仍按 `code/target/message/preserved_paths` 返回。依据缺失时补对应 `classification_basis` 项或其 `fields`，核对来源、标准 ID 和非空理由；标准 ID 错误时复用已读的当前类型行，必要时定向查询。null 未解释时先判断是真实未知还是明确不适用，再按表补准确问题或标记；不能仅添加对象级问题来通过检查。Excel 是否显示某条理由是投影规则，不改变本表的存储要求。
 
 targets/applies_to 均为 `{object_id,field}` 数组，field 必须是该对象实际字段名或对象级 null，不能使用 `Task.complexity` 或点路径。默认 M 的 open 问题用 Task ID 加 `field="complexity"`；其他未知分类字段同样精确绑定。未拆明工作用 Epic/Feature/Story ID、field=null、unestimated_work=true。新问题 revision=1、status="open"、resolution=null。空 acs 需要指向 Story 的 `field="acs"` 问题，空父项需要未拆明工作；全部 gap 已满足的空模型应有充分主题结论，不能留占位父项。resolved 仅在实际决定覆盖全部目标后使用，其 resolution 为 `decision_id,request_id,summary`。
 

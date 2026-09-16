@@ -243,3 +243,20 @@ def controlled_base_change(case, filename, value):
     write_json(directory / 'manifest.json', manifest)
     case['current']['manifest_hash'] = hashlib.sha256((directory / 'manifest.json').read_bytes()).hexdigest()
     write_json(project / '.ai-sow-lite/current.json', case['current'])
+
+
+def refresh_controlled_projection(case):
+    """Keep augmented fixture identities consistent; does not simulate Office delivery."""
+    from tempfile import TemporaryDirectory
+    from ai_sow_lite.contracts import file_sha256
+    from ai_sow_lite.workbook import project_workbook
+    old=case['project']/'.ai-sow-lite/versions'/case['current']['version_id']
+    projection=read_json(old/'projection.json')
+    template=case['project']/f'.ai-sow-lite/template/{projection["template_hash"]}/sow-template.xlsx'
+    with TemporaryDirectory(prefix='lite-controlled-projection-') as directory:
+        generated=project_workbook(template,read_json(old/'model.json'),read_json(old/'pending-items.json'),
+                                   read_json(old/'decisions.json'),case['current']['version_id'],directory)
+    projection.update(objects=generated['objects'],pending_items=generated['pending_items'],
+                      model_hash=file_sha256(old/'model.json'),pending_items_hash=file_sha256(old/'pending-items.json'),
+                      decisions_hash=file_sha256(old/'decisions.json'))
+    controlled_base_change(case,'projection.json',projection)
