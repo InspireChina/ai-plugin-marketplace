@@ -51,6 +51,15 @@ def canonical_range(address):
     return start if start == end else f'{start}:{end}'
 
 
+def _physical_bounds(address):
+    """Validate OOXML coordinates before applying our smaller reading budget."""
+    left, top, right, bottom = range_boundaries(address)
+    if (not all(type(v) is int for v in (left, top, right, bottom)) or
+            not 1 <= left <= right <= 16384 or not 1 <= top <= bottom <= 1048576):
+        raise ValueError('physical range')
+    return left, top, right, bottom
+
+
 def _target(base, target):
     resolved = posixpath.normpath(target.lstrip('/') if target.startswith('/') else posixpath.join(posixpath.dirname(base), target))
     if resolved.startswith('../') or '\\' in resolved:
@@ -185,26 +194,35 @@ def read(raw, selection):
                 part = targets[sheet.attrib[REL]]
                 root = xml(part)
                 dimension = root.find(NS + 'dimension')
+                declared = dimension.attrib['ref'] if dimension is not None else 'A1'
+                _, _, maxcol, maxrow = _physical_bounds(declared)
+                nodes, content_col, content_row = {}, 1, 1
                 try:
-                    used = canonical_range(dimension.attrib['ref'] if dimension is not None else 'A1')
                     merges = [canonical_range(n.attrib['ref']) for n in root.findall(NS + 'mergeCells/' + NS + 'mergeCell')]
-                    nodes, maxcol, maxrow = {}, bounds(used)[2], bounds(used)[3]
                     for n in root.findall(NS + 'sheetData/' + NS + 'row/' + NS + 'c'):
-                        address = canonical_range(n.attrib['r'])
-                        col, row, right, bottom = bounds(address)
+                        col, row, right, bottom = _physical_bounds(n.attrib['r'])
+                        address = f'{get_column_letter(col)}{row}'
                         if col != right or row != bottom or address in nodes:
                             raise ValueError('cell address')
                         nodes[address] = n
                         maxcol, maxrow = max(maxcol, col), max(maxrow, row)
+                        # An empty value, formula or inline string is still content.
+                        # Only cells with none of these children are pure formatting.
+                        if any(n.find(NS + tag) is not None for tag in ('v', 'f', 'is')):
+                            content_col, content_row = max(content_col, col), max(content_row, row)
                     for merge in merges:
                         _, _, right, bottom = bounds(merge)
                         maxcol, maxrow = max(maxcol, right), max(maxrow, bottom)
-                    used = canonical_range(f'A1:{get_column_letter(maxcol)}{maxrow}')
+                        content_col, content_row = max(content_col, right), max(content_row, bottom)
                 except StorageError:
-                    raise _limit(f'XLSX Sheet {name} 声明维度、合并或实际单元格地址超过读取上限') from None
-                total_cells += maxcol * maxrow
-                if total_cells > MAX_TOTAL_CELLS:
-                    raise _limit('XLSX 全部 Sheet 单元格总数超过2000000格上限')
+                    raise _limit(f'XLSX Sheet {name} 实际内容或合并区域超过读取上限') from None
+                try:
+                    used = canonical_range(f'A1:{get_column_letter(maxcol)}{maxrow}')
+                    inflated = False
+                except StorageError:
+                    # Preserve byte-identical v1 observations for previously accepted
+                    # sheets. Only sheets formerly rejected get a content-bound fallback.
+                    maxcol, maxrow, inflated = content_col, content_row, True
                 hidden_rows = [int(n.attrib['r']) for n in root.findall(NS + 'sheetData/' + NS + 'row') if n.attrib.get('hidden') in ('1', 'true')]
                 hidden_columns = [dict(min=int(n.attrib['min']), max=int(n.attrib['max'])) for n in root.findall(NS + 'cols/' + NS + 'col') if n.attrib.get('hidden') in ('1', 'true')]
                 links, comments, tables = relationships(part), {}, []
@@ -218,7 +236,26 @@ def read(raw, selection):
                             comments[n.attrib['ref']] = dict(author=authors[int(n.attrib['authorId'])], text=''.join(t.text or '' for t in n.iter(NS + 't')))
                 for n in root.findall(NS + 'tableParts/' + NS + 'tablePart'):
                     table = xml(links[n.attrib[REL]])
-                    tables.append(dict(name=table.attrib['displayName'], range=canonical_range(table.attrib['ref'])))
+                    try:
+                        tables.append(dict(name=table.attrib['displayName'], range=canonical_range(table.attrib['ref'])))
+                    except StorageError:
+                        raise _limit(f'XLSX Sheet {name} Table 区域超过读取上限') from None
+                if inflated:
+                    # Comments and table/merge structure must not disappear just
+                    # because the associated cell has no value-bearing child.
+                    for address in list(comments) + [table['range'] for table in tables]:
+                        _, _, right, bottom = _physical_bounds(address)
+                        maxcol, maxrow = max(maxcol, right), max(maxrow, bottom)
+                    try:
+                        used = canonical_range(f'A1:{get_column_letter(maxcol)}{maxrow}')
+                    except StorageError:
+                        raise _limit(f'XLSX Sheet {name} 实际内容、附注或结构范围超过读取上限') from None
+                    limitations.append(dict(part=part, coverage='unread', reason=(
+                        f'声明维度 {declared} 或纯样式空单元格范围超过读取上限；'
+                        f'已按实际内容边界 {used} 读取，外围纯样式未解释，原件未改写。')))
+                total_cells += maxcol * maxrow
+                if total_cells > MAX_TOTAL_CELLS:
+                    raise _limit('XLSX 全部 Sheet 单元格总数超过2000000格上限')
                 info = dict(sheet=name, state=sheet.attrib.get('state', 'visible'), used_range=used, merges=merges,
                             tables=tables, hidden_rows=hidden_rows, hidden_columns=hidden_columns, comment_cells=sorted(comments))
                 directory.append(info)

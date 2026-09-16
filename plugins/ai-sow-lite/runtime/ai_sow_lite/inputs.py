@@ -201,6 +201,10 @@ def source_excerpt(project, entry, locator, *, raw=None, uncovered=False):
     selection = dict(kind='xlsx_range', sheet=locator['sheet'], range=_xlsx.canonical_range(locator['range']))
     if reading['selection'] != selection:
         if not uncovered or reading['selection'] != {'kind': 'workbook'}:
+            if reading['selection'] == {'kind': 'workbook'}:
+                raise StorageError('EVIDENCE_MISSING', '目录 read_id 不能作为已读区域证据；请调用 source_ref(region_result)，'
+                                   '或使用区域响应的 coverage.locator（含区域 read_id）与 coverage.excerpt_hash，'
+                                   '不要使用回显的 coverage.selector.locator。')
             raise StorageError('EVIDENCE_MISSING', '来源范围与不可变 reading selection 不同。')
         sheet = next((s for s in observed['sheets'] if s['sheet'] == selection['sheet']), None)
         if sheet is None or _xlsx.bounds(selection['range'])[2] > _xlsx.bounds(sheet['used_range'])[2] or _xlsx.bounds(selection['range'])[3] > _xlsx.bounds(sheet['used_range'])[3]:

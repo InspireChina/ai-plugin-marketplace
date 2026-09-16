@@ -1,5 +1,14 @@
 # 版本说明
 
+## 0.1.0-alpha.3 — 2026-09-16
+
+真实数据问题修复预发布，包含 [PR #16](https://github.com/InspireChina/ai-plugin-marketplace/pull/16) 对 #11–#15 的修复。维护者已确认 Windows 复跑通过；发布收尾仅同步版本元数据、仓库校验测试和文档，运行时、启动脚本、Skill、模板和业务合同保持复跑基线 `b1e2376` 的原字节，依赖版本不变。验证范围见 [验证摘要](docs/validation/README.md)，发布记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.3)。
+
+- XLSX 声明维度或纯样式空格膨胀时，按含值、公式、合并、附注及 Table 的实际内容边界检查，保留原件并报告外围样式限制；真实内容超限仍拒绝。已接受的读取结果保持原字节和证据身份。
+- 完整候选检查在启动 Office 前预检布局，合批返回全部可见高度超限对象；render 也保留整批诊断，不截断正文或增加返修额度。
+- 补齐 Task 四项分类依据自检及可操作诊断；默认新建/M 与明确不适用也须有依据和非空 rationale。
+- 明确 Windows Python 驱动脚本须使用原生路径，优先同进程 Client；XLSX 证据使用 `source_ref()` 或实际区域 locator，误用目录 read_id 时提示正确字段。
+
 ## 0.1.0-alpha.2 — 2026-09-15
 
 Windows 兼容与可靠性预发布，包含 [PR #10](https://github.com/InspireChina/ai-plugin-marketplace/pull/10) 的修复。运行时、模板和业务合同沿用两端已验收的提交 `8f05418`；本次发布收尾同步插件版本、校验器和文档。验证边界见 [验证摘要](docs/validation/README.md)，发布与安装记录见 [GitHub Release](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2)。

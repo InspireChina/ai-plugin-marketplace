@@ -384,16 +384,18 @@ def _model_classification(ctx, model, standards, exact_open, work_gaps):
         for basis in task['classification_basis']:
             covered.update(basis['fields'])
             if standard and basis['standard_id'] != standard['id']:
-                ctx.add('standard_id', '分类依据须定位该工作类型的同版标准行。', object_id=task['id'])
+                ctx.add('standard_id', 'classification_basis.standard_id 须取 inspect/standards 中当前 work_type_name 对应行的“工作类型 ID”，并与本项目模板同版。', object_id=task['id'])
             if task['work_type_name'] is None and basis['standard_id'] is not None:
-                ctx.add('standard_id', '未匹配类型不能编造标准身份。', object_id=task['id'])
+                ctx.add('standard_id', 'work_type_name 未匹配时，classification_basis.standard_id 须为 null；类型缺口用指向 work_type_name 的 open 问题说明。', object_id=task['id'])
         for field in CLASSIFICATION_FIELDS:
             applicable_na = field == 'integration_type' and na
             if task[field] is None and not applicable_na:
                 if exact_open is not None and (task['id'], field) not in exact_open:
-                    ctx.add(field, '未知分类须有精确字段的 open 问题。', object_id=task['id'])
+                    hint = ('非集成工作明确不适用时，在 not_applicable_fields 加入 integration_type，并由 classification_basis.fields 覆盖；否则，'
+                            if field == 'integration_type' and standard and not standard['integration'] else '')
+                    ctx.add(field, hint + f'未知分类须有 open 问题，targets 中 object_id 为该 Task ID、field="{field}"。', object_id=task['id'])
             elif field not in covered:
-                ctx.add(field, '有效分类和明确不适用均须有分类依据。', object_id=task['id'])
+                ctx.add(field, f'classification_basis.fields 须覆盖 {field}，含新建、M 与明确不适用；依据项须有 evidence_refs、同版 standard_id（类型未知时为 null）和非空 rationale。', object_id=task['id'])
 
 
 def _sources_and_evidence(ctx, candidate, model, pending, decisions, objects, analysis_records=None):
@@ -693,6 +695,16 @@ def check_candidate(project: Path, candidate_path: Path, scope: str, plan_path: 
     digest = semantic_digest(dict(candidate=candidate, model=model, pending_items=pending,
                                   decisions=decisions, topics=topics,
                                   evidence=[evidence[i] for i in candidate['evidence_ids'] if i in evidence]))
+    if scope == 'full' and not ctx.diagnostics:
+        from .project import StorageError
+        from .workbook import _baseline_aliases, preflight_layout
+        template = project_file(ctx.project, f".ai-sow-lite/template/{candidate['template_hash']}/sow-template.xlsx",
+                                '.ai-sow-lite/template')
+        try:
+            previous = _baseline_aliases(ctx.project, candidate, ctx.report(scope, path, digest, unknowns))
+            ctx.diagnostics.extend(preflight_layout(template, model, pending, decisions, previous))
+        except StorageError as error:
+            ctx.diagnostics.extend(error.diagnostics)
     return ctx.report(scope, path, digest, unknowns)
 
 

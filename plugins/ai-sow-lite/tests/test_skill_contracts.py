@@ -129,10 +129,10 @@ def test_authoring_example_maps_real_region_and_standard_response_fields(tmp_pat
     row = standards["result"]["items"][0]
     context = {"region_result": response["result"], "standard_row": row}
     exec(compile(snippets[0], "generate-authoring.md", "exec"), context)
-    assert context["source_ref"] == dict(
+    assert context["evidence_source_ref"] == dict(
         input_version_id=entry["input_version_id"], locator=locator, excerpt_hash=excerpt_hash)
     from ai_sow_lite.authoring import source_ref
-    assert source_ref(response["result"]) == context["source_ref"]
+    assert source_ref(response["result"]) == context["evidence_source_ref"]
     assert context["standard_id"] == row["工作类型 ID"]
     assert context["work_type_name"] == row["工作类型"]
 

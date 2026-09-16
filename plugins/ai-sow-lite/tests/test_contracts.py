@@ -107,6 +107,62 @@ def test_default_m_and_new_values_do_not_close_open_items(contract_case):
     assert read_json(contract_case.file("pending-items.json"))["items"][-1]["status"] == "open"
 
 
+@pytest.mark.parametrize("field", ["work_type_name", "work_mode", "complexity", "integration_type"])
+def test_missing_classification_basis_diagnostic_identifies_repair_fields(contract_case, field):
+    original = read_json(contract_case.file("model.json"))
+    model = copy.deepcopy(original)
+    task = model["tasks"][0]
+    assert task["work_mode"] == "新建" and task["complexity"] == "M"
+    assert task["integration_type"] is None and task["not_applicable_fields"] == ["integration_type"]
+    for basis in task["classification_basis"]:
+        basis["fields"] = [name for name in basis["fields"] if name != field]
+    task["classification_basis"] = [basis for basis in task["classification_basis"] if basis["fields"]]
+    write_json(contract_case.file("model.json"), model)
+
+    report = check(contract_case)
+    assert not report["valid_for_render"]
+    diagnostic = next(d for d in report["diagnostics"]
+                      if d["target"]["object_id"] == task["id"] and d["target"]["field"] == field)
+    assert diagnostic["code"] == "CANDIDATE_INVALID"
+    assert set(diagnostic) == {"code", "target", "message", "preserved_paths"}
+    assert all(token in diagnostic["message"] for token in (
+        field, "classification_basis", "fields", "evidence_refs", "standard_id", "rationale"))
+
+    write_json(contract_case.file("model.json"), original)
+    assert check(contract_case)["valid_for_render"]
+
+
+def test_wrong_standard_diagnostic_points_to_current_work_type_row(contract_case):
+    original = read_json(contract_case.file("model.json"))
+    mutate(contract_case, "model.json", lambda m: m["tasks"][0]["classification_basis"][0].update(
+        standard_id="REL-PLAN"))
+    report = check(contract_case)
+    diagnostic = next(d for d in report["diagnostics"] if d["target"]["field"] == "standard_id")
+    assert all(token in diagnostic["message"] for token in ("inspect/standards", "工作类型 ID", "work_type_name"))
+    write_json(contract_case.file("model.json"), original)
+    assert check(contract_case)["valid_for_render"]
+
+
+def test_non_integration_null_diagnostic_offers_na_or_exact_pending_repair(contract_case):
+    mutate(contract_case, "model.json", lambda m: m["tasks"][0].update(not_applicable_fields=[]))
+    report = check(contract_case)
+    diagnostic = next(d for d in report["diagnostics"] if d["target"]["field"] == "integration_type")
+    assert all(token in diagnostic["message"] for token in (
+        "not_applicable_fields", "classification_basis", "integration_type", "targets", "object_id", "field", "open"))
+    mutate(contract_case, "model.json", lambda m: m["tasks"][0].update(not_applicable_fields=["integration_type"]))
+    assert check(contract_case)["valid_for_render"]
+
+
+def test_unknown_classification_diagnostic_requires_exact_pending_target(contract_case):
+    mutate(contract_case, "model.json", lambda m: m["tasks"][0].update(work_mode=None))
+    report = check(contract_case)
+    diagnostic = next(d for d in report["diagnostics"] if d["target"]["field"] == "work_mode")
+    assert all(token in diagnostic["message"] for token in (
+        "targets", "object_id", "field", "work_mode", "open"))
+    add_pending(contract_case, pending(contract_case, "work_mode"))
+    assert check(contract_case)["valid_for_render"]
+
+
 def test_known_tasks_can_coexist_with_unestimated_remainder(contract_case):
     add_pending(contract_case, pending(contract_case, None, target=contract_case.ids["S-01"], unestimated=True))
     assert check(contract_case)["valid_for_render"] is True

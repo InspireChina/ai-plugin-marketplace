@@ -178,21 +178,100 @@ def test_visible_layout_overflow_names_its_original_object_and_cell(tmp_path, ta
     assert not (tmp_path/'projected.xlsx').exists()
 
 
+def _multiple_layout_overflows(model, pending):
+    """Each note component fits alone; their actual G-column composition does not."""
+    model['stories'][0]['acs'][0]['text']='一行验收。\n'*60
+    model['stories'][1]['notes']='一行必要说明。\n'*60
+    tasks=model['tasks'][:3]
+    for task in tasks:
+        task.update(work_mode='调整',complexity='S',notes='\n'.join(['必要补充。']*4))
+        task['classification_basis'][0]['rationale']='\n'.join(['沿用既有实例并调整既定查询条件。']*4)
+    pending['items'][0].update(question='\n'.join(['确认适用边界？']*4),
+        current_handling='\n'.join(['暂按当前处理。']*4),
+        targets=[dict(object_id=task['id'],field='work_mode') for task in tasks])
+    prototype=model['tasks'][-1]
+    model['tasks'].extend(dict(deepcopy(prototype),id=str(uuid4()),name=f'独立发布成果{index}',notes='',complexity='M')
+                         for index in range(12))
+    return [
+        (model['stories'][0]['id'],'acs','01-需求故事!D5'),
+        (model['stories'][1]['id'],'notes','01-需求故事!E6'),
+        *[(task['id'],'classification_basis',f'02-任务清单!G{row}') for row,task in enumerate(tasks,5)],
+        (model['stories'][-1]['id'],None,'01-需求故事!H9'),
+    ]
+
+
+def _assert_layout_targets(diagnostics, expected):
+    assert len(diagnostics)==len(expected)
+    for identity,field,cell in expected:
+        matching=[d for d in diagnostics if d['target']['object_id']==identity and d['target']['field']==field]
+        assert len(matching)==1,diagnostics
+        assert matching[0]['code']=='WORKBOOK_LAYOUT_OVERFLOW'
+        assert cell in matching[0]['message']
+
+
+def test_projection_reports_all_composed_note_and_story_overflows_in_one_pass(tmp_path):
+    model,pending,decisions=bundle()
+    expected=_multiple_layout_overflows(model,pending)
+    before=deepcopy((model,pending,decisions))
+    with pytest.raises(StorageError) as caught:
+        project(tmp_path,model,pending,decisions)
+    _assert_layout_targets(caught.value.diagnostics,expected)
+    assert (model,pending,decisions)==before
+    assert not (tmp_path/'projected.xlsx').exists()
+
+
+def test_full_check_reports_all_layout_overflows_without_office_or_export(contract_case,monkeypatch):
+    from ai_sow_lite import office,workbook
+    from ai_sow_lite.cli import execute
+    from .support.fixtures import read_json,write_json
+    case=contract_case
+    model,pending=read_json(case.file('model.json')),read_json(case.file('pending-items.json'))
+    expected=_multiple_layout_overflows(model,pending)
+    write_json(case.file('model.json'),model);write_json(case.file('pending-items.json'),pending)
+    before={name:case.file(name).read_bytes() for name in ('model.json','pending-items.json','candidate.json')}
+    def unexpected(*args,**kwargs):
+        pytest.fail('Full layout check must not select/start Office or export a workbook')
+    monkeypatch.setattr(office,'recalculate',unexpected)
+    monkeypatch.setattr(office,'selection_fingerprint',unexpected)
+    monkeypatch.setattr(workbook,'project_workbook',unexpected)
+    payload=dict(candidate_path=case.candidate_path.relative_to(case.project).as_posix(),scope='full',plan_path=None)
+    request=dict(protocol_version='1.0',request_id=case.request_id,project_path=str(case.project),operation='check',payload=payload)
+    result=execute(request)
+    assert not result['ok'] and not result['result']['valid_for_render']
+    _assert_layout_targets(result['diagnostics'],expected)
+    saved=read_json(case.project/result['result']['check_ref']['path'])
+    assert saved['diagnostics']==result['diagnostics']
+    rendered=execute(dict(request,operation='render',payload=dict(candidate_path=payload['candidate_path'],
+        check_path=result['result']['check_ref']['path'],expected_current=None)))
+    assert not rendered['ok']
+    _assert_layout_targets(rendered['diagnostics'],expected)
+    assert before=={name:case.file(name).read_bytes() for name in before}
+    assert not case.file('render-attempt.json').exists()
+    assert not (case.project/'.ai-sow-lite/current.json').exists()
+    assert not list(case.candidate_path.parent.glob('render-*'))
+    payload['scope']='slice'
+    assert execute(request)['ok']
+
+
 @pytest.mark.parametrize('case', ['long_acs', 'overflow_acs', 'padding_boundary_acs', 'above_padding_boundary_acs'])
 def test_real_consumer_acceptance_layout_preserves_text_or_diagnoses_overflow(tmp_path, case):
     from .support.fixtures import FIXTURES,read_json,PLUGIN
+    from ai_sow_lite.workbook import preflight_layout
     m,p,d=bundle()
     before=(PLUGIN/'assets/sow-template.xlsx').read_bytes()
     texts=read_json(FIXTURES/'workbook/ac-layout.json')[case]
     story=m['stories'][0]
     story['acs']=[dict(id=str(uuid4()),text=text,evidence_refs=story['evidence_refs']) for text in texts]
     expected='\n'.join(f'{i}. {text}' for i,text in enumerate(texts,1))
+    diagnostics=preflight_layout(PLUGIN/'assets/sow-template.xlsx',m,p,d)
     if case in ('overflow_acs', 'above_padding_boundary_acs'):
+        _assert_layout_targets(diagnostics,[(story['id'],'acs','01-需求故事!D5')])
         with pytest.raises(StorageError) as caught: project(tmp_path,m,p,d)
         assert caught.value.diagnostics[0]['code']=='WORKBOOK_LAYOUT_OVERFLOW'
         assert caught.value.diagnostics[0]['target']['object_id']==story['id']
         assert not (tmp_path/'projected.xlsx').exists()
     else:
+        assert diagnostics==[]
         project(tmp_path,m,p,d)
         w=openpyxl.load_workbook(tmp_path/'projected.xlsx')
         cell=w['01-需求故事']['D5']
@@ -206,6 +285,32 @@ def test_real_consumer_acceptance_layout_preserves_text_or_diagnoses_overflow(tm
     assert (PLUGIN/'assets/sow-template.xlsx').read_bytes()==before
 
 
+def test_layout_preflight_uses_extended_row_styles_without_expanding_formulas(tmp_path,monkeypatch):
+    from ai_sow_lite import workbook
+    from .support.fixtures import PLUGIN
+    model,pending,decisions=bundle()
+    prototype,task=deepcopy(model['stories'][0]),deepcopy(model['tasks'][0])
+    model['stories']=[dict(deepcopy(prototype),id=str(uuid4()),title=f'独立故事{index}') for index in range(61)]
+    model['tasks']=[dict(deepcopy(task),id=str(uuid4()),name=f'独立任务{index}',notes='',
+                         story_id=model['stories'][index%61]['id']) for index in range(201)]
+    model['stories'][-1]['acs'][0]['text']='一行验收。\n'*60
+    # Tasks are projected by their parent Story, so the last Task belongs to the
+    # last Story and appears after all 200 others, at the first expanded row.
+    model['tasks'][-1]['story_id']=model['stories'][-1]['id']
+    model['tasks'][-1]['notes']='一行必要说明。\n'*60
+    pending['items']=[]
+    expected=[(model['stories'][-1]['id'],'acs','01-需求故事!D65'),
+              (model['tasks'][-1]['id'],'notes','02-任务清单!G205')]
+    with monkeypatch.context() as patched:
+        def unexpected(*args,**kwargs):
+            pytest.fail('Preflight must not expand tables or formulas')
+        patched.setattr(workbook,'_extend',unexpected)
+        diagnostics=workbook.preflight_layout(PLUGIN/'assets/sow-template.xlsx',model,pending,decisions)
+    _assert_layout_targets(diagnostics,expected)
+    with pytest.raises(StorageError) as caught:project(tmp_path,model,pending,decisions)
+    assert caught.value.diagnostics==diagnostics
+
+
 def test_layout_failure_does_not_reach_office_or_apply_and_keeps_candidate(tmp_path,monkeypatch):
     from .support.excel import prepare_case
     from .support.fixtures import read_json,write_json
@@ -217,7 +322,8 @@ def test_layout_failure_does_not_reach_office_or_apply_and_keeps_candidate(tmp_p
     write_json(case.file('model.json'),model)
     before=case.file('model.json').read_bytes()
     checked=run_request(case.project,case.request_id,'check',dict(candidate_path=payload['candidate_path'],scope='full',plan_path=None))
-    assert checked['ok']
+    assert not checked['ok'] and not checked['result']['valid_for_render']
+    assert checked['diagnostics'][0]['code']=='WORKBOOK_LAYOUT_OVERFLOW'
     payload['check_path']=checked['result']['check_ref']['path']
     monkeypatch.setattr(office,'recalculate',lambda *args: pytest.fail('Overflow must not invoke Office'))
     from ai_sow_lite.cli import execute

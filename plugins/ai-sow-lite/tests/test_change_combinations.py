@@ -7,7 +7,7 @@ import pytest
 
 from ai_sow_lite.project import file_ref
 from .support.clarify import (delivered_baseline, clarify_case, check_edits, edit_draft,
-                              adopt_feedback, feedback, controlled_base_change)
+                              adopt_feedback, feedback, controlled_base_change, refresh_controlled_projection)
 from .support.cli import run_request
 from .support.fixtures import read_json, write_json
 
@@ -301,6 +301,7 @@ def test_unestimated_obligation_has_explicit_fulfillment_or_exit(clarify_case, o
     pending['items'].append(gap)
     controlled_base_change(case, 'model.json', before)
     controlled_base_change(case, 'pending-items.json', pending)
+    refresh_controlled_projection(case)
     if outcome == 'fulfilled':
         task = dict(deepcopy(before['tasks'][0]), id=str(uuid4()), story_id=extra['id'], name='明确补齐的交付工作')
         decision = dict(id=str(uuid4()), kind='scope_decision', text='已明确工作去向。',

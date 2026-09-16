@@ -6,10 +6,10 @@
 
 | 插件 | 适合的工作方式 | 当前发布版本 |
 | --- | --- | --- |
-| [AI SOW Lite](plugins/ai-sow-lite/README.md) | 从 PRD、HLD 和往期 SOW 生成首稿，查看 Excel 后通过 `clarify` 讨论并应用局部修改。 | [0.1.0-alpha.2](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.2) |
+| [AI SOW Lite](plugins/ai-sow-lite/README.md) | 从 PRD、HLD 和往期 SOW 生成首稿，查看 Excel 后通过 `clarify` 讨论并应用局部修改。 | [0.1.0-alpha.3](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-lite-v0.1.0-alpha.3) |
 | [AI SOW](plugins/ai-sow/README.md) | 按需求、现状、设计、Story/AC、Task 和生成等阶段逐步评审批准，通过 `reconcile` 协调上游修正。 | [0.1.0-beta.1](https://github.com/InspireChina/ai-plugin-marketplace/releases/tag/ai-sow-v0.1.0-beta.1) |
 
-Lite 的当前 Alpha 于 2026-09-15 发布，AI SOW 的当前 Beta 于 2026-09-11 发布，均为预发布版本，仍需用户核对结果。各插件独立安装、独立维护项目数据，无需同时安装。能力和限制见各插件 README，版本变化见 [CHANGELOG](CHANGELOG.md)。
+Lite 的当前 Alpha 于 2026-09-16 发布，AI SOW 的当前 Beta 于 2026-09-11 发布，均为预发布版本，仍需用户核对结果。各插件独立安装、独立维护项目数据，无需同时安装。能力和限制见各插件 README，版本变化见 [CHANGELOG](CHANGELOG.md)。
 
 ## 使用前准备
 

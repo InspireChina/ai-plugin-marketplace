@@ -131,7 +131,7 @@ def write_valid_ai_sow_release(root: Path) -> Path:
 
 
 def write_valid_ai_sow_lite_release(root: Path) -> Path:
-    plugin_root = write_plugin(root, "ai-sow-lite", "0.1.0-alpha.2")
+    plugin_root = write_plugin(root, "ai-sow-lite", "0.1.0-alpha.3")
     for relative in (
         "LICENSE", "NOTICE", "README.md", "scripts/lite.py",
         "scripts/bootstrap.sh", "scripts/bootstrap.ps1",
@@ -143,11 +143,11 @@ def write_valid_ai_sow_lite_release(root: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("release fixture\n", encoding="utf-8")
     (plugin_root / "pyproject.toml").write_text(
-        '[project]\nname = "ai-sow-lite-runtime"\nversion = "0.1.0a2"\n', encoding="utf-8"
+        '[project]\nname = "ai-sow-lite-runtime"\nversion = "0.1.0a3"\n', encoding="utf-8"
     )
     (plugin_root / "uv.lock").write_text(
         'version = 1\n[[package]]\nname = "ai-sow-lite-runtime"\n'
-        'version = "0.1.0a2"\nsource = { virtual = "." }\n', encoding="utf-8"
+        'version = "0.1.0a3"\nsource = { virtual = "." }\n', encoding="utf-8"
     )
     return plugin_root
 
@@ -176,11 +176,11 @@ def initialize_repository(root: Path, entries: list[dict[str, object]]) -> None:
 class RepositoryValidatorTests(unittest.TestCase):
     def test_repository_validates_each_plugins_release_identity(self) -> None:
         cases = (
-            (".codex-plugin/plugin.json", "0.1.0-alpha.2", "0.1.0", "AI SOW Lite plugin version"),
-            (".claude-plugin/plugin.json", "0.1.0-alpha.2", "0.1.0-beta.1", "AI SOW Lite plugin version"),
-            ("pyproject.toml", "0.1.0a2", "0.1.0b1", "AI SOW Lite pyproject version"),
+            (".codex-plugin/plugin.json", "0.1.0-alpha.3", "0.1.0", "AI SOW Lite plugin version"),
+            (".claude-plugin/plugin.json", "0.1.0-alpha.3", "0.1.0-beta.1", "AI SOW Lite plugin version"),
+            ("pyproject.toml", "0.1.0a3", "0.1.0b1", "AI SOW Lite pyproject version"),
             ("pyproject.toml", "ai-sow-lite-runtime", "ai-sow-plugin-runtime", "AI SOW Lite pyproject name"),
-            ("uv.lock", "0.1.0a2", "0.1.0b1", "AI SOW Lite uv.lock package version"),
+            ("uv.lock", "0.1.0a3", "0.1.0b1", "AI SOW Lite uv.lock package version"),
             ("uv.lock", "ai-sow-lite-runtime", "ai-sow-plugin-runtime", "expected one ai-sow-lite-runtime package"),
             ("uv.lock", 'virtual = "."', 'virtual = "../ai-sow"', "AI SOW Lite uv.lock package source"),
         )

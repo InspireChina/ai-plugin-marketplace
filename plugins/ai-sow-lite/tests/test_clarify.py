@@ -6,7 +6,7 @@ import pytest
 
 from .support.clarify import (delivered_baseline, clarify_case, feedback, edit_draft, check_edits,
                              confirm_plan, complexity_draft, prepared_seed, prepared_case)
-from .support.clarify import controlled_base_change
+from .support.clarify import controlled_base_change, refresh_controlled_projection
 from .support.fixtures import read_json, write_json
 from .support.cli import run_request
 
@@ -534,9 +534,17 @@ def test_hundreds_of_tasks_receive_only_one_explicit_classification_change(clari
     case = clarify_case
     old = case['project'] / '.ai-sow-lite/versions' / case['current']['version_id']
     model = read_json(old / 'model.json')
-    # Mechanical enlargement keeps the original migration task and issue unchanged.
-    model['tasks'].extend(dict(deepcopy(model['tasks'][0]), id=str(uuid4()), name=f'受控独立任务 {i}') for i in range(300))
+    # Keep the scale fixture renderable: three independent Tasks per added Story,
+    # with a matching baseline projection for the normal stable-alias check.
+    # The original migration Task and its issue remain unchanged.
+    for index in range(100):
+        story=dict(deepcopy(model['stories'][0]),id=str(uuid4()),title=f'受控独立故事 {index}')
+        for ac in story['acs']:ac['id']=str(uuid4())
+        model['stories'].append(story)
+        model['tasks'].extend(dict(deepcopy(model['tasks'][0]),id=str(uuid4()),story_id=story['id'],
+                                  name=f'受控独立任务 {index}-{part}') for part in range(3))
     controlled_base_change(case, 'model.json', model)
+    refresh_controlled_projection(case)
     original_bytes = (old / 'model.json').read_bytes()
     draft = complexity_draft(case, 'S')
     reply = check_edits(case, draft)

@@ -801,7 +801,7 @@ def _baseline_aliases(project,candidate,checked):
     return previous
 
 
-def _expected_book(template,model,pending,decisions,version,evidence,previous=None):
+def _layout_template(template):
     book=_template(template)
     book[STORY_SHEET].column_dimensions['D'].width=AC_COLUMN_WIDTH
     for row in book[STORY_SHEET].iter_rows(min_row=5,min_col=4,max_col=4):
@@ -809,13 +809,44 @@ def _expected_book(template,model,pending,decisions,version,evidence,previous=No
         alignment.vertical='top'
         alignment.wrap_text=True
         row[0].alignment=alignment
-    projection,inputs,docs=_projection(model,pending,decisions,version,evidence,previous,layout=book)
-    _extend(book,STORY_SHEET,'SOWStoryTable',max((r - 4 for obj in projection['objects'] if obj['sheet']==STORY_SHEET for r in obj['rows']),default=0))
-    _extend(book,TASK_SHEET,'TaskTable',len(model['tasks']))
-    _fill_inputs(book,inputs)
-    _fit_task_lists(book,model,projection)
-    projection['template_hash']=hashlib.sha256(Path(template).read_bytes()).hexdigest()
-    return book,projection,docs
+    return book
+
+
+def preflight_layout(template,model,pending,decisions,previous=None):
+    """Check the exact projected text/styles without formula expansion, save or Office."""
+    book=_layout_template(template)
+    try:
+        projection,inputs,_=_projection(model,pending,decisions,'',previous=previous,layout=book)
+        # Beyond reserved rows, render copies the first data row's styles. Copy
+        # only measured cells here; no tables or formulas need expansion.
+        cells=[*inputs,*[(STORY_SHEET,f'H{obj["rows"][0]}') for obj in projection['objects'] if obj['kind']=='story']]
+        for sheet,coordinate in cells:
+            ws=book[sheet]
+            cell=ws[coordinate]
+            table=next(iter(ws.tables.values()))
+            if cell.row>int(re.search(r'\d+$',table.ref).group()):
+                cell._style=copy(ws.cell(5,cell.column)._style)
+        return _fill_inputs(book,inputs)+_fit_task_lists(book,model,projection)
+    finally:
+        book.close()
+
+
+def _expected_book(template,model,pending,decisions,version,evidence,previous=None):
+    book=_layout_template(template)
+    try:
+        projection,inputs,docs=_projection(model,pending,decisions,version,evidence,previous,layout=book)
+        _extend(book,STORY_SHEET,'SOWStoryTable',max((r - 4 for obj in projection['objects'] if obj['sheet']==STORY_SHEET for r in obj['rows']),default=0))
+        _extend(book,TASK_SHEET,'TaskTable',len(model['tasks']))
+        diagnostics=_fill_inputs(book,inputs)+_fit_task_lists(book,model,projection)
+        if diagnostics:
+            error=StorageError('WORKBOOK_LAYOUT_OVERFLOW','完整正文超过模板可见高度。')
+            error.diagnostics=diagnostics
+            raise error
+        projection['template_hash']=hashlib.sha256(Path(template).read_bytes()).hexdigest()
+        return book,projection,docs
+    except Exception:
+        book.close()
+        raise
 
 
 def _fit_task_lists(book, model, projection):
@@ -823,11 +854,13 @@ def _fit_task_lists(book, model, projection):
     # formula. This is layout only; the task table contains every actual Task.
     names = {o['object_id']:o['display_name'] for o in projection['objects'] if o['kind']=='task'}
     rows = {o['object_id']:o['rows'][0] for o in projection['objects'] if o['kind']=='story'}
+    diagnostics=[]
     for story in model['stories']:
         row = rows[story['id']]
         lines = [' '.join([names[t['id']], *(t[f] or '' for f in ('work_type_name','work_mode','complexity','integration_type'))])
                  for t in model['tasks'] if t['story_id']==story['id']]
-        _fit_height(book[STORY_SHEET][f'H{row}'], '\n'.join(lines), story['id'], None)
+        diagnostics.extend(_fit_height(book[STORY_SHEET][f'H{row}'], '\n'.join(lines), story['id'], None))
+    return diagnostics
 
 
 def _column_width(sheet,coordinate):
@@ -866,17 +899,20 @@ def _fit_height(cell,value,identity,field):
         error=StorageError('WORKBOOK_LAYOUT_OVERFLOW',
             f'{cell.parent.title}!{cell.coordinate} 的完整正文预计超过 409 点可见高度；保留候选，不能删减验收义务来凑布局。')
         error.diagnostics[0]['target'].update(object_id=identity,field=field)
-        raise error
+        return error.diagnostics
     dimension=cell.parent.row_dimensions[cell.row]
     dimension.height=max(dimension.height or 15,height)
+    return []
 
 
 def _fill_inputs(book,inputs):
+    diagnostics=[]
     for (sheet,coordinate),(value,identity,field) in inputs.items():
         cell=book[sheet][coordinate]
         write_literal(cell,value)
         if cell.alignment.wrap_text:
-            _fit_height(cell,value,identity,field)
+            diagnostics.extend(_fit_height(cell,value,identity,field))
+    return diagnostics
 
 
 def verify_prepared(project,prepared):
@@ -979,6 +1015,10 @@ def render_candidate(project: Path,request_id: str,payload):
     checked=checked_json(project,payload['check_path'],'check',area)
     plan_path=(checked.get('plan_ref') or {}).get('path')
     report=check_candidate(project,candidate_path,'full',plan_path)
+    if any(d['code']=='WORKBOOK_LAYOUT_OVERFLOW' for d in report['diagnostics']):
+        error=StorageError('WORKBOOK_LAYOUT_OVERFLOW','完整正文超过模板可见高度。')
+        error.diagnostics=report['diagnostics']
+        raise error
     if not report['valid_for_render'] or not checks_match(project,checked,report):
         raise StorageError('CANDIDATE_INVALID','候选或依赖与实际完整检查记录不一致。')
     expected=payload['expected_current']

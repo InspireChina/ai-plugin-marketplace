@@ -109,14 +109,12 @@ def test_unread_surfaces_are_reported_without_failing_readable_cells(tmp_path):
 import pytest
 
 
-@pytest.mark.parametrize('mutation', ['dimensions', 'actual-cell', 'members', 'compression', 'long-text'])
+@pytest.mark.parametrize('mutation', ['actual-cell', 'members', 'compression', 'long-text'])
 def test_xlsx_limits_never_return_a_partial_success(tmp_path, mutation):
     import shutil
     source = tmp_path / 'bounded.xlsx'
     shutil.copyfile(HISTORY / 'sparse-history.xlsx', source)
-    if mutation == 'dimensions':
-        rewrite_xlsx(source, replace={'xl/worksheets/sheet1.xml': lambda raw: raw.replace(b'A1:C8', b'A1:XFD1048576')})
-    elif mutation == 'actual-cell':
+    if mutation == 'actual-cell':
         rewrite_xlsx(source, replace={'xl/worksheets/sheet1.xml': lambda raw: raw.replace(b'r="B2"', b'r="XFD1048576"')})
     elif mutation == 'members':
         rewrite_xlsx(source, extras={f'extra/{n}': b'x' for n in range(2049)})
@@ -129,6 +127,62 @@ def test_xlsx_limits_never_return_a_partial_success(tmp_path, mutation):
     assert response['diagnostics'][0]['code'] == 'RESULT_TOO_LARGE'
     assert response['result']['reading_refs'] == []
     assert '上限' in response['diagnostics'][0]['message']
+
+
+@pytest.mark.parametrize('dimension,empty_cell', [
+    ('A1:XFD1048576', b''),
+    ('A1:C8', b'<c r="XFD1048576" s="0"/>'),
+    ('A1:XFD1048576', b'<c r="XFD1048576" s="0"/>'),
+])
+def test_inflated_xlsx_dimensions_read_real_content_without_rewriting_source(tmp_path, dimension, empty_cell):
+    import shutil
+    source = tmp_path / 'inflated.xlsx'
+    shutil.copyfile(HISTORY / 'sparse-history.xlsx', source)
+    rewrite_xlsx(source, replace={'xl/worksheets/sheet1.xml': lambda raw: raw.replace(
+        b'<dimension ref="A1:C8"', f'<dimension ref="{dimension}"'.encode()).replace(
+        b'</row>', empty_cell + b'</row>', 1)})
+    original = source.read_bytes()
+    project, request = tmp_path / 'project', str(uuid4())
+    response = run_request(project, request, 'ingest', sources_payload(source))
+    assert response['ok'], response
+    entry = response['result']['input_refs'][0]
+    reading = read_json(project / response['result']['reading_refs'][0]['path'])
+    directory = inspect(project, request, 'regions', {'input_version_id': entry['input_version_id']})['result']
+    assert directory['items'][0]['used_range'] == 'A1:C8'
+    assert directory['items'][0]['tables'] == [{'name': 'HistoryTable', 'range': 'A1:C8'}]
+    assert any('实际内容边界' in item['reason'] for item in directory['coverage']['limitations'])
+    result = region(project, request, entry, reading)['result']
+    cells = {cell['address']: cell for cell in result['items']}
+    assert cells['A2']['value']['value'] == '订单查询'
+    assert cells['A3']['merged_range'] == 'A2:A3'
+    assert '不含订单明细' in cells['B3']['comment']['text']
+    assert source.read_bytes() == original == (project / entry['relative_path']).read_bytes()
+    # Re-reading verifies the immutable cache against the same physical source.
+    assert region(project, request, entry, reading)['result']['coverage'] == result['coverage']
+
+
+@pytest.mark.parametrize('kind', ['zero', 'false', 'formula', 'empty-string', 'merge', 'comment', 'table'])
+def test_inflated_xlsx_never_hides_real_out_of_bounds_content(tmp_path, kind):
+    import shutil
+    source = tmp_path / 'overflow.xlsx'
+    shutil.copyfile(HISTORY / 'sparse-history.xlsx', source)
+    content = {'zero': b'<c r="XFD3"><v>0</v></c>',
+               'false': b'<c r="XFD3" t="b"><v>0</v></c>',
+               'formula': b'<c r="XFD3"><f>1+1</f></c>',
+               'empty-string': b'<c r="XFD3" t="inlineStr"><is><t></t></is></c>'}.get(kind, b'')
+    replace = {'xl/worksheets/sheet1.xml': lambda raw: raw.replace(
+        b'<dimension ref="A1:C8"', b'<dimension ref="A1:XFD1048576"').replace(
+        b'</row>', content + b'</row>', 1).replace(
+        b'ref="A2:A3"', b'ref="A2:XFD3"' if kind == 'merge' else b'ref="A2:A3"')}
+    if kind == 'comment':
+        replace['xl/comments/comment1.xml'] = lambda raw: raw.replace(b'ref="B3"', b'ref="XFD3"')
+    if kind == 'table':
+        replace['xl/tables/table1.xml'] = lambda raw: raw.replace(b'ref="A1:C8"', b'ref="A1:XFD8"')
+    rewrite_xlsx(source, replace=replace)
+    response = run_request(tmp_path / 'project', str(uuid4()), 'ingest', sources_payload(source))
+    assert not response['ok'], response
+    assert response['diagnostics'][0]['code'] == 'RESULT_TOO_LARGE'
+    assert response['result']['reading_refs'] == []
 
 
 def test_huge_unicode_cell_has_bounded_representation_and_finite_page(tmp_path):
@@ -182,6 +236,8 @@ def xlsx_analysis_case(tmp_path, mutation=None):
         source['locator'] = dict(source['locator'], range='B1:C4')
     elif mutation == 'read-id':
         source['locator'] = dict(source['locator'], read_id=str(uuid4()))
+    elif mutation == 'directory-id':
+        source['locator'] = dict(source['locator'], read_id=reading['read_id'])
     elif mutation == 'original':
         (case.project / entry['relative_path']).write_bytes(b'corrupted')
     elif mutation == 'missing':
@@ -232,6 +288,28 @@ def test_xlsx_analysis_rejects_invalid_source_before_publication(tmp_path, mutat
     assert 'OPERATION_UNSUPPORTED' not in {d['code'] for d in response['diagnostics']}
     analysis = read_json(case.file('analysis.json'))
     assert not (case.project / '.ai-sow-lite/analysis/topics' / analysis['topics'][0]['topic_version_id']).exists()
+
+
+def test_xlsx_directory_id_error_points_to_observed_region_locator(tmp_path):
+    case, response, result = xlsx_analysis_case(tmp_path, 'directory-id')
+    assert not response['ok'], response
+    diagnostic = next(d for d in response['diagnostics'] if d['code'] == 'EVIDENCE_MISSING')
+    assert 'source_ref' in diagnostic['message'] and 'coverage.locator' in diagnostic['message']
+    assert result['coverage']['selector']['locator']['read_id'] != result['coverage']['locator']['read_id']
+    analysis = read_json(case.file('analysis.json'))
+    assert not (case.project / '.ai-sow-lite/analysis/topics' / analysis['topics'][0]['topic_version_id']).exists()
+
+
+def test_accepted_v1_xlsx_observations_keep_immutable_excerpt_hashes():
+    from ai_sow_lite import _xlsx
+    from ai_sow_lite.contracts import canonical_json_bytes
+    raw = (HISTORY / 'sparse-history.xlsx').read_bytes()
+    # Captured before the inflated-dimension fix: existing project evidence must
+    # still reproduce exactly under the same lite-xlsx-v1 reading identity.
+    directory = _xlsx.read(raw, {'kind': 'workbook'})
+    excerpt = _xlsx.read(raw, {'kind': 'xlsx_range', 'sheet': '历史范围', 'range': 'A1:C4'})
+    assert hashlib.sha256(canonical_json_bytes(directory)).hexdigest() == 'ef0c15b7f630690295fa81cddc9402d09c9e257762b34c7f6f3e4fe4493ab40a'
+    assert hashlib.sha256(canonical_json_bytes(excerpt)).hexdigest() == 'cd48805da49d56232e5109721386ec2cf742f3abbb5812f328d3167e1420e66d'
 
 
 def test_selection_and_multiuse_reuse_physical_reading_without_old_analysis(tmp_path):
